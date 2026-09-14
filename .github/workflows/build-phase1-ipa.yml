@@ -46,6 +46,13 @@ jobs:
             CODE_SIGNING_REQUIRED=NO \
             build | tee xcodebuild-simulator.log
 
+      - name: Package browser-simulator app
+        run: |
+          ditto -c -k --sequesterRsrc --keepParent \
+            build-simulator/Build/Products/Debug-iphonesimulator/Wyrm.app \
+            Wyrm-Phase1-simulator.app.zip
+          shasum -a 256 Wyrm-Phase1-simulator.app.zip | tee Wyrm-Phase1-simulator.sha256
+
       - name: Launch and capture simulator proof
         continue-on-error: true
         timeout-minutes: 3
@@ -100,6 +107,8 @@ jobs:
           path: |
             Wyrm-Phase1-unsigned.ipa
             Wyrm-Phase1-unsigned.sha256
+            Wyrm-Phase1-simulator.app.zip
+            Wyrm-Phase1-simulator.sha256
             validation.log
             simulator-phase1.png
             simulator-launch.log
