@@ -1,0 +1,71 @@
+name: WyrmIOS
+options:
+  bundleIdPrefix: com.omrajput
+  deploymentTarget:
+    iOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "5.0"
+    CLANG_CXX_LANGUAGE_STANDARD: c++17
+    CLANG_CXX_LIBRARY: libc++
+    TARGETED_DEVICE_FAMILY: "1"
+    ENABLE_BITCODE: NO
+targets:
+  Wyrm:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources
+      - path: Resources
+    dependencies:
+      - framework: Vendor/SDL3.xcframework
+        embed: true
+      - framework: Vendor/MoltenVK.xcframework
+        embed: false
+      - sdk: Foundation.framework
+      - sdk: UIKit.framework
+      - sdk: SwiftUI.framework
+      - sdk: QuartzCore.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: IOSurface.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreMotion.framework
+      - sdk: GameController.framework
+      - sdk: AudioToolbox.framework
+      - sdk: AVFoundation.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrajput.wyrmios
+        PRODUCT_NAME: Wyrm
+        PRODUCT_BUNDLE_PACKAGE_TYPE: APPL
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "10"
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Wyrm
+        INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.games
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: UIInterfaceOrientationPortrait
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        SWIFT_OBJC_BRIDGING_HEADER: Sources/Engine/WyrmEngineBridge.h
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Vendor/MoltenVK/include
+        FRAMEWORK_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/Vendor
+        LD_RUNPATH_SEARCH_PATHS:
+          - $(inherited)
+          - '@executable_path/Frameworks'
+        OTHER_LDFLAGS:
+          - $(inherited)
+          - -lc++
+          - -ObjC
+        CODE_SIGN_STYLE: Automatic
+        SUPPORTS_MACCATALYST: NO
+    scheme:
+      gatherCoverageData: false
+

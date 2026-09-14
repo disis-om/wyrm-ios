@@ -1,0 +1,11 @@
+/Vendor/*
+!/Vendor/.gitkeep
+/build-device/
+/build-simulator/
+/Payload/
+/dist/*.zip
+/WyrmIOS.xcodeproj/
+*.xcworkspace/xcuserdata/
+*.xcuserstate
+.DS_Store
+

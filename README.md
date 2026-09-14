@@ -1,0 +1,8 @@
+# Wyrm iOS
+
+The official iOS port of Wyrm. Phase 1 proves a UIKit + SwiftUI shell, SDL3 initialization, and a Vulkan clear frame presented through MoltenVK to a UIKit-owned `CAMetalLayer`.
+
+The iOS project is generated from `project.yml`. Third-party Apple binaries are downloaded only on macOS through `Scripts/fetch-ios-dependencies.sh` and are verified against `DEPENDENCIES.lock.md`.
+
+The GitHub Actions artifact is intentionally unsigned. AltStore applies the user's Apple ID signature and provisioning when installing it on a personal iPhone.
+

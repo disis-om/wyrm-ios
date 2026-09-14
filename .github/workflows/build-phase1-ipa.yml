@@ -1,0 +1,85 @@
+name: Build Wyrm Phase 1 IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 35
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Record Apple toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          xcrun --sdk iphoneos --show-sdk-version
+          xcrun --sdk iphonesimulator --show-sdk-version
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Fetch pinned SDL3 and MoltenVK
+        run: bash Scripts/fetch-ios-dependencies.sh
+
+      - name: Generate Xcode project
+        run: xcodegen generate
+
+      - name: Compile simulator lane
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project WyrmIOS.xcodeproj \
+            -scheme Wyrm \
+            -configuration Debug \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build-simulator \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild-simulator.log
+
+      - name: Compile physical iPhone ARM64 lane
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project WyrmIOS.xcodeproj \
+            -scheme Wyrm \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build-device \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            build | tee xcodebuild-device.log
+
+      - name: Validate device app
+        run: bash Scripts/validate-phase1-app.sh build-device/Build/Products/Release-iphoneos/Wyrm.app | tee validation.log
+
+      - name: Package unsigned IPA for AltStore
+        run: |
+          mkdir -p Payload
+          ditto build-device/Build/Products/Release-iphoneos/Wyrm.app Payload/Wyrm.app
+          /usr/bin/zip -qry Wyrm-Phase1-unsigned.ipa Payload
+          shasum -a 256 Wyrm-Phase1-unsigned.ipa | tee Wyrm-Phase1-unsigned.sha256
+
+      - name: Upload Phase 1 evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: Wyrm-Phase1-IPA
+          path: |
+            Wyrm-Phase1-unsigned.ipa
+            Wyrm-Phase1-unsigned.sha256
+            validation.log
+            xcodebuild-device.log
+            xcodebuild-simulator.log
+          if-no-files-found: error
+          retention-days: 14
+
