@@ -4,6 +4,7 @@
 
 #include "WyrmEngineBridge.h"
 #include "WyrmGpuAssets.h"
+#include "WyrmBodyPreview.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -244,8 +245,10 @@ bool create_swapchain(CAMetalLayer *metal_layer) {
                "Surface capabilities failed")) {
         return false;
     }
-    if ((capabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT) == 0) {
-        return fail("MoltenVK surface cannot receive the Phase 1 clear frame");
+    if ((capabilities.supportedUsageFlags &
+         (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) !=
+        (VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT)) {
+        return fail("MoltenVK surface cannot receive clear and shader frames");
     }
 
     uint32_t format_count = 0;
@@ -297,7 +300,7 @@ bool create_swapchain(CAMetalLayer *metal_layer) {
     create_info.imageColorSpace = chosen.colorSpace;
     create_info.imageExtent = extent;
     create_info.imageArrayLayers = 1;
-    create_info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    create_info.imageUsage = VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
     create_info.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     create_info.preTransform = capabilities.currentTransform;
     create_info.compositeAlpha = choose_composite_alpha(capabilities.supportedCompositeAlpha);
@@ -658,7 +661,12 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
         return false;
     }
 
-    if (!present_original_atlas_tile()) {
+    if (!WyrmBodyPreviewPresent(g_engine.physical_device, g_engine.device, g_engine.queue,
+                                g_engine.swapchain, g_engine.swapchain_format,
+                                g_engine.swapchain_extent, g_engine.command_buffer,
+                                g_engine.image_available, g_engine.render_finished,
+                                g_engine.frame_fence, g_engine.atlas,
+                                g_status, sizeof(g_status))) {
         cleanup_engine();
         return false;
     }

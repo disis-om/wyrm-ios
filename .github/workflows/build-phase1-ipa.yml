@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 2 first atlas pixels
+name: Build Wyrm Phase 2 original body shader
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ permissions:
 
 env:
   WYRM_VERSION: "0.2.0"
-  WYRM_BUILD: "15"
-  WYRM_BUILD_SLUG: "original-atlas-tile-presented"
+  WYRM_BUILD: "16"
+  WYRM_BUILD_SLUG: "original-body-shader-frame"
 
 jobs:
   build:
