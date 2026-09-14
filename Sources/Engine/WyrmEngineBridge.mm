@@ -116,13 +116,22 @@ VkCompositeAlphaFlagBitsKHR choose_composite_alpha(VkCompositeAlphaFlagsKHR supp
 bool create_instance() {
     const char *required[] = {
         VK_KHR_SURFACE_EXTENSION_NAME,
-        VK_EXT_METAL_SURFACE_EXTENSION_NAME,
-        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME
+        VK_EXT_METAL_SURFACE_EXTENSION_NAME
     };
     for (const char *extension : required) {
         if (!has_instance_extension(extension)) {
             return fail("Required Vulkan instance extension unavailable", extension);
         }
+    }
+
+    std::vector<const char *> enabled_extensions(std::begin(required), std::end(required));
+    VkInstanceCreateFlags instance_flags = 0;
+    if (has_instance_extension(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME)) {
+        enabled_extensions.push_back(VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME);
+        instance_flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+        NSLog(@"[WyrmEngine] VK_KHR_portability_enumeration advertised; enabling portability discovery");
+    } else {
+        NSLog(@"[WyrmEngine] VK_KHR_portability_enumeration not advertised; using direct MoltenVK discovery");
     }
 
     VkApplicationInfo app_info{};
@@ -135,10 +144,10 @@ bool create_instance() {
 
     VkInstanceCreateInfo create_info{};
     create_info.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
-    create_info.flags = VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
+    create_info.flags = instance_flags;
     create_info.pApplicationInfo = &app_info;
-    create_info.enabledExtensionCount = static_cast<uint32_t>(std::size(required));
-    create_info.ppEnabledExtensionNames = required;
+    create_info.enabledExtensionCount = static_cast<uint32_t>(enabled_extensions.size());
+    create_info.ppEnabledExtensionNames = enabled_extensions.data();
 
     return vk_ok(vkCreateInstance(&create_info, nullptr, &g_engine.instance), "vkCreateInstance failed");
 }
