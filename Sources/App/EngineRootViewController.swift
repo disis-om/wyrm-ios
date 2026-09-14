@@ -88,13 +88,23 @@ final class EngineRootViewController: UIViewController {
         engineView.layoutIfNeeded()
 
         let started = WyrmEngineBootstrap(engineView.metalLayer)
-        let message = String(cString: WyrmEngineStatus())
-        status.detail = message
-        status.state = started ? .ready : .failed
+        guard started else {
+            status.detail = String(cString: WyrmEngineStatus())
+            status.state = .failed
+            return
+        }
+
+        do {
+            let count = try EngineAssetBundle.verify()
+            status.detail = "SDL3 + Vulkan frame presented. \(count) original Wyrm engine assets verified; renderer integration is next."
+            status.state = .ready
+        } catch {
+            status.detail = error.localizedDescription
+            status.state = .failed
+        }
     }
 
     override var prefersHomeIndicatorAutoHidden: Bool { true }
     override var preferredStatusBarStyle: UIStatusBarStyle { .lightContent }
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .portrait }
 }
-

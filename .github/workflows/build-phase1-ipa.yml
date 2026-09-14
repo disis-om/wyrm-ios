@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 1 IPA
+name: Build Wyrm Phase 2 asset foundation
 
 on:
   workflow_dispatch:
@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 env:
-  WYRM_VERSION: "0.1.0"
-  WYRM_BUILD: "12"
-  WYRM_BUILD_SLUG: "vulkan-portability-capability-fallback"
+  WYRM_VERSION: "0.2.0"
+  WYRM_BUILD: "13"
+  WYRM_BUILD_SLUG: "original-engine-assets-verified"
 
 jobs:
   build:
@@ -37,6 +37,11 @@ jobs:
       - name: Generate Xcode project
         run: xcodegen generate
 
+      - name: Verify original engine asset snapshot
+        run: |
+          cd Resources/EngineAssets
+          shasum -a 256 -c SHA256SUMS
+
       - name: Compile simulator lane
         run: |
           set -o pipefail
@@ -55,8 +60,8 @@ jobs:
         run: |
           ditto -c -k --sequesterRsrc --keepParent \
             build-simulator/Build/Products/Debug-iphonesimulator/Wyrm.app \
-            Wyrm-Phase1-simulator.app.zip
-          shasum -a 256 Wyrm-Phase1-simulator.app.zip | tee Wyrm-Phase1-simulator.sha256
+            Wyrm-Phase2-simulator.app.zip
+          shasum -a 256 Wyrm-Phase2-simulator.app.zip | tee Wyrm-Phase2-simulator.sha256
 
       - name: Compile physical iPhone ARM64 lane
         run: |
@@ -79,27 +84,27 @@ jobs:
         run: |
           mkdir -p Payload
           ditto build-device/Build/Products/Release-iphoneos/Wyrm.app Payload/Wyrm.app
-          /usr/bin/zip -qry Wyrm-Phase1-unsigned.ipa Payload
-          shasum -a 256 Wyrm-Phase1-unsigned.ipa | tee Wyrm-Phase1-unsigned.sha256
+          /usr/bin/zip -qry Wyrm-Phase2-unsigned.ipa Payload
+          shasum -a 256 Wyrm-Phase2-unsigned.ipa | tee Wyrm-Phase2-unsigned.sha256
 
       - name: Add build README
         run: |
-          cp phase1/CURRENT-BUILD-NOTES.md README.md
+          cp phase2/CURRENT-BUILD-NOTES.md README.md
           echo >> README.md
           echo "## Provenance" >> README.md
           echo "- Source commit: \`${GITHUB_SHA}\`" >> README.md
           echo "- Cloud run: \`${GITHUB_RUN_ID}\`" >> README.md
           echo "- Generated UTC: \`$(date -u +'%Y-%m-%dT%H:%M:%SZ')\`" >> README.md
 
-      - name: Upload Phase 1 evidence
+      - name: Upload Phase 2 evidence
         uses: actions/upload-artifact@v4
         with:
           name: Wyrm-iOS-${{ env.WYRM_VERSION }}-build-${{ env.WYRM_BUILD }}-${{ env.WYRM_BUILD_SLUG }}-${{ github.run_id }}
           path: |
-            Wyrm-Phase1-unsigned.ipa
-            Wyrm-Phase1-unsigned.sha256
-            Wyrm-Phase1-simulator.app.zip
-            Wyrm-Phase1-simulator.sha256
+            Wyrm-Phase2-unsigned.ipa
+            Wyrm-Phase2-unsigned.sha256
+            Wyrm-Phase2-simulator.app.zip
+            Wyrm-Phase2-simulator.sha256
             README.md
             validation.log
             xcodebuild-device.log

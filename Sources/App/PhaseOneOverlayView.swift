@@ -56,7 +56,7 @@ struct PhaseOneOverlayView: View {
                 Text("WYRM / APPLE LAB")
                     .font(.system(size: 11, weight: .heavy, design: .monospaced))
                     .tracking(1.35)
-                Text("Phase 1 · engine foundation")
+                Text("Phase 2 · original engine assets")
                     .font(.custom("Manrope", size: 13).weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -80,7 +80,7 @@ struct PhaseOneOverlayView: View {
                     .font(.custom("Manrope", size: 21).weight(.bold))
                     .foregroundStyle(WyrmPalette.ink)
                 Spacer()
-                Text("0.1.0 · 12")
+                Text("0.2.0 · 13")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(WyrmPalette.ink.opacity(0.47))
             }
@@ -110,7 +110,7 @@ struct PhaseOneOverlayView: View {
         .shadow(color: .black.opacity(0.28), radius: 22, y: 9)
         .padding(.bottom, 22)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("Wyrm Phase 1 engine status. \(statusTitle). \(status.detail)")
+        .accessibilityLabel("Wyrm Phase 2 engine status. \(statusTitle). \(status.detail)")
     }
 
     private func diagnostic(label: String, value: String) -> some View {
@@ -132,7 +132,7 @@ struct PhaseOneOverlayView: View {
     private var statusTitle: String {
         switch status.state {
         case .preparing: return "Waking the engine"
-        case .ready: return "First frame presented"
+        case .ready: return "Engine assets ready"
         case .failed: return "Engine needs attention"
         }
     }
