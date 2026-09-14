@@ -3,9 +3,8 @@
 /build-device/
 /build-simulator/
 /Payload/
-/dist/*.zip
+/dist/
 /WyrmIOS.xcodeproj/
 *.xcworkspace/xcuserdata/
 *.xcuserstate
 .DS_Store
-
