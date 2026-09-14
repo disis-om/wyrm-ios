@@ -30,6 +30,8 @@ struct EngineState {
     VkQueue queue = VK_NULL_HANDLE;
     uint32_t queue_family = UINT32_MAX;
     VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+    VkFormat swapchain_format = VK_FORMAT_UNDEFINED;
+    VkExtent2D swapchain_extent{};
     VkCommandPool command_pool = VK_NULL_HANDLE;
     VkCommandBuffer command_buffer = VK_NULL_HANDLE;
     VkSemaphore image_available = VK_NULL_HANDLE;
@@ -313,9 +315,14 @@ bool create_swapchain(CAMetalLayer *metal_layer) {
         return false;
     }
     g_engine.images.resize(actual_count);
-    return vk_ok(vkGetSwapchainImagesKHR(
-                     g_engine.device, g_engine.swapchain, &actual_count, g_engine.images.data()),
-                 "Swapchain image enumeration failed");
+    if (!vk_ok(vkGetSwapchainImagesKHR(
+                   g_engine.device, g_engine.swapchain, &actual_count, g_engine.images.data()),
+               "Swapchain image enumeration failed")) {
+        return false;
+    }
+    g_engine.swapchain_format = chosen.format;
+    g_engine.swapchain_extent = extent;
+    return true;
 }
 
 bool create_frame_resources() {
@@ -450,6 +457,154 @@ bool present_clear_frame() {
     return vk_ok(vkQueueWaitIdle(g_engine.queue), "First-frame queue wait failed");
 }
 
+bool present_original_atlas_tile() {
+    if (g_engine.atlas.width != 7u * 448u ||
+        g_engine.atlas.height != 9u * 448u ||
+        g_engine.swapchain_extent.width < 32 ||
+        g_engine.swapchain_extent.height < 32) {
+        return fail("Original atlas grid or display extent was unexpected");
+    }
+    VkFormatProperties source_properties{};
+    VkFormatProperties target_properties{};
+    vkGetPhysicalDeviceFormatProperties(g_engine.physical_device,
+                                        VK_FORMAT_R8G8B8A8_UNORM, &source_properties);
+    vkGetPhysicalDeviceFormatProperties(g_engine.physical_device,
+                                        g_engine.swapchain_format, &target_properties);
+    if ((source_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_SRC_BIT) == 0 ||
+        (target_properties.optimalTilingFeatures & VK_FORMAT_FEATURE_BLIT_DST_BIT) == 0) {
+        return fail("Vulkan format blit unavailable for original atlas preview");
+    }
+
+    uint32_t image_index = 0;
+    if (!vk_ok(vkAcquireNextImageKHR(g_engine.device, g_engine.swapchain, UINT64_MAX,
+                                    g_engine.image_available, VK_NULL_HANDLE, &image_index),
+               "Atlas preview image acquire failed") ||
+        !vk_ok(vkResetCommandBuffer(g_engine.command_buffer, 0),
+               "Atlas preview command reset failed")) {
+        return false;
+    }
+
+    VkCommandBufferBeginInfo begin{};
+    begin.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+    begin.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+    if (!vk_ok(vkBeginCommandBuffer(g_engine.command_buffer, &begin),
+               "Atlas preview command begin failed")) {
+        return false;
+    }
+
+    VkImageMemoryBarrier source_barrier{};
+    source_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    source_barrier.srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    source_barrier.dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    source_barrier.oldLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    source_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    source_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    source_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    source_barrier.image = g_engine.atlas.image;
+    source_barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(g_engine.command_buffer,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &source_barrier);
+
+    VkImageMemoryBarrier target_barrier{};
+    target_barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    target_barrier.srcAccessMask = 0;
+    target_barrier.dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    target_barrier.oldLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+    target_barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    target_barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    target_barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    target_barrier.image = g_engine.images[image_index];
+    target_barrier.subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
+    vkCmdPipelineBarrier(g_engine.command_buffer,
+                         VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &target_barrier);
+
+    const VkClearColorValue clear = {{0.047f, 0.071f, 0.058f, 1.0f}};
+    vkCmdClearColorImage(g_engine.command_buffer, g_engine.images[image_index],
+                         VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, &clear, 1,
+                         &target_barrier.subresourceRange);
+
+    // Android's atlas grid is 7 columns x 9 rows of 448 px cells. This is
+    // one original body bead, not a reconstructed SwiftUI snake or game frame.
+    constexpr int32_t cell = 448;
+    const int32_t side = static_cast<int32_t>(std::min(
+        g_engine.swapchain_extent.width * 2 / 5,
+        g_engine.swapchain_extent.height / 4));
+    const int32_t left = (static_cast<int32_t>(g_engine.swapchain_extent.width) - side) / 2;
+    const int32_t top = (static_cast<int32_t>(g_engine.swapchain_extent.height) - side) / 2;
+    VkImageBlit blit{};
+    blit.srcSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.srcOffsets[0] = {3 * cell, 4 * cell, 0};
+    blit.srcOffsets[1] = {4 * cell, 5 * cell, 1};
+    blit.dstSubresource = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 0, 1};
+    blit.dstOffsets[0] = {left, top, 0};
+    blit.dstOffsets[1] = {left + side, top + side, 1};
+    vkCmdBlitImage(g_engine.command_buffer, g_engine.atlas.image,
+                   VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+                   g_engine.images[image_index], VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                   1, &blit, VK_FILTER_NEAREST);
+
+    source_barrier.srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+    source_barrier.dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+    source_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+    source_barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+    vkCmdPipelineBarrier(g_engine.command_buffer,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &source_barrier);
+
+    target_barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+    target_barrier.dstAccessMask = 0;
+    target_barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+    target_barrier.newLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+    vkCmdPipelineBarrier(g_engine.command_buffer,
+                         VK_PIPELINE_STAGE_TRANSFER_BIT,
+                         VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                         0, 0, nullptr, 0, nullptr, 1, &target_barrier);
+
+    if (!vk_ok(vkEndCommandBuffer(g_engine.command_buffer),
+               "Atlas preview command end failed")) {
+        return false;
+    }
+    const VkPipelineStageFlags wait_stage = VK_PIPELINE_STAGE_TRANSFER_BIT;
+    VkSubmitInfo submit{};
+    submit.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+    submit.waitSemaphoreCount = 1;
+    submit.pWaitSemaphores = &g_engine.image_available;
+    submit.pWaitDstStageMask = &wait_stage;
+    submit.commandBufferCount = 1;
+    submit.pCommandBuffers = &g_engine.command_buffer;
+    submit.signalSemaphoreCount = 1;
+    submit.pSignalSemaphores = &g_engine.render_finished;
+    if (!vk_ok(vkResetFences(g_engine.device, 1, &g_engine.frame_fence),
+               "Atlas preview fence reset failed") ||
+        !vk_ok(vkQueueSubmit(g_engine.queue, 1, &submit, g_engine.frame_fence),
+               "Atlas preview queue submit failed")) {
+        return false;
+    }
+    VkPresentInfoKHR present{};
+    present.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR;
+    present.waitSemaphoreCount = 1;
+    present.pWaitSemaphores = &g_engine.render_finished;
+    present.swapchainCount = 1;
+    present.pSwapchains = &g_engine.swapchain;
+    present.pImageIndices = &image_index;
+    if (!vk_ok(vkQueuePresentKHR(g_engine.queue, &present),
+               "Atlas preview presentation failed") ||
+        !vk_ok(vkWaitForFences(g_engine.device, 1, &g_engine.frame_fence,
+                              VK_TRUE, UINT64_MAX),
+               "Atlas preview fence wait failed") ||
+        !vk_ok(vkQueueWaitIdle(g_engine.queue),
+               "Atlas preview queue wait failed")) {
+        return false;
+    }
+    set_status("Original Wyrm atlas tile presented through Vulkan");
+    return true;
+}
+
 void cleanup_engine() {
     if (g_engine.device) {
         vkDeviceWaitIdle(g_engine.device);
@@ -499,6 +654,11 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
     if (!WyrmGpuAssetsUpload(g_engine.physical_device, g_engine.device, g_engine.queue,
                              g_engine.command_buffer, &g_engine.atlas,
                              g_status, sizeof(g_status))) {
+        cleanup_engine();
+        return false;
+    }
+
+    if (!present_original_atlas_tile()) {
         cleanup_engine();
         return false;
     }

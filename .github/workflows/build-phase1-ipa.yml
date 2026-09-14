@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 2 GPU atlas upload
+name: Build Wyrm Phase 2 first atlas pixels
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ permissions:
 
 env:
   WYRM_VERSION: "0.2.0"
-  WYRM_BUILD: "14"
-  WYRM_BUILD_SLUG: "original-atlas-gpu-upload"
+  WYRM_BUILD: "15"
+  WYRM_BUILD_SLUG: "original-atlas-tile-presented"
 
 jobs:
   build:
