@@ -103,7 +103,7 @@ final class EngineRootViewController: UIViewController {
             return
         }
 
-        status.detail = "\(String(cString: WyrmEngineStatus())). \(count)/17 original assets verified. Native snake renderer is next."
+        status.detail = "\(String(cString: WyrmEngineStatus())). \(count)/17 original assets verified. Full engine integration is next."
         status.state = .ready
     }
 

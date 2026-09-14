@@ -3,6 +3,8 @@
 #import <Foundation/Foundation.h>
 
 #include <algorithm>
+#include <array>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <vector>
@@ -158,19 +160,31 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     if (!check(vkAllocateDescriptorSets(device, &set_info, &set),
                status, capacity, "Body descriptor allocation failed")) return false;
 
-    // Match Android bp_renderer.c's vertex quad and one 3xvec4 bead instance.
-    const float side = std::min(extent.width * 0.4f, extent.height * 0.25f);
+    // Match Android bp_renderer.c's vertex quad and 3xvec4 bead instances.
+    // This is a bounded GPU batch diagnostic, not the game_data/redraw engine.
+    constexpr size_t bead_count = 18;
+    const float side = std::min(extent.width * 0.115f, extent.height * 0.07f);
     const float quad[8] = {0, 0, 0, 1, 1, 0, 1, 1};
-    const float instance[12] = {
-        (extent.width - side) * 0.5f, (extent.height - side) * 0.5f, side, 0,
-        3.0f / 7.0f, 4.0f / 9.0f, 1.0f / 7.0f, 1.0f / 9.0f,
-        1, 1, 1, 1
-    };
-    uint8_t vertex_data[sizeof(quad) + sizeof(instance)];
-    std::memcpy(vertex_data, quad, sizeof(quad));
-    std::memcpy(vertex_data + sizeof(quad), instance, sizeof(instance));
-    if (!buffer(physical, device, sizeof(vertex_data), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
-                vertex_data, &r.vertices, &r.vertex_memory, status, capacity)) return false;
+    std::array<float, bead_count * 12> instances{};
+    for (size_t bead = 0; bead < bead_count; ++bead) {
+        const float t = static_cast<float>(bead) / static_cast<float>(bead_count - 1);
+        const float diameter = side * (0.56f + 0.44f * t);
+        const float center_x = extent.width * (0.18f + 0.64f * t);
+        const float center_y = extent.height * (0.50f +
+                               0.045f * std::sin(2.0f * 3.14159265f * t));
+        const float instance[12] = {
+            center_x - diameter * 0.5f, center_y - diameter * 0.5f,
+            diameter, 0,
+            3.0f / 7.0f, 4.0f / 9.0f, 1.0f / 7.0f, 1.0f / 9.0f,
+            1, 1, 1, 1
+        };
+        std::memcpy(instances.data() + bead * 12, instance, sizeof(instance));
+    }
+    std::array<uint8_t, sizeof(quad) + sizeof(instances)> vertex_data{};
+    std::memcpy(vertex_data.data(), quad, sizeof(quad));
+    std::memcpy(vertex_data.data() + sizeof(quad), instances.data(), sizeof(instances));
+    if (!buffer(physical, device, vertex_data.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
+                vertex_data.data(), &r.vertices, &r.vertex_memory, status, capacity)) return false;
     float globals[64]{};
     globals[0] = static_cast<float>(extent.width);
     globals[1] = static_cast<float>(extent.height);
@@ -360,7 +374,7 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     VkBuffer vertex_buffers[2] = {r.vertices, r.vertices};
     VkDeviceSize offsets[2] = {0, sizeof(quad)};
     vkCmdBindVertexBuffers(command, 0, 2, vertex_buffers, offsets);
-    vkCmdDraw(command, 4, 1, 0, 0);
+    vkCmdDraw(command, 4, static_cast<uint32_t>(bead_count), 0, 0);
     vkCmdEndRenderPass(command);
     if (!check(vkEndCommandBuffer(command), status, capacity,
                "Body command end failed")) return false;
@@ -393,7 +407,7 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
         !check(vkQueueWaitIdle(queue), status, capacity,
                "Body frame queue wait failed")) return false;
     r.submitted = false;
-    std::snprintf(status, capacity, "Original Wyrm body shader frame presented through Vulkan");
+    std::snprintf(status, capacity, "18 original Wyrm body beads presented in one Vulkan draw");
     NSLog(@"[WyrmBodyPreview] %s", status);
     return true;
 }

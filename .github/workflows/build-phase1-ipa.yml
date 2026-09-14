@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 2 original body shader
+name: Build Wyrm Phase 2 native body batch
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ permissions:
 
 env:
   WYRM_VERSION: "0.2.0"
-  WYRM_BUILD: "16"
-  WYRM_BUILD_SLUG: "original-body-shader-frame"
+  WYRM_BUILD: "17"
+  WYRM_BUILD_SLUG: "native-body-bead-batch"
 
 jobs:
   build:
