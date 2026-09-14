@@ -1,9 +1,11 @@
 #define VK_ENABLE_BETA_EXTENSIONS 1
 #define VK_USE_PLATFORM_METAL_EXT 1
+#define SDL_MAIN_HANDLED 1
 
 #include "WyrmEngineBridge.h"
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
 #include <vulkan/vulkan.h>
 
 #import <Foundation/Foundation.h>
@@ -445,6 +447,7 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
     }
 
     set_status("Initializing SDL3");
+    SDL_SetMainReady();
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
         return fail("SDL3 initialization failed", SDL_GetError());
     }

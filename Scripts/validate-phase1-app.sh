@@ -18,9 +18,11 @@ echo "== dynamic linkage =="
 otool -L "$EXECUTABLE"
 otool -L "$APP_PATH/Frameworks/SDL3.framework/SDL3"
 
+echo "== custom UIKit SDL startup handshake =="
+nm "$EXECUTABLE" | grep '_SDL_SetMainReady'
+
 echo "== MoltenVK static symbols =="
 nm "$EXECUTABLE" | grep -E '_vkCreateInstance|_vkCreateMetalSurfaceEXT|_vkQueuePresentKHR'
 
 echo "== bundle metadata =="
 plutil -p "$APP_PATH/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion'
-

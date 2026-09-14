@@ -80,7 +80,7 @@ struct PhaseOneOverlayView: View {
                     .font(.custom("Manrope", size: 21).weight(.bold))
                     .foregroundStyle(WyrmPalette.ink)
                 Spacer()
-                Text("0.1.0 · 10")
+                Text("0.1.0 · 11")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(WyrmPalette.ink.opacity(0.47))
             }
@@ -145,4 +145,3 @@ struct PhaseOneOverlayView: View {
         }
     }
 }
-
