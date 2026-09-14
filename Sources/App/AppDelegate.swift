@@ -2,7 +2,7 @@ import UIKit
 
 @main
 final class AppDelegate: UIResponder, UIApplicationDelegate {
-    private var window: UIWindow?
+    var window: UIWindow?
 
     func application(
         _ application: UIApplication,
