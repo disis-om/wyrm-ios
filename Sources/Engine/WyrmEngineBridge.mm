@@ -6,6 +6,7 @@
 #include <SDL3/SDL.h>
 #include <vulkan/vulkan.h>
 
+#import <Foundation/Foundation.h>
 #import <QuartzCore/CAMetalLayer.h>
 
 #include <algorithm>
@@ -39,6 +40,7 @@ char g_status[256] = "Engine bootstrap has not started";
 
 void set_status(const char *message) {
     std::snprintf(g_status, sizeof(g_status), "%s", message ? message : "Unknown engine status");
+    NSLog(@"[WyrmEngine] %s", g_status);
 }
 
 bool fail(const char *stage, const char *detail = nullptr) {
@@ -47,6 +49,7 @@ bool fail(const char *stage, const char *detail = nullptr) {
     } else {
         std::snprintf(g_status, sizeof(g_status), "%s", stage);
     }
+    NSLog(@"[WyrmEngine] %s", g_status);
     return false;
 }
 
@@ -55,6 +58,7 @@ bool vk_ok(VkResult result, const char *stage) {
         return true;
     }
     std::snprintf(g_status, sizeof(g_status), "%s (VkResult %d)", stage, static_cast<int>(result));
+    NSLog(@"[WyrmEngine] %s", g_status);
     return false;
 }
 
