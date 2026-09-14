@@ -15,4 +15,8 @@ final class AppDelegate: UIResponder, UIApplicationDelegate {
         self.window = window
         return true
     }
+
+    func applicationWillTerminate(_ application: UIApplication) {
+        WyrmEngineShutdown()
+    }
 }

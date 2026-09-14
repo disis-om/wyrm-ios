@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 2 asset foundation
+name: Build Wyrm Phase 2 GPU atlas upload
 
 on:
   workflow_dispatch:
@@ -10,8 +10,8 @@ permissions:
 
 env:
   WYRM_VERSION: "0.2.0"
-  WYRM_BUILD: "13"
-  WYRM_BUILD_SLUG: "original-engine-assets-verified"
+  WYRM_BUILD: "14"
+  WYRM_BUILD_SLUG: "original-atlas-gpu-upload"
 
 jobs:
   build:

@@ -56,7 +56,7 @@ struct PhaseOneOverlayView: View {
                 Text("WYRM / APPLE LAB")
                     .font(.system(size: 11, weight: .heavy, design: .monospaced))
                     .tracking(1.35)
-                Text("Phase 2 · original engine assets")
+                Text("Phase 2 · GPU resource bring-up")
                     .font(.custom("Manrope", size: 13).weight(.semibold))
                     .foregroundStyle(.white.opacity(0.72))
             }
@@ -80,7 +80,7 @@ struct PhaseOneOverlayView: View {
                     .font(.custom("Manrope", size: 21).weight(.bold))
                     .foregroundStyle(WyrmPalette.ink)
                 Spacer()
-                Text("0.2.0 · 13")
+                Text("0.2.0 · 14")
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .foregroundStyle(WyrmPalette.ink.opacity(0.47))
             }
@@ -132,7 +132,7 @@ struct PhaseOneOverlayView: View {
     private var statusTitle: String {
         switch status.state {
         case .preparing: return "Waking the engine"
-        case .ready: return "Engine assets ready"
+        case .ready: return "Atlas uploaded to GPU"
         case .failed: return "Engine needs attention"
         }
     }

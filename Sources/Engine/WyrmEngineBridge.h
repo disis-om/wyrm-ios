@@ -14,8 +14,8 @@ extern "C" {
 
 bool WyrmEngineBootstrap(CAMetalLayer *metal_layer);
 const char *WyrmEngineStatus(void);
+void WyrmEngineShutdown(void);
 
 #ifdef __cplusplus
 }
 #endif
-

@@ -87,6 +87,15 @@ final class EngineRootViewController: UIViewController {
         view.layoutIfNeeded()
         engineView.layoutIfNeeded()
 
+        let count: Int
+        do {
+            count = try EngineAssetBundle.verify()
+        } catch {
+            status.detail = error.localizedDescription
+            status.state = .failed
+            return
+        }
+
         let started = WyrmEngineBootstrap(engineView.metalLayer)
         guard started else {
             status.detail = String(cString: WyrmEngineStatus())
@@ -94,14 +103,8 @@ final class EngineRootViewController: UIViewController {
             return
         }
 
-        do {
-            let count = try EngineAssetBundle.verify()
-            status.detail = "SDL3 + Vulkan frame presented. \(count) original Wyrm engine assets verified; renderer integration is next."
-            status.state = .ready
-        } catch {
-            status.detail = error.localizedDescription
-            status.state = .failed
-        }
+        status.detail = "\(String(cString: WyrmEngineStatus())). \(count)/17 original assets verified. Native snake renderer is next."
+        status.state = .ready
     }
 
     override var prefersHomeIndicatorAutoHidden: Bool { true }

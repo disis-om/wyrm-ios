@@ -30,5 +30,9 @@ nm "$EXECUTABLE" | grep '_SDL_SetMainReady'
 echo "== MoltenVK static symbols =="
 nm "$EXECUTABLE" | grep -E '_vkCreateInstance|_vkCreateMetalSurfaceEXT|_vkQueuePresentKHR'
 
+echo "== Phase 2 GPU upload linkage =="
+nm "$EXECUTABLE" | grep 'WyrmGpuAssetsUpload'
+otool -L "$EXECUTABLE" | grep 'ImageIO.framework'
+
 echo "== bundle metadata =="
 plutil -p "$APP_PATH/Info.plist" | grep -E 'CFBundleIdentifier|CFBundleShortVersionString|CFBundleVersion|MinimumOSVersion'

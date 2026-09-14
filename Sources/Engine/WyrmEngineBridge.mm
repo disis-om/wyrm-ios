@@ -3,6 +3,7 @@
 #define SDL_MAIN_HANDLED 1
 
 #include "WyrmEngineBridge.h"
+#include "WyrmGpuAssets.h"
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_main.h>
@@ -35,6 +36,7 @@ struct EngineState {
     VkSemaphore render_finished = VK_NULL_HANDLE;
     VkFence frame_fence = VK_NULL_HANDLE;
     std::vector<VkImage> images;
+    WyrmGpuAtlas atlas;
 };
 
 EngineState g_engine;
@@ -448,6 +450,25 @@ bool present_clear_frame() {
     return vk_ok(vkQueueWaitIdle(g_engine.queue), "First-frame queue wait failed");
 }
 
+void cleanup_engine() {
+    if (g_engine.device) {
+        vkDeviceWaitIdle(g_engine.device);
+        WyrmGpuAssetsDestroy(g_engine.device, &g_engine.atlas);
+        if (g_engine.frame_fence) vkDestroyFence(g_engine.device, g_engine.frame_fence, nullptr);
+        if (g_engine.render_finished) vkDestroySemaphore(g_engine.device, g_engine.render_finished, nullptr);
+        if (g_engine.image_available) vkDestroySemaphore(g_engine.device, g_engine.image_available, nullptr);
+        if (g_engine.command_pool) vkDestroyCommandPool(g_engine.device, g_engine.command_pool, nullptr);
+        if (g_engine.swapchain) vkDestroySwapchainKHR(g_engine.device, g_engine.swapchain, nullptr);
+        vkDestroyDevice(g_engine.device, nullptr);
+    }
+    if (g_engine.surface && g_engine.instance) {
+        vkDestroySurfaceKHR(g_engine.instance, g_engine.surface, nullptr);
+    }
+    if (g_engine.instance) vkDestroyInstance(g_engine.instance, nullptr);
+    SDL_Quit();
+    g_engine = EngineState{};
+}
+
 }  // namespace
 
 bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
@@ -458,7 +479,9 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
     set_status("Initializing SDL3");
     SDL_SetMainReady();
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
-        return fail("SDL3 initialization failed", SDL_GetError());
+        fail("SDL3 initialization failed", SDL_GetError());
+        cleanup_engine();
+        return false;
     }
 
     set_status("Creating Vulkan portability instance");
@@ -469,14 +492,25 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
         !create_swapchain(metal_layer) ||
         !create_frame_resources() ||
         !present_clear_frame()) {
+        cleanup_engine();
+        return false;
+    }
+
+    if (!WyrmGpuAssetsUpload(g_engine.physical_device, g_engine.device, g_engine.queue,
+                             g_engine.command_buffer, &g_engine.atlas,
+                             g_status, sizeof(g_status))) {
+        cleanup_engine();
         return false;
     }
 
     g_engine.started = true;
-    set_status("SDL3 initialized · Vulkan swapchain presented through MoltenVK");
     return true;
 }
 
 const char *WyrmEngineStatus(void) {
     return g_status;
+}
+
+void WyrmEngineShutdown(void) {
+    cleanup_engine();
 }
