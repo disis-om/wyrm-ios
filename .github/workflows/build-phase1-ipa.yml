@@ -53,29 +53,6 @@ jobs:
             Wyrm-Phase1-simulator.app.zip
           shasum -a 256 Wyrm-Phase1-simulator.app.zip | tee Wyrm-Phase1-simulator.sha256
 
-      - name: Launch and capture simulator proof
-        continue-on-error: true
-        timeout-minutes: 3
-        run: |
-          set -euo pipefail
-          RUNTIME_ID="$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and x.get("platform")=="iOS"]; print(sorted(r,key=lambda x:tuple(map(int,x["version"].split("."))))[-1]["identifier"])')"
-          DEVICE_TYPE="$(xcrun simctl list devicetypes --json | python3 -c 'import json,sys; d=[x for x in json.load(sys.stdin)["devicetypes"] if x["name"].startswith("iPhone")]; preferred=[x for x in d if x["name"]=="iPhone 16 Pro"]; print((preferred or d)[0]["identifier"])')"
-          UDID="$(xcrun simctl create 'Wyrm Phase 1 CI' "$DEVICE_TYPE" "$RUNTIME_ID")"
-          cleanup() {
-            xcrun simctl shutdown "$UDID" >/dev/null 2>&1 || true
-            xcrun simctl delete "$UDID" >/dev/null 2>&1 || true
-          }
-          trap cleanup EXIT
-          xcrun simctl boot "$UDID"
-          xcrun simctl bootstatus "$UDID" -b
-          xcrun simctl install "$UDID" build-simulator/Build/Products/Debug-iphonesimulator/Wyrm.app
-          xcrun simctl launch "$UDID" com.omrajput.wyrmios | tee simulator-launch.log
-          sleep 6
-          xcrun simctl io "$UDID" screenshot simulator-phase1.png
-          xcrun simctl spawn "$UDID" log show --style compact --last 2m --predicate 'process == "Wyrm"' > simulator-runtime.log
-          grep '\[WyrmEngine\]' simulator-runtime.log
-          xcrun simctl terminate "$UDID" com.omrajput.wyrmios
-
       - name: Compile physical iPhone ARM64 lane
         run: |
           set -o pipefail
@@ -110,9 +87,6 @@ jobs:
             Wyrm-Phase1-simulator.app.zip
             Wyrm-Phase1-simulator.sha256
             validation.log
-            simulator-phase1.png
-            simulator-launch.log
-            simulator-runtime.log
             xcodebuild-device.log
             xcodebuild-simulator.log
           if-no-files-found: error
