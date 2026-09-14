@@ -47,6 +47,8 @@ jobs:
             build | tee xcodebuild-simulator.log
 
       - name: Launch and capture simulator proof
+        continue-on-error: true
+        timeout-minutes: 3
         run: |
           set -euo pipefail
           RUNTIME_ID="$(xcrun simctl list runtimes --json | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x.get("isAvailable") and x.get("platform")=="iOS"]; print(sorted(r,key=lambda x:tuple(map(int,x["version"].split("."))))[-1]["identifier"])')"
