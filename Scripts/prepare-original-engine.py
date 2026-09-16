@@ -95,6 +95,20 @@ for path in sorted(OUTPUT.rglob("*")):
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
+    if relative == "app/src/cimgui/imgui/imgui_impl_vulkan.cpp":
+        # Same indexed geometry, but move base vertex into the buffer binding.
+        # SimMetal does not implement non-zero baseVertex draws.
+        draw = 'vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, pcmd->VtxOffset + global_vtx_offset, 0);'
+        assert text.count(draw) == 1
+        text = '#include <TargetConditionals.h>\n' + text
+        text = text.replace(draw, '''
+#if TARGET_OS_SIMULATOR
+                VkDeviceSize apple_vertex_offset = (VkDeviceSize)(pcmd->VtxOffset + global_vtx_offset) * sizeof(ImDrawVert);
+                vkCmdBindVertexBuffers(command_buffer, 0, 1, &rb->VertexBuffer, &apple_vertex_offset);
+                vkCmdDrawIndexed(command_buffer, pcmd->ElemCount, 1, pcmd->IdxOffset + global_idx_offset, 0, 0);
+#else
+                ''' + draw + '''
+#endif''')
     if relative == "thermite/src/graphics/tcontext.c":
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('vkCreateInstance(', 'WyrmIOSCreateInstance(')
