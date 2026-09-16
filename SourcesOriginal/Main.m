@@ -29,7 +29,9 @@ static void frame(void* unused) {
     SDL_Log("Wyrm original engine: 120 frames; ai=%d arena_ready=%d spawned=%d",
             engine.usr->gdata.ai_mode, engine.usr->gdata.arena_ready,
             engine.usr->gdata.join_spawned);
-  if (!online_proven && engine.usr->gdata.arena_ready && engine.usr->gdata.join_spawned &&
+  if (!online_proven && !engine.usr->gdata.ai_mode &&
+      engine.usr->gdata.arena_ready && engine.usr->gdata.join_spawned &&
+      get_snake(&engine.usr->gdata, engine.usr->gdata.data.snake_id) &&
       engine.ctx->last_present_succeeded) {
     online_proven = true;
     SDL_Log("Wyrm original engine: online arena admitted, own snake spawned, frame presented");

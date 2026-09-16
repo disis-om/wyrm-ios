@@ -36,13 +36,26 @@ jobs:
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
+          echo "WYRM_SIMULATOR=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app
           xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
-          sleep 30
+          sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png
+          sleep 22
           xcrun simctl spawn "$DEVICE" log show --last 10m --style compact --predicate 'process == "Wyrm"' > original-artifacts/runtime.log
           find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
           grep 'first Thermite frame presented' original-artifacts/runtime.log
+          grep '120 frames; ai=1' original-artifacts/runtime.log
+      - name: Simulator original online arena smoke test
+        run: |
+          xcrun simctl terminate "$WYRM_SIMULATOR" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/online-stdout.log" --stderr="$PWD/original-artifacts/online-stderr.log" "$WYRM_SIMULATOR" com.omrajput.wyrmios --smoke-online
+          sleep 10
+          xcrun simctl io "$WYRM_SIMULATOR" screenshot original-artifacts/original-online.png
+          sleep 20
+          xcrun simctl spawn "$WYRM_SIMULATOR" log show --last 1m --style compact --predicate 'process == "Wyrm"' > original-artifacts/online-runtime.log
+          find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
+          grep 'online arena admitted, own snake spawned, frame presented' original-artifacts/online-stderr.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
