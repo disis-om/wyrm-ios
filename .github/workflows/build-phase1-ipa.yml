@@ -1,4 +1,4 @@
-name: Build Wyrm Phase 2 native body batch
+name: Build Wyrm playable offline C slice
 
 on:
   workflow_dispatch:
@@ -9,9 +9,9 @@ permissions:
   contents: read
 
 env:
-  WYRM_VERSION: "0.2.0"
-  WYRM_BUILD: "17"
-  WYRM_BUILD_SLUG: "native-body-bead-batch"
+  WYRM_VERSION: "0.3.0"
+  WYRM_BUILD: "18"
+  WYRM_BUILD_SLUG: "playable-offline-c-slice"
 
 jobs:
   build:
@@ -41,6 +41,13 @@ jobs:
         run: |
           cd Resources/EngineAssets
           shasum -a 256 -c SHA256SUMS
+
+      - name: Test portable offline C slice
+        run: |
+          clang -std=c11 -Wall -Wextra -Werror \
+            Tests/offline_slice_test.c Sources/Engine/WyrmOfflineSlice.c \
+            -lm -o offline-slice-test
+          ./offline-slice-test
 
       - name: Compile simulator lane
         run: |

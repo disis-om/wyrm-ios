@@ -5,14 +5,26 @@ import UIKit
 
 @MainActor
 final class EngineStatusModel: ObservableObject {
-    enum State {
+    enum State: Equatable {
         case preparing
         case ready
         case failed
     }
 
+    enum GameMode: Equatable {
+        case menu
+        case playing
+        case paused
+        case ended
+    }
+
     @Published var state: State = .preparing
     @Published var detail = "Preparing the Apple GPU surface"
+    @Published var gameMode: GameMode = .menu
+    @Published var score = 0
+    var onStart: (() -> Void)?
+    var onPause: (() -> Void)?
+    var onResume: (() -> Void)?
 }
 
 final class EngineMetalView: UIView {
@@ -51,6 +63,8 @@ final class EngineRootViewController: UIViewController {
     private let engineView = EngineMetalView(frame: .zero)
     private let status = EngineStatusModel()
     private var didStartEngine = false
+    private var displayLink: CADisplayLink?
+    private var lastFrameTime: CFTimeInterval = 0
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -77,6 +91,17 @@ final class EngineRootViewController: UIViewController {
             overlay.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
         overlay.didMove(toParent: self)
+
+        status.onStart = { [weak self] in self?.startOfflineGame() }
+        status.onPause = { [weak self] in self?.pauseOfflineGame() }
+        status.onResume = { [weak self] in self?.resumeOfflineGame() }
+
+        let drag = UIPanGestureRecognizer(target: self, action: #selector(aimAtTouch(_:)))
+        drag.cancelsTouchesInView = false
+        view.addGestureRecognizer(drag)
+        let tap = UITapGestureRecognizer(target: self, action: #selector(aimAtTouch(_:)))
+        tap.cancelsTouchesInView = false
+        view.addGestureRecognizer(tap)
     }
 
     override func viewDidAppear(_ animated: Bool) {
@@ -103,8 +128,79 @@ final class EngineRootViewController: UIViewController {
             return
         }
 
-        status.detail = "\(String(cString: WyrmEngineStatus())). \(count)/17 original assets verified. Full engine integration is next."
+        status.detail = "\(String(cString: WyrmEngineStatus())). \(count)/17 original assets verified."
         status.state = .ready
+
+        let link = CADisplayLink(target: self, selector: #selector(drawOfflineFrame(_:)))
+        link.preferredFramesPerSecond = 30
+        link.isPaused = true
+        link.add(to: .main, forMode: .common)
+        displayLink = link
+    }
+
+    private func startOfflineGame() {
+        guard status.state == .ready else { return }
+        WyrmOfflineReset()
+        status.score = 0
+        status.gameMode = .playing
+        lastFrameTime = 0
+        if !WyrmEngineFrame() {
+            status.detail = String(cString: WyrmEngineStatus())
+            status.state = .failed
+            return
+        }
+        displayLink?.isPaused = false
+    }
+
+    private func pauseOfflineGame() {
+        guard status.gameMode == .playing else { return }
+        status.gameMode = .paused
+        displayLink?.isPaused = true
+    }
+
+    private func resumeOfflineGame() {
+        guard status.gameMode == .paused else { return }
+        status.gameMode = .playing
+        lastFrameTime = 0
+        displayLink?.isPaused = false
+    }
+
+    @objc private func aimAtTouch(_ gesture: UIGestureRecognizer) {
+        guard status.gameMode == .playing else { return }
+        let point = gesture.location(in: engineView)
+        guard engineView.bounds.width > 0, engineView.bounds.height > 0 else { return }
+        WyrmOfflineAim(Float(point.x / engineView.bounds.width),
+                       Float(point.y / engineView.bounds.height))
+    }
+
+    @objc private func drawOfflineFrame(_ link: CADisplayLink) {
+        guard status.gameMode == .playing else { return }
+        let dt = lastFrameTime == 0 ? 1.0 / 30.0 : min(0.05, link.timestamp - lastFrameTime)
+        lastFrameTime = link.timestamp
+        WyrmOfflineStep(Float(dt))
+        if !WyrmEngineFrame() {
+            status.detail = String(cString: WyrmEngineStatus())
+            status.state = .failed
+            displayLink?.isPaused = true
+            return
+        }
+        var snapshot = WyrmOfflineSnapshot()
+        WyrmOfflineGetSnapshot(&snapshot)
+        if status.score != Int(snapshot.score) { status.score = Int(snapshot.score) }
+        if !snapshot.alive {
+            status.gameMode = .ended
+            displayLink?.isPaused = true
+        }
+    }
+
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        pauseOfflineGame()
+    }
+
+    deinit {
+        displayLink?.invalidate()
+        WyrmEngineShutdown()
     }
 
     override var prefersHomeIndicatorAutoHidden: Bool { true }

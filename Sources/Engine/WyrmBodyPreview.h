@@ -9,3 +9,5 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
                             VkCommandBuffer command, VkSemaphore acquired, VkSemaphore rendered,
                             VkFence fence, const WyrmGpuAtlas &atlas,
                             char *status, size_t status_capacity);
+
+void WyrmBodyPreviewShutdown(void);

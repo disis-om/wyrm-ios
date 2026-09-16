@@ -1,4 +1,5 @@
 #include "WyrmBodyPreview.h"
+#include "WyrmOfflineSlice.h"
 
 #import <Foundation/Foundation.h>
 
@@ -7,6 +8,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <vector>
 
 namespace {
@@ -18,6 +20,7 @@ struct Resources {
     VkRenderPass pass = VK_NULL_HANDLE;
     VkDescriptorSetLayout descriptors = VK_NULL_HANDLE;
     VkDescriptorPool descriptor_pool = VK_NULL_HANDLE;
+    VkDescriptorSet set = VK_NULL_HANDLE;
     VkPipelineLayout pipeline_layout = VK_NULL_HANDLE;
     VkPipeline pipeline = VK_NULL_HANDLE;
     VkShaderModule vertex_shader = VK_NULL_HANDLE;
@@ -28,6 +31,7 @@ struct Resources {
     VkDeviceMemory uniform_memory = VK_NULL_HANDLE;
     VkImageView target_view = VK_NULL_HANDLE;
     VkFramebuffer framebuffer = VK_NULL_HANDLE;
+    uint64_t presented_frames = 0;
 
     ~Resources() {
         if (submitted) vkQueueWaitIdle(queue);
@@ -46,6 +50,8 @@ struct Resources {
         if (uniform_memory) vkFreeMemory(device, uniform_memory, nullptr);
     }
 };
+
+std::unique_ptr<Resources> g_resources;
 
 bool fail(char *out, size_t capacity, const char *stage, VkResult result = VK_SUCCESS) {
     if (result == VK_SUCCESS) std::snprintf(out, capacity, "%s", stage);
@@ -127,7 +133,12 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     if (!physical || !device || !queue || !swapchain || !command || !status || !capacity ||
         !atlas.view || !atlas.sampler || atlas.width != 3136 || atlas.height != 4032)
         return fail(status, capacity, "Body preview prerequisites missing");
-    Resources r{device, queue};
+    if (!g_resources) g_resources.reset(new Resources{device, queue});
+    Resources &r = *g_resources;
+    if (r.device != device) return fail(status, capacity, "Body preview device changed");
+    constexpr size_t max_instances = WYRM_OFFLINE_MAX_SEGMENTS + 1;
+    const float quad[8] = {0, 0, 0, 1, 1, 0, 1, 1};
+    if (!r.pipeline) {
     if (!shader(device, @"bpv", &r.vertex_shader, status, capacity) ||
         !shader(device, @"bpf", &r.fragment_shader, status, capacity)) return false;
 
@@ -156,33 +167,11 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     set_info.descriptorPool = r.descriptor_pool;
     set_info.descriptorSetCount = 1;
     set_info.pSetLayouts = &r.descriptors;
-    VkDescriptorSet set = VK_NULL_HANDLE;
-    if (!check(vkAllocateDescriptorSets(device, &set_info, &set),
+    if (!check(vkAllocateDescriptorSets(device, &set_info, &r.set),
                status, capacity, "Body descriptor allocation failed")) return false;
 
-    // Match Android bp_renderer.c's vertex quad and 3xvec4 bead instances.
-    // This is a bounded GPU batch diagnostic, not the game_data/redraw engine.
-    constexpr size_t bead_count = 18;
-    const float side = std::min(extent.width * 0.115f, extent.height * 0.07f);
-    const float quad[8] = {0, 0, 0, 1, 1, 0, 1, 1};
-    std::array<float, bead_count * 12> instances{};
-    for (size_t bead = 0; bead < bead_count; ++bead) {
-        const float t = static_cast<float>(bead) / static_cast<float>(bead_count - 1);
-        const float diameter = side * (0.56f + 0.44f * t);
-        const float center_x = extent.width * (0.18f + 0.64f * t);
-        const float center_y = extent.height * (0.50f +
-                               0.045f * std::sin(2.0f * 3.14159265f * t));
-        const float instance[12] = {
-            center_x - diameter * 0.5f, center_y - diameter * 0.5f,
-            diameter, 0,
-            3.0f / 7.0f, 4.0f / 9.0f, 1.0f / 7.0f, 1.0f / 9.0f,
-            1, 1, 1, 1
-        };
-        std::memcpy(instances.data() + bead * 12, instance, sizeof(instance));
-    }
-    std::array<uint8_t, sizeof(quad) + sizeof(instances)> vertex_data{};
+    std::array<uint8_t, sizeof(quad) + max_instances * 12 * sizeof(float)> vertex_data{};
     std::memcpy(vertex_data.data(), quad, sizeof(quad));
-    std::memcpy(vertex_data.data() + sizeof(quad), instances.data(), sizeof(instances));
     if (!buffer(physical, device, vertex_data.size(), VK_BUFFER_USAGE_VERTEX_BUFFER_BIT,
                 vertex_data.data(), &r.vertices, &r.vertex_memory, status, capacity)) return false;
     float globals[64]{};
@@ -196,7 +185,7 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     VkWriteDescriptorSet writes[2]{};
     for (int i = 0; i < 2; ++i) {
         writes[i].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-        writes[i].dstSet = set;
+        writes[i].dstSet = r.set;
         writes[i].dstBinding = static_cast<uint32_t>(i);
         writes[i].descriptorCount = 1;
     }
@@ -316,6 +305,47 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     if (!check(vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipeline_info,
                                          nullptr, &r.pipeline), status, capacity,
                "Original body graphics pipeline failed")) return false;
+    }
+
+    WyrmOfflineSnapshot snapshot{};
+    WyrmOfflineGetSnapshot(&snapshot);
+    if (snapshot.segment_count < 1 || snapshot.segment_count > WYRM_OFFLINE_MAX_SEGMENTS)
+        return fail(status, capacity, "Offline game segment count invalid");
+    const float side = std::min(extent.width * 0.070f, extent.height * 0.037f);
+    std::array<float, max_instances * 12> instances{};
+    auto put_bead = [&](size_t index, WyrmPoint point, float diameter,
+                        float column, float row) {
+        const float bead[12] = {
+            point.x * extent.width - diameter * 0.5f,
+            point.y * extent.height - diameter * 0.5f,
+            diameter, 0,
+            column / 7.0f, row / 9.0f, 1.0f / 7.0f, 1.0f / 9.0f,
+            1, 1, 1, 1
+        };
+        std::memcpy(instances.data() + index * 12, bead, sizeof(bead));
+    };
+    put_bead(0, snapshot.food, side * 0.68f, 3, 0);
+    for (int i = snapshot.segment_count - 1; i >= 0; --i) {
+        put_bead(1 + static_cast<size_t>(snapshot.segment_count - 1 - i),
+                 snapshot.segments[i], side * (i == 0 ? 1.12f : 1.0f), 3, 4);
+    }
+    void *mapped = nullptr;
+    if (!check(vkMapMemory(device, r.vertex_memory, 0,
+                           sizeof(quad) + sizeof(instances), 0, &mapped),
+               status, capacity, "Offline vertex map failed")) return false;
+    std::memcpy(mapped, quad, sizeof(quad));
+    std::memcpy(static_cast<uint8_t *>(mapped) + sizeof(quad),
+                instances.data(), sizeof(instances));
+    vkUnmapMemory(device, r.vertex_memory);
+
+    if (r.framebuffer) {
+        vkDestroyFramebuffer(device, r.framebuffer, nullptr);
+        r.framebuffer = VK_NULL_HANDLE;
+    }
+    if (r.target_view) {
+        vkDestroyImageView(device, r.target_view, nullptr);
+        r.target_view = VK_NULL_HANDLE;
+    }
 
     uint32_t image_index = 0;
     if (!check(vkAcquireNextImageKHR(device, swapchain, UINT64_MAX, acquired, VK_NULL_HANDLE,
@@ -370,11 +400,11 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
     vkCmdSetScissor(command, 0, 1, &scissor);
     vkCmdBindPipeline(command, VK_PIPELINE_BIND_POINT_GRAPHICS, r.pipeline);
     vkCmdBindDescriptorSets(command, VK_PIPELINE_BIND_POINT_GRAPHICS, r.pipeline_layout,
-                            0, 1, &set, 0, nullptr);
+                            0, 1, &r.set, 0, nullptr);
     VkBuffer vertex_buffers[2] = {r.vertices, r.vertices};
     VkDeviceSize offsets[2] = {0, sizeof(quad)};
     vkCmdBindVertexBuffers(command, 0, 2, vertex_buffers, offsets);
-    vkCmdDraw(command, 4, static_cast<uint32_t>(bead_count), 0, 0);
+    vkCmdDraw(command, 4, static_cast<uint32_t>(snapshot.segment_count + 1), 0, 0);
     vkCmdEndRenderPass(command);
     if (!check(vkEndCommandBuffer(command), status, capacity,
                "Body command end failed")) return false;
@@ -407,7 +437,13 @@ bool WyrmBodyPreviewPresent(VkPhysicalDevice physical, VkDevice device, VkQueue 
         !check(vkQueueWaitIdle(queue), status, capacity,
                "Body frame queue wait failed")) return false;
     r.submitted = false;
-    std::snprintf(status, capacity, "18 original Wyrm body beads presented in one Vulkan draw");
-    NSLog(@"[WyrmBodyPreview] %s", status);
+    if (r.presented_frames++ == 0) {
+        std::snprintf(status, capacity, "Offline C game frame presented through Vulkan");
+        NSLog(@"[WyrmBodyPreview] %s", status);
+    }
     return true;
+}
+
+void WyrmBodyPreviewShutdown(void) {
+    g_resources.reset();
 }

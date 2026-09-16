@@ -611,6 +611,7 @@ bool present_original_atlas_tile() {
 void cleanup_engine() {
     if (g_engine.device) {
         vkDeviceWaitIdle(g_engine.device);
+        WyrmBodyPreviewShutdown();
         WyrmGpuAssetsDestroy(g_engine.device, &g_engine.atlas);
         if (g_engine.frame_fence) vkDestroyFence(g_engine.device, g_engine.frame_fence, nullptr);
         if (g_engine.render_finished) vkDestroySemaphore(g_engine.device, g_engine.render_finished, nullptr);
@@ -661,6 +662,7 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
         return false;
     }
 
+    WyrmOfflineReset();
     if (!WyrmBodyPreviewPresent(g_engine.physical_device, g_engine.device, g_engine.queue,
                                 g_engine.swapchain, g_engine.swapchain_format,
                                 g_engine.swapchain_extent, g_engine.command_buffer,
@@ -673,6 +675,16 @@ bool WyrmEngineBootstrap(CAMetalLayer *metal_layer) {
 
     g_engine.started = true;
     return true;
+}
+
+bool WyrmEngineFrame(void) {
+    if (!g_engine.started) return fail("Offline frame requested before engine startup");
+    return WyrmBodyPreviewPresent(g_engine.physical_device, g_engine.device, g_engine.queue,
+                                  g_engine.swapchain, g_engine.swapchain_format,
+                                  g_engine.swapchain_extent, g_engine.command_buffer,
+                                  g_engine.image_available, g_engine.render_finished,
+                                  g_engine.frame_fence, g_engine.atlas,
+                                  g_status, sizeof(g_status));
 }
 
 const char *WyrmEngineStatus(void) {

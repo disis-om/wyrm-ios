@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>
+#include "WyrmOfflineSlice.h"
 
 #ifdef __OBJC__
 @class CAMetalLayer;
@@ -13,6 +14,7 @@ extern "C" {
 #endif
 
 bool WyrmEngineBootstrap(CAMetalLayer *metal_layer);
+bool WyrmEngineFrame(void);
 const char *WyrmEngineStatus(void);
 void WyrmEngineShutdown(void);
 
