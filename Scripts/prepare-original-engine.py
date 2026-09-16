@@ -12,6 +12,10 @@ ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "SharedEngine"
 OUTPUT = ROOT / "build-original-source"
 
+sdl_headers = list((ROOT / "Vendor" / "SDL3.xcframework").rglob("SDL.h"))
+if sdl_headers:
+    shutil.copytree(sdl_headers[0].parent, ROOT / "Vendor" / "SDLInclude" / "SDL3", dirs_exist_ok=True)
+
 manifest = json.loads((SOURCE / "SHA256.json").read_text())
 for relative, expected in manifest.items():
     actual = hashlib.sha256((SOURCE / relative).read_bytes()).hexdigest()

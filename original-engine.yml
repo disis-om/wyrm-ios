@@ -37,5 +37,6 @@ targets:
           - $(SRCROOT)/build-original-source/thermite/include
           - $(SRCROOT)/build-original-source/thermite/src
           - $(SRCROOT)/Vendor/MoltenVK/include
+          - $(SRCROOT)/Vendor/SDLInclude
         CODE_SIGNING_ALLOWED: NO
     scheme: {}
