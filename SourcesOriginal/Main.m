@@ -3,6 +3,7 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_system.h>
 #import <Foundation/Foundation.h>
+#include <TargetConditionals.h>
 #include <unistd.h>
 #include "user.h"
 #include "network/server.h"
@@ -37,6 +38,11 @@ static void frame(void* unused) {
 
 static int engine_main(int argc, char** argv) {
   @autoreleasepool {
+#if TARGET_OS_SIMULATOR
+    // SimMetalHost aborts while encoding the original ImGui texture descriptors.
+    // Keep Vulkan bindings unchanged; use MoltenVK's direct-resource path here.
+    setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "0", 1);
+#endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
     NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-19/app" isDirectory:YES];
