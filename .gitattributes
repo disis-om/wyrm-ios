@@ -10,4 +10,4 @@
 *.md text eol=lf
 *.png binary
 *.ttf binary
-
+SharedEngine/** -text

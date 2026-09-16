@@ -1,0 +1,30 @@
+name: Compile original Android engine for Apple
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  compile:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install xcodegen
+      - run: bash Scripts/fetch-ios-dependencies.sh
+      - run: python3 Scripts/prepare-original-engine.py
+      - run: xcodegen generate --spec original-engine.yml
+      - name: Compile original core on iPhone and Simulator
+        shell: bash
+        run: |
+          set -o pipefail
+          for sdk in iphoneos iphonesimulator; do
+            xcodebuild -project WyrmOriginalEngine.xcodeproj -scheme OriginalEngine -configuration Debug -sdk "$sdk" -derivedDataPath "build-original-$sdk" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "original-$sdk.log"
+          done
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: original-engine-compile-${{ github.run_id }}
+          path: |
+            original-*.log
+            build-original-source/platform-selection.json
+          retention-days: 14

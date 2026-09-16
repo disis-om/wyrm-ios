@@ -8,3 +8,5 @@
 *.xcworkspace/xcuserdata/
 *.xcuserstate
 .DS_Store
+/build-original*/
+/WyrmOriginalEngine.xcodeproj/

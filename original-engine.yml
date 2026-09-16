@@ -1,0 +1,41 @@
+name: WyrmOriginalEngine
+options:
+  deploymentTarget:
+    iOS: "15.0"
+targets:
+  OriginalEngine:
+    type: library.static
+    platform: iOS
+    sources:
+      - path: build-original-source/app/src
+        excludes:
+          - main.c
+          - cimgui/imgui/imgui_impl_glfw.cpp
+      - path: build-original-source/thermite/src
+        excludes:
+          - core/tentry.c
+          - platform/tassets.c
+    dependencies:
+      - framework: Vendor/SDL3.xcframework
+      - framework: Vendor/MoltenVK.xcframework
+    settings:
+      base:
+        PRODUCT_NAME: WyrmOriginalEngine
+        GCC_C_LANGUAGE_STANDARD: gnu11
+        CLANG_CXX_LANGUAGE_STANDARD: c++17
+        GCC_PREPROCESSOR_DEFINITIONS:
+          - $(inherited)
+          - WYRM_MOBILE=1
+          - WYRM_IOS=1
+          - CIMGUI_NO_EXPORT
+          - CGLM_FORCE_DEPTH_ZERO_TO_ONE
+          - APP_VERSION=\"0.3.0\"
+          - SETTINGS_VERSION=\"2.8\"
+        HEADER_SEARCH_PATHS:
+          - $(inherited)
+          - $(SRCROOT)/build-original-source/app/src
+          - $(SRCROOT)/build-original-source/thermite/include
+          - $(SRCROOT)/build-original-source/thermite/src
+          - $(SRCROOT)/Vendor/MoltenVK/include
+        CODE_SIGNING_ALLOWED: NO
+    scheme: {}
