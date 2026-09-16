@@ -20,8 +20,28 @@ jobs:
         run: |
           set -o pipefail
           for sdk in iphoneos iphonesimulator; do
-            xcodebuild -project WyrmOriginalEngine.xcodeproj -scheme OriginalEngine -configuration Debug -sdk "$sdk" -derivedDataPath "build-original-$sdk" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "original-$sdk.log"
+            xcodebuild -project WyrmOriginalEngine.xcodeproj -scheme WyrmOriginal -configuration Debug -sdk "$sdk" -derivedDataPath "build-original-$sdk" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "original-$sdk.log"
           done
+      - name: Package device and Appetize builds
+        run: |
+          mkdir -p original-artifacts/Payload
+          ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
+          cd original-artifacts
+          zip -qry Wyrm-0.4.0-build-19-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.0-build-19-simulator.app.zip
+          shasum -a 256 *.ipa *.zip > SHA256SUMS
+          cp ../phase2/BUILD-019-NOTES.md README.md
+      - name: Simulator original AI smoke test
+        run: |
+          DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
+          xcrun simctl boot "$DEVICE"
+          xcrun simctl bootstatus "$DEVICE" -b
+          xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app
+          xcrun simctl launch "$DEVICE" com.omrajput.wyrmios --smoke-ai
+          sleep 20
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png
+          xcrun simctl spawn "$DEVICE" log show --last 2m --style compact --predicate 'process == "Wyrm"' > original-artifacts/runtime.log
+          grep 'first Thermite frame presented' original-artifacts/runtime.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -29,4 +49,10 @@ jobs:
           path: |
             original-*.log
             build-original-source/platform-selection.json
+            original-artifacts/*.ipa
+            original-artifacts/*.zip
+            original-artifacts/*.png
+            original-artifacts/*.log
+            original-artifacts/README.md
+            original-artifacts/SHA256SUMS
           retention-days: 14

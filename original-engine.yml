@@ -9,17 +9,18 @@ targets:
     sources:
       - path: build-original-source/app/src
         excludes:
-          - main.c
           - cimgui/imgui/imgui_impl_glfw.cpp
       - path: build-original-source/thermite/src
         excludes:
           - core/tentry.c
           - platform/tassets.c
+      - path: SourcesOriginal/AppleVulkan.c
+      - path: SourcesOriginal/WyrmShell.c
     dependencies:
       - framework: Vendor/SDL3.xcframework
       - framework: Vendor/MoltenVK.xcframework
     settings:
-      base:
+      base: &engineSettings
         PRODUCT_NAME: WyrmOriginalEngine
         GCC_C_LANGUAGE_STANDARD: gnu11
         CLANG_CXX_LANGUAGE_STANDARD: c++17
@@ -38,5 +39,50 @@ targets:
           - $(SRCROOT)/build-original-source/thermite/src
           - $(SRCROOT)/Vendor/MoltenVK/include
           - $(SRCROOT)/Vendor/SDLInclude
+          - $(SRCROOT)/SourcesOriginal
         CODE_SIGNING_ALLOWED: NO
+    scheme: {}
+  WyrmOriginal:
+    type: application
+    platform: iOS
+    sources:
+      - path: SourcesOriginal/Main.m
+      - path: Resources/Assets.xcassets
+      - path: SharedEngine/app/res
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - target: OriginalEngine
+      - framework: Vendor/SDL3.xcframework
+        embed: true
+      - framework: Vendor/MoltenVK.xcframework
+        embed: false
+      - sdk: UIKit.framework
+      - sdk: Foundation.framework
+      - sdk: Metal.framework
+      - sdk: MetalKit.framework
+      - sdk: QuartzCore.framework
+      - sdk: IOSurface.framework
+      - sdk: GameController.framework
+      - sdk: CoreMotion.framework
+      - sdk: AVFoundation.framework
+      - sdk: AudioToolbox.framework
+      - sdk: CoreGraphics.framework
+      - sdk: CoreVideo.framework
+    settings:
+      base:
+        <<: *engineSettings
+        PRODUCT_NAME: Wyrm
+        PRODUCT_BUNDLE_IDENTIFIER: com.omrajput.wyrmios
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Wyrm
+        INFOPLIST_KEY_UILaunchScreen_Generation: YES
+        INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight"
+        INFOPLIST_KEY_UIRequiresFullScreen: YES
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.4.0"
+        CURRENT_PROJECT_VERSION: "19"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
+        OTHER_LDFLAGS: "$(inherited) -lc++ -ObjC -Wl,-export_dynamic"
     scheme: {}
