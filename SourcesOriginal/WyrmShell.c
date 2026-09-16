@@ -20,6 +20,9 @@ void WyrmIOSDrawShell(tenv* env) {
   float scale = SDL_GetWindowDisplayScale(env->wnd->handle);
   if (scale < 1) scale = 1;
   float width = fminf(env->ctx->size[0] - 48 * scale, 440 * scale);
+  ImDrawList_AddRectFilled(igGetWindowDrawList(), (ImVec2){0, 0},
+      (ImVec2){env->ctx->size[0], env->ctx->size[1]},
+      igColorConvertFloat4ToU32((ImVec4){.969f,.965f,.953f,1}), 0, 0);
   igSetCursorPos((ImVec2){(env->ctx->size[0] - width) * .5f, 30 * scale});
   igBeginGroup();
   ImFont* font = env->usr->imgui_data.body_font[FONT_SIZE_REGULAR];

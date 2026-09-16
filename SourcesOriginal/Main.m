@@ -11,6 +11,7 @@
 static tenv engine;
 static bool ready;
 static unsigned frame_count;
+static bool online_proven;
 
 static void frame(void* unused) {
   (void)unused;
@@ -27,6 +28,11 @@ static void frame(void* unused) {
     SDL_Log("Wyrm original engine: 120 frames; ai=%d arena_ready=%d spawned=%d",
             engine.usr->gdata.ai_mode, engine.usr->gdata.arena_ready,
             engine.usr->gdata.join_spawned);
+  if (!online_proven && engine.usr->gdata.arena_ready && engine.usr->gdata.join_spawned &&
+      engine.ctx->last_present_succeeded) {
+    online_proven = true;
+    SDL_Log("Wyrm original engine: online arena admitted, own snake spawned, frame presented");
+  }
 }
 
 static int engine_main(int argc, char** argv) {
@@ -66,8 +72,11 @@ static int engine_main(int argc, char** argv) {
     if (!engine.ctx) { SDL_Log("Wyrm original context failed"); return 1; }
     tinit(&engine);
     ready = true;
-    for (int i = 1; i < argc; ++i)
+    for (int i = 1; i < argc; ++i) {
       if (!strcmp(argv[i], "--smoke-ai")) WyrmIOSRequestPlay("Apple test", "", true);
+      if (!strcmp(argv[i], "--smoke-online"))
+        WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
+    }
     if (!SDL_SetiOSAnimationCallback(engine.wnd->handle, 1, frame, NULL)) return 1;
     SDL_Log("Wyrm original engine initialized; Apple animation callback installed");
     return 0;

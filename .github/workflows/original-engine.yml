@@ -37,10 +37,11 @@ jobs:
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app
-          xcrun simctl launch "$DEVICE" com.omrajput.wyrmios --smoke-ai
-          sleep 20
+          xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
+          sleep 30
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png
-          xcrun simctl spawn "$DEVICE" log show --last 2m --style compact --predicate 'process == "Wyrm"' > original-artifacts/runtime.log
+          xcrun simctl spawn "$DEVICE" log show --last 10m --style compact --predicate 'process == "Wyrm"' > original-artifacts/runtime.log
+          find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
           grep 'first Thermite frame presented' original-artifacts/runtime.log
       - uses: actions/upload-artifact@v4
         if: always()
@@ -53,6 +54,7 @@ jobs:
             original-artifacts/*.zip
             original-artifacts/*.png
             original-artifacts/*.log
+            original-artifacts/*.ips
             original-artifacts/README.md
             original-artifacts/SHA256SUMS
           retention-days: 14

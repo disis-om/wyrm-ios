@@ -60,6 +60,8 @@ for path in sorted(OUTPUT.rglob("*")):
     original = text
     if not relative.startswith("app/src/platform/"):
         text = text.replace("VLITHER_ANDROID", "WYRM_MOBILE")
+    if relative == "app/src/game/redraw.c":
+        text = text.replace("__ANDROID__", "WYRM_MOBILE")
     if relative == "app/src/game/arena_theme.c":
         text = text.replace("#include <jni.h>", "#ifdef __ANDROID__\n#include <jni.h>\n#endif")
         text = text.replace("JNIEXPORT void JNICALL", "#ifdef __ANDROID__\nJNIEXPORT void JNICALL", 1)
