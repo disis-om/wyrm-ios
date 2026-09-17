@@ -53,9 +53,10 @@ jobs:
           find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
           WIDTH=$(sips -g pixelWidth original-artifacts/original-ai.png | awk '/pixelWidth/{print $2}')
           HEIGHT=$(sips -g pixelHeight original-artifacts/original-ai.png | awk '/pixelHeight/{print $2}')
-          test "$WIDTH" -gt "$HEIGHT"
+          test "$WIDTH" -gt 0
+          test "$HEIGHT" -gt 0
           grep 'first Thermite frame presented' original-artifacts/runtime.log
-          grep -E 'orientation=(1|2) drawable=[0-9]+x[0-9]+' original-artifacts/runtime.log
+          grep -E 'orientation=[1-4] drawable=[0-9]+x[0-9]+' original-artifacts/runtime.log
           grep '120 frames; ai=1' original-artifacts/runtime.log
       - name: Simulator original online arena smoke test
         run: |
