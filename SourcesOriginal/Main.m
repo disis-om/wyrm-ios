@@ -15,9 +15,13 @@ static tenv engine;
 static bool ready;
 static unsigned frame_count;
 static bool online_proven;
-static bool orientation_reported;
+static int reported_width;
+static int reported_height;
 
 void WyrmIOSRequestLandscape(void) {
+  // SDL's view controller calculates its supported mask from this hint every
+  // time UIKit asks. Narrow it before requesting new scene geometry.
+  SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
   dispatch_async(dispatch_get_main_queue(), ^{
     UIWindowScene* window_scene = nil;
     for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
@@ -32,6 +36,8 @@ void WyrmIOSRequestLandscape(void) {
       return;
     }
     if (@available(iOS 16.0, *)) {
+      for (UIWindow* window in window_scene.windows)
+        [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
       UIWindowSceneGeometryPreferencesIOS* preferences =
           [[UIWindowSceneGeometryPreferencesIOS alloc]
               initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
@@ -58,15 +64,18 @@ static void frame(void* unused) {
   tmouse_update(engine.ms);
   if (engine.ctx->last_present_succeeded && frame_count++ == 0)
     SDL_Log("Wyrm original engine: first Thermite frame presented");
-  if (!orientation_reported && engine.ctx->last_present_succeeded) {
+  if (engine.ctx->last_present_succeeded) {
     int width = 0;
     int height = 0;
     SDL_GetWindowSizeInPixels(engine.wnd->handle, &width, &height);
-    SDL_DisplayOrientation orientation = SDL_GetCurrentDisplayOrientation(
-        SDL_GetDisplayForWindow(engine.wnd->handle));
-    orientation_reported = true;
-    SDL_Log("Wyrm original engine: orientation=%d drawable=%dx%d",
-            (int)orientation, width, height);
+    if (width != reported_width || height != reported_height) {
+      SDL_DisplayOrientation orientation = SDL_GetCurrentDisplayOrientation(
+          SDL_GetDisplayForWindow(engine.wnd->handle));
+      reported_width = width;
+      reported_height = height;
+      SDL_Log("Wyrm original engine: orientation=%d drawable=%dx%d",
+              (int)orientation, width, height);
+    }
   }
   if (frame_count == 120)
     SDL_Log("Wyrm original engine: 120 frames; ai=%d arena_ready=%d spawned=%d",
