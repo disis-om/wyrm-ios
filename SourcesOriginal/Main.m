@@ -3,6 +3,8 @@
 #include <SDL3/SDL_main.h>
 #include <SDL3/SDL_system.h>
 #import <Foundation/Foundation.h>
+#import <UIKit/UIKit.h>
+#import <dispatch/dispatch.h>
 #include <TargetConditionals.h>
 #include <unistd.h>
 #include "user.h"
@@ -14,6 +16,36 @@ static bool ready;
 static unsigned frame_count;
 static bool online_proven;
 static bool orientation_reported;
+
+static void request_landscape_scene(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    UIWindowScene* window_scene = nil;
+    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+      if ([scene isKindOfClass:UIWindowScene.class] &&
+          scene.activationState != UISceneActivationStateUnattached) {
+        window_scene = (UIWindowScene*)scene;
+        break;
+      }
+    }
+    if (!window_scene) {
+      NSLog(@"Wyrm orientation request deferred: no connected window scene");
+      return;
+    }
+    if (@available(iOS 16.0, *)) {
+      UIWindowSceneGeometryPreferencesIOS* preferences =
+          [[UIWindowSceneGeometryPreferencesIOS alloc]
+              initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
+      [window_scene requestGeometryUpdateWithPreferences:preferences
+          errorHandler:^(NSError* error) {
+            NSLog(@"Wyrm landscape geometry request failed: %@", error);
+          }];
+      NSLog(@"Wyrm landscape geometry requested");
+    } else {
+      [UIViewController attemptRotationToDeviceOrientation];
+      NSLog(@"Wyrm landscape rotation requested through iOS 15 controller path");
+    }
+  });
+}
 
 static void frame(void* unused) {
   (void)unused;
@@ -90,6 +122,7 @@ static int engine_main(int argc, char** argv) {
     tlaunch(&engine);
     engine.wnd = twindow_create(&engine, trender, tresize);
     if (!engine.wnd) { SDL_Log("Wyrm window failed: %s", SDL_GetError()); return 1; }
+    request_landscape_scene();
     engine.kb = tkeyboard_create(engine.wnd);
     engine.ms = tmouse_create(engine.wnd);
     engine.ctx = tcontext_create(engine.wnd, engine.config.vsync, engine.config.fif);
