@@ -27,17 +27,24 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.4.1-build-20-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.1-build-20-simulator.app.zip
+          zip -qry Wyrm-0.4.1-build-21-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.1-build-21-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-020-NOTES.md README.md
-      - name: Simulator original AI smoke test
+          cp ../phase2/BUILD-021-NOTES.md README.md
+      - name: Simulator portrait home and original AI smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           echo "WYRM_SIMULATOR=$DEVICE" >> "$GITHUB_ENV"
           xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app
+          xcrun simctl launch --stdout="$PWD/original-artifacts/home-stdout.log" --stderr="$PWD/original-artifacts/home-stderr.log" "$DEVICE" com.omrajput.wyrmios
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/original-home.png
+          HOME_WIDTH=$(sips -g pixelWidth original-artifacts/original-home.png | awk '/pixelWidth/{print $2}')
+          HOME_HEIGHT=$(sips -g pixelHeight original-artifacts/original-home.png | awk '/pixelHeight/{print $2}')
+          test "$HOME_HEIGHT" -gt "$HOME_WIDTH"
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
           sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png

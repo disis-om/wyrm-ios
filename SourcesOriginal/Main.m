@@ -17,7 +17,7 @@ static unsigned frame_count;
 static bool online_proven;
 static bool orientation_reported;
 
-static void request_landscape_scene(void) {
+void WyrmIOSRequestLandscape(void) {
   dispatch_async(dispatch_get_main_queue(), ^{
     UIWindowScene* window_scene = nil;
     for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
@@ -107,7 +107,7 @@ static int engine_main(int argc, char** argv) {
     // SDL must know the gameplay orientation before UIKit and the video
     // subsystem create the scene/window. The Info.plist declares the same
     // contract; this runtime hint keeps SDL's view controller in agreement.
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) return 1;
     engine.config.argc = argc;
@@ -122,7 +122,6 @@ static int engine_main(int argc, char** argv) {
     tlaunch(&engine);
     engine.wnd = twindow_create(&engine, trender, tresize);
     if (!engine.wnd) { SDL_Log("Wyrm window failed: %s", SDL_GetError()); return 1; }
-    request_landscape_scene();
     engine.kb = tkeyboard_create(engine.wnd);
     engine.ms = tmouse_create(engine.wnd);
     engine.ctx = tcontext_create(engine.wnd, engine.config.vsync, engine.config.fif);

@@ -76,6 +76,7 @@ for path in sorted(OUTPUT.rglob("*")):
     if relative == "app/src/platform/android_home.c":
         # Preserve the original mailboxes, join admission and death state machine.
         # Only JNI publication and JNI exports are replaced by Apple-facing C calls.
+        text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text[:text.index('JNIEXPORT void JNICALL')]
         text = text.replace('#ifdef VLITHER_ANDROID', '').replace('#include <jni.h>', '')
         for name in ('get_activity', 'clear_exception'):
@@ -95,6 +96,14 @@ for path in sorted(OUTPUT.rglob("*")):
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
+    if relative == "thermite/src/framework/twindow.c":
+        # Android enters this SDL window after Compose has already switched to
+        # landscape. iOS starts inside the same window, so give the temporary
+        # Apple home shell a portrait drawable; Play then requests landscape
+        # and the original resize/swapchain path takes over.
+        window_size = 'env->config.title, 1280, 720,'
+        assert text.count(window_size) == 1
+        text = text.replace(window_size, 'env->config.title, 720, 1280,')
     if relative == "app/src/cimgui/imgui/imgui_impl_vulkan.cpp":
         # Same indexed geometry, but move base vertex into the buffer binding.
         # SimMetal does not implement non-zero baseVertex draws.
