@@ -21,6 +21,8 @@ static int reported_height;
 static int reported_screen = -1;
 static bool engine_presentation;
 static bool leaderboard_proven;
+static bool canvas_proven;
+static unsigned gameplay_frames;
 
 static const char* screen_name(int screen) {
   switch (screen) {
@@ -105,6 +107,15 @@ static void frame(void* unused) {
       SDL_Log("Wyrm original engine: orientation=%d drawable=%dx%d",
               (int)orientation, width, height);
     }
+    if (!canvas_proven && engine.usr->gdata.curr_screen == PLAYING &&
+        width > height) {
+      ImGuiIO* io = igGetIO_Nil();
+      canvas_proven = true;
+      SDL_Log("Wyrm iOS pixel canvas: imgui=%.0fx%.0f framebuffer=%.2fx%.2f drawable=%dx%d",
+              io->DisplaySize.x, io->DisplaySize.y,
+              io->DisplayFramebufferScale.x, io->DisplayFramebufferScale.y,
+              width, height);
+    }
   }
   if (frame_count == 120)
     SDL_Log("Wyrm original engine: 120 frames; ai=%d arena_ready=%d spawned=%d",
@@ -129,6 +140,17 @@ static void frame(void* unused) {
             engine.usr->gdata.data.lb.entries[0].nickname,
             engine.usr->gdata.data.lb.entries[0].score);
   }
+  if (engine.ctx->last_present_succeeded &&
+      engine.usr->gdata.curr_screen == PLAYING) {
+    gameplay_frames++;
+    if (gameplay_frames % 120 == 0) {
+      snake* own = get_snake(&engine.usr->gdata,
+                             engine.usr->gdata.data.snake_id);
+      SDL_Log("Wyrm arena frame progress=%u own=%d segments=%d fps=%d",
+              gameplay_frames, own ? own->id : -1, own ? own->sct : 0,
+              engine.usr->gdata.data.fps);
+    }
+  }
 }
 
 static int engine_main(int argc, char** argv) {
@@ -140,13 +162,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-23/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-24/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-23" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-24" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }

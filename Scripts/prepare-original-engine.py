@@ -71,15 +71,28 @@ for path in sorted(OUTPUT.rglob("*")):
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
-    if relative == "app/src/game/ui_overlay.c":
-        # Vulkan renders into Retina pixels, but Dear ImGui and SDL touch input
-        # use UIKit logical points. Android has a 1:1 coordinate space; Apple
-        # must place the original HUD (leaderboard, stats, team and chat) in
-        # window coordinates or every block lands three screens away.
-        text = text.replace('env->ctx->size[0]', 'env->wnd->size[0]')
-        text = text.replace('env->ctx->size[1]', 'env->wnd->size[1]')
-        text = text.replace('ctx->size[0]', 'env->wnd->size[0]')
-        text = text.replace('ctx->size[1]', 'env->wnd->size[1]')
+    if relative == "app/src/imgui_setup.c":
+        # Android exposes one pixel coordinate space to both Vulkan and ImGui.
+        # SDL on Retina iOS instead reports logical points to ImGui while the
+        # engine texture, HUD geometry and mobile controls remain in drawable
+        # pixels. Mixing the two made ui_viewport draw a 2868x1320 image into a
+        # 956x440 canvas: only its top-left third was visible, so the minimap
+        # and nearby snakes looked three times too large. Keep the original
+        # Android pixel contract for the rotated engine surface. UIKit still
+        # scales that surface to the physical portrait display.
+        marker = '''#ifdef WYRM_MOBILE
+  igImplSDL3_NewFrame();
+#else'''
+        assert text.count(marker) == 1
+        text = text.replace(marker, '''#ifdef WYRM_MOBILE
+  igImplSDL3_NewFrame();
+#ifdef __APPLE__
+  ImGuiIO* apple_io = igGetIO_Nil();
+  apple_io->DisplaySize = (ImVec2){(float)android_env->ctx->size[0],
+                                   (float)android_env->ctx->size[1]};
+  apple_io->DisplayFramebufferScale = (ImVec2){1.0f, 1.0f};
+#endif
+#else''')
     if relative == "app/src/platform/android_startup.c":
         text = text.replace('VLITHER_ANDROID', 'WYRM_MOBILE')
     if relative == "app/src/platform/android_home.c":

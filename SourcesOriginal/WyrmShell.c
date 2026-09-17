@@ -10,12 +10,13 @@ static ImU32 apple_rgba(unsigned char r, unsigned char g, unsigned char b,
 }
 
 static bool apple_button(tuser_data* usr, const char* id, const char* label,
-                         ImVec2 size, bool primary, bool enabled) {
+                         ImVec2 size, float scale, bool primary, bool enabled) {
   igPushID_Str(id);
   igBeginDisabled(!enabled);
-  igPushFont(usr->imgui_data.body_font[FONT_SIZE_REGULAR], 13.0f);
-  igPushStyleVar_Float(ImGuiStyleVar_FrameRounding, primary ? 31.0f : 11.0f);
-  igPushStyleVar_Float(ImGuiStyleVar_FrameBorderSize, 1.0f);
+  igPushFont(usr->imgui_data.body_font[FONT_SIZE_REGULAR], 13.0f * scale);
+  igPushStyleVar_Float(ImGuiStyleVar_FrameRounding,
+                       (primary ? 31.0f : 11.0f) * scale);
+  igPushStyleVar_Float(ImGuiStyleVar_FrameBorderSize, 1.0f * scale);
   igPushStyleColor_Vec4(ImGuiCol_Text,
       primary ? (ImVec4){.97f,.96f,.93f,1} : (ImVec4){.12f,.12f,.11f,1});
   igPushStyleColor_Vec4(ImGuiCol_Button,
@@ -122,20 +123,23 @@ static void apple_draw_lobby(tenv* env) {
 
   float by = oy + 319*s;
   igSetCursorPos((ImVec2){ox + 40*s, by});
-  apple_button(usr, "quick", "Quick settings", (ImVec2){150*s,49*s}, false, true);
+  apple_button(usr, "quick", "Quick settings", (ImVec2){150*s,49*s}, s,
+               false, true);
   igSetCursorPos((ImVec2){ox + 342*s, by});
-  if (apple_button(usr, "home", "Home", (ImVec2){104*s,49*s}, false, true)) {
+  if (apple_button(usr, "home", "Home", (ImVec2){104*s,49*s}, s, false,
+                   true)) {
     env->usr->gdata.stay_in_lobby = false;
     env->usr->gdata.curr_screen = TITLE_SCREEN;
     WyrmIOSSetEnginePresentation(false);
   }
   igSetCursorPos((ImVec2){ox + 456*s, by});
-  if (apple_button(usr, "ai", "Play with AI", (ImVec2){142*s,49*s}, false,
-                   usrs->nickname[0]))
+  if (apple_button(usr, "ai", "Play with AI", (ImVec2){142*s,49*s}, s,
+                   false, usrs->nickname[0]))
     WyrmIOSRequestPlay(usrs->nickname, "", true);
   igSetCursorPos((ImVec2){ox + 608*s, oy + 312*s});
   bool can_play = usrs->nickname[0] && server_address_is_valid(usrs->ipv4);
-  if (apple_button(usr, "play", "PLAY", (ImVec2){226*s,62*s}, true, can_play))
+  if (apple_button(usr, "play", "PLAY", (ImVec2){226*s,62*s}, s, true,
+                   can_play))
     WyrmIOSRequestPlay(usrs->nickname, usrs->ipv4, false);
 
   if (!reported) {
@@ -162,23 +166,28 @@ void WyrmIOSDrawShell(tenv* env) {
     snprintf(arena, sizeof(arena), "%s", env->usr->usrs.ipv4);
     loaded = true;
   }
-  // ImGui positions are logical points. ctx->size is the Retina Vulkan
-  // drawable in pixels (3x on the CI iPhone), which previously made the form
-  // three times too wide and clipped it off-screen.
+  // The original engine intentionally runs ImGui in Android-style drawable
+  // pixels. Scale this Apple-only portrait shell from its 440x956 point design
+  // so it keeps the same apparent size on a Retina canvas.
   ImGuiViewport* viewport = igGetMainViewport();
-  float width = fminf(viewport->Size.x - 32.0f, 360.0f);
+  float shell_scale = fminf(viewport->Size.x / 440.0f,
+                            viewport->Size.y / 956.0f);
+  float width = fminf(viewport->Size.x - 32.0f * shell_scale,
+                      360.0f * shell_scale);
   ImDrawList_AddRectFilled(igGetWindowDrawList(), (ImVec2){0, 0},
       viewport->Size,
       igColorConvertFloat4ToU32((ImVec4){.969f,.965f,.953f,1}), 0, 0);
-  igSetCursorPos((ImVec2){(viewport->Size.x - width) * .5f, 72.0f});
+  igSetCursorPos((ImVec2){(viewport->Size.x - width) * .5f,
+                           72.0f * shell_scale});
   igBeginGroup();
   ImFont* font = env->usr->imgui_data.body_font[FONT_SIZE_REGULAR];
-  igPushFont(font, 20.0f);
+  igPushFont(font, 20.0f * shell_scale);
   igPushStyleColor_Vec4(ImGuiCol_Text, (ImVec4){.22f,.21f,.18f,1});
   igPushStyleColor_Vec4(ImGuiCol_FrameBg, (ImVec4){.91f,.90f,.87f,1});
   igPushStyleColor_Vec4(ImGuiCol_Button, (ImVec4){.72f,.80f,.72f,1});
-  igPushStyleVar_Float(ImGuiStyleVar_FrameRounding, 10.0f);
-  igPushStyleVar_Vec2(ImGuiStyleVar_FramePadding, (ImVec2){14.0f, 12.0f});
+  igPushStyleVar_Float(ImGuiStyleVar_FrameRounding, 10.0f * shell_scale);
+  igPushStyleVar_Vec2(ImGuiStyleVar_FramePadding,
+                      (ImVec2){14.0f * shell_scale, 12.0f * shell_scale});
   igPushItemWidth(width);
   igText("WYRM / PLAY");
   igText("Original engine · Apple test");
@@ -187,11 +196,11 @@ void WyrmIOSDrawShell(tenv* env) {
   igInputTextWithHint("##arena", "Arena IPv4:port", arena, sizeof(arena), 0, NULL, NULL);
   bool allowed = name[0] && server_address_is_valid(arena);
   igBeginDisabled(!allowed);
-  if (igButton("JOIN ARENA", (ImVec2){width, 48.0f}))
+  if (igButton("JOIN ARENA", (ImVec2){width, 48.0f * shell_scale}))
     apple_open_lobby(env, name, arena);
   igEndDisabled();
   igBeginDisabled(!name[0]);
-  if (igButton("OFFLINE AI", (ImVec2){width, 48.0f}))
+  if (igButton("OFFLINE AI", (ImVec2){width, 48.0f * shell_scale}))
     WyrmIOSRequestPlay(name, arena, true);
   igEndDisabled();
   igPopItemWidth();
