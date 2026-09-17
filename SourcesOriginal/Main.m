@@ -13,6 +13,7 @@ static tenv engine;
 static bool ready;
 static unsigned frame_count;
 static bool online_proven;
+static bool orientation_reported;
 
 static void frame(void* unused) {
   (void)unused;
@@ -25,6 +26,16 @@ static void frame(void* unused) {
   tmouse_update(engine.ms);
   if (engine.ctx->last_present_succeeded && frame_count++ == 0)
     SDL_Log("Wyrm original engine: first Thermite frame presented");
+  if (!orientation_reported && engine.ctx->last_present_succeeded) {
+    int width = 0;
+    int height = 0;
+    SDL_GetWindowSizeInPixels(engine.wnd->handle, &width, &height);
+    SDL_DisplayOrientation orientation = SDL_GetCurrentDisplayOrientation(
+        SDL_GetDisplayForWindow(engine.wnd->handle));
+    orientation_reported = true;
+    SDL_Log("Wyrm original engine: orientation=%d drawable=%dx%d",
+            (int)orientation, width, height);
+  }
   if (frame_count == 120)
     SDL_Log("Wyrm original engine: 120 frames; ai=%d arena_ready=%d spawned=%d",
             engine.usr->gdata.ai_mode, engine.usr->gdata.arena_ready,
@@ -61,6 +72,11 @@ static int engine_main(int argc, char** argv) {
       NSLog(@"Wyrm asset preparation failed: %@", error); return 1;
     }
     if (chdir(working.path.fileSystemRepresentation) != 0) return 1;
+    // SDL must know the gameplay orientation before UIKit and the video
+    // subsystem create the scene/window. The Info.plist declares the same
+    // contract; this runtime hint keeps SDL's view controller in agreement.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+    SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) return 1;
     engine.config.argc = argc;
     engine.config.argv = argv;
