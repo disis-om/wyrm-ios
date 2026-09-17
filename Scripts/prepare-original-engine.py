@@ -71,6 +71,15 @@ for path in sorted(OUTPUT.rglob("*")):
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
+    if relative == "app/src/game/ui_overlay.c":
+        # Vulkan renders into Retina pixels, but Dear ImGui and SDL touch input
+        # use UIKit logical points. Android has a 1:1 coordinate space; Apple
+        # must place the original HUD (leaderboard, stats, team and chat) in
+        # window coordinates or every block lands three screens away.
+        text = text.replace('env->ctx->size[0]', 'env->wnd->size[0]')
+        text = text.replace('env->ctx->size[1]', 'env->wnd->size[1]')
+        text = text.replace('ctx->size[0]', 'env->wnd->size[0]')
+        text = text.replace('ctx->size[1]', 'env->wnd->size[1]')
     if relative == "app/src/platform/android_startup.c":
         text = text.replace('VLITHER_ANDROID', 'WYRM_MOBILE')
     if relative == "app/src/platform/android_home.c":

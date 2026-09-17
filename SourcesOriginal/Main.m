@@ -20,6 +20,7 @@ static int reported_width;
 static int reported_height;
 static int reported_screen = -1;
 static bool engine_presentation;
+static bool leaderboard_proven;
 
 static const char* screen_name(int screen) {
   switch (screen) {
@@ -114,7 +115,19 @@ static void frame(void* unused) {
       get_snake(&engine.usr->gdata, engine.usr->gdata.data.snake_id) &&
       engine.ctx->last_present_succeeded) {
     online_proven = true;
-    SDL_Log("Wyrm original engine: online arena admitted, own snake spawned, frame presented");
+    snake* own = get_snake(&engine.usr->gdata,
+                           engine.usr->gdata.data.snake_id);
+    SDL_Log("Wyrm original engine: online arena admitted, own snake spawned, frame presented id=%d segments=%d",
+            own->id, own->sct);
+  }
+  if (!leaderboard_proven && engine.usr->gdata.curr_screen == PLAYING &&
+      engine.usr->gdata.data.gotlb) {
+    leaderboard_proven = true;
+    SDL_Log("Wyrm original engine: leaderboard ready rank=%d players=%d leader=%s score=%d",
+            engine.usr->gdata.data.rank,
+            engine.usr->gdata.data.slither_count,
+            engine.usr->gdata.data.lb.entries[0].nickname,
+            engine.usr->gdata.data.lb.entries[0].score);
   }
 }
 
@@ -127,13 +140,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-22/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-23/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-22" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-23" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
@@ -169,6 +182,8 @@ static int engine_main(int argc, char** argv) {
       if (!strcmp(argv[i], "--smoke-ai")) WyrmIOSRequestPlay("Apple test", "", true);
       if (!strcmp(argv[i], "--smoke-lobby")) {
         WyrmIOSSetEnginePresentation(true);
+        snprintf(engine.usr->usrs.nickname,
+                 sizeof(engine.usr->usrs.nickname), "Apple test");
         engine.usr->gdata.curr_screen = LOBBY;
       }
       if (!strcmp(argv[i], "--smoke-online"))

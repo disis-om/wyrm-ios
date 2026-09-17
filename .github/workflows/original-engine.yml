@@ -27,10 +27,10 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.4.2-build-22-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.2-build-22-simulator.app.zip
+          zip -qry Wyrm-0.4.3-build-23-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.3-build-23-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-022-NOTES.md README.md
+          cp ../phase2/BUILD-023-NOTES.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
@@ -53,6 +53,7 @@ jobs:
           test "$LOBBY_HEIGHT" -gt "$LOBBY_WIDTH"
           grep 'screen=LOBBY' original-artifacts/lobby-stderr.log
           grep 'presentation=rotated-landscape os=portrait' original-artifacts/lobby-stderr.log
+          grep 'lobby shell presented' original-artifacts/lobby-stderr.log
           grep -E 'drawable=[0-9]+x[0-9]+' original-artifacts/lobby-stderr.log
           python3 -c 'import re; s=open("original-artifacts/lobby-stderr.log").read(); assert any(int(w) > int(h) for w,h in re.findall(r"drawable=(\d+)x(\d+)", s)), "engine never received landscape-shaped drawable"'
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
@@ -69,6 +70,7 @@ jobs:
           grep 'first Thermite frame presented' original-artifacts/runtime.log
           grep -E 'orientation=[1-4] drawable=[0-9]+x[0-9]+' original-artifacts/runtime.log
           grep '120 frames; ai=1' original-artifacts/runtime.log
+          grep 'leaderboard ready' original-artifacts/stderr.log
       - name: Simulator original online arena smoke test
         run: |
           xcrun simctl terminate "$WYRM_SIMULATOR" com.omrajput.wyrmios
@@ -78,8 +80,9 @@ jobs:
           sleep 20
           xcrun simctl spawn "$WYRM_SIMULATOR" log show --last 1m --style compact --predicate 'process == "Wyrm"' > original-artifacts/online-runtime.log
           find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
-          grep 'online arena admitted, own snake spawned, frame presented' original-artifacts/online-stderr.log
+          grep -E 'online arena admitted, own snake spawned, frame presented id=[0-9]+ segments=[0-9]+' original-artifacts/online-stderr.log
           grep 'screen=PLAYING' original-artifacts/online-stderr.log
+          grep 'leaderboard ready' original-artifacts/online-stderr.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
