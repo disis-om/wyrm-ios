@@ -6,6 +6,7 @@
 #import <UIKit/UIKit.h>
 #import <dispatch/dispatch.h>
 #include <TargetConditionals.h>
+#include <math.h>
 #include <unistd.h>
 #include "user.h"
 #include "network/server.h"
@@ -17,39 +18,59 @@ static unsigned frame_count;
 static bool online_proven;
 static int reported_width;
 static int reported_height;
+static int reported_screen = -1;
+static bool engine_presentation;
 
-void WyrmIOSRequestLandscape(void) {
-  // SDL's view controller calculates its supported mask from this hint every
-  // time UIKit asks. Narrow it before requesting new scene geometry.
-  SDL_SetHint(SDL_HINT_ORIENTATIONS, "LandscapeLeft LandscapeRight");
+static const char* screen_name(int screen) {
+  switch (screen) {
+    case TITLE_SCREEN: return "HOME";
+    case LOBBY: return "LOBBY";
+    case PLAYING: return "PLAYING";
+    case SKIN_EDITOR: return "SKIN_EDITOR";
+    default: return "UNKNOWN";
+  }
+}
+
+void WyrmIOSSetEnginePresentation(bool enabled) {
+  if (engine_presentation == enabled) return;
+  engine_presentation = enabled;
   dispatch_async(dispatch_get_main_queue(), ^{
-    UIWindowScene* window_scene = nil;
+    UIWindow* window = nil;
     for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
       if ([scene isKindOfClass:UIWindowScene.class] &&
           scene.activationState != UISceneActivationStateUnattached) {
-        window_scene = (UIWindowScene*)scene;
+        for (UIWindow* candidate in ((UIWindowScene*)scene).windows) {
+          if (candidate.rootViewController) {
+            window = candidate;
+            if (candidate.isKeyWindow) break;
+          }
+        }
         break;
       }
     }
-    if (!window_scene) {
-      NSLog(@"Wyrm orientation request deferred: no connected window scene");
+    if (!window) {
+      engine_presentation = !enabled;
+      NSLog(@"Wyrm presentation deferred: no connected window");
       return;
     }
-    if (@available(iOS 16.0, *)) {
-      for (UIWindow* window in window_scene.windows)
-        [window.rootViewController setNeedsUpdateOfSupportedInterfaceOrientations];
-      UIWindowSceneGeometryPreferencesIOS* preferences =
-          [[UIWindowSceneGeometryPreferencesIOS alloc]
-              initWithInterfaceOrientations:UIInterfaceOrientationMaskLandscape];
-      [window_scene requestGeometryUpdateWithPreferences:preferences
-          errorHandler:^(NSError* error) {
-            NSLog(@"Wyrm landscape geometry request failed: %@", error);
-          }];
-      NSLog(@"Wyrm landscape geometry requested");
-    } else {
-      [UIViewController attemptRotationToDeviceOrientation];
-      NSLog(@"Wyrm landscape rotation requested through iOS 15 controller path");
-    }
+    UIView* surface = window.rootViewController.view;
+    CGRect portrait = window.bounds;
+    CGFloat width = CGRectGetWidth(portrait);
+    CGFloat height = CGRectGetHeight(portrait);
+    [UIView performWithoutAnimation:^{
+      surface.transform = CGAffineTransformIdentity;
+      surface.bounds = enabled
+          ? CGRectMake(0, 0, height, width)
+          : CGRectMake(0, 0, width, height);
+      surface.center = CGPointMake(CGRectGetMidX(portrait), CGRectGetMidY(portrait));
+      if (enabled) surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
+      [surface setNeedsLayout];
+      [surface layoutIfNeeded];
+    }];
+    SDL_Log("Wyrm iOS presentation=%s os=portrait logical=%.0fx%.0f rotation=%d",
+            enabled ? "rotated-landscape" : "portrait",
+            enabled ? height : width, enabled ? width : height,
+            enabled ? 90 : 0);
   });
 }
 
@@ -60,6 +81,13 @@ static void frame(void* unused) {
   tinput(&engine);
   if (engine.ctx->swapchain_ok) trender(&engine);
   else if (engine.usr->gdata.connection) server_poll(&engine);
+  if (reported_screen != (int)engine.usr->gdata.curr_screen) {
+    reported_screen = (int)engine.usr->gdata.curr_screen;
+    WyrmIOSSetEnginePresentation(reported_screen != TITLE_SCREEN &&
+                                 reported_screen != SKIN_EDITOR);
+    SDL_Log("Wyrm original engine: screen=%s (%d)",
+            screen_name(reported_screen), reported_screen);
+  }
   tkeyboard_update(engine.kb);
   tmouse_update(engine.ms);
   if (engine.ctx->last_present_succeeded && frame_count++ == 0)
@@ -99,13 +127,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-19/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-22/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-19" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-22" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
@@ -113,10 +141,10 @@ static int engine_main(int argc, char** argv) {
       NSLog(@"Wyrm asset preparation failed: %@", error); return 1;
     }
     if (chdir(working.path.fileSystemRepresentation) != 0) return 1;
-    // SDL must know the gameplay orientation before UIKit and the video
-    // subsystem create the scene/window. The Info.plist declares the same
-    // contract; this runtime hint keeps SDL's view controller in agreement.
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait LandscapeLeft LandscapeRight");
+    // UIKit always remains portrait. Lobby/arena rotate only the SDL surface,
+    // so Appetize and a physical iPhone never need to approve an orientation
+    // change while the original engine still receives a landscape drawable.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait");
     SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) return 1;
     engine.config.argc = argc;
@@ -139,6 +167,10 @@ static int engine_main(int argc, char** argv) {
     ready = true;
     for (int i = 1; i < argc; ++i) {
       if (!strcmp(argv[i], "--smoke-ai")) WyrmIOSRequestPlay("Apple test", "", true);
+      if (!strcmp(argv[i], "--smoke-lobby")) {
+        WyrmIOSSetEnginePresentation(true);
+        engine.usr->gdata.curr_screen = LOBBY;
+      }
       if (!strcmp(argv[i], "--smoke-online"))
         WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
     }

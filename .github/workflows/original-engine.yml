@@ -27,11 +27,11 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.4.1-build-21-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.1-build-21-simulator.app.zip
+          zip -qry Wyrm-0.4.2-build-22-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.2-build-22-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-021-NOTES.md README.md
-      - name: Simulator portrait home and original AI smoke test
+          cp ../phase2/BUILD-022-NOTES.md README.md
+      - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE"
@@ -44,6 +44,17 @@ jobs:
           HOME_WIDTH=$(sips -g pixelWidth original-artifacts/original-home.png | awk '/pixelWidth/{print $2}')
           HOME_HEIGHT=$(sips -g pixelHeight original-artifacts/original-home.png | awk '/pixelHeight/{print $2}')
           test "$HOME_HEIGHT" -gt "$HOME_WIDTH"
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/lobby-stdout.log" --stderr="$PWD/original-artifacts/lobby-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-lobby
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/original-lobby.png
+          LOBBY_WIDTH=$(sips -g pixelWidth original-artifacts/original-lobby.png | awk '/pixelWidth/{print $2}')
+          LOBBY_HEIGHT=$(sips -g pixelHeight original-artifacts/original-lobby.png | awk '/pixelHeight/{print $2}')
+          test "$LOBBY_HEIGHT" -gt "$LOBBY_WIDTH"
+          grep 'screen=LOBBY' original-artifacts/lobby-stderr.log
+          grep 'presentation=rotated-landscape os=portrait' original-artifacts/lobby-stderr.log
+          grep -E 'drawable=[0-9]+x[0-9]+' original-artifacts/lobby-stderr.log
+          python3 -c 'import re; s=open("original-artifacts/lobby-stderr.log").read(); assert any(int(w) > int(h) for w,h in re.findall(r"drawable=(\d+)x(\d+)", s)), "engine never received landscape-shaped drawable"'
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
           sleep 8
@@ -68,6 +79,7 @@ jobs:
           xcrun simctl spawn "$WYRM_SIMULATOR" log show --last 1m --style compact --predicate 'process == "Wyrm"' > original-artifacts/online-runtime.log
           find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
           grep 'online arena admitted, own snake spawned, frame presented' original-artifacts/online-stderr.log
+          grep 'screen=PLAYING' original-artifacts/online-stderr.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

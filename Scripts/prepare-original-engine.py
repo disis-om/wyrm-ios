@@ -97,10 +97,9 @@ for path in sorted(OUTPUT.rglob("*")):
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
     if relative == "thermite/src/framework/twindow.c":
-        # Android enters this SDL window after Compose has already switched to
-        # landscape. iOS starts inside the same window, so give the temporary
-        # Apple home shell a portrait drawable; Play then requests landscape
-        # and the original resize/swapchain path takes over.
+        # iOS stays system-portrait for the entire app. The temporary Apple
+        # Home starts portrait; the adapter rotates and swaps only this SDL
+        # surface for the untouched original landscape lobby/arena renderer.
         window_size = 'env->config.title, 1280, 720,'
         assert text.count(window_size) == 1
         text = text.replace(window_size, 'env->config.title, 720, 1280,')

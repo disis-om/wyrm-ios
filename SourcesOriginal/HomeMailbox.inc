@@ -4,7 +4,7 @@
  */
 void WyrmIOSRequestPlay(const char* name, const char* address, bool offline) {
   if (!home_mutex || !name || !address) return;
-  WyrmIOSRequestLandscape();
+  WyrmIOSSetEnginePresentation(true);
   SDL_LockMutex(home_mutex);
   snprintf(pending_nickname, sizeof(pending_nickname), "%s", name);
   snprintf(pending_enter_arena, sizeof(pending_enter_arena), "%s", address);
