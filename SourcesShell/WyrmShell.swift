@@ -180,7 +180,7 @@ struct WyrmShellRoot: View {
                 case .settings: SettingsRoot(store: store)
                 }
             }.padding(.bottom, 68)
-            ShellTabBar(selection: $tab)
+            ShellTabBar(selection: $tab).zIndex(20)
             if !store.toast.isEmpty {
                 Text(store.toast).font(.wyrm(12, .bold)).foregroundColor(.white)
                     .padding(.horizontal, 16).padding(.vertical, 10).background(ink).cornerRadius(12)
@@ -401,14 +401,14 @@ private struct SettingsCard<Content: View>: View {
 
 private struct SettingsHubRow: View {
     let title: String, detail: String
-    var body: some View { HStack { VStack(alignment: .leading, spacing: 2) { Text(title).font(.wyrm(15, .semibold)); Text(detail).font(.wyrm(11)).foregroundColor(quiet) }; Spacer(); Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundColor(quiet.opacity(0.5)) }.padding(.horizontal, 15).frame(minHeight: 57).overlay(Divider().padding(.leading, 15), alignment: .bottom) }
+    var body: some View { HStack { VStack(alignment: .leading, spacing: 2) { Text(title).font(.wyrm(15, .semibold)); Text(detail).font(.wyrm(11)).foregroundColor(quiet) }; Spacer(); Image(systemName: "chevron.right").font(.system(size: 11, weight: .bold)).foregroundColor(quiet.opacity(0.5)) }.padding(.horizontal, 15).frame(minHeight: 57).overlay(Rectangle().fill(rule).frame(height: 1).padding(.leading, 15), alignment: .bottom) }
 }
 
 private struct ActionRow: View {
     let title: String
     var destructive = false
     let action: () -> Void
-    var body: some View { Button(action: action) { Text(title).font(.wyrm(14, .semibold)).foregroundColor(destructive ? .red : ink).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).frame(minHeight: 50).overlay(Divider().padding(.leading, 15), alignment: .bottom) }.buttonStyle(.plain) }
+    var body: some View { Button(action: action) { Text(title).font(.wyrm(14, .semibold)).foregroundColor(destructive ? .red : ink).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 15).frame(minHeight: 50).overlay(Rectangle().fill(rule).frame(height: 1).padding(.leading, 15), alignment: .bottom) }.buttonStyle(.plain) }
 }
 
 private struct ShellTabBar: View {
