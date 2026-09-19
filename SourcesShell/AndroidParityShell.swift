@@ -43,33 +43,42 @@ struct WyrmAndroidParityRoot: View {
     @State private var settingsDestination: SettingsDestination?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            ATheme.paper.ignoresSafeArea()
-            if let destination = settingsDestination {
-                AndroidSettingsDestination(store: store, destination: destination) { settingsDestination = nil }
-                    .zIndex(30)
-            } else {
-                Group {
-                    switch tab {
-                    case .play:
-                        AndroidPlayPage(store: store, openSettings: openSettings)
-                    case .notifications:
-                        AndroidNotificationsPage()
-                    case .social:
-                        AndroidSocialPage()
-                    case .skin:
-                        AndroidSkinPlaceholder()
-                    case .settings:
-                        AndroidSettingsPage(store: store, open: openSettings)
+        GeometryReader { viewport in
+            ZStack(alignment: .bottom) {
+                ATheme.paper.ignoresSafeArea()
+                if let destination = settingsDestination {
+                    AndroidSettingsDestination(store: store, destination: destination) { settingsDestination = nil }
+                        .frame(width: viewport.size.width)
+                        .zIndex(30)
+                } else {
+                    Group {
+                        switch tab {
+                        case .play:
+                            AndroidPlayPage(store: store, openSettings: openSettings)
+                        case .notifications:
+                            AndroidNotificationsPage()
+                        case .social:
+                            AndroidSocialPage()
+                        case .skin:
+                            AndroidSkinPlaceholder()
+                        case .settings:
+                            AndroidSettingsPage(store: store, open: openSettings)
+                        }
                     }
-                }.padding(.bottom, 70)
-                AndroidRootTabs(selection: $tab).zIndex(20)
+                    .frame(width: viewport.size.width)
+                    .padding(.bottom, 70)
+                    AndroidRootTabs(selection: $tab)
+                        .frame(width: viewport.size.width)
+                        .zIndex(20)
+                }
+                if !store.toast.isEmpty {
+                    Text(store.toast).font(.androidWyrm(12, .bold)).foregroundColor(.white)
+                        .padding(.horizontal, 16).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
+                        .padding(.bottom, settingsDestination == nil ? 80 : 18).zIndex(50)
+                }
             }
-            if !store.toast.isEmpty {
-                Text(store.toast).font(.androidWyrm(12, .bold)).foregroundColor(.white)
-                    .padding(.horizontal, 16).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
-                    .padding(.bottom, settingsDestination == nil ? 80 : 18).zIndex(50)
-            }
+            .frame(width: viewport.size.width, height: viewport.size.height)
+            .clipped()
         }
         .foregroundColor(ATheme.ink)
         .onChange(of: store.toast) { value in
