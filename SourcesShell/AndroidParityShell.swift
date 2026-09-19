@@ -255,6 +255,7 @@ private struct AndroidSettingsPage: View {
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
+                Spacer().frame(height: 44)
                 AndroidPageHeader(kicker: "WYRM", title: "Settings", bottom: 16)
                 AndroidSettingsSection(title: "Arena", rows: [
                     ("Display", "Scores, names, minimap, text sizes", "", SettingsDestination.display),
@@ -291,7 +292,7 @@ private struct AndroidSettingsPage: View {
                 }
                 Text("Wyrm · settings format v\(store.settingsVersion)").font(.androidWyrm(12)).foregroundColor(ATheme.quiet).padding(.vertical, 16)
             }
-        }
+        }.safeAreaInset(edge: .top) { Color.clear.frame(height: 1) }
     }
 }
 
@@ -507,18 +508,29 @@ private struct AndroidDoubleRow: View {
 
 private struct AndroidRootTabs: View {
     @Binding var selection: AndroidRootTab
-    private let icons: [AndroidRootTab:String] = [.notifications:"bell", .social:"person.2", .play:"play.circle", .skin:"circle.hexagongrid", .settings:"slider.horizontal.3"]
     var body: some View {
         HStack(alignment: .top, spacing: 0) {
-            ForEach(AndroidRootTab.allCases, id: \.self) { item in
-                Button { selection = item } label: {
-                    VStack(spacing: 2) {
-                        Image(systemName: icons[item]!).font(.system(size: item == .play ? 25 : 22, weight: selection == item ? .semibold : .regular)).frame(height: 28)
-                        Text(item.rawValue).font(.androidWyrm(item == .notifications ? 8.8 : 10.5, selection == item ? .bold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
-                        Capsule().fill(selection == item ? ATheme.ink : Color.clear).frame(width: selection == item ? 14 : 0, height: 2).padding(.top, 1)
-                    }.foregroundColor(selection == item ? ATheme.ink : ATheme.tabIdle).frame(maxWidth: .infinity).padding(.top, 10)
-                }.buttonStyle(.plain)
-            }
+            AndroidTabButton(item: .notifications, icon: "bell", selection: $selection)
+            AndroidTabButton(item: .social, icon: "person.2", selection: $selection)
+            AndroidTabButton(item: .play, icon: "play.circle", selection: $selection, prominent: true)
+            AndroidTabButton(item: .skin, icon: "circle.hexagongrid", selection: $selection)
+            AndroidTabButton(item: .settings, icon: "slider.horizontal.3", selection: $selection)
         }.frame(height: 70).background(ATheme.tabBar).ignoresSafeArea(edges: .bottom)
+    }
+}
+
+private struct AndroidTabButton: View {
+    let item: AndroidRootTab
+    let icon: String
+    @Binding var selection: AndroidRootTab
+    var prominent = false
+    var body: some View {
+        Button { selection = item } label: {
+            VStack(spacing: 2) {
+                Image(systemName: icon).font(.system(size: prominent ? 25 : 22, weight: selection == item ? .semibold : .regular)).frame(height: 28)
+                Text(item.rawValue).font(.androidWyrm(item == .notifications ? 8.8 : 10.5, selection == item ? .bold : .regular)).lineLimit(1).minimumScaleFactor(0.7)
+                Capsule().fill(selection == item ? ATheme.ink : Color.clear).frame(width: selection == item ? 14 : 0, height: 2).padding(.top, 1)
+            }.foregroundColor(selection == item ? ATheme.ink : ATheme.tabIdle).frame(maxWidth: .infinity).padding(.top, 10)
+        }.buttonStyle(.plain)
     }
 }
