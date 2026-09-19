@@ -118,6 +118,22 @@ for path in sorted(OUTPUT.rglob("*")):
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
+    if relative == "app/src/platform/android_settings.c":
+        # The settings table, validation, persistence and once-per-frame
+        # mailbox are engine code, not Android UI code. Compile that exact
+        # implementation on Apple and replace only its JNI publication edge
+        # with a narrow C ABI consumed by Swift.
+        text = text.replace('#ifdef VLITHER_ANDROID',
+                            '#if defined(VLITHER_ANDROID) || defined(WYRM_IOS)', 1)
+        text = text.replace('#include <jni.h>',
+                            '#ifdef __ANDROID__\n#include <jni.h>\n#endif', 1)
+        jni_start = text.index('JNIEXPORT jstring JNICALL')
+        outer_else = text.rfind('\n#else\n')
+        assert jni_start > 0 and outer_else > jni_start
+        apple = (ROOT / 'SourcesOriginal' / 'AppleSettingsMailbox.inc').read_text()
+        text = (text[:jni_start] + '#ifdef __ANDROID__\n' +
+                text[jni_start:outer_else] + '\n#else\n' + apple +
+                '\n#endif\n' + text[outer_else:])
     if relative == "thermite/src/framework/twindow.c":
         # iOS stays system-portrait for the entire app. The temporary Apple
         # Home starts portrait; the adapter rotates and swaps only this SDL

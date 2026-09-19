@@ -14,3 +14,22 @@ void WyrmIOSRequestPlay(const char* name, const char* address, bool offline) {
   pending_enter_id = ++next_id;
   SDL_UnlockMutex(home_mutex);
 }
+
+void WyrmIOSRequestLobby(const char* name, const char* address) {
+  if (!home_mutex || !name || !address) return;
+  SDL_LockMutex(home_mutex);
+  snprintf(pending_saved_nickname, sizeof(pending_saved_nickname), "%s", name);
+  pending_nickname_save = true;
+  if (address[0]) snprintf(pending_arena, sizeof(pending_arena), "%s", address);
+  pending_screen = LOBBY;
+  SDL_UnlockMutex(home_mutex);
+}
+
+const char* WyrmIOSHomeSnapshot(void) {
+  static char snapshot[256];
+  if (!home_env) return "\t\t0\t0";
+  user_settings* settings = &home_env->usr->usrs;
+  snprintf(snapshot, sizeof(snapshot), "%s\t%s\t%d\t%d",
+           settings->nickname, settings->ipv4, settings->score, settings->kills);
+  return snapshot;
+}

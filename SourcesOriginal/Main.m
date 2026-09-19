@@ -24,6 +24,10 @@ static bool leaderboard_proven;
 static bool canvas_proven;
 static unsigned gameplay_frames;
 
+@interface WyrmShellHost : NSObject
++ (UIViewController*)makeViewController;
+@end
+
 // UIWindow owns the root controller's geometry and is allowed to lay it out
 // again at any time.  Rotating that managed root view directly was therefore
 // temporary: a later UIKit/Appetize layout restored portrait bounds while the
@@ -31,8 +35,10 @@ static unsigned gameplay_frames;
 // Keep the SDL controller as a child whose geometry we own instead.
 @interface WyrmEngineContainerController : UIViewController
 @property(nonatomic, strong) UIViewController* engineController;
+@property(nonatomic, strong) UIViewController* shellController;
 @property(nonatomic, assign) BOOL landscapePresentation;
 - (void)installEngineController:(UIViewController*)controller;
+- (void)installShellControllerIfNeeded;
 - (BOOL)engineGeometryIsStable;
 @end
 
@@ -42,6 +48,17 @@ static unsigned gameplay_frames;
   self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
   self.view.backgroundColor = UIColor.blackColor;
   self.view.clipsToBounds = YES;
+}
+
+- (void)installShellControllerIfNeeded {
+  if (self.shellController) return;
+  UIViewController* shell = [WyrmShellHost makeViewController];
+  self.shellController = shell;
+  [self addChildViewController:shell];
+  shell.view.frame = self.view.bounds;
+  shell.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
+  [self.view addSubview:shell.view];
+  [shell didMoveToParentViewController:self];
 }
 
 - (void)installEngineController:(UIViewController*)controller {
@@ -79,6 +96,7 @@ static unsigned gameplay_frames;
   surface.center = CGPointMake(CGRectGetMidX(portrait), CGRectGetMidY(portrait));
   if (self.landscapePresentation)
     surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
+  self.shellController.view.frame = portrait;
 }
 
 - (void)setLandscapePresentation:(BOOL)enabled {
@@ -120,7 +138,8 @@ static const char* screen_name(int screen) {
 }
 
 void WyrmIOSSetEnginePresentation(bool enabled) {
-  if (engine_presentation == enabled) return;
+  if (engine_presentation == enabled && engine_container &&
+      engine_container.shellController) return;
   engine_presentation = enabled;
   dispatch_async(dispatch_get_main_queue(), ^{
     UIWindow* window = nil;
@@ -150,8 +169,10 @@ void WyrmIOSSetEnginePresentation(bool enabled) {
     } else {
       engine_container = (WyrmEngineContainerController*)window.rootViewController;
     }
+    [engine_container installShellControllerIfNeeded];
     [UIView performWithoutAnimation:^{
       engine_container.landscapePresentation = enabled;
+      engine_container.shellController.view.hidden = enabled;
     }];
     CGRect portrait = engine_container.view.bounds;
     CGFloat width = CGRectGetWidth(portrait);
@@ -263,13 +284,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-25/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-26/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-25" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-26" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }

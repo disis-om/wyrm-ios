@@ -27,10 +27,10 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.4.5-build-25-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.5-build-25-simulator.app.zip
+          zip -qry Wyrm-0.5.0-build-26-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.5.0-build-26-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-025-NOTES.md README.md
+          cp ../phase2/BUILD-026-NOTES.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
@@ -44,6 +44,12 @@ jobs:
           HOME_WIDTH=$(sips -g pixelWidth original-artifacts/original-home.png | awk '/pixelWidth/{print $2}')
           HOME_HEIGHT=$(sips -g pixelHeight original-artifacts/original-home.png | awk '/pixelHeight/{print $2}')
           test "$HOME_HEIGHT" -gt "$HOME_WIDTH"
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/settings-stdout.log" --stderr="$PWD/original-artifacts/settings-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-settings --smoke-settings-write
+          sleep 8
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-settings.png
+          grep 'Wyrm SwiftUI shell installed' original-artifacts/settings-stderr.log
+          grep -E 'Wyrm SwiftUI settings bridge verified rows=[1-9][0-9]* id=general.minimap_size' original-artifacts/settings-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/lobby-stdout.log" --stderr="$PWD/original-artifacts/lobby-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-lobby
           sleep 8

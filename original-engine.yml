@@ -30,7 +30,7 @@ targets:
           - WYRM_IOS=1
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
-          - APP_VERSION=\"0.4.5\"
+          - APP_VERSION=\"0.5.0\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -47,7 +47,9 @@ targets:
     platform: iOS
     sources:
       - path: SourcesOriginal/Main.m
+      - path: SourcesShell
       - path: Resources/Assets.xcassets
+      - path: Resources/manrope.ttf
       - path: SharedEngine/app/res
         type: folder
         buildPhase: resources
@@ -77,8 +79,10 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "0.4.5"
-        CURRENT_PROJECT_VERSION: "25"
+        MARKETING_VERSION: "0.5.0"
+        CURRENT_PROJECT_VERSION: "26"
+        SWIFT_VERSION: "5.0"
+        SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/Frameworks"
         OTHER_LDFLAGS: "$(inherited) -lc++ -ObjC -Wl,-export_dynamic"

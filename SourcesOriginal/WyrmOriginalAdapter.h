@@ -4,6 +4,14 @@
 typedef struct tenv tenv;
 void WyrmIOSDrawShell(tenv* env);
 void WyrmIOSRequestPlay(const char* name, const char* address, bool offline);
+void WyrmIOSRequestLobby(const char* name, const char* address);
+const char* WyrmIOSHomeSnapshot(void);
+const char* WyrmIOSSettingsSnapshot(void);
+const char* WyrmIOSSettingsVersion(void);
+bool WyrmIOSQueueSetting(const char* id, float a, float b, float c, float d, int count);
+void WyrmIOSSettingsAction(int action);
+const char* WyrmIOSHotkeysSnapshot(void);
+bool WyrmIOSQueueHotkey(int action, int key, int mode, bool visible, float x, float y);
 void WyrmIOSSetEnginePresentation(bool enabled);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
 VkResult WyrmIOSCreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*);
