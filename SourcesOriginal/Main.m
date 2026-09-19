@@ -284,13 +284,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-26/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-27/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-26" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-27" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
