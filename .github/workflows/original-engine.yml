@@ -27,10 +27,10 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.4.4-build-24-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.4-build-24-simulator.app.zip
+          zip -qry Wyrm-0.4.5-build-25-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.4.5-build-25-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-024-NOTES.md README.md
+          cp ../phase2/BUILD-025-NOTES.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
@@ -52,7 +52,8 @@ jobs:
           LOBBY_HEIGHT=$(sips -g pixelHeight original-artifacts/original-lobby.png | awk '/pixelHeight/{print $2}')
           test "$LOBBY_HEIGHT" -gt "$LOBBY_WIDTH"
           grep 'screen=LOBBY' original-artifacts/lobby-stderr.log
-          grep 'presentation=rotated-landscape os=portrait' original-artifacts/lobby-stderr.log
+          grep 'presentation=rotated-landscape os=portrait container=stable-child' original-artifacts/lobby-stderr.log
+          grep 'geometry_ok=1' original-artifacts/lobby-stderr.log
           grep 'lobby shell presented' original-artifacts/lobby-stderr.log
           grep -E 'drawable=[0-9]+x[0-9]+' original-artifacts/lobby-stderr.log
           python3 -c 'import re; s=open("original-artifacts/lobby-stderr.log").read(); assert any(int(w) > int(h) for w,h in re.findall(r"drawable=(\d+)x(\d+)", s)), "engine never received landscape-shaped drawable"'
@@ -80,6 +81,7 @@ jobs:
           sleep 10
           xcrun simctl io "$WYRM_SIMULATOR" screenshot original-artifacts/original-online.png
           sleep 20
+          xcrun simctl io "$WYRM_SIMULATOR" screenshot original-artifacts/original-online-late.png
           xcrun simctl spawn "$WYRM_SIMULATOR" log show --last 1m --style compact --predicate 'process == "Wyrm"' > original-artifacts/online-runtime.log
           find "$HOME/Library/Logs/DiagnosticReports" -name '*Wyrm*' -exec cp '{}' original-artifacts/ \;
           grep -E 'online arena admitted, own snake spawned, frame presented id=[0-9]+ segments=[0-9]+' original-artifacts/online-stderr.log
@@ -87,6 +89,7 @@ jobs:
           grep 'leaderboard ready' original-artifacts/online-stderr.log
           python3 -c 'import re; s=open("original-artifacts/online-stderr.log").read(); m=re.findall(r"pixel canvas: imgui=(\d+)x(\d+) framebuffer=1\.00x1\.00 drawable=(\d+)x(\d+)",s); assert any(a==c and b==d and int(a)>int(b) for a,b,c,d in m), "online canvas is not one landscape pixel space"'
           grep 'arena frame progress=120' original-artifacts/online-stderr.log
+          grep -E 'persistent geometry: container=stable-child child_bounds=[0-9]+x[0-9]+ geometry_ok=1' original-artifacts/online-stderr.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:

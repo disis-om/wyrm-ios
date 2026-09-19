@@ -24,6 +24,91 @@ static bool leaderboard_proven;
 static bool canvas_proven;
 static unsigned gameplay_frames;
 
+// UIWindow owns the root controller's geometry and is allowed to lay it out
+// again at any time.  Rotating that managed root view directly was therefore
+// temporary: a later UIKit/Appetize layout restored portrait bounds while the
+// 90-degree transform survived, producing the giant minimap/top-left crop.
+// Keep the SDL controller as a child whose geometry we own instead.
+@interface WyrmEngineContainerController : UIViewController
+@property(nonatomic, strong) UIViewController* engineController;
+@property(nonatomic, assign) BOOL landscapePresentation;
+- (void)installEngineController:(UIViewController*)controller;
+- (BOOL)engineGeometryIsStable;
+@end
+
+@implementation WyrmEngineContainerController
+
+- (void)loadView {
+  self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
+  self.view.backgroundColor = UIColor.blackColor;
+  self.view.clipsToBounds = YES;
+}
+
+- (void)installEngineController:(UIViewController*)controller {
+  self.engineController = controller;
+  [self addChildViewController:controller];
+  controller.view.autoresizingMask = UIViewAutoresizingNone;
+  [self.view addSubview:controller.view];
+  [controller didMoveToParentViewController:self];
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
+}
+
+- (UIInterfaceOrientationMask)supportedInterfaceOrientations {
+  return UIInterfaceOrientationMaskPortrait;
+}
+
+- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
+  return UIInterfaceOrientationPortrait;
+}
+
+- (BOOL)prefersStatusBarHidden { return YES; }
+- (BOOL)prefersHomeIndicatorAutoHidden { return YES; }
+
+- (void)viewDidLayoutSubviews {
+  [super viewDidLayoutSubviews];
+  UIView* surface = self.engineController.view;
+  if (!surface) return;
+  CGRect portrait = self.view.bounds;
+  CGFloat width = CGRectGetWidth(portrait);
+  CGFloat height = CGRectGetHeight(portrait);
+  surface.transform = CGAffineTransformIdentity;
+  surface.bounds = self.landscapePresentation
+      ? CGRectMake(0, 0, height, width)
+      : CGRectMake(0, 0, width, height);
+  surface.center = CGPointMake(CGRectGetMidX(portrait), CGRectGetMidY(portrait));
+  if (self.landscapePresentation)
+    surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
+}
+
+- (void)setLandscapePresentation:(BOOL)enabled {
+  _landscapePresentation = enabled;
+  [self.view setNeedsLayout];
+  [self.view layoutIfNeeded];
+}
+
+- (BOOL)engineGeometryIsStable {
+  UIView* surface = self.engineController.view;
+  if (!surface) return NO;
+  CGRect portrait = self.view.bounds;
+  CGSize expected = self.landscapePresentation
+      ? CGSizeMake(CGRectGetHeight(portrait), CGRectGetWidth(portrait))
+      : portrait.size;
+  const CGFloat epsilon = 0.5;
+  BOOL sizeOK = fabs(CGRectGetWidth(surface.bounds) - expected.width) < epsilon &&
+                fabs(CGRectGetHeight(surface.bounds) - expected.height) < epsilon;
+  BOOL rotationOK = self.landscapePresentation
+      ? fabs(surface.transform.b - 1.0) < 0.01 &&
+        fabs(surface.transform.c + 1.0) < 0.01
+      : CGAffineTransformIsIdentity(surface.transform);
+  return sizeOK && rotationOK;
+}
+
+@end
+
+
+static WyrmEngineContainerController* engine_container;
+
 static const char* screen_name(int screen) {
   switch (screen) {
     case TITLE_SCREEN: return "HOME";
@@ -56,24 +141,39 @@ void WyrmIOSSetEnginePresentation(bool enabled) {
       NSLog(@"Wyrm presentation deferred: no connected window");
       return;
     }
-    UIView* surface = window.rootViewController.view;
-    CGRect portrait = window.bounds;
+    if (![window.rootViewController isKindOfClass:WyrmEngineContainerController.class]) {
+      UIViewController* sdlController = window.rootViewController;
+      engine_container = [[WyrmEngineContainerController alloc] init];
+      [engine_container loadViewIfNeeded];
+      window.rootViewController = engine_container;
+      [engine_container installEngineController:sdlController];
+    } else {
+      engine_container = (WyrmEngineContainerController*)window.rootViewController;
+    }
+    [UIView performWithoutAnimation:^{
+      engine_container.landscapePresentation = enabled;
+    }];
+    CGRect portrait = engine_container.view.bounds;
     CGFloat width = CGRectGetWidth(portrait);
     CGFloat height = CGRectGetHeight(portrait);
-    [UIView performWithoutAnimation:^{
-      surface.transform = CGAffineTransformIdentity;
-      surface.bounds = enabled
-          ? CGRectMake(0, 0, height, width)
-          : CGRectMake(0, 0, width, height);
-      surface.center = CGPointMake(CGRectGetMidX(portrait), CGRectGetMidY(portrait));
-      if (enabled) surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
-      [surface setNeedsLayout];
-      [surface layoutIfNeeded];
-    }];
-    SDL_Log("Wyrm iOS presentation=%s os=portrait logical=%.0fx%.0f rotation=%d",
+    SDL_Log("Wyrm iOS presentation=%s os=portrait container=stable-child logical=%.0fx%.0f rotation=%d geometry_ok=%d",
             enabled ? "rotated-landscape" : "portrait",
             enabled ? height : width, enabled ? width : height,
-            enabled ? 90 : 0);
+            enabled ? 90 : 0,
+            engine_container.engineGeometryIsStable ? 1 : 0);
+  });
+}
+
+static void log_engine_geometry(void) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (!engine_container) {
+      SDL_Log("Wyrm iOS persistent geometry: container=missing geometry_ok=0");
+      return;
+    }
+    UIView* surface = engine_container.engineController.view;
+    SDL_Log("Wyrm iOS persistent geometry: container=stable-child child_bounds=%.0fx%.0f geometry_ok=%d",
+            CGRectGetWidth(surface.bounds), CGRectGetHeight(surface.bounds),
+            engine_container.engineGeometryIsStable ? 1 : 0);
   });
 }
 
@@ -150,6 +250,7 @@ static void frame(void* unused) {
               gameplay_frames, own ? own->id : -1, own ? own->sct : 0,
               engine.usr->gdata.data.fps);
     }
+    if (gameplay_frames % 600 == 0) log_engine_geometry();
   }
 }
 
@@ -162,13 +263,13 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
-    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-24/app" isDirectory:YES];
+    NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-25/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {
       NSLog(@"Wyrm storage failed: %@", error); return 1;
     }
     // Versioned immutable assets avoid reusing stale textures after an update.
-    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-24" isDirectory:YES];
+    NSURL* working = [base URLByAppendingPathComponent:@"OriginalEngine-25" isDirectory:YES];
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
