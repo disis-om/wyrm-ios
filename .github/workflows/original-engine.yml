@@ -27,8 +27,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.9.0-build-30-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.9.0-build-30-simulator.app.zip
+          zip -qry Wyrm-0.9.0-build-31-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.9.0-build-31-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -102,7 +102,7 @@ jobs:
           grep 'leaderboard ready' original-artifacts/online-stderr.log
           python3 -c 'import re; s=open("original-artifacts/online-stderr.log").read(); m=re.findall(r"pixel canvas: imgui=(\d+)x(\d+) framebuffer=1\.00x1\.00 drawable=(\d+)x(\d+)",s); assert any(a==c and b==d and int(a)>int(b) for a,b,c,d in m), "online canvas is not one landscape pixel space"'
           grep 'arena frame progress=120' original-artifacts/online-stderr.log
-          grep -E 'persistent geometry: container=stable-child child_bounds=[0-9]+x[0-9]+ geometry_ok=1' original-artifacts/online-stderr.log
+          grep -E 'presentation=rotated-landscape os=portrait container=stable-child .*geometry_ok=1' original-artifacts/online-stderr.log
       - uses: actions/upload-artifact@v4
         if: always()
         with:
