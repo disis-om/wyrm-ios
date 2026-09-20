@@ -27,10 +27,10 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.7.0-build-28-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.7.0-build-28-simulator.app.zip
+          zip -qry Wyrm-0.8.0-build-29-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.8.0-build-29-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase3/BUILD-028-NOTES.md README.md
+          cp ../phase3/BUILD-029-NOTES.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')

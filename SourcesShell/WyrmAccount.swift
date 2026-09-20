@@ -187,6 +187,10 @@ final class WyrmAccountStore: ObservableObject {
     @Published var errorMessage = ""
     private var token: String?
 
+    /// Read-only handoff for the app service store. Views never persist or log it;
+    /// the bearer remains owned by this account object and the device Keychain.
+    var sessionToken: String { token ?? "" }
+
     init() { Task { await restore() } }
 
     func restore() async {
@@ -240,6 +244,12 @@ final class WyrmAccountStore: ObservableObject {
         do { try await WyrmAPI.shared.deleteAccount(token: token); signOut() }
         catch { errorMessage = error.localizedDescription }
         busy = false
+    }
+
+    func refreshProfile() async {
+        guard let token else { return }
+        do { player = try await WyrmAPI.shared.me(token: token) }
+        catch { errorMessage = error.localizedDescription }
     }
 
     private func authenticate(_ action: () async throws -> WyrmAuthEnvelope) async {

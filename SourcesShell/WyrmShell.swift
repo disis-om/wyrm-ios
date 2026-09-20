@@ -445,6 +445,6 @@ final class WyrmShellHost: NSObject {
     @objc static func makeViewController() -> UIViewController {
         WyrmFontLoader.register()
         NSLog("Wyrm SwiftUI shell installed")
-        return UIHostingController(rootView: WyrmAndroidParityRoot())
+        return UIHostingController(rootView: WyrmDesignRoot())
     }
 }
