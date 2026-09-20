@@ -258,6 +258,7 @@ struct WyrmRootTabBar: View {
 
     @GestureState private var dragX: CGFloat = 0
     @State private var lastPreview: WyrmDesignTab?
+    @Namespace private var glassNamespace
 
     var body: some View {
         GeometryReader { proxy in
@@ -265,34 +266,37 @@ struct WyrmRootTabBar: View {
             let width = max(1, proxy.size.width - inset * 2)
             let itemWidth = width / CGFloat(WyrmDesignTab.allCases.count)
             let selectedIndex = CGFloat(WyrmDesignTab.allCases.firstIndex(of: selection) ?? 0)
-            ZStack(alignment: .leading) {
-                WyrmTabGlassSurface()
-                WyrmTabSelectionGlass()
-                    .frame(width: itemWidth - 3, height: 56)
-                    .offset(x: inset + selectedIndex * itemWidth + dragX)
-                    .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
-                    .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
-                HStack(spacing: 0) {
-                    ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
-                        Button { select(tab) } label: {
-                            tabLabel(tab).frame(width: itemWidth, height: 57)
-                        }.buttonStyle(.plain)
+            WyrmGlassGroup {
+                ZStack(alignment: .leading) {
+                    WyrmTabGlassSurface()
+                    WyrmTabSelectionGlass(namespace: glassNamespace)
+                        .frame(width: itemWidth - 3, height: 56)
+                        .offset(x: inset + selectedIndex * itemWidth + dragX)
+                        .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
+                        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
+                    HStack(spacing: 0) {
+                        ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
+                            Button { select(tab) } label: {
+                                tabLabel(tab).frame(width: itemWidth, height: 57)
+                            }.buttonStyle(.plain)
+                        }
                     }
-                }.padding(.horizontal, inset)
-            }
-            .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
-            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
-                .updating($dragX) { value, state, _ in
-                    let start = selectedIndex * itemWidth
-                    state = min(max(value.translation.width, -start), width - itemWidth - start)
-                    preview(at: start + state, itemWidth: itemWidth)
+                    .padding(.horizontal, inset)
                 }
-                .onEnded { value in
-                    let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
-                    let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
-                    select(WyrmDesignTab.allCases[index])
-                    lastPreview = nil
-                })
+                .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+                .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
+                    .updating($dragX) { value, state, _ in
+                        let start = selectedIndex * itemWidth
+                        state = min(max(value.translation.width, -start), width - itemWidth - start)
+                        preview(at: start + state, itemWidth: itemWidth)
+                    }
+                    .onEnded { value in
+                        let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
+                        let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
+                        select(WyrmDesignTab.allCases[index])
+                        lastPreview = nil
+                    })
+            }
         }
         .frame(height: 69)
         .shadow(color: ATheme.ink.opacity(0.14), radius: 22, y: 9)
@@ -353,12 +357,14 @@ private struct WyrmTabGlassSurface: View {
 }
 
 private struct WyrmTabSelectionGlass: View {
+    let namespace: Namespace.ID
     @ViewBuilder
     var body: some View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
                 .glassEffect(.regular.tint(.white.opacity(0.18)).interactive(), in: .rect(cornerRadius: 21))
+                .glassEffectID("wyrm-tab-selection", in: namespace)
         } else {
             fallback
         }
@@ -372,6 +378,22 @@ private struct WyrmTabSelectionGlass: View {
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).fill(Color.white.opacity(0.42)))
             .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(Color.white.opacity(0.92)))
             .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
+    }
+}
+
+private struct WyrmGlassGroup<Content: View>: View {
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    @ViewBuilder var body: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 12) { content }
+        } else {
+            content
+        }
+#else
+        content
+#endif
     }
 }
 

@@ -45,8 +45,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.omrajput.wyrmios
         PRODUCT_NAME: Wyrm
         PRODUCT_BUNDLE_PACKAGE_TYPE: APPL
-        MARKETING_VERSION: "0.11.0"
-        CURRENT_PROJECT_VERSION: "34"
+        MARKETING_VERSION: "0.11.1"
+        CURRENT_PROJECT_VERSION: "35"
         GENERATE_INFOPLIST_FILE: YES
         INFOPLIST_KEY_CFBundleDisplayName: Wyrm
         INFOPLIST_KEY_ITSAppUsesNonExemptEncryption: NO
