@@ -2,7 +2,7 @@ name: Compile original Android engine for Apple
 on:
   workflow_dispatch:
   push:
-    branches: [codex/original-engine-ios]
+    branches: [main]
 permissions:
   contents: read
 jobs:
