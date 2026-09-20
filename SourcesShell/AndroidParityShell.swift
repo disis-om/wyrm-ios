@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-private enum ATheme {
+enum ATheme {
     static let paper = Color(red: 247/255, green: 246/255, blue: 243/255)
     static let card = Color.white
     static let ink = Color(red: 55/255, green: 53/255, blue: 47/255)
@@ -19,7 +19,7 @@ private enum ATheme {
     static let track = Color(red: 239/255, green: 237/255, blue: 232/255)
 }
 
-private extension Font {
+extension Font {
     static func androidWyrm(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .custom("Manrope", size: size).weight(weight)
     }
@@ -39,6 +39,7 @@ private enum SettingsDestination: String, Identifiable {
 
 struct WyrmAndroidParityRoot: View {
     @StateObject private var store = WyrmShellStore()
+    @StateObject private var account = WyrmAccountStore()
     @State private var tab: AndroidRootTab = ProcessInfo.processInfo.arguments.contains("--smoke-settings") ? .settings : .play
     @State private var settingsDestination: SettingsDestination?
 
@@ -46,23 +47,25 @@ struct WyrmAndroidParityRoot: View {
         GeometryReader { viewport in
             ZStack(alignment: .bottom) {
                 ATheme.paper.ignoresSafeArea()
-                if let destination = settingsDestination {
-                    AndroidSettingsDestination(store: store, destination: destination) { settingsDestination = nil }
+                if account.phase != .signedIn {
+                    WyrmAccountGate(account: account, engine: store).zIndex(100)
+                } else if let destination = settingsDestination {
+                    AndroidSettingsDestination(store: store, account: account, destination: destination) { settingsDestination = nil }
                         .frame(width: viewport.size.width)
                         .zIndex(30)
                 } else {
                     Group {
                         switch tab {
                         case .play:
-                            AndroidPlayPage(store: store, openSettings: openSettings)
+                            AndroidPlayPage(store: store, account: account, openSettings: openSettings)
                         case .notifications:
                             AndroidNotificationsPage()
                         case .social:
-                            AndroidSocialPage()
+                            AndroidSocialPage(account: account, openProfile: { openSettings(.profile) })
                         case .skin:
                             AndroidSkinPlaceholder()
                         case .settings:
-                            AndroidSettingsPage(store: store, open: openSettings)
+                            AndroidSettingsPage(store: store, account: account, open: openSettings)
                         }
                     }
                     .frame(width: viewport.size.width)
@@ -97,6 +100,7 @@ struct WyrmAndroidParityRoot: View {
 
 private struct AndroidPlayPage: View {
     @ObservedObject var store: WyrmShellStore
+    @ObservedObject var account: WyrmAccountStore
     let openSettings: (SettingsDestination) -> Void
     @State private var nickname = ""
     @State private var arena = ""
@@ -115,8 +119,8 @@ private struct AndroidPlayPage: View {
                     }
                     Spacer()
                     VStack(alignment: .trailing, spacing: 2) {
-                        Text("Guest player").font(.androidWyrm(13, .bold))
-                        Text("Offline profile").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+                        Text(account.player?.displayName ?? "Wyrm player").font(.androidWyrm(13, .bold))
+                        Text(account.player?.handle ?? "").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
                     }
                     Text(initials).font(.androidWyrm(11, .bold)).foregroundColor(.white)
                         .frame(width: 36, height: 36).background(ATheme.ink).cornerRadius(11)
@@ -153,9 +157,9 @@ private struct AndroidPlayPage: View {
                     }.padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 16)
                     Rectangle().fill(ATheme.rule).frame(height: 1)
                     HStack(spacing: 0) {
-                        AndroidStatCell(label: "BEST SCORE", value: "\(store.score)")
+                        AndroidStatCell(label: "BEST SCORE", value: "\(account.player?.highestScore ?? Int64(store.score))")
                         Rectangle().fill(ATheme.rule).frame(width: 1, height: 52)
-                        AndroidStatCell(label: "TOTAL KILLS", value: "\(store.kills)")
+                        AndroidStatCell(label: "TOTAL KILLS", value: "\(account.player?.kills ?? Int64(store.kills))")
                     }
                 }.background(ATheme.card).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.rule)).padding(.horizontal, 16)
 
@@ -182,7 +186,7 @@ private struct AndroidPlayPage: View {
                 Spacer().frame(height: 20)
             }
         }.onAppear {
-            if nickname.isEmpty { nickname = store.nickname }
+            if nickname.isEmpty { nickname = account.player?.arenaName ?? store.nickname }
             if arena.isEmpty { arena = store.arena }
         }
     }
@@ -216,6 +220,8 @@ private struct AndroidNotificationsPage: View {
 }
 
 private struct AndroidSocialPage: View {
+    @ObservedObject var account: WyrmAccountStore
+    let openProfile: () -> Void
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
@@ -224,8 +230,8 @@ private struct AndroidSocialPage: View {
                     AndroidDoubleRow(icon: "chart.bar.fill", tint: Color(red: 0.61, green: 0.48, blue: 0.24), well: Color(red: 0.96, green: 0.93, blue: 0.89), title: "Leaderboard", detail: "Score and kills", first: true) {}
                     AndroidDoubleRow(icon: "message.fill", tint: Color(red: 0.23, green: 0.37, blue: 0.66), well: Color(red: 0.89, green: 0.91, blue: 0.97), title: "Messages", detail: "No conversations yet") {}
                     AndroidDoubleRow(icon: "waveform", tint: ATheme.live, well: Color(red: 0.90, green: 0.94, blue: 0.91), title: "Voice rooms", detail: "No room joined") {}
-                    AndroidDoubleRow(icon: "person.2.fill", title: "Followers", detail: "0 follow you · 0 followed") {}
-                    AndroidDoubleRow(icon: "person.crop.circle", tint: Color(red: 0.23, green: 0.37, blue: 0.66), well: Color(red: 0.89, green: 0.91, blue: 0.97), title: "Your profile", detail: "Guest player") {}
+                    AndroidDoubleRow(icon: "person.2.fill", title: "Followers", detail: "\(account.player?.followerCount ?? 0) follow you · \(account.player?.followingCount ?? 0) followed") {}
+                    AndroidDoubleRow(icon: "person.crop.circle", tint: Color(red: 0.23, green: 0.37, blue: 0.66), well: Color(red: 0.89, green: 0.91, blue: 0.97), title: "Your profile", detail: account.player?.displayName ?? "Wyrm player", action: openProfile)
                 }
                 AndroidSectionLabel("Recently played with")
                 AndroidGroupedCard {
@@ -254,6 +260,7 @@ private struct AndroidSkinPlaceholder: View {
 
 private struct AndroidSettingsPage: View {
     @ObservedObject var store: WyrmShellStore
+    @ObservedObject var account: WyrmAccountStore
     let open: (SettingsDestination) -> Void
     @State private var confirmReset = false
 
@@ -279,7 +286,7 @@ private struct AndroidSettingsPage: View {
                     ("Food style", "Original, rings and geometric shapes", foodValue, .food),
                 ], open: open)
                 AndroidSettingsSection(title: "Account", rows: [
-                    ("Profile", "Name, username, photo, bio", "Guest", .profile),
+                    ("Profile", "Name, username, avatar, bio", account.player?.handle ?? "", .profile),
                     ("Notifications", "Invites, team pings, follows", "", .notificationSettings),
                     ("Privacy", "Who can reach you, what is stored", "", .privacy),
                 ], open: open)
@@ -287,7 +294,7 @@ private struct AndroidSettingsPage: View {
                     ("Themes", "Paper, dark and colour appearances", "Paper", .themes),
                 ], open: open)
                 AndroidSettingsSection(title: "This device", rows: [
-                    ("Backup & version", "Skins, controls, settings and team keys · Wyrm 0.6.0 · format v\(store.settingsVersion)", "Build 27", .backup),
+                    ("Backup & version", "Skins, controls, settings and team keys · Wyrm 0.7.0 · format v\(store.settingsVersion)", "Build 28", .backup),
                 ], open: open)
                 AndroidGroupedCard {
                     Button {
@@ -326,6 +333,7 @@ private struct AndroidSettingsSection: View {
 
 private struct AndroidSettingsDestination: View {
     @ObservedObject var store: WyrmShellStore
+    @ObservedObject var account: WyrmAccountStore
     let destination: SettingsDestination
     let onBack: () -> Void
     @AppStorage("wyrm.ios.theme") private var chosenTheme = "Paper"
@@ -373,7 +381,9 @@ private struct AndroidSettingsDestination: View {
                                 }.buttonStyle(.plain)
                             }
                         }
-                    } else if destination == .profile || destination == .notificationSettings || destination == .privacy {
+                    } else if destination == .profile {
+                        WyrmProfileView(account: account)
+                    } else if destination == .notificationSettings || destination == .privacy {
                         AndroidSectionLabel(destination.rawValue, top: 18)
                         AndroidGroupedCard {
                             VStack(alignment: .leading, spacing: 6) {
@@ -384,7 +394,7 @@ private struct AndroidSettingsDestination: View {
                     } else if destination == .backup {
                         AndroidSectionLabel("This device", top: 18)
                         AndroidGroupedCard {
-                            AndroidDoubleRow(title: "Wyrm", detail: "iOS native engine", value: "0.6.0 (27)", first: true) {}
+                            AndroidDoubleRow(title: "Wyrm", detail: "iOS native engine", value: "0.7.0 (28)", first: true) {}
                             AndroidDoubleRow(title: "Settings format", detail: "Original engine save", value: store.settingsVersion) {}
                         }
                         AndroidSectionLabel("Reset layouts")

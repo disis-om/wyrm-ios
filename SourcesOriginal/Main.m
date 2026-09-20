@@ -320,21 +320,44 @@ static int engine_main(int argc, char** argv) {
     engine.ms = tmouse_create(engine.wnd);
     engine.ctx = tcontext_create(engine.wnd, engine.config.vsync, engine.config.fif);
     if (!engine.ctx) { SDL_Log("Wyrm original context failed"); return 1; }
-    tinit(&engine);
-    ready = true;
+    bool smoke_ai = false, smoke_lobby = false, smoke_online = false;
     for (int i = 1; i < argc; ++i) {
-      if (!strcmp(argv[i], "--smoke-ai")) WyrmIOSRequestPlay("Apple test", "", true);
-      if (!strcmp(argv[i], "--smoke-lobby")) {
-        WyrmIOSSetEnginePresentation(true);
-        snprintf(engine.usr->usrs.nickname,
-                 sizeof(engine.usr->usrs.nickname), "Apple test");
-        engine.usr->gdata.curr_screen = LOBBY;
-      }
-      if (!strcmp(argv[i], "--smoke-online"))
-        WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
+      if (!strcmp(argv[i], "--smoke-ai")) smoke_ai = true;
+      if (!strcmp(argv[i], "--smoke-lobby")) smoke_lobby = true;
+      if (!strcmp(argv[i], "--smoke-online")) smoke_online = true;
     }
-    if (!SDL_SetiOSAnimationCallback(engine.wnd->handle, 1, frame, NULL)) return 1;
-    SDL_Log("Wyrm original engine initialized; Apple animation callback installed");
+    // The physical-device hang report showed UIKit's launch runloop spending
+    // 552 ms in tinit -> renderer_create -> stbi_load/vkQueueSubmit. Install
+    // the responsive SwiftUI shell first, then perform that immutable renderer
+    // bootstrap away from UIKit's main runloop. The animation callback and all
+    // later engine mutation remain on main after initialization completes.
+    WyrmIOSSetEnginePresentation(false);
+    SDL_Log("Wyrm engine bootstrap scheduled off main thread");
+    CFAbsoluteTime started = CFAbsoluteTimeGetCurrent();
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+      @autoreleasepool {
+        tinit(&engine);
+        CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - started;
+        dispatch_async(dispatch_get_main_queue(), ^{
+          ready = true;
+          if (smoke_ai) WyrmIOSRequestPlay("Apple test", "", true);
+          if (smoke_lobby) {
+            WyrmIOSSetEnginePresentation(true);
+            snprintf(engine.usr->usrs.nickname,
+                     sizeof(engine.usr->usrs.nickname), "Apple test");
+            engine.usr->gdata.curr_screen = LOBBY;
+          }
+          if (smoke_online)
+            WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
+          if (!SDL_SetiOSAnimationCallback(engine.wnd->handle, 1, frame, NULL)) {
+            SDL_Log("Wyrm animation callback failed: %s", SDL_GetError());
+            return;
+          }
+          SDL_Log("Wyrm engine bootstrap completed off main thread in %.0f ms; Apple animation callback installed",
+                  elapsed * 1000.0);
+        });
+      }
+    });
     return 0;
   }
 }

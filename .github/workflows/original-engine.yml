@@ -20,24 +20,24 @@ jobs:
         run: |
           set -o pipefail
           for sdk in iphoneos iphonesimulator; do
-            xcodebuild -project WyrmOriginalEngine.xcodeproj -scheme WyrmOriginal -configuration Debug -sdk "$sdk" -derivedDataPath "build-original-$sdk" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "original-$sdk.log"
+            xcodebuild -project WyrmOriginalEngine.xcodeproj -scheme WyrmOriginal -configuration Release -sdk "$sdk" -derivedDataPath "build-original-$sdk" CODE_SIGNING_ALLOWED=NO build 2>&1 | tee "original-$sdk.log"
           done
       - name: Package device and Appetize builds
         run: |
           mkdir -p original-artifacts/Payload
-          ditto build-original-iphoneos/Build/Products/Debug-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
+          ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.6.0-build-27-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app Wyrm-0.6.0-build-27-simulator.app.zip
+          zip -qry Wyrm-0.7.0-build-28-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.7.0-build-28-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase2/BUILD-027-NOTES.md README.md
+          cp ../phase3/BUILD-028-NOTES.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')
           xcrun simctl boot "$DEVICE"
           xcrun simctl bootstatus "$DEVICE" -b
           echo "WYRM_SIMULATOR=$DEVICE" >> "$GITHUB_ENV"
-          xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Debug-iphonesimulator/Wyrm.app
+          xcrun simctl install "$DEVICE" build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app
           xcrun simctl launch --stdout="$PWD/original-artifacts/home-stdout.log" --stderr="$PWD/original-artifacts/home-stderr.log" "$DEVICE" com.omrajput.wyrmios
           sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-home.png
@@ -49,6 +49,8 @@ jobs:
           sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-settings.png
           grep 'Wyrm SwiftUI shell installed' original-artifacts/settings-stderr.log
+          grep 'Wyrm engine bootstrap scheduled off main thread' original-artifacts/settings-stderr.log
+          grep -E 'Wyrm engine bootstrap completed off main thread in [0-9]+ ms' original-artifacts/settings-stderr.log
           grep -E 'Wyrm SwiftUI settings bridge verified rows=[1-9][0-9]* id=general.minimap_size' original-artifacts/settings-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/lobby-stdout.log" --stderr="$PWD/original-artifacts/lobby-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-lobby
