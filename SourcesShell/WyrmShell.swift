@@ -82,11 +82,25 @@ final class WyrmShellStore: ObservableObject {
         }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--smoke-settings-write") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-                guard let self = self,
-                      let row = self.settings.first(where: { $0.id == "general.minimap_size" }) else { return }
+            verifySmokeSettingsWrite(attemptsRemaining: 20)
+        }
+    }
+
+    /// Release builds intentionally initialize the atlas and Vulkan renderer
+    /// away from UIKit's launch runloop. The settings mailbox becomes ready at
+    /// the end of that bootstrap, so the smoke probe waits for real data rather
+    /// than racing a fixed one-second deadline.
+    private func verifySmokeSettingsWrite(attemptsRemaining: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+            guard let self = self else { return }
+            self.refresh()
+            if let row = self.settings.first(where: { $0.id == "general.minimap_size" }) {
                 self.write(row, values: row.values)
                 NSLog("Wyrm SwiftUI settings bridge verified rows=%d id=%@", self.settings.count, row.id)
+            } else if attemptsRemaining > 1 {
+                self.verifySmokeSettingsWrite(attemptsRemaining: attemptsRemaining - 1)
+            } else {
+                NSLog("Wyrm SwiftUI settings bridge unavailable after bootstrap wait")
             }
         }
     }
