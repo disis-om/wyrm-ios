@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum WyrmDesignTab: String, CaseIterable {
     case alerts = "Alerts"
@@ -8,7 +9,7 @@ enum WyrmDesignTab: String, CaseIterable {
     case settings = "Settings"
 }
 
-enum WyrmDesignRoute: Identifiable {
+enum WyrmDesignRoute: Identifiable, Equatable {
     case leaderboard
     case messages
     case thread(String)
@@ -16,6 +17,7 @@ enum WyrmDesignRoute: Identifiable {
     case profile(String)
     case editProfile
     case voice
+    case voiceVerification
     case room(String)
     case call(String)
     case lobby
@@ -48,6 +50,7 @@ enum WyrmDesignRoute: Identifiable {
         case .profile(let id): return "profile-\(id)"
         case .editProfile: return "edit-profile"
         case .voice: return "voice"
+        case .voiceVerification: return "voice-verification"
         case .room(let id): return "room-\(id)"
         case .call(let id): return "call-\(id)"
         case .lobby: return "lobby"
@@ -160,10 +163,20 @@ struct WyrmListRow: View {
 struct WyrmAvatar: View {
     let initials: String
     var size: CGFloat = 38
+    var url = ""
     var body: some View {
-        Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(.white)
-            .frame(width: size, height: size).background(ATheme.ink).clipShape(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
-            .accessibilityLabel("Player avatar")
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(ATheme.ink)
+            Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(.white)
+            if let remote = URL(string: url), !url.isEmpty {
+                AsyncImage(url: remote) { phase in
+                    if case .success(let image) = phase { image.resizable().scaledToFill() }
+                }
+            }
+        }
+        .frame(width: size, height: size)
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.3, style: .continuous))
+        .accessibilityLabel("Player avatar")
     }
 }
 
@@ -230,7 +243,7 @@ struct WyrmDetailChrome<Content: View>: View {
                         if !actionTitle.isEmpty { Button(actionTitle) { action?() }.font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link) }
                     }
                     Text(title).font(.androidWyrm(16, .semibold))
-                }.padding(.horizontal, 18).frame(height: 52).background(.ultraThinMaterial)
+                }.padding(.horizontal, 18).frame(height: 52).background(ATheme.paper.opacity(0.97))
                 Rectangle().fill(ATheme.rule).frame(height: 1)
                 content
             }
@@ -243,34 +256,139 @@ struct WyrmRootTabBar: View {
     let unread: Int
     private let icons: [WyrmDesignTab: String] = [.alerts: "bell.badge", .social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
 
+    @GestureState private var dragX: CGFloat = 0
+    @State private var lastPreview: WyrmDesignTab?
+
     var body: some View {
-        HStack(spacing: 0) {
-            ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
-                Button {
-                    withAnimation(.easeOut(duration: 0.2)) { selection = tab }
-                } label: {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 23 : 19, weight: selection == tab ? .semibold : .regular))
-                            if tab == .alerts && unread > 0 {
-                                Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(.white)
-                                    .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
-                            }
-                        }
-                        Text(tab.rawValue).font(.androidWyrm(9, selection == tab ? .bold : .medium)).lineLimit(1)
+        GeometryReader { proxy in
+            let inset: CGFloat = 6
+            let width = max(1, proxy.size.width - inset * 2)
+            let itemWidth = width / CGFloat(WyrmDesignTab.allCases.count)
+            let selectedIndex = CGFloat(WyrmDesignTab.allCases.firstIndex(of: selection) ?? 0)
+            ZStack(alignment: .leading) {
+                WyrmTabGlassSurface()
+                WyrmTabSelectionGlass()
+                    .frame(width: itemWidth - 3, height: 56)
+                    .offset(x: inset + selectedIndex * itemWidth + dragX)
+                    .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
+                    .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
+                HStack(spacing: 0) {
+                    ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
+                        Button { select(tab) } label: {
+                            tabLabel(tab).frame(width: itemWidth, height: 57)
+                        }.buttonStyle(.plain)
                     }
-                    .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
-                    .frame(maxWidth: .infinity).frame(height: 57)
-                    .background(selection == tab ? Color.white.opacity(0.75) : .clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }.buttonStyle(.plain)
+                }.padding(.horizontal, inset)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
+                .updating($dragX) { value, state, _ in
+                    let start = selectedIndex * itemWidth
+                    state = min(max(value.translation.width, -start), width - itemWidth - start)
+                    preview(at: start + state, itemWidth: itemWidth)
+                }
+                .onEnded { value in
+                    let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
+                    let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
+                    select(WyrmDesignTab.allCases[index])
+                    lastPreview = nil
+                })
         }
-        .padding(6).background(.ultraThinMaterial).clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 25, style: .continuous).stroke(Color.white.opacity(0.75)))
-        .shadow(color: ATheme.ink.opacity(0.12), radius: 20, y: 8)
-        .padding(.horizontal, 12).padding(.bottom, 4)
+        .frame(height: 69)
+        .shadow(color: ATheme.ink.opacity(0.14), radius: 22, y: 9)
+        .padding(.horizontal, 12)
     }
+
+    private func tabLabel(_ tab: WyrmDesignTab) -> some View {
+        VStack(spacing: 4) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 23 : 19, weight: selection == tab ? .semibold : .regular))
+                if tab == .alerts && unread > 0 {
+                    Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(.white)
+                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
+                }
+            }
+            Text(tab.rawValue).font(.androidWyrm(9, selection == tab ? .bold : .medium)).lineLimit(1)
+        }
+        .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
+        .animation(.easeOut(duration: 0.16), value: selection)
+    }
+
+    private func select(_ tab: WyrmDesignTab) {
+        guard selection != tab else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.72, blendDuration: 0.14)) { selection = tab }
+    }
+
+    private func preview(at x: CGFloat, itemWidth: CGFloat) {
+        let index = min(max(Int((x / itemWidth).rounded()), 0), WyrmDesignTab.allCases.count - 1)
+        let tab = WyrmDesignTab.allCases[index]
+        guard tab != lastPreview else { return }
+        lastPreview = tab
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+}
+
+private struct WyrmTabGlassSurface: View {
+    @ViewBuilder
+    var body: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 27))
+                .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(Color.white.opacity(0.64), lineWidth: 0.7))
+        } else {
+            fallback
+        }
+#else
+        fallback
+#endif
+    }
+    private var fallback: some View {
+        RoundedRectangle(cornerRadius: 27, style: .continuous)
+            .fill(.ultraThinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).fill(Color.white.opacity(0.16)))
+            .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(Color.white.opacity(0.82), lineWidth: 0.8))
+    }
+}
+
+private struct WyrmTabSelectionGlass: View {
+    @ViewBuilder
+    var body: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            Color.clear
+                .glassEffect(.regular.tint(.white.opacity(0.18)).interactive(), in: .rect(cornerRadius: 21))
+        } else {
+            fallback
+        }
+#else
+        fallback
+#endif
+    }
+    private var fallback: some View {
+        RoundedRectangle(cornerRadius: 21, style: .continuous)
+            .fill(.thinMaterial)
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).fill(Color.white.opacity(0.42)))
+            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(Color.white.opacity(0.92)))
+            .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
+    }
+}
+
+extension AnyTransition {
+    static var wyrmCinematicPush: AnyTransition {
+        .asymmetric(
+            insertion: .modifier(active: WyrmCinematicModifier(offset: 52, blur: 16, opacity: 0), identity: WyrmCinematicModifier(offset: 0, blur: 0, opacity: 1)),
+            removal: .modifier(active: WyrmCinematicModifier(offset: 38, blur: 12, opacity: 0), identity: WyrmCinematicModifier(offset: 0, blur: 0, opacity: 1))
+        )
+    }
+}
+
+private struct WyrmCinematicModifier: ViewModifier {
+    let offset: CGFloat
+    let blur: CGFloat
+    let opacity: Double
+    func body(content: Content) -> some View { content.offset(x: offset).blur(radius: blur).opacity(opacity) }
 }
 
 extension Int64 {

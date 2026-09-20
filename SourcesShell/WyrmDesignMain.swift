@@ -5,7 +5,7 @@ struct WyrmDesignMain: View {
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
     @State private var tab: WyrmDesignTab
-    @State private var route: WyrmDesignRoute?
+    @State private var routes: [WyrmDesignRoute]
 
     init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore,
          initialTab: WyrmDesignTab, initialRoute: WyrmDesignRoute? = nil) {
@@ -13,7 +13,7 @@ struct WyrmDesignMain: View {
         self.account = account
         self.services = services
         _tab = State(initialValue: initialTab)
-        _route = State(initialValue: initialRoute)
+        _routes = State(initialValue: initialRoute.map { [$0] } ?? [])
     }
 
     var body: some View {
@@ -28,24 +28,47 @@ struct WyrmDesignMain: View {
                     case .skin: WyrmSkinRoot(open: open)
                     case .settings: WyrmSettingsRoot(engine: engine, account: account, open: open)
                     }
-                }.frame(width: proxy.size.width).padding(.bottom, 76)
-                WyrmRootTabBar(selection: $tab, unread: services.unreadCount).frame(width: proxy.size.width).zIndex(10)
-                if let route {
-                    WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { self.route = nil }, open: open)
-                        .frame(width: proxy.size.width, height: proxy.size.height).zIndex(30)
-                        .transition(.move(edge: .trailing).combined(with: .opacity))
+                }
+                .id(tab)
+                .transition(.opacity.combined(with: .scale(scale: 0.985)))
+                .frame(width: proxy.size.width)
+                .padding(.top, proxy.safeAreaInsets.top)
+                .padding(.bottom, 71 + max(2, proxy.safeAreaInsets.bottom * 0.14))
+
+                WyrmRootTabBar(selection: $tab, unread: services.unreadCount)
+                    .frame(width: proxy.size.width)
+                    .padding(.bottom, max(2, proxy.safeAreaInsets.bottom * 0.14))
+                    .zIndex(10)
+
+                ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
+                    WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
+                        .frame(width: proxy.size.width, height: max(1, proxy.size.height - proxy.safeAreaInsets.top))
+                        .padding(.top, proxy.safeAreaInsets.top)
+                        .zIndex(Double(30 + index))
+                        .transition(.wyrmCinematicPush)
+                        .allowsHitTesting(index == routes.count - 1)
                 }
                 if !services.errorMessage.isEmpty || !engine.toast.isEmpty {
                     Text(!engine.toast.isEmpty ? engine.toast : services.errorMessage)
                         .font(.androidWyrm(11.5, .semibold)).foregroundColor(.white).lineLimit(2)
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
-                        .padding(.horizontal, 20).padding(.bottom, route == nil ? 84 : 18).zIndex(50)
+                        .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
                 }
-            }.clipped()
-        }.foregroundColor(ATheme.ink)
+            }.clipped().ignoresSafeArea()
+        }.foregroundColor(ATheme.ink).background(ATheme.paper.ignoresSafeArea())
     }
 
-    private func open(_ value: WyrmDesignRoute) { withAnimation(.easeOut(duration: 0.24)) { route = value } }
+    private func open(_ value: WyrmDesignRoute) {
+        guard routes.last != value else { return }
+        withAnimation(.interactiveSpring(response: 0.44, dampingFraction: 0.84, blendDuration: 0.12)) { routes.append(value) }
+    }
+
+    private func pop(_ value: WyrmDesignRoute) {
+        guard let index = routes.lastIndex(of: value) else { return }
+        withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.1)) {
+            routes.removeSubrange(index..<routes.endIndex)
+        }
+    }
 }
 
 private struct WyrmPlayRoot: View {
@@ -57,7 +80,11 @@ private struct WyrmPlayRoot: View {
     @State private var arena = ""
     @State private var showArenas = false
 
-    private var nearest: WyrmArena? { services.arenas.first }
+    private var nearest: WyrmArena? {
+        if let selected = services.arenas.first(where: { $0.endpoint == arena }) { return selected }
+        let reachable = services.arenas.filter { services.arenaLatencies[$0.id] != nil }
+        return reachable.min { (services.arenaLatencies[$0.id] ?? .max) < (services.arenaLatencies[$1.id] ?? .max) } ?? services.arenas.first
+    }
     private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
     private var food: String { engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original" }
 
@@ -71,25 +98,29 @@ private struct WyrmPlayRoot: View {
                         Text("Tap to rename in-game name").font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet.opacity(0.55))
                     }
                     Spacer()
-                    VStack(alignment: .trailing, spacing: 1) {
-                        Text(account.player?.displayName ?? "Wyrm").font(.androidWyrm(12, .bold))
-                        Text(account.player?.handle ?? "").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
-                    }
-                    WyrmAvatar(initials: account.player?.initials ?? "W", size: 36)
+                    Button { open(.profile("")) } label: {
+                        HStack(spacing: 9) {
+                            VStack(alignment: .trailing, spacing: 1) {
+                                Text(account.player?.displayName ?? "Wyrm").font(.androidWyrm(12, .bold))
+                                Text(account.player?.handle ?? "").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                            }
+                            WyrmAvatar(initials: account.player?.initials ?? "W", size: 36, url: account.player?.avatarURL ?? "")
+                        }.foregroundColor(ATheme.ink)
+                    }.buttonStyle(.plain)
                 }.padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 15)
 
                 WyrmPaperCard {
                     VStack(alignment: .leading, spacing: 0) {
-                        HStack(spacing: 6) { Circle().fill(nearest == nil ? ATheme.quiet : ATheme.live).frame(width: 6, height: 6); Text(nearest == nil ? "ARENA DIRECTORY" : "BUSIEST LIVE ARENA").font(.androidWyrm(10.5, .bold)).tracking(0.8).foregroundColor(nearest == nil ? ATheme.quiet : ATheme.live) }
+                        HStack(spacing: 6) { Circle().fill(nearest == nil ? ATheme.quiet : ATheme.live).frame(width: 6, height: 6); Text(nearest == nil ? "ARENA DIRECTORY" : "LIVE ARENA").font(.androidWyrm(10.5, .bold)).tracking(0.8).foregroundColor(nearest == nil ? ATheme.quiet : ATheme.live) }
                         HStack(alignment: .bottom) {
-                            Text(nearest?.title ?? "Pick a server").font(.androidWyrm(21, .bold)).lineLimit(1)
+                            Text(nearest.map { "Arena \($0.code)" } ?? "Pick a server").font(.androidWyrm(21, .bold)).lineLimit(1)
                             Spacer()
                             Text(nearest == nil ? "" : "\(nearest!.players) players").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
                         }.padding(.top, 11)
                         Text(nearest?.endpoint ?? "Choose a live arena or enter an address.").font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).padding(.top, 3)
                         GeometryReader { geometry in ZStack(alignment: .leading) { Capsule().fill(ATheme.track); Capsule().fill(ATheme.ink).frame(width: geometry.size.width * min(1, CGFloat(nearest?.players ?? 0) / 2000)) } }.frame(height: 4).padding(.top, 13)
                         HStack(spacing: 9) {
-                            Button { open(.lobby) } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(.white).frame(maxWidth: .infinity).frame(height: 46).background(ATheme.ink).cornerRadius(11) }.buttonStyle(.plain)
+                            Button { enterOriginalLobby() } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(.white).frame(maxWidth: .infinity).frame(height: 46).background(nearest == nil ? ATheme.ink.opacity(0.35) : ATheme.ink).cornerRadius(11) }.buttonStyle(.plain).disabled(nearest == nil)
                             Button { showArenas = true } label: { Image(systemName: "globe.asia.australia.fill").foregroundColor(ATheme.mute).frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule)) }.buttonStyle(.plain)
                         }.padding(.top, 16)
                     }.padding(18)
@@ -110,15 +141,27 @@ private struct WyrmPlayRoot: View {
 
                 WyrmSectionLabel("Rooms & team")
                 WyrmPaperCard {
-                    WyrmListRow(title: "Your public room", detail: services.liveRooms.first?.name ?? "No room joined", value: services.liveRooms.first.map { "\($0.activeCount) live" } ?? "", showsChevron: true) { open(.voice) }
-                    WyrmListRow(title: "Pick a server", detail: arena.isEmpty ? "\(services.arenas.count) live arenas" : arena, value: arena.isEmpty ? "\(services.arenas.count) nearby" : "", icon: "network") { showArenas = true }
+                    WyrmListRow(title: "Voice rooms", detail: services.liveRooms.first?.name ?? "Own and community rooms", value: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
                     WyrmListRow(title: "Team mode", detail: "Original engine team layer", value: "Open", icon: "person.3.fill", tint: ATheme.live) { open(.team) }
                 }
                 Spacer().frame(height: 24)
             }
         }
         .onAppear { if nickname.isEmpty { nickname = account.player?.arenaName ?? engine.nickname }; if arena.isEmpty { arena = engine.arena } }
+        .onChange(of: nearest?.endpoint) { value in if arena.isEmpty, let value { arena = value } }
+        .task {
+            while !Task.isCancelled {
+                await services.refreshArenasLive()
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
         .sheet(isPresented: $showArenas) { WyrmArenaPicker(services: services, selection: $arena) }
+    }
+
+    private func enterOriginalLobby() {
+        guard let selected = nearest else { return }
+        arena = selected.endpoint
+        engine.enterLobby(name: nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname, address: selected.endpoint)
     }
 }
 
@@ -131,25 +174,44 @@ private struct WyrmArenaPicker: View {
     @ObservedObject var services: WyrmServiceStore
     @Binding var selection: String
     @Environment(\.presentationMode) private var presentation
-    @State private var manual = ""
     @State private var search = ""
 
     private var filtered: [WyrmArena] { search.isEmpty ? services.arenas : services.arenas.filter { $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search) } }
     var body: some View {
-        NavigationView {
-            ZStack {
-                WyrmPaperBackground()
-                List {
-                    Section("Manual") {
-                        TextField("IP:port", text: $manual).textInputAutocapitalization(.never).disableAutocorrection(true)
-                        Button("Use this server") { let clean = manual.trimmingCharacters(in: .whitespacesAndNewlines); if !clean.isEmpty { selection = clean; presentation.wrappedValue.dismiss() } }
-                    }
-                    Section("Live directory") {
-                        ForEach(filtered) { arena in Button { selection = arena.endpoint; presentation.wrappedValue.dismiss() } label: { VStack(alignment: .leading, spacing: 3) { HStack { Text(arena.title); Spacer(); Text("\(arena.players)").foregroundColor(ATheme.live) }; Text(arena.endpoint).font(.caption).foregroundColor(.secondary) } } }
-                    }
-                }.listStyle(.insetGrouped).searchable(text: $search, prompt: "Arena or address")
-            }.navigationTitle("Pick a server").toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { presentation.wrappedValue.dismiss() } } }
+        ZStack {
+            WyrmPaperBackground()
+            VStack(spacing: 0) {
+                HStack(alignment: .bottom) {
+                    VStack(alignment: .leading, spacing: 2) { Text("LIVE DIRECTORY").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.live); Text("Pick a server").font(.androidWyrm(27, .bold)) }
+                    Spacer(); Button("Close") { presentation.wrappedValue.dismiss() }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                }.padding(20)
+                HStack { Image(systemName: "magnifyingglass"); TextField("Arena code or IP", text: $search).textInputAutocapitalization(.never).disableAutocorrection(true) }
+                    .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(Color.white.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)
+                ScrollView(showsIndicators: false) {
+                    LazyVStack(spacing: 9) {
+                        ForEach(filtered) { arena in
+                            Button { selection = arena.endpoint; presentation.wrappedValue.dismiss() } label: {
+                                HStack(spacing: 12) {
+                                    VStack(alignment: .leading, spacing: 3) { Text("Arena \(arena.code)").font(.androidWyrm(15, .bold)); Text(arena.endpoint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 3) { Text("\(arena.players) players").font(.androidWyrm(11.5, .semibold)); Text(latencyText(arena)).font(.androidWyrm(11, .bold)).foregroundColor(latencyColor(arena)) }
+                                }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(selection == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: selection == arena.endpoint ? 2 : 1))
+                            }.buttonStyle(.plain)
+                        }
+                    }.padding(16)
+                }
+            }
         }
+        .task { while !Task.isCancelled { await services.refreshArenasLive(); try? await Task.sleep(nanoseconds: 1_000_000_000) } }
+    }
+
+    private func latencyText(_ arena: WyrmArena) -> String { services.arenaLatencies[arena.id].map { "\($0)ms" } ?? "measuring" }
+    private func latencyColor(_ arena: WyrmArena) -> Color {
+        guard let value = services.arenaLatencies[arena.id], !services.arenaLatencies.isEmpty else { return ATheme.quiet }
+        let values = services.arenaLatencies.values
+        let low = values.min() ?? value, high = values.max() ?? value
+        let ratio = high == low ? 0 : Double(value - low) / Double(high - low)
+        return Color(red: 0.18 + 0.68 * ratio, green: 0.68 - 0.45 * ratio, blue: 0.27 - 0.08 * ratio)
     }
 }
 
@@ -165,14 +227,14 @@ private struct WyrmSocialRoot: View {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link) { open(.messages) }
                     WyrmListRow(title: "Voice rooms", detail: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
-                    WyrmListRow(title: "Followers", detail: "\(account.player?.followerCount ?? 0) · \(account.player?.followingCount ?? 0) following", icon: "person.2") { open(.people("followers")) }
+                    WyrmListRow(title: "Connections", detail: "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following", icon: "person.2") { open(.people("connections")) }
                     WyrmListRow(title: "Your profile", detail: account.player?.handle ?? "", icon: "person.crop.circle.fill") { open(.profile("")) }
                 }
                 WyrmSectionLabel("Recently played with")
                 WyrmPaperCard { WyrmEmptyPanel(title: "Your arena circle starts here", note: "Players from real conversations and follows appear here.") }
                 Spacer().frame(height: 22)
             }
-        }.refreshable { await services.bootstrap(token: account.sessionToken) }
+        }.refreshable { await services.bootstrap(token: account.sessionToken, playerID: account.player?.id) }
     }
     private var messageDetail: String { let unread = services.conversations.reduce(0) { $0 + $1.unreadCount }; return unread == 0 ? "No unread messages" : "\(unread) unread" }
     private var leaderboardDetail: String { guard let id = account.player?.id, let rank = services.killLeaders.firstIndex(where: { $0.id == id }) else { return "Score and kills" }; return "You are \(rank + 1) by kills" }
@@ -254,7 +316,7 @@ private struct WyrmSettingsRoot: View {
                 section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
                 section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
                 section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.10.1 · 33", .backup)])
+                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.11.0 · 34", .backup)])
                 VStack(spacing: 0) {
                     WyrmSectionLabel("Developer")
                     WyrmPaperCard {

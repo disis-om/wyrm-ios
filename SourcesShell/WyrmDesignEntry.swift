@@ -47,7 +47,7 @@ struct WyrmDesignRoot: View {
         .background(ATheme.paper.ignoresSafeArea())
         .task(id: account.player?.id) {
             guard account.phase == .signedIn else { return }
-            await services.bootstrap(token: account.sessionToken)
+            await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
         }
     }
 }

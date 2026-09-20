@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.10.1 (build 33)** and targets **iOS 15 or newer**.
+**0.11.0 (build 34)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -23,12 +23,18 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Full-screen cinematic username/password account creation and login, with
   live debounced username availability, keyboard-safe actions, password-match
   feedback, and no Google dependency or separate onboarding sequence.
-- Play, Alerts, Social, Skin and Settings product surfaces.
+- Full-bleed Play, Alerts, Social, Skin and Settings product surfaces with a
+  draggable glass navigation control and one-level-at-a-time route stacking.
 - Original Wyrm C gameplay and network engine—not a Swift reimplementation.
 - SDL3 window/input integration and Vulkan rendering through MoltenVK/Metal.
 - Original landscape lobby and arena inside a portrait-owned iOS application.
-- Live backend integration for profiles, notifications, leaderboards, people,
-  direct conversations and voice-room control operations.
+- Live backend integration for profiles and avatars, notifications,
+  leaderboards, connections, mutual direct conversations and voice-room
+  control operations.
+- One-second arena directory updates, real TCP latency measurements, four-digit
+  arena codes, and direct handoff from Play into the original C lobby.
+- Email-code voice verification plus separately presented official Wyrm rooms
+  and player-created rooms.
 - Native engine settings and on-screen controls connected through a narrow,
   thread-safe Swift/C bridge.
 - Opt-in Developer Mode with bounded local logs and native iOS Share Sheet
@@ -60,8 +66,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.10.1-build-33-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.10.1-build-33-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.11.0-build-34-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.11.0-build-34-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution
@@ -91,6 +97,7 @@ signing material is never stored in this repository.
 ## Current limitations
 
 Physical-device acceptance, live skin application, realtime voice audio, APNs,
-avatar upload and Files-based backup/restore remain in development. CI success
+avatar upload and Files-based backup/restore remain in development. Voice room
+authority and verification are wired; the realtime media adapter is not. CI success
 proves Apple compilation and Simulator behavior; it is not a physical-device or
 App Store acceptance claim.

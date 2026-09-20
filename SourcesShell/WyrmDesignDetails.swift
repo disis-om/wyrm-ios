@@ -11,12 +11,13 @@ struct WyrmDetailHost: View {
     var body: some View {
         switch route {
         case .leaderboard: WyrmLeaderboardDetail(services: services, close: close, open: open)
-        case .messages: WyrmMessagesDetail(services: services, close: close, open: open)
+        case .messages: WyrmMessagesDetail(account: account, services: services, close: close, open: open)
         case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close)
         case .people(let kind): WyrmPeopleDetail(kind: kind, account: account, services: services, close: close, open: open)
         case .profile(let id): WyrmProfileDetail(playerID: id, account: account, services: services, close: close, open: open)
         case .editProfile: WyrmEditProfileDetail(account: account, close: close)
         case .voice: WyrmVoiceDetail(services: services, close: close, open: open)
+        case .voiceVerification: WyrmVoiceVerificationDetail(services: services, close: close)
         case .room(let id): WyrmRoomDetail(roomID: id, services: services, close: close, open: open)
         case .call(let id): WyrmCallDetail(roomID: id, services: services, close: close)
         case .lobby: WyrmLobbyDetail(engine: engine, account: account, services: services, close: close)
@@ -49,7 +50,7 @@ private struct WyrmLeaderboardDetail: View {
                             Button { open(.profile(player.id)) } label: {
                                 HStack(spacing: 12) {
                                     Text("\(index + 1)").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.quiet).frame(width: 24)
-                                    WyrmAvatar(initials: player.initials, size: 35)
+                                    WyrmAvatar(initials: player.initials, size: 35, url: player.avatarURL)
                                     VStack(alignment: .leading, spacing: 2) { Text(player.displayName).font(.androidWyrm(14.5, .semibold)); Text(player.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
                                     Spacer()
                                     Text((sort == 0 ? player.highestScore : player.kills).wyrmFormatted).font(.androidWyrm(14, .bold))
@@ -65,6 +66,7 @@ private struct WyrmLeaderboardDetail: View {
 }
 
 private struct WyrmMessagesDetail: View {
+    @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
@@ -79,9 +81,25 @@ private struct WyrmMessagesDetail: View {
                             WyrmListRow(title: row.player.displayName, detail: row.lastMessage.isEmpty ? "No messages yet" : row.lastMessage, value: row.unreadCount > 0 ? "\(row.unreadCount)" : "", icon: "person.crop.circle.fill", tint: ATheme.link) { open(.thread(row.player.id)) }
                         }
                     }
-                    WyrmOutlineAction(title: "Message someone new") { open(.people("search")) }.padding(16)
+                    if !services.messageCandidates.isEmpty {
+                        WyrmSectionLabel("People you can message")
+                        WyrmPaperCard {
+                            ForEach(services.messageCandidates) { person in
+                                Button { open(.thread(person.id)) } label: {
+                                    HStack(spacing: 12) {
+                                        WyrmAvatar(initials: person.initials, size: 35, url: person.avatarURL)
+                                        VStack(alignment: .leading, spacing: 2) { Text(person.displayName).font(.androidWyrm(14.5, .semibold)); Text(person.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
+                                        Spacer(); Image(systemName: "message.fill").foregroundColor(ATheme.link)
+                                    }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 56)
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                    }
+                    Spacer().frame(height: 24)
                 }
-            }.refreshable { await services.refreshConversations() }
+            }
+            .task { if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
+            .refreshable { await services.refreshConversations(); if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
         }
     }
 }
@@ -92,7 +110,7 @@ private struct WyrmThreadDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     @State private var message = ""
-    private var person: WyrmServicePlayer? { services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.people.first(where: { $0.id == playerID }) }
+    private var person: WyrmServicePlayer? { services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) }
     var body: some View {
         WyrmDetailChrome(title: person?.displayName ?? "Message", onBack: close) {
             VStack(spacing: 0) {
@@ -124,6 +142,9 @@ private struct WyrmPeopleDetail: View {
     let open: (WyrmDesignRoute) -> Void
     @State private var query = ""
     var body: some View {
+        if kind == "connections" {
+            WyrmConnectionsDetail(account: account, services: services, close: close, open: open)
+        } else {
         WyrmDetailChrome(title: kind == "following" ? "Following" : kind == "search" ? "People" : "Followers", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
@@ -136,6 +157,41 @@ private struct WyrmPeopleDetail: View {
                 }
             }.task { if kind != "search", let id = account.player?.id { await services.loadConnections(playerID: id, kind: kind) } }
         }
+        }
+    }
+}
+
+private struct WyrmConnectionsDetail: View {
+    @ObservedObject var account: WyrmAccountStore
+    @ObservedObject var services: WyrmServiceStore
+    let close: () -> Void
+    let open: (WyrmDesignRoute) -> Void
+    @State private var page = 0
+    var body: some View {
+        WyrmDetailChrome(title: "Connections", onBack: close) {
+            VStack(spacing: 0) {
+                HStack(spacing: 5) {
+                    segment("Followers", index: 0, count: services.followers.count)
+                    segment("Following", index: 1, count: services.following.count)
+                }.padding(6).background(Color.white.opacity(0.72)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.rule)).padding(16)
+                TabView(selection: $page) {
+                    connectionList(services.followers, empty: "No followers yet").tag(0)
+                    connectionList(services.following, empty: "Not following anyone yet").tag(1)
+                }.tabViewStyle(.page(indexDisplayMode: .never))
+            }
+            .task { if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
+        }
+    }
+    private func segment(_ title: String, index: Int, count: Int) -> some View {
+        Button { withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.8)) { page = index } } label: {
+            HStack(spacing: 5) { Text(title); Text("\(count)").foregroundColor(ATheme.quiet) }.font(.androidWyrm(12.5, page == index ? .bold : .medium)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity).frame(height: 38).background(page == index ? Color.white : .clear).cornerRadius(12)
+        }.buttonStyle(.plain)
+    }
+    private func connectionList(_ rows: [WyrmServicePlayer], empty: String) -> some View {
+        ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmPaperCard {
+            if rows.isEmpty { WyrmEmptyPanel(title: empty, note: "Connections update from your Wyrm account.") }
+            ForEach(rows) { person in Button { open(.profile(person.id)) } label: { HStack(spacing: 12) { WyrmAvatar(initials: person.initials, size: 36, url: person.avatarURL); VStack(alignment: .leading, spacing: 2) { Text(person.displayName).font(.androidWyrm(14.5, .semibold)); Text(person.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }; Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58) }.buttonStyle(.plain) }
+        }; Spacer().frame(height: 24) } }
     }
 }
 
@@ -146,12 +202,12 @@ private struct WyrmProfileDetail: View {
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     private var own: Bool { playerID.isEmpty || playerID == account.player?.id }
-    private var servicePlayer: WyrmServicePlayer? { services.people.first(where: { $0.id == playerID }) ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
+    private var servicePlayer: WyrmServicePlayer? { services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
     var body: some View {
         WyrmDetailChrome(title: "Profile", actionTitle: own ? "Edit" : "", onBack: close, action: { if own { open(.editProfile) } }) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    WyrmAvatar(initials: own ? (account.player?.initials ?? "W") : (servicePlayer?.initials ?? "W"), size: 76).padding(.top, 28)
+                    WyrmAvatar(initials: own ? (account.player?.initials ?? "W") : (servicePlayer?.initials ?? "W"), size: 76, url: own ? (account.player?.avatarURL ?? "") : (servicePlayer?.avatarURL ?? "")).padding(.top, 28)
                     Text(own ? (account.player?.displayName ?? "Wyrm") : (servicePlayer?.displayName ?? "Player")).font(.androidWyrm(27, .bold)).padding(.top, 14)
                     Text(own ? (account.player?.handle ?? "") : (servicePlayer?.handle ?? "")).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
                     Text(profileBio).font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center).padding(.horizontal, 34).padding(.top, 10)
@@ -209,24 +265,89 @@ private struct WyrmVoiceDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
+    private var official: [WyrmVoiceRoom] { services.voiceRooms.filter(\.managedPublic) }
+    private var personal: [WyrmVoiceRoom] { services.voiceRooms.filter { !$0.managedPublic } }
     var body: some View {
         WyrmDetailChrome(title: "Voice rooms", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    WyrmSectionLabel("Live now")
-                    WyrmPaperCard {
-                        if services.liveRooms.isEmpty { WyrmEmptyPanel(title: "No live rooms", note: "Verified rooms appear here when a call starts.") }
-                        ForEach(services.liveRooms) { room in WyrmListRow(title: room.name, detail: "Hosted by \(room.creator.displayName)", value: "\(room.activeCount)/\(room.capacity)", icon: "waveform", tint: ATheme.live) { open(.room(room.id)) } }
+                    if !services.voiceVerification.verified {
+                        Button { open(.voiceVerification) } label: {
+                            HStack(spacing: 13) {
+                                Image(systemName: "checkmark.shield.fill").font(.system(size: 22)).foregroundColor(ATheme.live)
+                                VStack(alignment: .leading, spacing: 3) { Text("Your voice profile is not verified").font(.androidWyrm(14.5, .bold)); Text("Verify once to create and enter player rooms.").font(.androidWyrm(11)).foregroundColor(ATheme.quiet) }
+                                Spacer(); Text("Verify").font(.androidWyrm(12.5, .bold)).foregroundColor(ATheme.link)
+                            }.foregroundColor(ATheme.ink).padding(16).background(Color.white.opacity(0.9)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.live.opacity(0.35)))
+                        }.buttonStyle(.plain).padding(.horizontal, 16).padding(.top, 16)
                     }
-                    WyrmSectionLabel("All rooms · \(services.voiceRooms.count)")
+                    WyrmSectionLabel("Official Wyrm rooms")
                     WyrmPaperCard {
-                        ForEach(services.voiceRooms.filter { !$0.active }) { room in WyrmListRow(title: room.name, detail: room.gate.capitalized, value: room.mine ? "Yours" : "", icon: "mic") { open(.room(room.id)) } }
+                        if official.isEmpty { WyrmEmptyPanel(title: "Official rooms are quiet", note: "Wyrm-managed public rooms appear here first.") }
+                        ForEach(official) { room in WyrmOfficialRoomRow(room: room) { open(.room(room.id)) } }
+                    }
+                    WyrmSectionLabel("Player rooms · \(personal.count)")
+                    WyrmPaperCard {
+                        if personal.isEmpty { WyrmEmptyPanel(title: "No player rooms yet", note: "Your rooms and rooms from other players will appear here.") }
+                        ForEach(personal) { room in WyrmListRow(title: room.name, detail: room.mine ? "Your room" : "by \(room.creator.displayName)", value: room.active ? "\(room.activeCount) live" : room.gate.capitalized, icon: room.active ? "waveform" : "mic", tint: room.active ? ATheme.live : ATheme.mute) { open(.room(room.id)) } }
                     }
                     Spacer().frame(height: 24)
                 }
-            }.refreshable { await services.refreshVoice() }
+            }.task { await services.refreshVoiceVerification() }.refreshable { await services.refreshVoice(); await services.refreshVoiceVerification() }
         }
     }
+}
+
+private struct WyrmOfficialRoomRow: View {
+    let room: WyrmVoiceRoom
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                ZStack { RoundedRectangle(cornerRadius: 9).fill(ATheme.ink.opacity(0.06)); Text("W").font(.androidWyrm(17, .bold)).foregroundColor(ATheme.ink.opacity(0.38)) }.frame(width: 38, height: 38)
+                VStack(alignment: .leading, spacing: 2) { Text(room.name).font(.androidWyrm(14.5, .semibold)); Text("Wyrm · direct entry").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
+                Spacer(); Text(room.active ? "\(room.activeCount)/\(room.capacity) live" : "Public").font(.androidWyrm(11.5, .semibold)).foregroundColor(room.active ? ATheme.live : ATheme.quiet); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron)
+            }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58)
+        }.buttonStyle(.plain).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 64), alignment: .bottom)
+    }
+}
+
+private struct WyrmVoiceVerificationDetail: View {
+    @ObservedObject var services: WyrmServiceStore
+    let close: () -> Void
+    @State private var email = ""
+    @State private var code = ""
+    @State private var stage = 0
+    @State private var working = false
+    var body: some View {
+        WyrmDetailChrome(title: "Voice verification", onBack: close) {
+            ZStack {
+                if services.voiceVerification.verified {
+                    VStack(spacing: 14) { Image(systemName: "checkmark.seal.fill").font(.system(size: 66)).foregroundColor(ATheme.live); Text("Voice profile verified").font(.androidWyrm(24, .bold)); Text("You can now enter and create player voice rooms.").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet); WyrmPrimaryAction(title: "Return to rooms") { close() }.frame(maxWidth: 300).padding(.top, 12) }
+                        .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                } else {
+                    VStack(spacing: 18) {
+                        Spacer()
+                        ZStack { Circle().fill(ATheme.live.opacity(0.12)).frame(width: 92, height: 92); Image(systemName: stage == 0 ? "envelope.badge.shield.half.filled" : "number.square.fill").font(.system(size: 38, weight: .light)).foregroundColor(ATheme.live) }
+                            .id(stage).transition(.wyrmCinematicPush)
+                        Text(stage == 0 ? "Verify your email" : "Enter the six-digit code").font(.androidWyrm(24, .bold)).multilineTextAlignment(.center)
+                        Text(stage == 0 ? "Wyrm sends one private code. Your email is protected by the voice control plane." : "The code expires shortly. You can resend it without restarting this flow.").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center).padding(.horizontal, 34)
+                        if stage == 0 {
+                            TextField("name@example.com", text: $email).keyboardType(.emailAddress).textContentType(.emailAddress).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(15)).padding(.horizontal, 15).frame(height: 52).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
+                            WyrmPrimaryAction(title: working ? "Sending…" : "Send code", disabled: working || !email.contains("@")) { begin() }.padding(.horizontal, 24)
+                        } else {
+                            TextField("000000", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode).font(.androidWyrm(24, .bold)).tracking(8).multilineTextAlignment(.center).padding(.horizontal, 15).frame(height: 56).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
+                            WyrmPrimaryAction(title: working ? "Checking…" : "Verify", disabled: working || code.count != 6) { confirm() }.padding(.horizontal, 24)
+                            Button("Resend code") { Task { _ = await services.resendVoiceVerification(email: email) } }.font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.link)
+                        }
+                        if !services.errorMessage.isEmpty { Text(services.errorMessage).font(.androidWyrm(11.5)).foregroundColor(.red).padding(.horizontal, 24) }
+                        Spacer()
+                    }.transition(.wyrmCinematicPush)
+                }
+            }.animation(.interactiveSpring(response: 0.5, dampingFraction: 0.84), value: stage).animation(.easeInOut(duration: 0.36), value: services.voiceVerification.verified)
+        }
+    }
+    private func begin() { working = true; Task { let ok = await services.startVoiceVerification(email: email.trimmingCharacters(in: .whitespacesAndNewlines)); await MainActor.run { working = false; if ok { withAnimation { stage = 1 } } } } }
+    private func confirm() { working = true; Task { _ = await services.confirmVoiceVerification(code: String(code.prefix(6))); await MainActor.run { working = false } } }
 }
 
 private struct WyrmRoomDetail: View {
@@ -234,6 +355,7 @@ private struct WyrmRoomDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
+    @State private var password = ""
     private var room: WyrmVoiceRoom? { services.voiceRooms.first(where: { $0.id == roomID }) }
     var body: some View {
         WyrmDetailChrome(title: room?.name ?? "Room", onBack: close) {
@@ -241,12 +363,15 @@ private struct WyrmRoomDetail: View {
                 VStack(spacing: 0) {
                     VStack(spacing: 9) { Image(systemName: "waveform.circle.fill").font(.system(size: 62, weight: .light)).foregroundColor(room?.active == true ? ATheme.live : ATheme.quiet); Text(room?.active == true ? "Room is live" : "Room is quiet").font(.androidWyrm(24, .bold)); Text("\(room?.activeCount ?? 0) of \(room?.capacity ?? 10) people").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet) }.padding(.vertical, 34)
                     WyrmPaperCard {
-                        WyrmListRow(title: "Created by", value: room?.creator.displayName ?? "", showsChevron: false)
+                        WyrmListRow(title: room?.managedPublic == true ? "Managed by" : "Created by", value: room?.managedPublic == true ? "Wyrm" : (room?.creator.displayName ?? ""), showsChevron: false)
                         WyrmListRow(title: "Access", value: room?.gate.capitalized ?? "Open", showsChevron: false)
                         WyrmListRow(title: "Status", value: room?.suspended == true ? "Suspended" : "Available", showsChevron: false)
                     }
                     if let room {
-                        WyrmPrimaryAction(title: room.member ? "Open call" : "Join room", icon: "mic.fill") { if room.member { open(.call(room.id)) } else { Task { await services.joinVoice(room); open(.call(room.id)) } } }.padding(16)
+                        if !room.managedPublic && !room.member && services.voiceVerification.verified {
+                            SecureField("8-character room key", text: $password).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 50).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16).padding(.top, 16)
+                        }
+                        WyrmPrimaryAction(title: room.member ? "Open call" : room.managedPublic ? "Enter public room" : services.voiceVerification.verified ? "Join room" : "Verify to join", icon: "mic.fill", disabled: !room.managedPublic && !room.member && services.voiceVerification.verified && password.count != 8) { if room.member { open(.call(room.id)) } else if !room.managedPublic && !services.voiceVerification.verified { open(.voiceVerification) } else { Task { await services.joinVoice(room, password: password); if services.errorMessage.isEmpty { open(.call(room.id)) } } } }.padding(16)
                         if room.member { WyrmOutlineAction(title: "Leave room", destructive: true) { Task { await services.leaveVoice(room); close() } }.padding(.horizontal, 16) }
                     }
                 }
@@ -437,7 +562,7 @@ private struct WyrmBackupDetail: View {
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @State private var confirmReset = false
-    var body: some View { WyrmDetailChrome(title: "Backup", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("This device"); WyrmPaperCard { WyrmListRow(title: "Wyrm", value: "0.10.1 (33)", showsChevron: false); WyrmListRow(title: "Settings format", value: engine.settingsVersion.isEmpty ? "Starting" : engine.settingsVersion, showsChevron: false); WyrmListRow(title: "Engine controls", value: "\(engine.settings.count)", showsChevron: false); WyrmListRow(title: "On-screen actions", value: "\(engine.hotkeys.count)", showsChevron: false) }; VStack(spacing: 10) { WyrmOutlineAction(title: "Reset controls layout") { engine.reset(2, message: "Controls reset") }; WyrmOutlineAction(title: "Reset arena HUD") { engine.reset(8, message: "HUD reset") }; WyrmOutlineAction(title: confirmReset ? "Tap again to reset everything" : "Reset everything to defaults", destructive: true) { if confirmReset { engine.reset(1, message: "All engine settings reset"); confirmReset = false } else { confirmReset = true } } }.padding(16); Text("Portable backup and Files import/export remain a Phase 7 Apple service. Reset actions above are live native-engine mailboxes.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20) } } } }
+    var body: some View { WyrmDetailChrome(title: "Backup", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("This device"); WyrmPaperCard { WyrmListRow(title: "Wyrm", value: "0.11.0 (34)", showsChevron: false); WyrmListRow(title: "Settings format", value: engine.settingsVersion.isEmpty ? "Starting" : engine.settingsVersion, showsChevron: false); WyrmListRow(title: "Engine controls", value: "\(engine.settings.count)", showsChevron: false); WyrmListRow(title: "On-screen actions", value: "\(engine.hotkeys.count)", showsChevron: false) }; VStack(spacing: 10) { WyrmOutlineAction(title: "Reset controls layout") { engine.reset(2, message: "Controls reset") }; WyrmOutlineAction(title: "Reset arena HUD") { engine.reset(8, message: "HUD reset") }; WyrmOutlineAction(title: confirmReset ? "Tap again to reset everything" : "Reset everything to defaults", destructive: true) { if confirmReset { engine.reset(1, message: "All engine settings reset"); confirmReset = false } else { confirmReset = true } } }.padding(16); Text("Portable backup and Files import/export remain a Phase 7 Apple service. Reset actions above are live native-engine mailboxes.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20) } } } }
 }
 
 private struct WyrmDeveloperDetail: View {

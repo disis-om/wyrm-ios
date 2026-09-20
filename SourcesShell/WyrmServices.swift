@@ -1,4 +1,5 @@
 import Foundation
+import Network
 
 struct WyrmServicePlayer: Identifiable, Equatable {
     let id: String
@@ -108,6 +109,7 @@ struct WyrmVoiceRoom: Identifiable, Equatable {
     let revision: Int
     let mine: Bool
     let member: Bool
+    let managedPublic: Bool
     let capacity: Int
     let suspended: Bool
     let createdAt: String
@@ -123,6 +125,7 @@ struct WyrmVoiceRoom: Identifiable, Equatable {
         revision = json.int("revision", fallback: 1)
         mine = json.bool("mine")
         member = json.bool("member")
+        managedPublic = json.bool("managedPublic")
         capacity = json.int("capacity", fallback: 10)
         suspended = json.bool("suspended")
         createdAt = json.string("createdAt")
@@ -137,7 +140,28 @@ struct WyrmArena: Identifiable, Equatable {
     let cluster: Int
     var id: String { endpoint }
     var endpoint: String { "\(address):\(port)" }
-    var title: String { "Arena \(number) · Cluster \(cluster)" }
+    var code: String { String(format: "%04d", number % 10_000) }
+    var title: String { "Arena \(code)" }
+}
+
+struct WyrmVoiceVerification: Equatable {
+    let verified: Bool
+    let verifiedAt: String
+    init(_ json: [String: Any]) {
+        verified = json.bool("verified")
+        verifiedAt = json.string("verifiedAt")
+    }
+}
+
+struct WyrmVoiceChallenge: Equatable {
+    let id: String
+    let expiresAt: String
+    let resendAt: String
+    init(_ json: [String: Any]) {
+        id = json.string("challengeId")
+        expiresAt = json.string("expiresAt")
+        resendAt = json.string("resendAt")
+    }
 }
 
 enum WyrmServiceError: LocalizedError {
@@ -214,6 +238,22 @@ private actor WyrmServiceClient {
 
     func voiceRooms(token: String) async throws -> [WyrmVoiceRoom] {
         try await request("/v1/voice/rooms", token: token).array("rooms").compactMap(WyrmVoiceRoom.init)
+    }
+
+    func voiceVerification(token: String) async throws -> WyrmVoiceVerification {
+        WyrmVoiceVerification(try await request("/v1/voice/verification/status", token: token))
+    }
+
+    func startVoiceVerification(email: String, token: String) async throws -> WyrmVoiceChallenge {
+        WyrmVoiceChallenge(try await request("/v1/voice/verification/start", method: "POST", body: ["email": email], token: token))
+    }
+
+    func resendVoiceVerification(challengeID: String, email: String, token: String) async throws -> WyrmVoiceChallenge {
+        WyrmVoiceChallenge(try await request("/v1/voice/verification/resend", method: "POST", body: ["challengeId": challengeID, "email": email], token: token))
+    }
+
+    func confirmVoiceVerification(challengeID: String, code: String, token: String) async throws -> WyrmVoiceVerification {
+        WyrmVoiceVerification(try await request("/v1/voice/verification/confirm", method: "POST", body: ["challengeId": challengeID, "code": code], token: token))
     }
 
     func joinVoice(roomID: String, password: String?, token: String) async throws {
@@ -300,6 +340,39 @@ private actor WyrmServiceClient {
     }
 }
 
+private enum WyrmArenaProbe {
+    static func latency(to arena: WyrmArena) async -> Int? {
+        await withCheckedContinuation { continuation in
+            let queue = DispatchQueue(label: "com.omrajput.wyrmios.arena-probe.\(arena.id)")
+            let started = DispatchTime.now().uptimeNanoseconds
+            guard let port = NWEndpoint.Port(rawValue: UInt16(arena.port)) else {
+                continuation.resume(returning: nil)
+                return
+            }
+            let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
+            var finished = false
+            func finish(_ value: Int?) {
+                guard !finished else { return }
+                finished = true
+                connection.stateUpdateHandler = nil
+                connection.cancel()
+                continuation.resume(returning: value)
+            }
+            connection.stateUpdateHandler = { state in
+                switch state {
+                case .ready:
+                    let elapsed = DispatchTime.now().uptimeNanoseconds - started
+                    finish(max(1, Int(elapsed / 1_000_000)))
+                case .failed, .cancelled: finish(nil)
+                default: break
+                }
+            }
+            connection.start(queue: queue)
+            queue.asyncAfter(deadline: .now() + 1.5) { finish(nil) }
+        }
+    }
+}
+
 private extension Dictionary where Key == String, Value == Any {
     func array(_ key: String) -> [[String: Any]] { self[key] as? [[String: Any]] ?? [] }
 }
@@ -312,8 +385,13 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var conversations: [WyrmConversation] = []
     @Published private(set) var voiceRooms: [WyrmVoiceRoom] = []
     @Published private(set) var arenas: [WyrmArena] = []
+    @Published private(set) var arenaLatencies: [String: Int] = [:]
     @Published private(set) var people: [WyrmServicePlayer] = []
+    @Published private(set) var followers: [WyrmServicePlayer] = []
+    @Published private(set) var following: [WyrmServicePlayer] = []
     @Published private(set) var messages: [WyrmChatItem] = []
+    @Published private(set) var voiceVerification = WyrmVoiceVerification([:])
+    @Published private(set) var voiceChallenge: WyrmVoiceChallenge?
     @Published var loading = false
     @Published var errorMessage = ""
     @Published var lastRefresh: Date?
@@ -321,8 +399,12 @@ final class WyrmServiceStore: ObservableObject {
 
     var unreadCount: Int { alerts.filter { !$0.read }.count }
     var liveRooms: [WyrmVoiceRoom] { voiceRooms.filter { $0.active && !$0.suspended } }
+    var messageCandidates: [WyrmServicePlayer] {
+        var seen = Set<String>()
+        return (followers + following).filter { $0.canMessage && seen.insert($0.id).inserted }
+    }
 
-    func bootstrap(token: String) async {
+    func bootstrap(token: String, playerID: String? = nil) async {
         guard !token.isEmpty else { return }
         self.token = token
         loading = true
@@ -333,11 +415,18 @@ final class WyrmServiceStore: ObservableObject {
             async let killRows = WyrmServiceClient.shared.leaderboard(sort: "kills", token: token)
             async let conversationRows = WyrmServiceClient.shared.conversations(token: token)
             async let roomRows = WyrmServiceClient.shared.voiceRooms(token: token)
+            async let verification = WyrmServiceClient.shared.voiceVerification(token: token)
             async let arenaRows = WyrmServiceClient.shared.arenas()
-            let values = try await (alertRows, scoreRows, killRows, conversationRows, roomRows, arenaRows)
+            let values = try await (alertRows, scoreRows, killRows, conversationRows, roomRows, verification, arenaRows)
             alerts = values.0; scoreLeaders = values.1; killLeaders = values.2
-            conversations = values.3; voiceRooms = values.4
-            arenas = values.5.sorted { $0.players > $1.players }
+            conversations = values.3; voiceRooms = values.4; voiceVerification = values.5
+            arenas = values.6.sorted { $0.players > $1.players }
+            if let playerID {
+                async let followerRows = WyrmServiceClient.shared.connections(playerID: playerID, kind: "followers", token: token)
+                async let followingRows = WyrmServiceClient.shared.connections(playerID: playerID, kind: "following", token: token)
+                let connections = try await (followerRows, followingRows)
+                followers = connections.0; following = connections.1
+            }
             lastRefresh = Date()
         } catch { errorMessage = error.localizedDescription }
         loading = false
@@ -351,6 +440,11 @@ final class WyrmServiceStore: ObservableObject {
     func refreshLeaderboards() async { await perform { async let a = WyrmServiceClient.shared.leaderboard(sort: "score", token: self.token); async let b = WyrmServiceClient.shared.leaderboard(sort: "kills", token: self.token); let rows = try await (a, b); self.scoreLeaders = rows.0; self.killLeaders = rows.1 } }
     func searchPeople(_ query: String) async { await perform { self.people = try await WyrmServiceClient.shared.search(query, token: self.token) } }
     func loadConnections(playerID: String, kind: String) async { await perform { self.people = try await WyrmServiceClient.shared.connections(playerID: playerID, kind: kind, token: self.token) } }
+    func loadConnectionLists(playerID: String) async { await perform {
+        async let a = WyrmServiceClient.shared.connections(playerID: playerID, kind: "followers", token: self.token)
+        async let b = WyrmServiceClient.shared.connections(playerID: playerID, kind: "following", token: self.token)
+        let rows = try await (a, b); self.followers = rows.0; self.following = rows.1
+    } }
     func follow(_ player: WyrmServicePlayer) async { await perform { _ = try await WyrmServiceClient.shared.setFollow(playerID: player.id, following: !player.isFollowing, token: self.token) } }
 
     func refreshConversations() async { await perform { self.conversations = try await WyrmServiceClient.shared.conversations(token: self.token) } }
@@ -358,8 +452,44 @@ final class WyrmServiceStore: ObservableObject {
     func sendDirect(playerID: String, body: String) async { await perform { try await WyrmServiceClient.shared.sendDirect(playerID: playerID, body: body, token: self.token); self.messages = try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token) } }
 
     func refreshVoice() async { await perform { self.voiceRooms = try await WyrmServiceClient.shared.voiceRooms(token: self.token) } }
+    func refreshVoiceVerification() async { await perform { self.voiceVerification = try await WyrmServiceClient.shared.voiceVerification(token: self.token) } }
+    func startVoiceVerification(email: String) async -> Bool {
+        var ok = false
+        await perform { self.voiceChallenge = try await WyrmServiceClient.shared.startVoiceVerification(email: email, token: self.token); ok = true }
+        return ok
+    }
+    func resendVoiceVerification(email: String) async -> Bool {
+        guard let challenge = voiceChallenge else { return false }
+        var ok = false
+        await perform { self.voiceChallenge = try await WyrmServiceClient.shared.resendVoiceVerification(challengeID: challenge.id, email: email, token: self.token); ok = true }
+        return ok
+    }
+    func confirmVoiceVerification(code: String) async -> Bool {
+        guard let challenge = voiceChallenge else { return false }
+        var ok = false
+        await perform { self.voiceVerification = try await WyrmServiceClient.shared.confirmVoiceVerification(challengeID: challenge.id, code: code, token: self.token); ok = self.voiceVerification.verified }
+        return ok
+    }
     func joinVoice(_ room: WyrmVoiceRoom, password: String = "") async { await perform { try await WyrmServiceClient.shared.joinVoice(roomID: room.id, password: password, token: self.token); self.voiceRooms = try await WyrmServiceClient.shared.voiceRooms(token: self.token) } }
     func leaveVoice(_ room: WyrmVoiceRoom) async { await perform { try await WyrmServiceClient.shared.leaveVoice(roomID: room.id, token: self.token); self.voiceRooms = try await WyrmServiceClient.shared.voiceRooms(token: self.token) } }
+
+    func refreshArenasLive() async {
+        do {
+            let rows = try await WyrmServiceClient.shared.arenas()
+            arenas = rows.sorted { $0.players > $1.players }
+            let targets = Array(arenas.prefix(24))
+            let measured = await withTaskGroup(of: (String, Int?).self, returning: [String: Int].self) { group in
+                for arena in targets { group.addTask { (arena.id, await WyrmArenaProbe.latency(to: arena)) } }
+                var values: [String: Int] = [:]
+                for await (id, value) in group { if let value { values[id] = value } }
+                return values
+            }
+            arenaLatencies.merge(measured) { _, fresh in fresh }
+            lastRefresh = Date()
+        } catch {
+            WyrmDiagnostics.record("live arena refresh failed=\(error.localizedDescription)", category: "NETWORK")
+        }
+    }
 
     private func perform(_ operation: @escaping () async throws -> Void) async {
         guard !token.isEmpty else { return }
