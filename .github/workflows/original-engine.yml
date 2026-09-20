@@ -68,6 +68,17 @@ jobs:
           grep -E 'Wyrm engine bootstrap completed off main thread in [0-9]+ ms' original-artifacts/settings-stderr.log
           grep -E 'Wyrm SwiftUI settings bridge verified rows=[1-9][0-9]* id=general.minimap_size' original-artifacts/settings-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/social-stdout.log" --stderr="$PWD/original-artifacts/social-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-social
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-social.png
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/leaderboard-stdout.log" --stderr="$PWD/original-artifacts/leaderboard-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-leaderboard
+          sleep 3
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-leaderboard.png
+          LEADERBOARD_WIDTH=$(sips -g pixelWidth original-artifacts/swiftui-leaderboard.png | awk '/pixelWidth/{print $2}')
+          LEADERBOARD_HEIGHT=$(sips -g pixelHeight original-artifacts/swiftui-leaderboard.png | awk '/pixelHeight/{print $2}')
+          test "$LEADERBOARD_HEIGHT" -gt "$LEADERBOARD_WIDTH"
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/developer-stdout.log" --stderr="$PWD/original-artifacts/developer-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-developer
           sleep 5
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-developer-mode.png

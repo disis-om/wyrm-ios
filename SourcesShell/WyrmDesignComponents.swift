@@ -262,28 +262,31 @@ struct WyrmRootTabBar: View {
 
     var body: some View {
         GeometryReader { proxy in
-            let inset: CGFloat = 6
+            let inset: CGFloat = 5
             let width = max(1, proxy.size.width - inset * 2)
             let itemWidth = width / CGFloat(WyrmDesignTab.allCases.count)
             let selectedIndex = CGFloat(WyrmDesignTab.allCases.firstIndex(of: selection) ?? 0)
             WyrmGlassGroup {
                 ZStack(alignment: .leading) {
                     WyrmTabGlassSurface()
+                        .zIndex(0)
                     WyrmTabSelectionGlass(namespace: glassNamespace)
-                        .frame(width: itemWidth - 3, height: 56)
+                        .frame(width: itemWidth - 4, height: 46)
                         .offset(x: inset + selectedIndex * itemWidth + dragX)
                         .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
                         .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
+                        .zIndex(1)
                     HStack(spacing: 0) {
                         ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
                             Button { select(tab) } label: {
-                                tabLabel(tab).frame(width: itemWidth, height: 57)
+                                tabLabel(tab).frame(width: itemWidth, height: 48)
                             }.buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, inset)
+                    .zIndex(3)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 27, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                 .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
                     .updating($dragX) { value, state, _ in
                         let start = selectedIndex * itemWidth
@@ -298,23 +301,23 @@ struct WyrmRootTabBar: View {
                     })
             }
         }
-        .frame(height: 69)
-        .shadow(color: ATheme.ink.opacity(0.14), radius: 22, y: 9)
-        .padding(.horizontal, 12)
+        .frame(height: 56)
+        .shadow(color: ATheme.ink.opacity(0.13), radius: 18, y: 8)
+        .padding(.horizontal, 16)
     }
 
     private func tabLabel(_ tab: WyrmDesignTab) -> some View {
-        VStack(spacing: 4) {
+        VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 23 : 19, weight: selection == tab ? .semibold : .regular))
+                Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
                 if tab == .alerts && unread > 0 {
                     Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(.white)
                         .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
                 }
             }
-            Text(tab.rawValue).font(.androidWyrm(9, selection == tab ? .bold : .medium)).lineLimit(1)
+            Text(tab.rawValue).font(.androidWyrm(8.5, selection == tab ? .bold : .semibold)).lineLimit(1)
         }
-        .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
+        .foregroundColor(selection == tab ? ATheme.ink : ATheme.ink.opacity(0.58))
         .animation(.easeOut(duration: 0.16), value: selection)
     }
 
@@ -339,8 +342,8 @@ private struct WyrmTabGlassSurface: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 27))
-                .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(Color.white.opacity(0.64), lineWidth: 0.7))
+                .glassEffect(.regular.tint(ATheme.paper.opacity(0.12)).interactive(), in: .rect(cornerRadius: 28))
+                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.ink.opacity(0.13), lineWidth: 0.7))
         } else {
             fallback
         }
@@ -349,10 +352,10 @@ private struct WyrmTabGlassSurface: View {
 #endif
     }
     private var fallback: some View {
-        RoundedRectangle(cornerRadius: 27, style: .continuous)
+        RoundedRectangle(cornerRadius: 28, style: .continuous)
             .fill(.ultraThinMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).fill(Color.white.opacity(0.16)))
-            .overlay(RoundedRectangle(cornerRadius: 27, style: .continuous).stroke(Color.white.opacity(0.82), lineWidth: 0.8))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.paper.opacity(0.18)))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.ink.opacity(0.12), lineWidth: 0.8))
     }
 }
 
@@ -363,7 +366,8 @@ private struct WyrmTabSelectionGlass: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.tint(.white.opacity(0.18)).interactive(), in: .rect(cornerRadius: 21))
+                .glassEffect(.regular.tint(ATheme.ink.opacity(0.11)).interactive(), in: .rect(cornerRadius: 22))
+                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.08), lineWidth: 0.6))
                 .glassEffectID("wyrm-tab-selection", in: namespace)
         } else {
             fallback
@@ -373,10 +377,10 @@ private struct WyrmTabSelectionGlass: View {
 #endif
     }
     private var fallback: some View {
-        RoundedRectangle(cornerRadius: 21, style: .continuous)
+        RoundedRectangle(cornerRadius: 22, style: .continuous)
             .fill(.thinMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).fill(Color.white.opacity(0.42)))
-            .overlay(RoundedRectangle(cornerRadius: 21, style: .continuous).stroke(Color.white.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.ink.opacity(0.07)))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.12)))
             .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
     }
 }

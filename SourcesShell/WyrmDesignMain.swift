@@ -18,6 +18,7 @@ struct WyrmDesignMain: View {
 
     var body: some View {
         GeometryReader { proxy in
+            let tabBarBottomInset = max(14, min(18, proxy.safeAreaInsets.bottom * 0.48))
             ZStack(alignment: .bottom) {
                 WyrmPaperBackground()
                 Group {
@@ -33,17 +34,18 @@ struct WyrmDesignMain: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 .frame(width: proxy.size.width)
                 .padding(.top, proxy.safeAreaInsets.top)
-                .padding(.bottom, 71 + max(2, proxy.safeAreaInsets.bottom * 0.14))
+                .padding(.bottom, 66 + tabBarBottomInset)
 
                 WyrmRootTabBar(selection: $tab, unread: services.unreadCount)
                     .frame(width: proxy.size.width)
-                    .padding(.bottom, max(2, proxy.safeAreaInsets.bottom * 0.14))
+                    .padding(.bottom, tabBarBottomInset)
                     .zIndex(10)
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
                     WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
                         .frame(width: proxy.size.width, height: max(1, proxy.size.height - proxy.safeAreaInsets.top))
                         .padding(.top, proxy.safeAreaInsets.top)
+                        .background(WyrmPaperBackground())
                         .zIndex(Double(30 + index))
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
@@ -54,8 +56,11 @@ struct WyrmDesignMain: View {
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
                 }
-            }.clipped().ignoresSafeArea()
-        }.foregroundColor(ATheme.ink).background(ATheme.paper.ignoresSafeArea())
+            }.clipped()
+        }
+        .ignoresSafeArea()
+        .foregroundColor(ATheme.ink)
+        .background(ATheme.paper.ignoresSafeArea())
     }
 
     private func open(_ value: WyrmDesignRoute) {
@@ -155,7 +160,7 @@ private struct WyrmPlayRoot: View {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
             }
         }
-        .sheet(isPresented: $showArenas) { WyrmArenaPicker(services: services, selection: $arena) }
+        .fullScreenCover(isPresented: $showArenas) { WyrmArenaPicker(services: services, selection: $arena) }
     }
 
     private func enterOriginalLobby() {
@@ -316,7 +321,7 @@ private struct WyrmSettingsRoot: View {
                 section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
                 section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
                 section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.11.1 · 35", .backup)])
+                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.11.2 · 36", .backup)])
                 VStack(spacing: 0) {
                     WyrmSectionLabel("Developer")
                     WyrmPaperCard {
