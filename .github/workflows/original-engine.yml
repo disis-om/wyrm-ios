@@ -30,7 +30,7 @@ jobs:
           zip -qry Wyrm-0.9.0-build-30-unsigned.ipa Payload
           ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.9.0-build-30-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
-          cp ../phase3/BUILD-030-NOTES.md README.md
+          cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
         run: |
           DEVICE=$(xcrun simctl list devices available -j | python3 -c 'import json,sys; d=json.load(sys.stdin); print(next(x["udid"] for a in d["devices"].values() for x in a if x["name"].startswith("iPhone")))')

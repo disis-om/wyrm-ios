@@ -1,113 +1,94 @@
-# Wyrm iOS
+<p align="center">
+  <img src="Resources/Assets.xcassets/AppIcon.appiconset/WyrmIcon-1024.png" width="128" height="128" alt="Wyrm app icon">
+</p>
 
-Official iPhone port of Wyrm, built from the existing native C game engine rather
-than reimplementing gameplay in Swift.
+<h1 align="center">Wyrm for iOS</h1>
 
-**Current build:** 0.6.0 (27)
+<p align="center">
+  The native iPhone client in the Wyrm ecosystem.<br>
+  SwiftUI product surfaces over the original C game engine.
+</p>
 
-**Minimum target:** iOS 15.0, iPhone first
+## Project status
 
-**Current milestone:** the original SDL3/Vulkan engine runs through MoltenVK in
-the iOS Simulator, joins a live arena, spawns the player's real snake and draws
-the original HUD, minimap and leaderboard. A SwiftUI product shell now mirrors
-the Android Compose Play, Notifications, Social, Skin and Settings structure.
+Wyrm for iOS is under active development. The current source version is
+**0.9.0 (build 30)** and targets **iOS 15 or newer**.
 
-## What is working
+The repository contains the iOS application source and its automated Apple
+build pipeline. It does not publish GitHub Releases; each accepted build is
+compiled and tested by CI, then exposed as a workflow artifact.
 
-- UIKit-owned root container with a SwiftUI product layer above the SDL surface.
-- Original C gameplay, renderer, network, mobile controls, ImGui and Thermite
-  sources compiled for Apple ARM64 and Simulator.
-- Vulkan rendering through MoltenVK/Metal using the original atlas and shaders.
-- Portrait iOS process with the original landscape lobby/arena rotated inside a
-  stable child container.
-- Live arena admission, own-snake spawn, frame progression, minimap,
-  leaderboard and stats in automated Simulator smoke tests.
-- Android-style Paper UI: Play, Notifications, Social, Skin placeholder and the
-  complete Settings hierarchy.
-- Home actions and every non-skin engine setting cross a bounded Swift/C mailbox
-  and are applied by the engine thread.
-- Unsigned iPhone IPA for AltStore and Simulator app ZIP for Appetize.
+## Current capabilities
 
-## Still intentionally incomplete
+- SwiftUI launch, username/password account access and animated onboarding.
+- Play, Alerts, Social, Skin and Settings product surfaces.
+- Original Wyrm C gameplay and network engine—not a Swift reimplementation.
+- SDL3 window/input integration and Vulkan rendering through MoltenVK/Metal.
+- Original landscape lobby and arena inside a portrait-owned iOS application.
+- Live backend integration for profiles, notifications, leaderboards, people,
+  direct conversations and voice-room control operations.
+- Native engine settings and on-screen controls connected through a narrow,
+  thread-safe Swift/C bridge.
+- Opt-in Developer Mode with bounded local logs and native iOS Share Sheet
+  export for support diagnostics.
 
-- Physical-iPhone launch, input, performance and lifecycle acceptance.
-- Skin Studio wiring. Its tab is present, but the editor is deliberately not
-  connected yet.
-- Account, Social, notifications, voice and other backend-dependent services.
-  Their screens show honest offline/empty states instead of fabricated data.
-- TestFlight/App Store signing, privacy/compliance work and distribution.
-- Permanent neutral shared-engine ownership. `SharedEngine` is currently a
-  hash-verified transport snapshot; Android remains the read-only authority.
-
-## Runtime shape
+## Architecture
 
 ```text
-SwiftUI: Play · Notifications · Social · Skin · Settings
-                          |
-               bounded Swift/C mailboxes
-                          |
-Original Wyrm C engine: world · protocol · settings · renderer
-                          |
-                         SDL3
-                          |
-                 Vulkan -> MoltenVK -> Metal
+SwiftUI product shell
+        │
+bounded Swift/C bridge
+        │
+original Wyrm C engine
+        │
+SDL3 · Vulkan · MoltenVK · Metal
 ```
 
-UIKit owns the container. SwiftUI covers the engine on product screens and is
-removed for Lobby/Playing. The iOS process stays portrait; only the engine child
-is transformed to show the original landscape game correctly.
+UIKit owns the stable app container. Product screens remain portrait. When the
+player enters the lobby or arena, only the native engine child surface is
+rotated, so gameplay keeps its original landscape layout without changing the
+application's iOS orientation contract.
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for ownership and threading details.
+## Building
 
-## Build and test
+Apple compilation runs on macOS through the repository's
+`Compile original Android engine for Apple` workflow. The project is generated
+from `original-engine.yml`; pinned SDL3 and MoltenVK packages are fetched and
+verified during the job.
 
-The source is edited on Windows, but Apple compilation happens on a macOS 15
-runner. The project is generated from `original-engine.yml`; pinned SDL3 and
-MoltenVK binaries are fetched and verified during CI.
+Successful build artifacts include:
 
-The `Compile original Android engine for Apple` workflow produces:
+- `Wyrm-0.9.0-build-30-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.9.0-build-30-simulator.app.zip` for Simulator/Appetize testing.
+- SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
-- `Wyrm-0.6.0-build-27-simulator.app.zip` — upload to Appetize.
-- `Wyrm-0.6.0-build-27-unsigned.ipa` — sign/install with AltStore.
-- Play, Settings, Lobby, offline-AI and live-online screenshots and logs.
-- `SHA256SUMS` and the build-specific README.
+The IPA is intentionally unsigned. App Store, TestFlight and distribution
+signing material is never stored in this repository.
 
-Full commands and evidence gates are in
-[BUILDING-AND-TESTING.md](BUILDING-AND-TESTING.md).
-
-## Repository map
+## Repository guide
 
 | Path | Purpose |
 |---|---|
-| `SourcesShell/` | SwiftUI Android-parity shell and Swift/C declarations |
-| `SourcesOriginal/` | UIKit host and narrow Apple engine adapters |
-| `SharedEngine/` | Hash-locked native source transport snapshot; do not edit gameplay here |
-| `Scripts/prepare-original-engine.py` | Verifies all snapshot hashes and creates a disposable Apple compile tree |
-| `Scripts/fetch-ios-dependencies.sh` | Fetches and verifies SDL3/MoltenVK |
-| `original-engine.yml` | XcodeGen specification for the current app |
-| `.github/workflows/original-engine.yml` | Compile, package and Simulator proof pipeline |
-| `phase0/` | Safety baseline, protected behavior and dependency review |
-| `phase1/` | Initial SDL3/MoltenVK foundation evidence |
-| `phase2/` | Per-build changelogs, current status and engine-port evidence |
-| `dist/` | Downloaded CI artifacts; generated, not source authority |
+| `SourcesShell/` | SwiftUI interface, account/services clients and diagnostics |
+| `SourcesOriginal/` | UIKit container and Apple-specific native adapters |
+| `SharedEngine/` | Verified native-engine source snapshot used by Apple builds |
+| `Resources/` | App icon, fonts and packaged engine resources |
+| `Scripts/` | Dependency verification and reproducible source preparation |
+| `original-engine.yml` | XcodeGen project specification |
+| `.github/workflows/` | Apple compile, package and simulator verification pipeline |
 
-## Source and safety rules
+## Security and privacy
 
-- `../Wyrm Android` is the product/engine authority and is read-only unless OM
-  explicitly authorizes a cross-platform refactor.
-- The engine snapshot is verified against `SharedEngine/SHA256.json` before
-  every Apple preparation step. Apple-only selections are applied only to the
-  disposable `build-original-source` tree.
-- Never commit signing identities, provisioning profiles, API keys, session
-  secrets or player-private data.
-- A successful compile is not a physical-device result. Build, signing,
-  install, launch, first frame, gameplay and owner acceptance are reported as
-  separate gates.
+- Do not commit credentials, signing certificates, provisioning profiles,
+  access tokens, private player data or local diagnostic exports.
+- Authentication secrets are stored by the app in iOS Keychain.
+- Developer diagnostics are local, expire after seven days, are size-bounded,
+  and intentionally omit tokens, passwords and private message bodies.
+- Android sources remain the read-only behavior reference for this iOS port.
 
-## Documentation index
+## Current limitations
 
-- [Official phase plan](Wyrm-iOS-PLAN.md)
-- [Current Phase 2 status](phase2/STATUS.md)
-- [Current Build 27 notes](phase2/BUILD-027-NOTES.md)
-- [Protected behavior](phase0/PROTECTED-BEHAVIOR.md)
-- [Dependencies and licences](phase0/DEPENDENCIES-AND-LICENSES.md)
+Physical-device acceptance, live skin application, realtime voice audio, APNs,
+avatar upload and Files-based backup/restore remain in development. CI success
+proves Apple compilation and Simulator behavior; it is not a physical-device or
+App Store acceptance claim.

@@ -10,3 +10,18 @@
 .DS_Store
 /build-original*/
 /WyrmOriginalEngine.xcodeproj/
+
+# Local project notes and imported design references are intentionally private.
+/.agents/
+/AGENTS.md
+/SKILLS.md
+/ARCHITECTURE.md
+/BUILDING-AND-TESTING.md
+/Wyrm-iOS-PLAN.md
+/ios design system/
+/phase0/
+/phase1/
+/phase2/
+/phase3/
+/SharedEngine/README.md
+/Scripts/__pycache__/
