@@ -20,6 +20,21 @@ private enum WyrmAuthFocus: Hashable {
     case confirmation
 }
 
+private enum WyrmUsernameAvailabilityState: Equatable {
+    case idle
+    case checking
+    case available
+    case taken
+    case unavailable
+}
+
+private enum WyrmPasswordConfirmationState: Equatable {
+    case idle
+    case checking
+    case matched
+    case mismatched
+}
+
 @MainActor
 private final class WyrmKeyboardMonitor: ObservableObject {
     @Published var height: CGFloat = 0
@@ -55,6 +70,10 @@ struct WyrmCinematicAuth: View {
     @State private var password = ""
     @State private var confirmation = ""
     @State private var logoDissolved = false
+    @State private var usernameAvailability: WyrmUsernameAvailabilityState = .idle
+    @State private var confirmationState: WyrmPasswordConfirmationState = .idle
+    @State private var availabilityTask: Task<Void, Never>?
+    @State private var confirmationTask: Task<Void, Never>?
 
     private let autofocus: Bool
 
@@ -112,12 +131,26 @@ struct WyrmCinematicAuth: View {
         .foregroundColor(ATheme.ink)
         .animation(motion, value: stage)
         .animation(motion, value: showsKeyboardAction)
+        .animation(motion, value: keyboard.height > 0)
         .onAppear {
             recordStage(stage)
             focusInitialStageIfNeeded()
         }
         .onChange(of: stage) { next in
             recordStage(next)
+            if next == .createUsername { scheduleUsernameAvailability() }
+            if next == .createConfirmation { schedulePasswordComparison() }
+        }
+        .onChange(of: username) { _ in scheduleUsernameAvailability() }
+        .onChange(of: password) { _ in
+            confirmationTask?.cancel()
+            confirmationState = .idle
+            if stage == .createConfirmation { schedulePasswordComparison() }
+        }
+        .onChange(of: confirmation) { _ in schedulePasswordComparison() }
+        .onDisappear {
+            availabilityTask?.cancel()
+            confirmationTask?.cancel()
         }
     }
 
@@ -129,14 +162,16 @@ struct WyrmCinematicAuth: View {
                 landing(proxy: proxy, safeBottom: safeBottom)
                     .transition(.wyrmBlurFade)
             case .createUsername, .createPassword, .createConfirmation, .loginUsername, .loginPassword:
-                credentialStage
+                credentialStage(proxy: proxy, safeTop: safeTop)
                     .id(stage)
                     .transition(.wyrmBlurFade)
             case .creating:
-                workingCard(title: "Creating your account", note: "Securing your Wyrm identity…")
+                WyrmAuthWorkingStatus(title: "Creating your account…")
+                    .position(x: proxy.size.width / 2, y: workingStatusY(in: proxy))
                     .transition(.wyrmBlurFade)
             case .signingIn:
-                workingCard(title: "Signing you in", note: "Opening your Wyrm profile…")
+                WyrmAuthWorkingStatus(title: "Entering Wyrm…")
+                    .position(x: proxy.size.width / 2, y: workingStatusY(in: proxy))
                     .transition(.wyrmBlurFade)
             case .success:
                 Color.clear
@@ -195,7 +230,7 @@ struct WyrmCinematicAuth: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
     }
 
-    private var credentialStage: some View {
+    private func credentialStage(proxy: GeometryProxy, safeTop: CGFloat) -> some View {
         VStack(spacing: 0) {
             Spacer(minLength: 150)
 
@@ -232,6 +267,7 @@ struct WyrmCinematicAuth: View {
             Spacer(minLength: 155)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .offset(y: keyboard.height > 0 ? -min(116, max(78, keyboard.height * 0.28)) : 0)
     }
 
     @ViewBuilder
@@ -249,6 +285,12 @@ struct WyrmCinematicAuth: View {
                     .submitLabel(.continue)
                     .onSubmit { if actionEnabled { advance() } }
                     .accessibilityLabel("Wyrm username")
+
+                if stage == .createUsername && usernameValid {
+                    usernameAvailabilityIndicator
+                        .frame(width: 27, height: 27)
+                        .transition(.wyrmBlurFade)
+                }
             }
             .padding(.horizontal, 18)
             .frame(height: 60)
@@ -273,37 +315,92 @@ struct WyrmCinematicAuth: View {
                 .accessibilityLabel(stage == .createPassword ? "Choose password" : "Password")
 
         case .createConfirmation:
-            SecureField("Password again", text: $confirmation)
-                .focused($focus, equals: .confirmation)
-                .font(.androidWyrm(19, .semibold))
-                .textContentType(.newPassword)
-                .submitLabel(.go)
-                .onSubmit { if actionEnabled { advance() } }
-                .padding(.horizontal, 18)
-                .frame(height: 60)
-                .background(Color.white.opacity(0.94))
-                .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
-                .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
-                .accessibilityLabel("Confirm password")
+            VStack(alignment: .leading, spacing: 9) {
+                SecureField("Password again", text: $confirmation)
+                    .focused($focus, equals: .confirmation)
+                    .font(.androidWyrm(19, .semibold))
+                    .textContentType(.newPassword)
+                    .submitLabel(.go)
+                    .onSubmit { if actionEnabled { advance() } }
+                    .padding(.horizontal, 18)
+                    .frame(height: 60)
+                    .background(Color.white.opacity(0.94))
+                    .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
+                    .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
+                    .accessibilityLabel("Confirm password")
+
+                passwordConfirmationFeedback
+                    .padding(.leading, 5)
+                    .frame(minHeight: 24, alignment: .leading)
+            }
 
         default:
             EmptyView()
         }
     }
 
-    private func workingCard(title: String, note: String) -> some View {
-        VStack(spacing: 14) {
-            ProgressView().tint(ATheme.ink).scaleEffect(1.12)
-            Text(title).font(.androidWyrm(18, .bold))
-            Text(note).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+    @ViewBuilder
+    private var usernameAvailabilityIndicator: some View {
+        switch usernameAvailability {
+        case .checking:
+            ProgressView()
+                .tint(ATheme.quiet)
+                .scaleEffect(0.82)
+                .accessibilityLabel("Checking username availability")
+        case .available:
+            Image(systemName: "checkmark")
+                .font(.system(size: 12, weight: .black))
+                .foregroundColor(.white)
+                .frame(width: 25, height: 25)
+                .background(ATheme.live)
+                .clipShape(Circle())
+                .accessibilityLabel("Username available")
+        case .taken:
+            Image(systemName: "xmark")
+                .font(.system(size: 11, weight: .black))
+                .foregroundColor(.white)
+                .frame(width: 25, height: 25)
+                .background(Color.red.opacity(0.88))
+                .clipShape(Circle())
+                .accessibilityLabel("Username unavailable")
+        case .unavailable:
+            Image(systemName: "arrow.clockwise")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundColor(ATheme.quiet)
+                .accessibilityLabel("Availability check unavailable")
+        case .idle:
+            EmptyView()
         }
-        .padding(.horizontal, 30)
-        .frame(minWidth: 274, minHeight: 154)
-        .background(Color.white.opacity(0.94))
-        .clipShape(RoundedRectangle(cornerRadius: 23, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 23, style: .continuous).stroke(ATheme.rule))
-        .shadow(color: ATheme.ink.opacity(0.10), radius: 35, y: 15)
+    }
+
+    @ViewBuilder
+    private var passwordConfirmationFeedback: some View {
+        switch confirmationState {
+        case .checking:
+            ProgressView()
+                .tint(ATheme.quiet)
+                .scaleEffect(0.76)
+                .frame(width: 22, height: 22)
+                .transition(.wyrmBlurFade)
+                .accessibilityLabel("Checking passwords")
+        case .matched:
+            WyrmPasswordMatchLabel(
+                text: "Password matched, continue!",
+                systemImage: "checkmark",
+                colour: ATheme.live
+            )
+            .transition(.wyrmBlurFade)
+        case .mismatched:
+            WyrmPasswordMatchLabel(
+                text: "Password didn't match, recheck!",
+                systemImage: "xmark",
+                colour: .red
+            )
+            .transition(.wyrmBlurFade)
+        case .idle:
+            EmptyView()
+        }
     }
 
     private var backButton: some View {
@@ -362,10 +459,12 @@ struct WyrmCinematicAuth: View {
         switch stage {
         case .createUsername where !username.isEmpty && !usernameValid:
             return "3–20 letters, numbers or underscores"
+        case .createUsername where usernameAvailability == .taken:
+            return "That username is already taken"
+        case .createUsername where usernameAvailability == .unavailable:
+            return "Could not check availability. Edit the username to retry."
         case .createPassword where !password.isEmpty && !passwordValid:
             return "\(max(0, 8 - password.count)) more character\(password.count == 7 ? "" : "s")"
-        case .createConfirmation where !confirmation.isEmpty && confirmation != password:
-            return "Those passwords do not match"
         default:
             return nil
         }
@@ -389,20 +488,21 @@ struct WyrmCinematicAuth: View {
 
     private var actionEnabled: Bool {
         switch stage {
-        case .createUsername: return usernameValid
+        case .createUsername: return usernameValid && usernameAvailability == .available
         case .loginUsername: return !username.isEmpty
         case .createPassword: return passwordValid
         case .loginPassword: return !password.isEmpty && password.count <= 200
-        case .createConfirmation: return passwordValid && confirmation == password
+        case .createConfirmation: return passwordValid && confirmationState == .matched
         default: return false
         }
     }
 
     private var showsKeyboardAction: Bool {
         switch stage {
-        case .createUsername, .loginUsername: return !username.isEmpty
+        case .createUsername: return usernameValid
+        case .loginUsername: return !username.isEmpty
         case .createPassword, .loginPassword: return !password.isEmpty
-        case .createConfirmation: return !confirmation.isEmpty
+        case .createConfirmation: return confirmationState == .matched
         default: return false
         }
     }
@@ -417,6 +517,7 @@ struct WyrmCinematicAuth: View {
     private var logoSize: CGFloat {
         switch stage {
         case .landing: return 108
+        case .creating, .signingIn: return 118
         case .success: return 132
         default: return 74
         }
@@ -426,11 +527,15 @@ struct WyrmCinematicAuth: View {
         switch stage {
         case .landing:
             return min(188, safeTop + 132)
-        case .success:
+        case .creating, .signingIn, .success:
             return proxy.size.height * 0.45
         default:
             return safeTop + 72
         }
+    }
+
+    private func workingStatusY(in proxy: GeometryProxy) -> CGFloat {
+        proxy.size.height * 0.45 + 92
     }
 
     private var motion: Animation {
@@ -464,6 +569,50 @@ struct WyrmCinematicAuth: View {
         guard autofocus else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.08 : 0.34)) {
             focus = next
+        }
+    }
+
+    private func scheduleUsernameAvailability() {
+        availabilityTask?.cancel()
+        guard stage == .createUsername, usernameValid else {
+            withAnimation(motion) { usernameAvailability = .idle }
+            return
+        }
+
+        let candidate = username
+        withAnimation(motion) { usernameAvailability = .checking }
+        availabilityTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 420_000_000)
+            guard !Task.isCancelled, candidate == username, stage == .createUsername else { return }
+            let result = await account.usernameAvailability(candidate)
+            guard !Task.isCancelled, candidate == username, stage == .createUsername else { return }
+            withAnimation(motion) {
+                switch result {
+                case .available: usernameAvailability = .available
+                case .taken: usernameAvailability = .taken
+                case .unavailable: usernameAvailability = .unavailable
+                }
+            }
+        }
+    }
+
+    private func schedulePasswordComparison() {
+        confirmationTask?.cancel()
+        guard stage == .createConfirmation,
+              !password.isEmpty,
+              confirmation.count >= password.count else {
+            withAnimation(motion) { confirmationState = .idle }
+            return
+        }
+
+        let candidate = confirmation
+        withAnimation(motion) { confirmationState = .checking }
+        confirmationTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 280_000_000)
+            guard !Task.isCancelled, candidate == confirmation, stage == .createConfirmation else { return }
+            withAnimation(motion) {
+                confirmationState = candidate == password ? .matched : .mismatched
+            }
         }
     }
 
@@ -548,6 +697,42 @@ struct WyrmBrandMark: View {
     }
 }
 
+private struct WyrmAuthWorkingStatus: View {
+    let title: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var shimmerOffset: CGFloat = -1.4
+
+    var body: some View {
+        Text(title)
+            .font(.androidWyrm(13, .bold))
+            .tracking(0.55)
+            .foregroundColor(ATheme.quiet.opacity(0.58))
+            .overlay {
+                GeometryReader { proxy in
+                    LinearGradient(
+                        colors: [.clear, ATheme.ink.opacity(0.96), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: max(72, proxy.size.width * 0.58))
+                    .offset(x: shimmerOffset * proxy.size.width)
+                }
+                .mask(
+                    Text(title)
+                        .font(.androidWyrm(13, .bold))
+                        .tracking(0.55)
+                )
+            }
+            .onAppear {
+                guard !reduceMotion else { shimmerOffset = 0; return }
+                withAnimation(.linear(duration: 1.35).repeatForever(autoreverses: false)) {
+                    shimmerOffset = 1.5
+                }
+            }
+            .accessibilityLabel(title)
+    }
+}
+
 private struct WyrmBrandStroke: Shape {
     func path(in rect: CGRect) -> Path {
         let width = min(rect.width, rect.height)
@@ -616,6 +801,28 @@ private struct WyrmAuthKeyboardAction: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+    }
+}
+
+private struct WyrmPasswordMatchLabel: View {
+    let text: String
+    let systemImage: String
+    let colour: Color
+
+    var body: some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+                .font(.system(size: 9, weight: .black))
+                .foregroundColor(.white)
+                .frame(width: 18, height: 18)
+                .background(colour)
+                .clipShape(Circle())
+            Text(text)
+                .font(.androidWyrm(11.5, .semibold))
+                .foregroundColor(colour)
+        }
+        .fixedSize(horizontal: true, vertical: false)
+        .accessibilityElement(children: .combine)
     }
 }
 

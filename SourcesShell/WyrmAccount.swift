@@ -46,6 +46,13 @@ struct WyrmPlayer: Decodable, Identifiable {
 
 private struct WyrmAuthEnvelope: Decodable { let token: String; let player: WyrmPlayer }
 private struct WyrmErrorEnvelope: Decodable { let error: String? }
+private struct WyrmUsernameAvailabilityEnvelope: Decodable { let available: Bool }
+
+enum WyrmUsernameAvailabilityResult {
+    case available
+    case taken
+    case unavailable
+}
 
 enum WyrmAccountError: LocalizedError {
     case message(String)
@@ -119,6 +126,15 @@ private actor WyrmAPI {
         try await request("/v1/auth/login", method: "POST", body: ["username": username, "password": password], token: nil)
     }
 
+    func usernameAvailability(_ username: String) async throws -> Bool {
+        let envelope: WyrmUsernameAvailabilityEnvelope = try await request(
+            "/v1/auth/username-availability",
+            queryItems: [URLQueryItem(name: "username", value: username)],
+            token: nil
+        )
+        return envelope.available
+    }
+
     func me(token: String) async throws -> WyrmPlayer {
         try await request("/v1/me", token: token)
     }
@@ -141,9 +157,19 @@ private actor WyrmAPI {
         let _: EmptyResponse = try await request("/v1/me", method: "DELETE", token: token)
     }
 
-    private func request<T: Decodable>(_ path: String, method: String = "GET", body: [String: Any]? = nil, token: String?) async throws -> T {
+    private func request<T: Decodable>(
+        _ path: String,
+        method: String = "GET",
+        body: [String: Any]? = nil,
+        queryItems: [URLQueryItem] = [],
+        token: String?
+    ) async throws -> T {
         let cleanPath = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
-        var request = URLRequest(url: base.appendingPathComponent(cleanPath))
+        let endpoint = base.appendingPathComponent(cleanPath)
+        var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)
+        components?.queryItems = queryItems.isEmpty ? nil : queryItems
+        guard let url = components?.url else { throw WyrmAccountError.message("The server address is invalid.") }
+        var request = URLRequest(url: url)
         request.httpMethod = method
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         if let token { request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
@@ -221,6 +247,14 @@ final class WyrmAccountStore: ObservableObject {
     @discardableResult
     func login(username: String, password: String) async -> Bool {
         await authenticate { try await WyrmAPI.shared.login(username: username, password: password) }
+    }
+
+    func usernameAvailability(_ username: String) async -> WyrmUsernameAvailabilityResult {
+        do {
+            return try await WyrmAPI.shared.usernameAvailability(username) ? .available : .taken
+        } catch {
+            return .unavailable
+        }
     }
 
     func completeAuthentication() {

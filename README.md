@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.10.0 (build 32)** and targets **iOS 15 or newer**.
+**0.10.1 (build 33)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -20,8 +20,9 @@ compiled and tested by CI, then exposed as a workflow artifact.
 
 ## Current capabilities
 
-- Full-screen cinematic username/password account creation and login, with no
-  Google dependency or separate onboarding sequence.
+- Full-screen cinematic username/password account creation and login, with
+  live debounced username availability, keyboard-safe actions, password-match
+  feedback, and no Google dependency or separate onboarding sequence.
 - Play, Alerts, Social, Skin and Settings product surfaces.
 - Original Wyrm C gameplay and network engine—not a Swift reimplementation.
 - SDL3 window/input integration and Vulkan rendering through MoltenVK/Metal.
@@ -59,8 +60,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.10.0-build-32-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.10.0-build-32-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.10.1-build-33-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.10.1-build-33-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution
