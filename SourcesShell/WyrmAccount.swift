@@ -124,10 +124,17 @@ private actor WyrmAPI {
     }
 
     func update(token: String, displayName: String, ingameName: String, username: String, bio: String, avatarKey: String) async throws -> WyrmPlayer {
-        try await request("/v1/me", method: "PATCH", body: [
-            "displayName": displayName, "ingameName": ingameName,
-            "username": username, "bio": bio, "avatarKey": avatarKey,
-        ], token: token)
+        var body: [String: Any] = [
+            "displayName": displayName, "username": username,
+            "bio": bio, "avatarKey": avatarKey,
+        ]
+        // Guest accounts begin without an arena name. Sending an empty string
+        // would fail the backend's 3–20 character IGN contract, so leave the
+        // field untouched until the player actually chooses one.
+        if !ingameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            body["ingameName"] = ingameName
+        }
+        return try await request("/v1/me", method: "PATCH", body: body, token: token)
     }
 
     func deleteAccount(token: String) async throws {
@@ -441,7 +448,7 @@ private struct WyrmProfileEditor: View {
     init(account: WyrmAccountStore, player: WyrmPlayer) {
         self.account = account
         _displayName = State(initialValue: player.displayName)
-        _ingameName = State(initialValue: player.arenaName)
+        _ingameName = State(initialValue: player.ingameName ?? "")
         _username = State(initialValue: player.username ?? "")
         _bio = State(initialValue: player.bio)
         _avatarKey = State(initialValue: player.avatarKey)
