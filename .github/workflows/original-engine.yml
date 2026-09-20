@@ -10,7 +10,7 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - run: brew install xcodegen
       - run: bash Scripts/fetch-ios-dependencies.sh
       - run: python3 Scripts/prepare-original-engine.py
@@ -103,7 +103,7 @@ jobs:
           python3 -c 'import re; s=open("original-artifacts/online-stderr.log").read(); m=re.findall(r"pixel canvas: imgui=(\d+)x(\d+) framebuffer=1\.00x1\.00 drawable=(\d+)x(\d+)",s); assert any(a==c and b==d and int(a)>int(b) for a,b,c,d in m), "online canvas is not one landscape pixel space"'
           grep 'arena frame progress=120' original-artifacts/online-stderr.log
           grep -E 'presentation=rotated-landscape os=portrait container=stable-child .*geometry_ok=1' original-artifacts/online-stderr.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         if: always()
         with:
           name: original-engine-compile-${{ github.run_id }}
