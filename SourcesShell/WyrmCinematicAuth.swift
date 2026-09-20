@@ -113,11 +113,11 @@ struct WyrmCinematicAuth: View {
         .animation(motion, value: stage)
         .animation(motion, value: showsKeyboardAction)
         .onAppear {
-            WyrmDiagnostics.record("cinematic auth stage=\(String(describing: stage))", category: "AUTH-UI")
+            recordStage(stage)
             focusInitialStageIfNeeded()
         }
         .onChange(of: stage) { next in
-            WyrmDiagnostics.record("cinematic auth stage=\(String(describing: next))", category: "AUTH-UI")
+            recordStage(next)
         }
     }
 
@@ -445,6 +445,12 @@ struct WyrmCinematicAuth: View {
         case .createConfirmation: scheduleFocus(.confirmation)
         default: break
         }
+    }
+
+    private func recordStage(_ value: WyrmAuthStage) {
+        let message = "cinematic auth stage=\(String(describing: value))"
+        WyrmDiagnostics.record(message, category: "AUTH-UI")
+        NSLog("Wyrm %@", message)
     }
 
     private func enter(_ next: WyrmAuthStage, focus nextFocus: WyrmAuthFocus?) {
