@@ -232,9 +232,12 @@ private actor WyrmServiceClient {
         request.timeoutInterval = 10
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+            WyrmDiagnostics.record("GET slither arena directory failed", category: "NETWORK")
             throw WyrmServiceError.message("Arena directory is unavailable.")
         }
-        return try Self.decodeArenaDirectory(data)
+        let result = try Self.decodeArenaDirectory(data)
+        WyrmDiagnostics.record("GET slither arena directory status=200 arenas=\(result.count)", category: "NETWORK")
+        return result
     }
 
     private func request(_ path: String, method: String = "GET", body: [String: Any]? = nil, token: String) async throws -> [String: Any] {
@@ -251,13 +254,18 @@ private actor WyrmServiceClient {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw WyrmServiceError.message("Wyrm returned an invalid response.") }
             guard 200..<300 ~= http.statusCode else {
+                WyrmDiagnostics.record("\(method) \(path) status=\(http.statusCode)", category: "NETWORK")
                 let payload = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
                 throw WyrmServiceError.message(payload.string("error", fallback: "HTTP_\(http.statusCode)"))
             }
+            WyrmDiagnostics.record("\(method) \(path) status=\(http.statusCode)", category: "NETWORK")
             guard !data.isEmpty else { return [:] }
             return (try JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
         } catch let error as WyrmServiceError { throw error }
-        catch { throw WyrmServiceError.message("Could not reach Wyrm. Check your connection and try again.") }
+        catch {
+            WyrmDiagnostics.record("\(method) \(path) transport failure=\(error.localizedDescription)", category: "NETWORK")
+            throw WyrmServiceError.message("Could not reach Wyrm. Check your connection and try again.")
+        }
     }
 
     private static func decodeArenaDirectory(_ source: Data) throws -> [WyrmArena] {

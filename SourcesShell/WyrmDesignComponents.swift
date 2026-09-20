@@ -32,6 +32,7 @@ enum WyrmDesignRoute: Identifiable {
     case privacy
     case themes
     case backup
+    case developer
     case presets
     case pattern
     case accessory
@@ -63,6 +64,7 @@ enum WyrmDesignRoute: Identifiable {
         case .privacy: return "privacy"
         case .themes: return "themes"
         case .backup: return "backup"
+        case .developer: return "developer"
         case .presets: return "presets"
         case .pattern: return "pattern"
         case .accessory: return "accessory"
@@ -274,4 +276,3 @@ struct WyrmRootTabBar: View {
 extension Int64 {
     var wyrmFormatted: String { NumberFormatter.localizedString(from: NSNumber(value: self), number: .decimal) }
 }
-

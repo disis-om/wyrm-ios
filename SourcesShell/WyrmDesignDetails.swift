@@ -26,6 +26,7 @@ struct WyrmDetailHost: View {
         case .privacy: WyrmPrivacyDetail(close: close)
         case .themes: WyrmThemesDetail(close: close)
         case .backup: WyrmBackupDetail(engine: engine, close: close)
+        case .developer: WyrmDeveloperDetail(close: close)
         case .presets, .pattern, .accessory, .tag, .background: WyrmSkinDetail(route: route, close: close)
         }
     }
@@ -436,7 +437,63 @@ private struct WyrmBackupDetail: View {
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @State private var confirmReset = false
-    var body: some View { WyrmDetailChrome(title: "Backup", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("This device"); WyrmPaperCard { WyrmListRow(title: "Wyrm", value: "0.8.0 (29)", showsChevron: false); WyrmListRow(title: "Settings format", value: engine.settingsVersion.isEmpty ? "Starting" : engine.settingsVersion, showsChevron: false); WyrmListRow(title: "Engine controls", value: "\(engine.settings.count)", showsChevron: false); WyrmListRow(title: "On-screen actions", value: "\(engine.hotkeys.count)", showsChevron: false) }; VStack(spacing: 10) { WyrmOutlineAction(title: "Reset controls layout") { engine.reset(2, message: "Controls reset") }; WyrmOutlineAction(title: "Reset arena HUD") { engine.reset(8, message: "HUD reset") }; WyrmOutlineAction(title: confirmReset ? "Tap again to reset everything" : "Reset everything to defaults", destructive: true) { if confirmReset { engine.reset(1, message: "All engine settings reset"); confirmReset = false } else { confirmReset = true } } }.padding(16); Text("Portable backup and Files import/export remain a Phase 7 Apple service. Reset actions above are live native-engine mailboxes.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20) } } } }
+    var body: some View { WyrmDetailChrome(title: "Backup", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("This device"); WyrmPaperCard { WyrmListRow(title: "Wyrm", value: "0.9.0 (30)", showsChevron: false); WyrmListRow(title: "Settings format", value: engine.settingsVersion.isEmpty ? "Starting" : engine.settingsVersion, showsChevron: false); WyrmListRow(title: "Engine controls", value: "\(engine.settings.count)", showsChevron: false); WyrmListRow(title: "On-screen actions", value: "\(engine.hotkeys.count)", showsChevron: false) }; VStack(spacing: 10) { WyrmOutlineAction(title: "Reset controls layout") { engine.reset(2, message: "Controls reset") }; WyrmOutlineAction(title: "Reset arena HUD") { engine.reset(8, message: "HUD reset") }; WyrmOutlineAction(title: confirmReset ? "Tap again to reset everything" : "Reset everything to defaults", destructive: true) { if confirmReset { engine.reset(1, message: "All engine settings reset"); confirmReset = false } else { confirmReset = true } } }.padding(16); Text("Portable backup and Files import/export remain a Phase 7 Apple service. Reset actions above are live native-engine mailboxes.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20) } } } }
+}
+
+private struct WyrmDeveloperDetail: View {
+    let close: () -> Void
+    @ObservedObject private var diagnostics = WyrmDiagnostics.shared
+    @State private var shareURL: URL?
+    @State private var showingShare = false
+    @State private var confirmClear = false
+
+    var body: some View {
+        WyrmDetailChrome(title: "Developer Mode", onBack: close) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    WyrmSectionLabel("Diagnostics")
+                    WyrmPaperCard {
+                        WyrmListRow(title: "Retention", value: "7 days", showsChevron: false)
+                        WyrmListRow(title: "Storage cap", value: "2 MB total", showsChevron: false)
+                        WyrmListRow(title: "Current export", value: ByteCountFormatter.string(fromByteCount: Int64(diagnostics.byteCount), countStyle: .file), showsChevron: false)
+                    }
+                    HStack(spacing: 10) {
+                        WyrmOutlineAction(title: "Refresh") { diagnostics.refresh() }
+                        WyrmOutlineAction(title: "Share logs") {
+                            WyrmDiagnostics.record("share sheet requested", category: "DIAGNOSTICS")
+                            shareURL = diagnostics.exportFile()
+                            showingShare = shareURL != nil
+                        }
+                    }.padding(.horizontal, 16).padding(.top, 16)
+                    WyrmOutlineAction(title: confirmClear ? "Tap again to clear logs" : "Clear stored logs", destructive: true) {
+                        if confirmClear { diagnostics.clear(); confirmClear = false }
+                        else { confirmClear = true }
+                    }.padding(.horizontal, 16).padding(.top, 10)
+
+                    WyrmSectionLabel("App + engine log")
+                    ScrollView(.horizontal, showsIndicators: true) {
+                        Text(diagnostics.text)
+                            .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                            .foregroundColor(ATheme.ink)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(14)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+                    .background(Color.white.opacity(0.94))
+                    .cornerRadius(15)
+                    .overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule))
+                    .padding(.horizontal, 16)
+                    Text("Exports include app lifecycle, safe network status and SDL3/original-engine events. Tokens, passwords and private message bodies are never written.")
+                        .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
+                }
+            }
+            .onAppear { diagnostics.refresh(); WyrmDiagnostics.record("developer console opened", category: "DIAGNOSTICS") }
+            .sheet(isPresented: $showingShare) {
+                if let shareURL = shareURL { WyrmShareSheet(items: [shareURL]) }
+            }
+        }
+    }
 }
 
 private struct WyrmSkinDetail: View {

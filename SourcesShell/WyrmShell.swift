@@ -76,6 +76,7 @@ final class WyrmShellStore: ObservableObject {
     private var timer: Timer?
 
     init() {
+        WyrmDiagnostics.record("SwiftUI shell store started", category: "LIFECYCLE")
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -120,12 +121,14 @@ final class WyrmShellStore: ObservableObject {
     }
 
     func enterLobby(name: String, address: String) {
+        WyrmDiagnostics.record("lobby requested address=\(address.isEmpty ? "automatic" : "manual")", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestLobby(namePointer, addressPointer) }
         }
     }
 
     func playOffline(name: String) {
+        WyrmDiagnostics.record("offline practice requested", category: "ENGINE")
         name.withCString { namePointer in
             "".withCString { empty in WyrmIOSRequestPlay(namePointer, empty, true) }
         }
@@ -137,6 +140,7 @@ final class WyrmShellStore: ObservableObject {
             WyrmIOSQueueSetting($0, Float(v[0]), Float(v[1]), Float(v[2]), Float(v[3]), Int32(values.count))
         }
         if !accepted { toast = "Engine is still starting" }
+        WyrmDiagnostics.record("setting queued id=\(setting.id) accepted=\(accepted)", category: "ENGINE")
     }
 
     func setHotkey(_ hotkey: EngineHotkey, visible: Bool) {
@@ -144,6 +148,7 @@ final class WyrmShellStore: ObservableObject {
                                visible, Float(hotkey.x), Float(hotkey.y)) {
             toast = "Engine is still starting"
         }
+        WyrmDiagnostics.record("hotkey queued id=\(hotkey.id) visible=\(visible)", category: "ENGINE")
     }
 
     func reset(_ mask: Int32, message: String) {

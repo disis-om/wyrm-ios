@@ -7,8 +7,13 @@ struct WyrmDesignMain: View {
     @State private var tab: WyrmDesignTab
     @State private var route: WyrmDesignRoute?
 
-    init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore, initialTab: WyrmDesignTab) {
-        self.engine = engine; self.account = account; self.services = services; _tab = State(initialValue: initialTab)
+    init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore,
+         initialTab: WyrmDesignTab, initialRoute: WyrmDesignRoute? = nil) {
+        self.engine = engine
+        self.account = account
+        self.services = services
+        _tab = State(initialValue: initialTab)
+        _route = State(initialValue: initialRoute)
     }
 
     var body: some View {
@@ -239,6 +244,7 @@ private struct WyrmSettingsRoot: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var account: WyrmAccountStore
     let open: (WyrmDesignRoute) -> Void
+    @AppStorage("wyrm.ios.developer-mode") private var developerMode = false
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
@@ -248,7 +254,23 @@ private struct WyrmSettingsRoot: View {
                 section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
                 section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
                 section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.8.0 · 29", .backup)])
+                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.9.0 · 30", .backup)])
+                VStack(spacing: 0) {
+                    WyrmSectionLabel("Developer")
+                    WyrmPaperCard {
+                        Toggle(isOn: $developerMode) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("Developer Mode").font(.androidWyrm(14.5, .semibold))
+                                Text("Local diagnostics and export tools").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                            }
+                        }.tint(ATheme.live).padding(.horizontal, 14).frame(minHeight: 58)
+                        if developerMode {
+                            WyrmListRow(title: "Wyrm logs", detail: "App, network and original engine events", value: "7 days") { open(.developer) }
+                        }
+                    }
+                    Text("Developer logs stay on this iPhone until you explicitly share them. They automatically expire after seven days and are capped at 2 MB.")
+                        .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
+                }
                 Spacer().frame(height: 22)
             }
         }

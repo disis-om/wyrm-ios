@@ -23,6 +23,53 @@ static bool engine_presentation;
 static bool leaderboard_proven;
 static bool canvas_proven;
 static unsigned gameplay_frames;
+static NSString* wyrm_engine_log_path;
+
+static const char* wyrm_log_priority_name(SDL_LogPriority priority) {
+  switch (priority) {
+    case SDL_LOG_PRIORITY_TRACE: return "TRACE";
+    case SDL_LOG_PRIORITY_VERBOSE: return "VERBOSE";
+    case SDL_LOG_PRIORITY_DEBUG: return "DEBUG";
+    case SDL_LOG_PRIORITY_INFO: return "INFO";
+    case SDL_LOG_PRIORITY_WARN: return "WARN";
+    case SDL_LOG_PRIORITY_ERROR: return "ERROR";
+    case SDL_LOG_PRIORITY_CRITICAL: return "CRITICAL";
+    default: return "UNKNOWN";
+  }
+}
+
+static void wyrm_log_output(void* userdata, int category,
+                            SDL_LogPriority priority, const char* message) {
+  (void)userdata;
+  @autoreleasepool {
+    NSLog(@"Wyrm SDL [%s] %s", wyrm_log_priority_name(priority), message ?: "");
+    if (!wyrm_engine_log_path) return;
+    NSString* stamp = [NSISO8601DateFormatter stringFromDate:NSDate.date
+                                                   timeZone:NSTimeZone.localTimeZone
+                                              formatOptions:NSISO8601DateFormatWithInternetDateTime];
+    NSString* line = [NSString stringWithFormat:@"[%@][ENGINE/%s/%d] %s\n",
+                      stamp, wyrm_log_priority_name(priority), category,
+                      message ?: ""];
+    NSData* payload = [line dataUsingEncoding:NSUTF8StringEncoding];
+    @synchronized(NSFileManager.class) {
+      NSFileManager* files = NSFileManager.defaultManager;
+      if (![files fileExistsAtPath:wyrm_engine_log_path])
+        [files createFileAtPath:wyrm_engine_log_path contents:nil attributes:nil];
+      NSFileHandle* handle = [NSFileHandle fileHandleForWritingAtPath:wyrm_engine_log_path];
+      [handle seekToEndOfFile];
+      [handle writeData:payload];
+      [handle closeFile];
+      NSNumber* size = [[files attributesOfItemAtPath:wyrm_engine_log_path error:nil]
+          objectForKey:NSFileSize];
+      if (size.unsignedLongLongValue > 1048576) {
+        NSData* data = [NSData dataWithContentsOfFile:wyrm_engine_log_path];
+        NSUInteger keep = MIN((NSUInteger)786432, data.length);
+        NSData* tail = [data subdataWithRange:NSMakeRange(data.length - keep, keep)];
+        [tail writeToFile:wyrm_engine_log_path atomically:YES];
+      }
+    }
+  }
+}
 
 @interface WyrmShellHost : NSObject
 + (UIViewController*)makeViewController;
@@ -284,6 +331,10 @@ static int engine_main(int argc, char** argv) {
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
+    NSURL* diagnostics = [base URLByAppendingPathComponent:@"WyrmDiagnostics" isDirectory:YES];
+    [files createDirectoryAtURL:diagnostics withIntermediateDirectories:YES attributes:nil error:nil];
+    wyrm_engine_log_path = [diagnostics.path stringByAppendingPathComponent:@"engine.log"];
+    SDL_SetLogOutputFunction(wyrm_log_output, NULL);
     NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-27/app" isDirectory:YES];
     NSError* error = nil;
     if (![files createDirectoryAtURL:app withIntermediateDirectories:YES attributes:nil error:&error]) {

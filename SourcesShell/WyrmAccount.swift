@@ -155,13 +155,18 @@ private actor WyrmAPI {
             let (data, response) = try await session.data(for: request)
             guard let http = response as? HTTPURLResponse else { throw WyrmAccountError.message("The server sent an invalid response.") }
             guard 200..<300 ~= http.statusCode else {
+                WyrmDiagnostics.record("\(method) /\(cleanPath) status=\(http.statusCode)", category: "AUTH")
                 let code = (try? JSONDecoder().decode(WyrmErrorEnvelope.self, from: data).error) ?? "HTTP_\(http.statusCode)"
                 throw WyrmAccountError.message(Self.friendly(code))
             }
+            WyrmDiagnostics.record("\(method) /\(cleanPath) status=\(http.statusCode)", category: "AUTH")
             if T.self == EmptyResponse.self { return EmptyResponse() as! T }
             return try JSONDecoder().decode(T.self, from: data)
         } catch let error as WyrmAccountError { throw error }
-        catch { throw WyrmAccountError.message("Could not reach Wyrm. Check your connection and try again.") }
+        catch {
+            WyrmDiagnostics.record("\(method) /\(cleanPath) transport failure=\(error.localizedDescription)", category: "AUTH")
+            throw WyrmAccountError.message("Could not reach Wyrm. Check your connection and try again.")
+        }
     }
 
     private static func friendly(_ code: String) -> String {

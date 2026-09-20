@@ -4,12 +4,16 @@ struct WyrmDesignRoot: View {
     @StateObject private var engine = WyrmShellStore()
     @StateObject private var account = WyrmAccountStore()
     @StateObject private var services = WyrmServiceStore()
-    private let smoke = ProcessInfo.processInfo.arguments.contains("--smoke-settings")
+    private let smoke = ProcessInfo.processInfo.arguments.contains("--smoke-settings") ||
+        ProcessInfo.processInfo.arguments.contains("--smoke-developer")
+    private let smokeDeveloper = ProcessInfo.processInfo.arguments.contains("--smoke-developer")
 
     var body: some View {
         Group {
             if smoke {
-                WyrmDesignMain(engine: engine, account: account, services: services, initialTab: .settings)
+                WyrmDesignMain(engine: engine, account: account, services: services,
+                               initialTab: .settings,
+                               initialRoute: smokeDeveloper ? .developer : nil)
             } else {
                 switch account.phase {
                 case .restoring: WyrmDesignLaunch()
@@ -292,4 +296,3 @@ private struct WyrmDesignOnboarding: View {
         move(to: step + 1)
     }
 }
-
