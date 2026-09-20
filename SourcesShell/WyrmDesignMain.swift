@@ -117,7 +117,7 @@ private struct WyrmPlayRoot: View {
     }
 }
 
-private struct WyrmMetric: View {
+struct WyrmMetric: View {
     let label: String, value: String
     var body: some View { VStack(alignment: .leading, spacing: 2) { Text(label).font(.androidWyrm(9.5, .bold)).tracking(0.8).foregroundColor(ATheme.quiet); Text(value).font(.androidWyrm(17, .bold)) }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 18).padding(.vertical, 12) }
 }
@@ -258,4 +258,3 @@ private struct WyrmSettingsRoot: View {
         VStack(spacing: 0) { WyrmSectionLabel(title); WyrmPaperCard { ForEach(rows.indices, id: \.self) { index in let row = rows[index]; WyrmListRow(title: row.0, detail: row.1, value: row.2) { open(row.3) } } } }
     }
 }
-
