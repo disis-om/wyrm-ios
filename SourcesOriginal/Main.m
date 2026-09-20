@@ -333,6 +333,12 @@ static int engine_main(int argc, char** argv) {
     // later engine mutation remain on main after initialization completes.
     WyrmIOSSetEnginePresentation(false);
     SDL_Log("Wyrm engine bootstrap scheduled off main thread");
+    // Register before returning from SDL's main callback. Frames are harmless
+    // no-ops until `ready` flips on main, and UIKit gets its runloop back now.
+    if (!SDL_SetiOSAnimationCallback(engine.wnd->handle, 1, frame, NULL)) {
+      SDL_Log("Wyrm animation callback failed: %s", SDL_GetError());
+      return 1;
+    }
     CFAbsoluteTime started = CFAbsoluteTimeGetCurrent();
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
       @autoreleasepool {
@@ -349,10 +355,6 @@ static int engine_main(int argc, char** argv) {
           }
           if (smoke_online)
             WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
-          if (!SDL_SetiOSAnimationCallback(engine.wnd->handle, 1, frame, NULL)) {
-            SDL_Log("Wyrm animation callback failed: %s", SDL_GetError());
-            return;
-          }
           SDL_Log("Wyrm engine bootstrap completed off main thread in %.0f ms; Apple animation callback installed",
                   elapsed * 1000.0);
         });
