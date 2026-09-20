@@ -30,7 +30,7 @@ targets:
           - WYRM_IOS=1
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
-      - APP_VERSION=\"0.9.0\"
+          - APP_VERSION=\"0.9.0\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
