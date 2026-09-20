@@ -204,23 +204,28 @@ final class WyrmAccountStore: ObservableObject {
             let player = try await WyrmAPI.shared.me(token: saved)
             token = saved
             self.player = player
-            phase = UserDefaults.standard.bool(forKey: onboardingKey(player.id)) ? .signedIn : .onboarding
+            phase = .signedIn
         } catch {
             WyrmKeychain.clear()
             phase = .signedOut
         }
     }
 
-    func signUp(displayName: String, username: String, password: String) async {
+    @discardableResult
+    func signUp(displayName: String, username: String, password: String) async -> Bool {
         await authenticate {
             try await WyrmAPI.shared.signUp(displayName: displayName, username: username, password: password)
         }
-        if player != nil { phase = .onboarding }
     }
 
-    func login(username: String, password: String) async {
+    @discardableResult
+    func login(username: String, password: String) async -> Bool {
         await authenticate { try await WyrmAPI.shared.login(username: username, password: password) }
-        if player != nil { phase = .signedIn }
+    }
+
+    func completeAuthentication() {
+        guard player != nil else { return }
+        phase = .signedIn
     }
 
     func finishOnboarding() {
@@ -257,14 +262,18 @@ final class WyrmAccountStore: ObservableObject {
         catch { errorMessage = error.localizedDescription }
     }
 
-    private func authenticate(_ action: () async throws -> WyrmAuthEnvelope) async {
+    private func authenticate(_ action: () async throws -> WyrmAuthEnvelope) async -> Bool {
         busy = true; errorMessage = ""
         defer { busy = false }
         do {
             let result = try await action()
             try WyrmKeychain.write(result.token)
             token = result.token; player = result.player
-        } catch { errorMessage = error.localizedDescription }
+            return true
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
     }
 
     private func onboardingKey(_ id: String) -> String { "wyrm.ios.onboarding.\(id)" }
