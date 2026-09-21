@@ -587,7 +587,7 @@ final class WyrmServiceStore: ObservableObject {
            arenas.contains(where: { $0.id == current.id }) { return }
         let candidates = arenas.filter { $0.active && $0.players > 20 && !excluding.contains($0.endpoint) && !isArenaTainted($0.endpoint) }
         guard !candidates.isEmpty else { recommendedArena = nil; return }
-        let measuredClusters = Set(candidates.compactMap { arenaLatencies[$0.id] == nil ? nil : arena.cluster })
+        let measuredClusters = Set(candidates.compactMap { arenaLatencies[$0.id] == nil ? nil : $0.cluster })
         let pool: [WyrmArena]
         if let bestCluster = measuredClusters.min(by: { clusterLatency($0) < clusterLatency($1) }) {
             pool = candidates.filter { $0.cluster == bestCluster }
