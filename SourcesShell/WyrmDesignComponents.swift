@@ -245,7 +245,6 @@ struct WyrmRootTabBar: View {
 
     @State private var dragLocationX: CGFloat?
     @State private var lastPreview: WyrmDesignTab?
-    @Namespace private var glassNamespace
 
     var body: some View {
         GeometryReader { proxy in
@@ -258,20 +257,15 @@ struct WyrmRootTabBar: View {
                 min(max($0 - itemWidth * 0.5, inset), inset + width - itemWidth)
             }
             ZStack(alignment: .leading) {
-                WyrmGlassGroup {
-                    ZStack(alignment: .leading) {
-                        WyrmTabGlassSurface()
-                            .zIndex(0)
-                        WyrmTabSelectionGlass(namespace: glassNamespace)
-                            .frame(width: itemWidth - 4, height: 46)
-                            .offset(x: draggedOrigin ?? selectedOrigin)
-                            .scaleEffect(x: dragLocationX == nil ? 1 : 1.07,
-                                         y: dragLocationX == nil ? 1 : 0.94)
-                            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.76, blendDuration: 0.1), value: selection)
-                            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.82, blendDuration: 0.06), value: dragLocationX == nil)
-                            .zIndex(1)
-                    }
-                }
+                WyrmTabGlassSurface().zIndex(0)
+                WyrmTabSelectionGlass()
+                    .frame(width: itemWidth - 4, height: 46)
+                    .offset(x: draggedOrigin ?? selectedOrigin)
+                    .scaleEffect(x: dragLocationX == nil ? 1 : 1.07,
+                                 y: dragLocationX == nil ? 1 : 0.94)
+                    .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.76, blendDuration: 0.1), value: selection)
+                    .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.82, blendDuration: 0.06), value: dragLocationX == nil)
+                    .zIndex(1)
                 HStack(spacing: 0) {
                     ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
                         Button { select(tab) } label: {
@@ -346,9 +340,13 @@ private struct WyrmTabGlassSurface: View {
     var body: some View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular.tint(ATheme.paper.opacity(0.1)).interactive(), in: .capsule)
-                .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.ink.opacity(0.13), lineWidth: 0.7))
+            GlassEffectContainer(spacing: 0) {
+                Color.clear
+                    .contentShape(Capsule())
+                    .glassEffect(.regular.tint(ATheme.paper.opacity(0.035)).interactive(), in: .capsule)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 0.7))
+                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.1), lineWidth: 0.45))
+            }
         } else {
             fallback
         }
@@ -365,15 +363,17 @@ private struct WyrmTabGlassSurface: View {
 }
 
 private struct WyrmTabSelectionGlass: View {
-    let namespace: Namespace.ID
     @ViewBuilder
     var body: some View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            Color.clear
-                .glassEffect(.regular.tint(ATheme.ink.opacity(0.13)).interactive(), in: .capsule)
-                .overlay(Capsule().stroke(ATheme.ink.opacity(0.08), lineWidth: 0.6))
-                .glassEffectID("wyrm-tab-selection", in: namespace)
+            GlassEffectContainer(spacing: 0) {
+                Color.clear
+                    .contentShape(Capsule())
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .overlay(Capsule().stroke(Color.white.opacity(0.72), lineWidth: 0.9))
+                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.07), lineWidth: 0.45))
+            }
         } else {
             fallback
         }
@@ -387,22 +387,6 @@ private struct WyrmTabSelectionGlass: View {
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.ink.opacity(0.07)))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.12)))
             .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
-    }
-}
-
-private struct WyrmGlassGroup<Content: View>: View {
-    let content: Content
-    init(@ViewBuilder content: () -> Content) { self.content = content() }
-    @ViewBuilder var body: some View {
-#if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 12) { content }
-        } else {
-            content
-        }
-#else
-        content
-#endif
     }
 }
 

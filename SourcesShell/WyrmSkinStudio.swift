@@ -36,7 +36,6 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                         x: Double(column) / 7, y: Double(row) / 9,
                         width: 1.0 / 7, height: 1.0 / 9)
                 }
-
                 var accessoryImages: [Int: CGImage] = [:]
                 var accessoryThumbs: [Int: CGImage] = [:]
                 for id in 0..<32 {
@@ -258,25 +257,20 @@ struct WyrmSkinRoot: View {
         VStack(spacing: 0) {
             WyrmSectionLabel("Build your Wyrm")
             WyrmPaperCard {
-                studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)", detail: "Original engine skins")
-                studioRow(.pattern, value: customEnabled ? "Custom" : "Preset", detail: "Original bead groups")
-                studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1), detail: "\(WyrmSkinCatalog.accessories.count) atlas pieces")
-                studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { "#\($0.ntlID)" } ?? "None", detail: "\(WyrmSkinCatalog.tags.count) original tags")
-                studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm", detail: "Arena floor")
+                studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)")
+                studioRow(.pattern, value: customEnabled ? "Custom" : "Preset")
+                studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
+                studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { "#\($0.ntlID)" } ?? "None")
+                studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
-            HStack(spacing: 7) {
-                Circle().fill(textures.ready ? ATheme.live : ATheme.quiet).frame(width: 7, height: 7)
-                Text(textures.ready ? "ORIGINAL TEXTURES READY" : "LOADING ORIGINAL TEXTURES")
-                    .font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.quiet)
-            }.padding(.top, 18)
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
             }
         }
     }
 
-    private func studioRow(_ target: WyrmSkinStudioSection, value: String, detail: String) -> some View {
-        WyrmListRow(title: target.title, detail: detail, value: value) { enter(target) }
+    private func studioRow(_ target: WyrmSkinStudioSection, value: String) -> some View {
+        WyrmListRow(title: target.title, value: value) { enter(target) }
     }
 
     private var inlineHeader: some View {
@@ -490,90 +484,93 @@ private struct WyrmSkinPreview: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
-            GeometryReader { proxy in
-                let phase = reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate
-                let scale = min(proxy.size.width * 0.82 / 2.5,
-                                max(42, (proxy.size.height - 34) * 0.72 / 2.16))
-                let step = 8 * (scale / 48)
-                let gap = scale * 0.16
-                let bodyWidth = scale + step * 9
-                let x = proxy.size.width * 0.5 - bodyWidth * 0.5
-                let centreY = (proxy.size.height - 18) * 0.48
-                let headY = centreY - scale * 0.5 - gap * 0.5
-                let tailY = centreY + scale * 0.5 + gap * 0.5
-                let head = CGPoint(x: x + scale * 0.5 + step * 9, y: headY)
-                ZStack {
-                    ATheme.paper
-                    if let image = textures.backgrounds[backgroundID] {
-                        Image(decorative: image, scale: 1).resizable().scaledToFill()
-                            .frame(width: proxy.size.width, height: proxy.size.height)
-                            .opacity(0.13)
-                            .mask(RadialGradient(colors: [.black, .black.opacity(0.42), .clear], center: .center,
-                                                 startRadius: 10,
-                                                 endRadius: min(proxy.size.width, proxy.size.height) * 0.56))
-                    }
-                    nativeBodyShadows(x: x, headY: headY, tailY: tailY, scale: scale, step: step)
-                    nativeBody(x: x, headY: headY, tailY: tailY, scale: scale, step: step)
-                    eyes(at: head, scale: scale)
-                    if let item = WyrmSkinCatalog.accessories[safe: accessoryID],
-                       let image = textures.accessories[accessoryID] {
-                        let unit = scale / 29
-                        let size = scale * CGFloat(item.scale)
-                        WyrmAtlasImage(image: image).frame(width: size, height: size)
-                            .position(x: head.x + CGFloat(item.offset) * 6 * unit, y: head.y)
-                    }
-                    if let item = WyrmSkinCatalog.tags[safe: tagID],
-                       let image = textures.tags[tagID] {
-                        tagPreview(item: item, image: image, head: head, headSize: scale, phase: phase)
-                    }
-                    if !textures.ready {
-                        ProgressView().tint(ATheme.ink).position(x: proxy.size.width / 2, y: proxy.size.height / 2)
-                    }
-                    Text("NATIVE ATLAS PREVIEW").font(.androidWyrm(8.5, .bold)).tracking(1.35).foregroundColor(ATheme.quiet)
-                        .position(x: proxy.size.width / 2, y: proxy.size.height - 12)
+        GeometryReader { proxy in
+            let segmentsPerRow = 128
+            let nativeSpan = 1 + CGFloat(segmentsPerRow - 1) * (8.0 / 48.0)
+            let scale = min((proxy.size.width - 28) / nativeSpan,
+                            (proxy.size.height - 24) / 2.16)
+            let step = 8 * (scale / 48)
+            let gap = scale * 0.16
+            let bodyWidth = scale + step * CGFloat(segmentsPerRow - 1)
+            let x = proxy.size.width * 0.5 - bodyWidth * 0.5
+            let centreY = proxy.size.height * 0.48
+            let headY = centreY - scale * 0.5 - gap * 0.5
+            let tailY = centreY + scale * 0.5 + gap * 0.5
+            let head = CGPoint(x: x + scale * 0.5 + step * CGFloat(segmentsPerRow - 1), y: headY)
+            ZStack {
+                ATheme.paper
+                if let image = textures.backgrounds[backgroundID] {
+                    Image(decorative: image, scale: 1).resizable().scaledToFill()
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .opacity(0.13)
+                        .mask(RadialGradient(colors: [.black, .black.opacity(0.42), .clear], center: .center,
+                                             startRadius: 10,
+                                             endRadius: min(proxy.size.width, proxy.size.height) * 0.56))
                 }
-                .frame(width: proxy.size.width, height: proxy.size.height)
-                .clipped()
+                nativeBodyCanvas(x: x, headY: headY, tailY: tailY,
+                                 scale: scale, step: step, segmentsPerRow: segmentsPerRow)
+                eyes(at: head, scale: scale)
+                if let item = WyrmSkinCatalog.accessories[safe: accessoryID],
+                   let image = textures.accessories[accessoryID] {
+                    let unit = scale / 29
+                    let size = scale * CGFloat(item.scale)
+                    WyrmAtlasImage(image: image).frame(width: size, height: size)
+                        .position(x: head.x + CGFloat(item.offset) * 6 * unit, y: head.y)
+                }
+                if let item = WyrmSkinCatalog.tags[safe: tagID],
+                   let image = textures.tags[tagID] {
+                    TimelineView(.animation(minimumInterval: 1.0 / 60.0, paused: reduceMotion)) { timeline in
+                        tagPreview(item: item, image: image, head: head, headSize: scale,
+                                   phase: reduceMotion ? 0 : timeline.date.timeIntervalSinceReferenceDate)
+                    }
+                }
+                if !textures.ready {
+                    ProgressView().tint(ATheme.ink).position(x: proxy.size.width / 2, y: proxy.size.height / 2)
+                }
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .clipped()
         }
     }
 
-    private func nativeBodyShadows(x: CGFloat, headY: CGFloat, tailY: CGFloat,
-                                   scale: CGFloat, step: CGFloat) -> some View {
-        return ZStack {
-            ForEach(0..<20, id: \.self) { segment in
-                let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
-                                         scale: scale, step: step)
-                Circle().fill(Color.black.opacity(0.16))
-                    .frame(width: scale * 1.42, height: scale * 1.42)
-                    .blur(radius: max(1.5, scale * 0.055))
-                    .position(x: point.x, y: point.y + scale * 0.035)
-            }
-        }
-    }
-
-    private func nativeBody(x: CGFloat, headY: CGFloat, tailY: CGFloat,
-                            scale: CGFloat, step: CGFloat) -> some View {
-        ZStack {
-            ForEach(0..<20, id: \.self) { segment in
-                let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
-                                         scale: scale, step: step)
-                let group = groups.isEmpty ? 7 : groups[(19 - segment) % groups.count]
-                WyrmAtlasImage(image: textures.beads[group])
-                    .frame(width: scale, height: scale)
-                    .rotationEffect(segment < 10 ? .degrees(180) : .zero)
-                    .position(x: point.x, y: point.y)
+    private func nativeBodyCanvas(x: CGFloat, headY: CGFloat, tailY: CGFloat,
+                                  scale: CGFloat, step: CGFloat,
+                                  segmentsPerRow: Int) -> some View {
+        Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, _ in
+            let totalSegments = segmentsPerRow * 2
+            for row in 0..<2 {
+                let firstSegment = row * segmentsPerRow
+                for local in 0..<segmentsPerRow {
+                    let segment = firstSegment + local
+                    let group = groups.isEmpty ? 7 : groups[(totalSegments - 1 - segment) % groups.count]
+                    guard let bead = textures.beads[group] else { continue }
+                    let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
+                                             scale: scale, step: step,
+                                             segmentsPerRow: segmentsPerRow)
+                    let image = Image(decorative: bead, scale: 1)
+                    if row == 1 {
+                        var rotated = context
+                        rotated.translateBy(x: point.x, y: point.y)
+                        rotated.rotate(by: .degrees(180))
+                        rotated.draw(image, in: CGRect(x: -scale * 0.5, y: -scale * 0.5,
+                                                       width: scale, height: scale))
+                    } else {
+                        context.draw(image, in: CGRect(x: point.x - scale * 0.5,
+                                                       y: point.y - scale * 0.5,
+                                                       width: scale, height: scale))
+                    }
+                }
             }
         }
     }
 
     private func segmentPoint(_ segment: Int, x: CGFloat, headY: CGFloat,
-                              tailY: CGFloat, scale: CGFloat, step: CGFloat) -> CGPoint {
-        let local = segment % 10
-        let slot = segment < 10 ? 9 - local : local
+                              tailY: CGFloat, scale: CGFloat, step: CGFloat,
+                              segmentsPerRow: Int) -> CGPoint {
+        let local = segment % segmentsPerRow
+        let slot = segment < segmentsPerRow ? segmentsPerRow - 1 - local : local
         return CGPoint(x: x + scale * 0.5 + CGFloat(slot) * step,
-                       y: segment < 10 ? tailY : headY)
+                       y: segment < segmentsPerRow ? tailY : headY)
     }
 
     private func eyes(at head: CGPoint, scale: CGFloat) -> some View {
