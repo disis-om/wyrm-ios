@@ -416,7 +416,7 @@ private struct WyrmOnboardingView: View {
         "Your backend profile is live. Let’s set up the iPhone around the original engine.",
         "This identity follows your scores, messages and friends—not the phone.",
         "You can change every control later in Settings.",
-        "Skin Studio stays untouched for now. The engine keeps its current skin until we wire the editor properly.",
+        "Skin Studio uses Wyrm’s original atlas. Your selected look follows you into the engine.",
         "Original mode keeps the classic rules. Assist mode can be tuned from Settings whenever you want.",
         "The shell is portrait; lobby and arena rotate inside it while iOS stays stable.",
     ]

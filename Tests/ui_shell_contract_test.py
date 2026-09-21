@@ -17,7 +17,7 @@ checks = {
     "root shell fills every safe-area edge": MAIN.count(".ignoresSafeArea()") >= 3,
     "detail routes paint their own full-screen paper canvas": "ATheme.paper.ignoresSafeArea()" in MAIN,
     "floating tab bar does not reserve a footer": ".padding(.bottom, 66 + tabBarBottomInset)" not in MAIN,
-    "root scroll views can pass behind the floating tab bar": MAIN.count("Spacer().frame(height: 102)") >= 5,
+    "root scroll views can pass behind the floating tab bar": MAIN.count("Spacer().frame(height: 102)") >= 4 and ".padding(.bottom, 108)" in (ROOT / "SourcesShell" / "WyrmSkinStudio.swift").read_text(encoding="utf-8"),
     "tab lens receives drags above tab buttons": ".highPriorityGesture(DragGesture(minimumDistance: 2" in COMPONENTS,
     "iOS 26 glass is grouped": "GlassEffectContainer(spacing: 12)" in COMPONENTS,
     "iOS 26 base and pill glass are interactive": COMPONENTS.count(".interactive()") >= 2,

@@ -15,6 +15,10 @@ struct WyrmDesignRoot: View {
         arguments.contains("--smoke-social") || arguments.contains("--smoke-leaderboard")
     }
 
+    private var skinSmoke: Bool {
+        arguments.contains("--smoke-skin") || arguments.contains("--smoke-skin-accessories") || arguments.contains("--smoke-skin-tags")
+    }
+
     private var authSmokeStage: WyrmAuthStage? {
         if arguments.contains("--smoke-auth-create") { return .createUsername }
         if arguments.contains("--smoke-auth-login") { return .loginUsername }
@@ -33,6 +37,13 @@ struct WyrmDesignRoot: View {
                     services: services,
                     initialTab: .settings,
                     initialRoute: arguments.contains("--smoke-developer") ? .developer : nil
+                )
+            } else if skinSmoke {
+                WyrmDesignMain(
+                    engine: engine,
+                    account: account,
+                    services: services,
+                    initialTab: .skin
                 )
             } else if socialSmoke {
                 WyrmDesignMain(

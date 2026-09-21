@@ -26,7 +26,7 @@ struct WyrmDesignMain: View {
                     case .alerts: WyrmAlertsRoot(services: services)
                     case .social: WyrmSocialRoot(account: account, services: services, open: open)
                     case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
-                    case .skin: WyrmSkinRoot(open: open)
+                    case .skin: WyrmSkinRoot(engine: engine)
                     case .settings: WyrmSettingsRoot(engine: engine, account: account, open: open)
                     }
                 }
@@ -301,31 +301,6 @@ private struct WyrmAlertCard: View {
     private func relative(_ raw: String) -> String { raw.isEmpty ? "" : String(raw.prefix(10)) }
 }
 
-private struct WyrmSkinRoot: View {
-    let open: (WyrmDesignRoute) -> Void
-    private let beads = [ATheme.ink, Color(red: 0.62, green: 0.72, blue: 0.49), Color(red: 0.83, green: 0.60, blue: 0.48)]
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                WyrmScreenHeader(kicker: "WYRM", title: "Skin")
-                VStack(spacing: 15) {
-                    HStack(spacing: -7) { ForEach(0..<12) { index in Circle().fill(beads[index % beads.count]).frame(width: CGFloat(31 - min(index, 9)), height: CGFloat(31 - min(index, 9))).shadow(color: ATheme.ink.opacity(0.1), radius: 2, y: 1) } }
-                    Text("ENGINE PREVIEW").font(.androidWyrm(9.5, .bold)).tracking(1.3).foregroundColor(ATheme.quiet)
-                }.frame(maxWidth: .infinity).frame(height: 190)
-                WyrmPaperCard {
-                    WyrmListRow(title: "Default skins", value: "48") { open(.presets) }
-                    WyrmListRow(title: "Pattern", value: "Custom") { open(.pattern) }
-                    WyrmListRow(title: "Accessory", value: "None") { open(.accessory) }
-                    WyrmListRow(title: "Tag", value: "None") { open(.tag) }
-                    WyrmListRow(title: "Arena background", value: "Paper") { open(.background) }
-                }
-                Text("Skin screens preserve the design system while the native engine remains the rendering authority.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
-                Spacer().frame(height: 102)
-            }
-        }
-    }
-}
-
 private struct WyrmSettingsRoot: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var account: WyrmAccountStore
@@ -340,7 +315,7 @@ private struct WyrmSettingsRoot: View {
                 section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
                 section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
                 section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.12.1 · 38", .backup)])
+                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.13.0 · 39", .backup)])
                 VStack(spacing: 0) {
                     WyrmSectionLabel("Developer")
                     WyrmPaperCard {

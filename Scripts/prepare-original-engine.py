@@ -90,6 +90,8 @@ for path in sorted(OUTPUT.rglob("*")):
     if relative == "app/src/main.c":
         text = text.replace('TDEF_ENTRY();', '')
         text = '#include "WyrmOriginalAdapter.h"\n' + text
+        text = text.replace('  android_skin_poll(env);',
+                            '  android_skin_poll(env);\n  WyrmIOSApplySkinSelection(env);')
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
     if relative == "app/src/imgui_setup.c":

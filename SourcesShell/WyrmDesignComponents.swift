@@ -35,11 +35,6 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case themes
     case backup
     case developer
-    case presets
-    case pattern
-    case accessory
-    case tag
-    case background
 
     var id: String {
         switch self {
@@ -68,11 +63,6 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .themes: return "themes"
         case .backup: return "backup"
         case .developer: return "developer"
-        case .presets: return "presets"
-        case .pattern: return "pattern"
-        case .accessory: return "accessory"
-        case .tag: return "tag"
-        case .background: return "background"
         }
     }
 }

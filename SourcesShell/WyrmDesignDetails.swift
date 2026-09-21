@@ -28,7 +28,6 @@ struct WyrmDetailHost: View {
         case .themes: WyrmThemesDetail(close: close)
         case .backup: WyrmBackupDetail(engine: engine, close: close)
         case .developer: WyrmDeveloperDetail(close: close)
-        case .presets, .pattern, .accessory, .tag, .background: WyrmSkinDetail(route: route, close: close)
         }
     }
 }
@@ -629,36 +628,4 @@ private struct WyrmDeveloperDetail: View {
             }
         }
     }
-}
-
-private struct WyrmSkinDetail: View {
-    let route: WyrmDesignRoute
-    let close: () -> Void
-    @AppStorage("wyrm.ios.skin.preset") private var preset = 2
-    @AppStorage("wyrm.ios.skin.background") private var background = "Paper"
-    @State private var pattern = "b3-m1-c2-b3-m1-c2"
-    @State private var tag = 0
-    @State private var chain = 0.6
-    @State private var swing = 0.5
-    @State private var size = 0.6
-    private var title: String { ["presets":"Default skins", "pattern":"Pattern", "accessory":"Accessory", "tag":"Tag", "background":"Background"][route.id] ?? "Skin" }
-    var body: some View {
-        WyrmDetailChrome(title: title, onBack: close) {
-            ScrollView(showsIndicators: false) { VStack(spacing: 0) {
-                if route.id == "presets" { presets }
-                else if route.id == "pattern" { patternView }
-                else if route.id == "accessory" { accessories }
-                else if route.id == "tag" { tags }
-                else { backgrounds }
-                Text("This screen saves the design choice locally. Applying it to live snakes remains owned by the original engine skin bridge; no SwiftUI snake is substituted.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
-            } }
-        }
-    }
-    private var presets: some View { VStack(spacing: 0) { WyrmSectionLabel("Presets load with the engine"); LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) { ForEach(0..<6) { index in Button { preset = index } label: { VStack(spacing: 8) { HStack(spacing: -5) { Circle().fill(presetColor(index)).frame(width: 24, height: 24); Circle().fill(presetColor(index).opacity(0.65)).frame(width: 19, height: 19) }; Text(String(format: "Preset %02d", index + 1)).font(.androidWyrm(9.5)).foregroundColor(ATheme.ink) }.frame(maxWidth: .infinity).frame(height: 82).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(preset == index ? ATheme.ink : ATheme.rule, lineWidth: preset == index ? 2 : 1)) }.buttonStyle(.plain) } }.padding(.horizontal, 16) } }
-    private var patternView: some View { VStack(spacing: 0) { WyrmSectionLabel("Your pattern"); WyrmPaperCard { TextField("Pattern code", text: $pattern).font(.androidWyrm(13)).textInputAutocapitalization(.never).disableAutocorrection(true).padding(14) }; HStack(spacing: 10) { WyrmOutlineAction(title: "Undo") {}; WyrmOutlineAction(title: "Clear", destructive: true) { pattern = "" } }.padding(16); WyrmSectionLabel("Original beads"); HStack { ForEach(0..<6) { index in Circle().fill(presetColor(index)).frame(width: 34, height: 34).onTapGesture { pattern += pattern.isEmpty ? "b\(index + 1)" : "-b\(index + 1)" } } }.frame(maxWidth: .infinity) } }
-    private var accessories: some View { VStack(spacing: 0) { WyrmSectionLabel("Worn"); WyrmPaperCard { WyrmListRow(title: "Nothing yet", detail: "Accessories sit on the head and never affect play.", showsChevron: false) }; WyrmSectionLabel("All accessories"); LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) { ForEach(1...8, id: \.self) { value in Text(String(format: "%02d", value)).font(.androidWyrm(12, .bold)).frame(maxWidth: .infinity).frame(height: 58).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }.padding(.horizontal, 16) } }
-    private var tags: some View { VStack(spacing: 0) { WyrmSectionLabel("Pick one"); LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) { ForEach(0..<6) { index in Button { tag = index } label: { Text(index == 0 ? "None" : "Tag \(String(format: "%02d", index))").font(.androidWyrm(11.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity).frame(height: 56).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(tag == index ? ATheme.ink : ATheme.rule, lineWidth: tag == index ? 2 : 1)) }.buttonStyle(.plain) } }.padding(.horizontal, 16); WyrmSectionLabel("How it moves"); slider("Chain", value: $chain); slider("Swing", value: $swing); slider("Size", value: $size) } }
-    private var backgrounds: some View { VStack(spacing: 0) { WyrmSectionLabel("Arena floor"); HStack(spacing: 10) { ForEach(["Paper", "Graphite", "None"], id: \.self) { name in Button { background = name } label: { VStack(spacing: 8) { RoundedRectangle(cornerRadius: 10).fill(name == "Graphite" ? Color(white: 0.14) : name == "Paper" ? ATheme.paper : ATheme.track).frame(height: 56); Text(name).font(.androidWyrm(11.5)).foregroundColor(ATheme.ink) }.padding(8).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(background == name ? ATheme.ink : ATheme.rule, lineWidth: background == name ? 2 : 1)) }.buttonStyle(.plain) } }.padding(.horizontal, 16) } }
-    private func slider(_ title: String, value: Binding<Double>) -> some View { VStack(alignment: .leading, spacing: 6) { HStack { Text(title).font(.androidWyrm(13.5, .semibold)); Spacer(); Text("\(Int(value.wrappedValue * 100))%").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet) }; Slider(value: value).tint(ATheme.ink) }.padding(14).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16).padding(.bottom, 10) }
-    private func presetColor(_ index: Int) -> Color { [Color(red: 0.98, green: 0.97, blue: 0.95), Color(red: 0.62, green: 0.72, blue: 0.49), Color(red: 0.83, green: 0.60, blue: 0.48), ATheme.ink, Color(red: 0.56, green: 0.66, blue: 0.77), Color(red: 0.78, green: 0.64, blue: 0.79)][index % 6] }
 }

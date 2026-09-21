@@ -183,6 +183,20 @@ final class WyrmShellStore: ObservableObject {
         WyrmDiagnostics.record("hotkey queued id=\(hotkey.id) visible=\(visible)", category: "ENGINE")
     }
 
+    func applySkin(preset: Int, groups: [Int], custom: Bool,
+                   accessory: Int, tag: Int, background: Int) {
+        let code = custom ? WyrmSkinCatalog.code(for: groups) : ""
+        let accepted = code.withCString {
+            WyrmIOSQueueSkinSelection(Int32(preset), $0, Int32(accessory),
+                                      Int32(tag), Int32(background))
+        }
+        if !accepted { toast = "Engine is still starting — tap once more" }
+        WyrmDiagnostics.record(
+            "skin queued preset=\(preset) custom=\(custom) accessory=\(accessory) tag=\(tag) background=\(background) accepted=\(accepted)",
+            category: "ENGINE"
+        )
+    }
+
     func reset(_ mask: Int32, message: String) {
         WyrmIOSSettingsAction(mask)
         toast = message

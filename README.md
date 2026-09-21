@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.12.1 (build 38)** and targets **iOS 15 or newer**.
+**0.13.0 (build 39)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -37,6 +37,10 @@ compiled and tested by CI, then exposed as a workflow artifact.
   and player-created rooms.
 - Native engine settings and on-screen controls connected through a narrow,
   thread-safe Swift/C bridge.
+- Native SwiftUI Skin Studio with a fixed seamless preview cut from the exact
+  engine atlases, all 66 presets, 32 accessories, 164 tags and 22 arena floors.
+  Editors replace the lower panel in place and selections persist through a
+  bounded engine-thread mailbox.
 - Opt-in Developer Mode with bounded local logs and native iOS Share Sheet
   export for support diagnostics.
 
@@ -66,8 +70,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.12.1-build-38-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.12.1-build-38-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.13.0-build-39-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.13.0-build-39-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution
@@ -96,8 +100,8 @@ signing material is never stored in this repository.
 
 ## Current limitations
 
-Physical-device acceptance, live skin application, realtime voice audio, APNs,
-avatar upload and Files-based backup/restore remain in development. Voice room
+Physical-device acceptance, realtime voice audio, APNs, avatar upload and
+Files-based backup/restore remain in development. Voice room
 authority and verification are wired; the realtime media adapter is not. CI success
 proves Apple compilation and Simulator behavior; it is not a physical-device or
 App Store acceptance claim.
