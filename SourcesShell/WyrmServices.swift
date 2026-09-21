@@ -445,7 +445,9 @@ final class WyrmServiceStore: ObservableObject {
     @Published var loading = false
     @Published var errorMessage = ""
     @Published var lastRefresh: Date?
+    @Published private(set) var preparedPlayerID: String?
     private var token = ""
+    private var sessionRevision = UUID()
     private var taintedArenas: [String: Date] = [:]
     private var directoryLoadedAt: Date?
     private var selectionReadyAt: Date?
@@ -458,32 +460,74 @@ final class WyrmServiceStore: ObservableObject {
         return (followers + following).filter { $0.canMessage && seen.insert($0.id).inserted }
     }
 
+    func isPrepared(for playerID: String?) -> Bool {
+        guard let playerID, !playerID.isEmpty else { return false }
+        return preparedPlayerID == playerID && !token.isEmpty
+    }
+
+    /// Invalidates every in-flight account request before removing all
+    /// account-scoped data. This is deliberately exhaustive: switching users
+    /// must never show the previous player's alerts, messages or connections.
+    func resetSession() {
+        sessionRevision = UUID()
+        token = ""
+        clearPublishedSession()
+        loading = false
+        WyrmDiagnostics.record("service session cleared", category: "ACCOUNT")
+    }
+
     func bootstrap(token: String, playerID: String? = nil) async {
         guard !token.isEmpty else { return }
+        let revision = UUID()
+        sessionRevision = revision
         self.token = token
+        clearPublishedSession()
         loading = true
         errorMessage = ""
-        do {
-            async let alertRows = WyrmServiceClient.shared.notifications(token: token)
-            async let scoreRows = WyrmServiceClient.shared.leaderboard(sort: "score", token: token)
-            async let killRows = WyrmServiceClient.shared.leaderboard(sort: "kills", token: token)
-            async let conversationRows = WyrmServiceClient.shared.conversations(token: token)
-            async let roomRows = WyrmServiceClient.shared.voiceRooms(token: token)
-            async let verification = WyrmServiceClient.shared.voiceVerification(token: token)
-            async let arenaRows = WyrmServiceClient.shared.arenas()
-            let values = try await (alertRows, scoreRows, killRows, conversationRows, roomRows, verification, arenaRows)
-            alerts = values.0; scoreLeaders = values.1; killLeaders = values.2
-            conversations = values.3; voiceRooms = values.4; voiceVerification = values.5
-            installArenaDirectory(values.6)
-            if let playerID {
-                async let followerRows = WyrmServiceClient.shared.connections(playerID: playerID, kind: "followers", token: token)
-                async let followingRows = WyrmServiceClient.shared.connections(playerID: playerID, kind: "following", token: token)
-                let connections = try await (followerRows, followingRows)
-                followers = connections.0; following = connections.1
-            }
-            lastRefresh = Date()
-        } catch { errorMessage = error.localizedDescription }
+        WyrmDiagnostics.record("service bootstrap started player=\(playerID ?? "none")", category: "ACCOUNT")
+
+        // Each endpoint is isolated so one unavailable surface cannot discard
+        // six successful responses. Results are published together only after
+        // this exact account session is still current.
+        async let alertRows: [WyrmServiceAlert]? = try? await WyrmServiceClient.shared.notifications(token: token)
+        async let scoreRows: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "score", token: token)
+        async let killRows: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "kills", token: token)
+        async let conversationRows: [WyrmConversation]? = try? await WyrmServiceClient.shared.conversations(token: token)
+        async let roomRows: [WyrmVoiceRoom]? = try? await WyrmServiceClient.shared.voiceRooms(token: token)
+        async let verification: WyrmVoiceVerification? = try? await WyrmServiceClient.shared.voiceVerification(token: token)
+        async let arenaRows: [WyrmArena]? = try? await WyrmServiceClient.shared.arenas()
+        let values = await (alertRows, scoreRows, killRows, conversationRows, roomRows, verification, arenaRows)
+
+        var followerRows: [WyrmServicePlayer]? = []
+        var followingRows: [WyrmServicePlayer]? = []
+        if let playerID, !Task.isCancelled {
+            async let fetchedFollowers: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.connections(playerID: playerID, kind: "followers", token: token)
+            async let fetchedFollowing: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.connections(playerID: playerID, kind: "following", token: token)
+            (followerRows, followingRows) = await (fetchedFollowers, fetchedFollowing)
+        }
+
+        guard !Task.isCancelled, sessionRevision == revision else { return }
+        alerts = values.0 ?? []
+        scoreLeaders = values.1 ?? []
+        killLeaders = values.2 ?? []
+        conversations = values.3 ?? []
+        voiceRooms = values.4 ?? []
+        voiceVerification = values.5 ?? WyrmVoiceVerification([:])
+        installArenaDirectory(values.6 ?? [])
+        followers = followerRows ?? []
+        following = followingRows ?? []
+        preparedPlayerID = playerID
+        lastRefresh = Date()
+
+        let failures = [values.0 == nil, values.1 == nil, values.2 == nil,
+                        values.3 == nil, values.4 == nil, values.5 == nil,
+                        values.6 == nil, followerRows == nil, followingRows == nil]
+            .filter { $0 }.count
+        if failures > 0 {
+            errorMessage = "Wyrm loaded, but \(failures) live section\(failures == 1 ? "" : "s") could not refresh yet."
+        }
         loading = false
+        WyrmDiagnostics.record("service bootstrap finished player=\(playerID ?? "none") failures=\(failures)", category: "ACCOUNT")
     }
 
     func refreshAlerts() async { await perform { self.alerts = try await WyrmServiceClient.shared.notifications(token: self.token) } }
@@ -611,5 +655,29 @@ final class WyrmServiceStore: ObservableObject {
         errorMessage = ""
         do { try await operation() }
         catch { errorMessage = error.localizedDescription }
+    }
+
+    private func clearPublishedSession() {
+        alerts = []
+        scoreLeaders = []
+        killLeaders = []
+        conversations = []
+        voiceRooms = []
+        arenas = []
+        arenaLatencies = [:]
+        recommendedArena = nil
+        people = []
+        followers = []
+        following = []
+        messages = []
+        voiceVerification = WyrmVoiceVerification([:])
+        voiceChallenge = nil
+        errorMessage = ""
+        lastRefresh = nil
+        preparedPlayerID = nil
+        taintedArenas = [:]
+        directoryLoadedAt = nil
+        selectionReadyAt = nil
+        lastProbeAt = nil
     }
 }

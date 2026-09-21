@@ -62,6 +62,7 @@ private final class WyrmKeyboardMonitor: ObservableObject {
 
 struct WyrmCinematicAuth: View {
     @ObservedObject var account: WyrmAccountStore
+    @ObservedObject var services: WyrmServiceStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @StateObject private var keyboard = WyrmKeyboardMonitor()
     @FocusState private var focus: WyrmAuthFocus?
@@ -77,8 +78,10 @@ struct WyrmCinematicAuth: View {
 
     private let autofocus: Bool
 
-    init(account: WyrmAccountStore, initialStage: WyrmAuthStage = .landing, autofocus: Bool = true) {
+    init(account: WyrmAccountStore, services: WyrmServiceStore,
+         initialStage: WyrmAuthStage = .landing, autofocus: Bool = true) {
         self.account = account
+        self.services = services
         self.autofocus = autofocus
         _stage = State(initialValue: initialStage)
     }
@@ -671,12 +674,47 @@ struct WyrmCinematicAuth: View {
                 return
             }
 
+            // Keep the existing W working stage on screen until every
+            // account-scoped surface has received a fresh snapshot. Home never
+            // renders with the previous account's or an empty bootstrap state.
+            await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
+
             withAnimation(motion) { stage = .success }
             if !reduceMotion { try? await Task.sleep(nanoseconds: 700_000_000) }
             withAnimation(.easeInOut(duration: reduceMotion ? 0.16 : 0.52)) { logoDissolved = true }
             try? await Task.sleep(nanoseconds: reduceMotion ? 170_000_000 : 520_000_000)
             account.completeAuthentication()
         }
+    }
+}
+
+/// Full-screen account transition shared by restore and sign-out. It preserves
+/// the same W-logo language as authentication instead of flashing a modal.
+struct WyrmSessionTransition: View {
+    let title: String
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var appeared = false
+
+    var body: some View {
+        ZStack {
+            WyrmPaperBackground()
+            VStack(spacing: 22) {
+                WyrmBrandMark(size: 118)
+                    .scaleEffect(appeared ? 1 : 0.86)
+                    .blur(radius: appeared ? 0 : 14)
+                    .opacity(appeared ? 1 : 0)
+                WyrmAuthWorkingStatus(title: title)
+                    .opacity(appeared ? 1 : 0)
+                    .blur(radius: appeared ? 0 : 8)
+            }
+        }
+        .ignoresSafeArea()
+        .onAppear {
+            withAnimation(reduceMotion ? .linear(duration: 0.14) : .spring(response: 0.56, dampingFraction: 0.86)) {
+                appeared = true
+            }
+        }
+        .accessibilityElement(children: .combine)
     }
 }
 

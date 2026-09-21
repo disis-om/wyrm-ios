@@ -26,10 +26,22 @@ struct WyrmDesignRoot: View {
         return nil
     }
 
+    private var sessionSmokeTitle: String? {
+        if arguments.contains("--smoke-session-signout") { return "Signing you out…" }
+        if arguments.contains("--smoke-session-sync") { return "Syncing your Wyrm…" }
+        return nil
+    }
+
+    private var sessionLifecycleID: String {
+        "\(String(describing: account.phase)):\(account.player?.id ?? "none")"
+    }
+
     var body: some View {
         Group {
-            if let authSmokeStage {
-                WyrmCinematicAuth(account: account, initialStage: authSmokeStage, autofocus: false)
+            if let sessionSmokeTitle {
+                WyrmSessionTransition(title: sessionSmokeTitle)
+            } else if let authSmokeStage {
+                WyrmCinematicAuth(account: account, services: services, initialStage: authSmokeStage, autofocus: false)
             } else if settingsSmoke {
                 WyrmDesignMain(
                     engine: engine,
@@ -58,19 +70,37 @@ struct WyrmDesignRoot: View {
                 case .restoring:
                     WyrmDesignLaunch()
                 case .signedOut:
-                    WyrmCinematicAuth(account: account)
-                case .onboarding, .signedIn:
+                    WyrmCinematicAuth(account: account, services: services)
+                case .onboarding:
                     // Username/password accounts now enter Home directly. The
                     // old six-screen onboarding route is intentionally retired.
                     WyrmDesignMain(engine: engine, account: account, services: services, initialTab: .play)
+                case .signedIn:
+                    if services.isPrepared(for: account.player?.id) {
+                        WyrmDesignMain(engine: engine, account: account, services: services, initialTab: .play)
+                    } else {
+                        WyrmSessionTransition(title: "Syncing your Wyrm…")
+                    }
+                case .signingOut:
+                    WyrmSessionTransition(title: "Signing you out…")
                 }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ATheme.paper.ignoresSafeArea())
-        .task(id: account.player?.id) {
-            guard account.phase == .signedIn else { return }
-            await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
+        .task(id: sessionLifecycleID) {
+            switch account.phase {
+            case .signedIn:
+                guard !services.isPrepared(for: account.player?.id) else { return }
+                await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
+            case .signingOut:
+                services.resetSession()
+                try? await Task.sleep(nanoseconds: 920_000_000)
+                guard !Task.isCancelled else { return }
+                account.completeSignOut()
+            default:
+                break
+            }
         }
     }
 }

@@ -243,7 +243,7 @@ struct WyrmRootTabBar: View {
     let unread: Int
     private let icons: [WyrmDesignTab: String] = [.alerts: "bell.badge", .social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
 
-    @GestureState private var dragX: CGFloat = 0
+    @State private var dragLocationX: CGFloat?
     @State private var lastPreview: WyrmDesignTab?
     @Namespace private var glassNamespace
 
@@ -253,6 +253,10 @@ struct WyrmRootTabBar: View {
             let width = max(1, proxy.size.width - inset * 2)
             let itemWidth = width / CGFloat(WyrmDesignTab.allCases.count)
             let selectedIndex = CGFloat(WyrmDesignTab.allCases.firstIndex(of: selection) ?? 0)
+            let selectedOrigin = inset + selectedIndex * itemWidth
+            let draggedOrigin = dragLocationX.map {
+                min(max($0 - itemWidth * 0.5, inset), inset + width - itemWidth)
+            }
             ZStack(alignment: .leading) {
                 WyrmGlassGroup {
                     ZStack(alignment: .leading) {
@@ -260,9 +264,11 @@ struct WyrmRootTabBar: View {
                             .zIndex(0)
                         WyrmTabSelectionGlass(namespace: glassNamespace)
                             .frame(width: itemWidth - 4, height: 46)
-                            .offset(x: inset + selectedIndex * itemWidth + dragX)
-                            .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
-                            .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
+                            .offset(x: draggedOrigin ?? selectedOrigin)
+                            .scaleEffect(x: dragLocationX == nil ? 1 : 1.07,
+                                         y: dragLocationX == nil ? 1 : 0.94)
+                            .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.76, blendDuration: 0.1), value: selection)
+                            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.82, blendDuration: 0.06), value: dragLocationX == nil)
                             .zIndex(1)
                     }
                 }
@@ -279,15 +285,20 @@ struct WyrmRootTabBar: View {
             }
             .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .highPriorityGesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
-                .updating($dragX) { value, state, _ in
-                    let start = selectedIndex * itemWidth
-                    state = min(max(value.translation.width, -start), width - itemWidth - start)
-                    preview(at: start + state, itemWidth: itemWidth)
+                .onChanged { value in
+                    dragLocationX = min(max(value.location.x, inset + itemWidth * 0.5), inset + width - itemWidth * 0.5)
+                    preview(at: value.location.x - inset, itemWidth: itemWidth)
                 }
                 .onEnded { value in
-                    let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
-                    let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
-                    select(WyrmDesignTab.allCases[index])
+                    // Absolute finger location is the authority. Predicted
+                    // velocity used to compound against a changing selection,
+                    // causing the lens to vibrate and shoot across several tabs.
+                    let index = nearestIndex(at: value.location.x - inset, itemWidth: itemWidth)
+                    let target = WyrmDesignTab.allCases[index]
+                    withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.7, blendDuration: 0.12)) {
+                        selection = target
+                        dragLocationX = nil
+                    }
                     lastPreview = nil
                 })
         }
@@ -318,11 +329,15 @@ struct WyrmRootTabBar: View {
     }
 
     private func preview(at x: CGFloat, itemWidth: CGFloat) {
-        let index = min(max(Int((x / itemWidth).rounded()), 0), WyrmDesignTab.allCases.count - 1)
+        let index = nearestIndex(at: x, itemWidth: itemWidth)
         let tab = WyrmDesignTab.allCases[index]
         guard tab != lastPreview else { return }
         lastPreview = tab
         UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func nearestIndex(at x: CGFloat, itemWidth: CGFloat) -> Int {
+        min(max(Int((x / itemWidth).rounded(.down)), 0), WyrmDesignTab.allCases.count - 1)
     }
 }
 
@@ -332,7 +347,7 @@ private struct WyrmTabGlassSurface: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.tint(ATheme.paper.opacity(0.12)).interactive(), in: .rect(cornerRadius: 28))
+                .glassEffect(.regular.tint(ATheme.paper.opacity(0.1)).interactive(), in: .capsule)
                 .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.ink.opacity(0.13), lineWidth: 0.7))
         } else {
             fallback
@@ -356,8 +371,8 @@ private struct WyrmTabSelectionGlass: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.tint(ATheme.ink.opacity(0.17)).interactive(), in: .rect(cornerRadius: 22))
-                .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.08), lineWidth: 0.6))
+                .glassEffect(.regular.tint(ATheme.ink.opacity(0.13)).interactive(), in: .capsule)
+                .overlay(Capsule().stroke(ATheme.ink.opacity(0.08), lineWidth: 0.6))
                 .glassEffectID("wyrm-tab-selection", in: namespace)
         } else {
             fallback

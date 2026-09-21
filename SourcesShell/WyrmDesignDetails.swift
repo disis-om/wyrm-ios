@@ -501,6 +501,8 @@ private struct WyrmEngineSettingDesignRow: View {
     let row: EngineSetting
     @State private var value: Double
     @State private var isDragging = false
+    @State private var pendingToggle: Bool?
+    @State private var pendingToggleUntil = Date.distantPast
     init(engine: WyrmShellStore, row: EngineSetting) { self.engine = engine; self.row = row; _value = State(initialValue: row.values.first ?? 0) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -514,12 +516,31 @@ private struct WyrmEngineSettingDesignRow: View {
             }
         }.padding(15).background(Color.white).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(.horizontal, 16)
             .onChange(of: row.displayValue) { _ in
-                if !isDragging { value = row.values.first ?? value }
+                let incoming = row.values.first ?? value
+                if row.type == "bool", let pending = pendingToggle {
+                    if (incoming != 0) == pending {
+                        value = incoming
+                        pendingToggle = nil
+                    } else if Date() >= pendingToggleUntil {
+                        value = incoming
+                        pendingToggle = nil
+                    }
+                } else if !isDragging {
+                    value = incoming
+                }
             }
     }
     @ViewBuilder private var control: some View {
         switch row.type {
-        case "bool": Toggle("", isOn: Binding(get: { value != 0 }, set: { value = $0 ? 1 : 0; engine.write(row, values: [value]) })).labelsHidden().tint(ATheme.live)
+        case "bool": Toggle("", isOn: Binding(
+            get: { pendingToggle ?? (value != 0) },
+            set: { next in
+                pendingToggle = next
+                pendingToggleUntil = Date().addingTimeInterval(1.8)
+                value = next ? 1 : 0
+                engine.write(row, values: [value])
+            }
+        )).labelsHidden().tint(ATheme.live)
         case "enum": Picker("", selection: Binding(get: { Int(value) }, set: { value = Double($0); engine.write(row, values: [value]) })) { ForEach(row.options.indices, id: \.self) { Text(row.options[$0]).tag($0) } }.pickerStyle(.menu).tint(ATheme.ink)
         default: Text(row.displayValue).font(.androidWyrm(12, .bold)).foregroundColor(ATheme.quiet)
         }
@@ -529,7 +550,44 @@ private struct WyrmEngineSettingDesignRow: View {
 private struct WyrmHotkeyDesignRow: View {
     @ObservedObject var engine: WyrmShellStore
     let hotkey: EngineHotkey
-    var body: some View { Toggle(isOn: Binding(get: { hotkey.visible }, set: { engine.setHotkey(hotkey, visible: $0) })) { VStack(alignment: .leading, spacing: 2) { Text(hotkey.name).font(.androidWyrm(14.5, .semibold)); Text("\(hotkey.keyName) · \(hotkey.mode == 1 ? "Hold" : "Toggle")").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) } }.tint(ATheme.live).padding(15).background(Color.white).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(.horizontal, 16) }
+    @State private var visible: Bool
+    @State private var pending: Bool?
+    @State private var pendingUntil = Date.distantPast
+
+    init(engine: WyrmShellStore, hotkey: EngineHotkey) {
+        self.engine = engine
+        self.hotkey = hotkey
+        _visible = State(initialValue: hotkey.visible)
+    }
+
+    var body: some View {
+        Toggle(isOn: Binding(get: { pending ?? visible }, set: { next in
+            pending = next
+            pendingUntil = Date().addingTimeInterval(1.8)
+            visible = next
+            engine.setHotkey(hotkey, visible: next)
+        })) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(hotkey.name).font(.androidWyrm(14.5, .semibold))
+                Text("\(hotkey.keyName) · \(hotkey.mode == 1 ? "Hold" : "Toggle")")
+                    .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+            }
+        }
+        .tint(ATheme.live)
+        .padding(15).background(Color.white).cornerRadius(15)
+        .overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule))
+        .padding(.horizontal, 16)
+        .onChange(of: hotkey.visible) { incoming in
+            if let expected = pending {
+                if incoming == expected || Date() >= pendingUntil {
+                    visible = incoming
+                    pending = nil
+                }
+            } else {
+                visible = incoming
+            }
+        }
+    }
 }
 
 private struct WyrmNotificationSettingsDetail: View {

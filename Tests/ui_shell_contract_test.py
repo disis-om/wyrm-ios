@@ -22,7 +22,11 @@ checks = {
     "iOS 26 glass is grouped": "GlassEffectContainer(spacing: 12)" in COMPONENTS,
     "iOS 26 base and pill glass are interactive": COMPONENTS.count(".interactive()") >= 2,
     "setting rows keep stable identity during live refresh": ".id(row.id + row.displayValue)" not in DETAILS + PARITY + LEGACY,
-    "slider ignores external refresh while finger is down": "if !isDragging { value = row.values.first ?? value }" in DETAILS,
+    "slider ignores external refresh while finger is down": "else if !isDragging" in DETAILS,
+    "engine toggles preserve optimistic state": "pendingToggleUntil = Date().addingTimeInterval(1.8)" in DETAILS,
+    "hotkey toggles preserve optimistic state": "pendingUntil = Date().addingTimeInterval(1.8)" in DETAILS,
+    "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
+    "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,
 }
 
 failed = [name for name, ok in checks.items() if not ok]

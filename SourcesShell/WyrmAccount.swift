@@ -211,7 +211,7 @@ private actor WyrmAPI {
 
 @MainActor
 final class WyrmAccountStore: ObservableObject {
-    enum Phase: Equatable { case restoring, signedOut, onboarding, signedIn }
+    enum Phase: Equatable { case restoring, signedOut, onboarding, signedIn, signingOut }
     @Published private(set) var phase: Phase = .restoring
     @Published private(set) var player: WyrmPlayer?
     @Published var busy = false
@@ -279,7 +279,20 @@ final class WyrmAccountStore: ObservableObject {
     }
 
     func signOut() {
-        WyrmKeychain.clear(); token = nil; player = nil; errorMessage = ""; phase = .signedOut
+        guard phase != .signingOut, phase != .signedOut else { return }
+        errorMessage = ""
+        phase = .signingOut
+    }
+
+    /// Called by the app shell after the account-scoped service store has been
+    /// cleared and the cinematic sign-out transition has finished.
+    func completeSignOut() {
+        WyrmKeychain.clear()
+        token = nil
+        player = nil
+        busy = false
+        errorMessage = ""
+        phase = .signedOut
     }
 
     func deleteAccount() async {
@@ -322,7 +335,7 @@ struct WyrmAccountGate: View {
         case .restoring: WyrmAccountLoading()
         case .signedOut: WyrmAuthView(account: account)
         case .onboarding: WyrmOnboardingView(account: account, engine: engine)
-        case .signedIn: EmptyView()
+        case .signedIn, .signingOut: EmptyView()
         }
     }
 }

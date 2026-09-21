@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.13.0 (build 39)** and targets **iOS 15 or newer**.
+**0.13.1 (build 40)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -23,6 +23,10 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Full-screen cinematic username/password account creation and login, with
   live debounced username availability, keyboard-safe actions, password-match
   feedback, and no Google dependency or separate onboarding sequence.
+- Account entry now keeps the W-logo working stage visible until fresh profile,
+  alerts, social, arena and voice snapshots are installed atomically. Sign-out
+  uses the same cinematic language and clears every account-scoped collection
+  before another player can enter.
 - Full-bleed Play, Alerts, Social, Skin and Settings product surfaces with a
   draggable glass navigation control and one-level-at-a-time route stacking.
 - Original Wyrm C gameplay and network engine—not a Swift reimplementation.
@@ -37,10 +41,14 @@ compiled and tested by CI, then exposed as a workflow artifact.
   and player-created rooms.
 - Native engine settings and on-screen controls connected through a narrow,
   thread-safe Swift/C bridge.
-- Native SwiftUI Skin Studio with a fixed seamless preview cut from the exact
-  engine atlases, all 66 presets, 32 accessories, 164 tags and 22 arena floors.
-  Editors replace the lower panel in place and selections persist through a
-  bounded engine-thread mailbox.
+- Native SwiftUI Skin Studio with the original engine's exact two-strip,
+  20-segment preview geometry, atlas bead spacing, eye/accessory proportions,
+  ten-point dual-stroke NTL tag rope, all 66 presets, 32 accessories, 164 tags
+  and 22 arena floors. Editors replace the lower panel in place and selections
+  persist through a bounded engine-thread mailbox.
+- Optimistic engine toggles that do not bounce back on stale polling frames,
+  plus an absolute-position draggable iOS 26 Liquid Glass tab lens that follows
+  the finger and springs only to the nearest tab.
 - Opt-in Developer Mode with bounded local logs and native iOS Share Sheet
   export for support diagnostics.
 
@@ -70,8 +78,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.13.0-build-39-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.13.0-build-39-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.13.1-build-40-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.13.1-build-40-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution
