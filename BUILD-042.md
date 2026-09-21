@@ -1,7 +1,7 @@
 # Build 042 — NTL Team mode and interoperable tags
 
 Version: 0.14.0 (42)  
-Status: source and local contracts accepted; Apple CI/runtime evidence pending
+Status: accepted — Apple build and Simulator runtime gates passed
 
 ## What changed
 
@@ -43,14 +43,24 @@ Status: source and local contracts accepted; Apple CI/runtime evidence pending
 - Full-screen shell/control contracts: 15/15.
 - Session lifecycle contracts: 8/8.
 - Arena lifecycle contracts: 13/13.
-- Apple iPhoneOS/Simulator compile, Team screenshot and online arena smoke are
-  run by CI before artifact delivery.
+- Apple iPhoneOS and iPhone Simulator builds passed in GitHub Actions run
+  `35634668920` at commit `a602df7`.
+- Simulator screenshots confirmed the disconnected Team surface and the
+  two-strip Skin Studio tag preview.
+- The live online smoke test answered the web challenge, was admitted to the
+  arena, spawned the local snake, rendered the leaderboard at 60 FPS and
+  returned to the lobby after death.
 
 ## Expected artifacts
 
 - `Wyrm-0.14.0-build-42-unsigned.ipa`
 - `Wyrm-0.14.0-build-42-simulator.app.zip`
 - `SHA256SUMS`, Team/Skin screenshots and runtime logs
+
+SHA-256:
+
+- IPA: `1cfebf2ee14f99ad1c804d0116e1f93f04b8e62bd82d0725fd4ac73dc3feffc2`
+- Simulator ZIP: `b3030772cbf0fb3a964ff0c71e53b8520ebad0801455c1e0bd4f0ca0cbbfe566`
 
 ## Remaining acceptance
 
