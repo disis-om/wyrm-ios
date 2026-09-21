@@ -382,7 +382,7 @@ private struct SettingsGroup: View {
     var body: some View {
         ScrollView {
             VStack(spacing: 12) {
-                ForEach(rows) { row in SettingControl(store: store, row: row).id(row.id + row.displayValue) }
+                ForEach(rows) { row in SettingControl(store: store, row: row) }
             }.padding(16)
         }.background(paper.ignoresSafeArea()).navigationTitle(title).navigationBarTitleDisplayMode(.inline)
     }

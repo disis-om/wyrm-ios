@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.11.2 (build 36)** and targets **iOS 15 or newer**.
+**0.12.1 (build 38)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -66,8 +66,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.11.2-build-36-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.11.2-build-36-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.12.1-build-38-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.12.1-build-38-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

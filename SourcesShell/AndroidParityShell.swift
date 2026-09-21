@@ -412,7 +412,7 @@ private struct AndroidSettingsDestination: View {
                             AndroidGroupedCard {
                                 ForEach(block.value.indices, id: \.self) { index in
                                     let row = block.value[index]
-                                    AndroidSettingLine(store: store, row: row, first: index == 0).id(row.id + row.displayValue)
+                                    AndroidSettingLine(store: store, row: row, first: index == 0)
                                 }
                             }
                         }

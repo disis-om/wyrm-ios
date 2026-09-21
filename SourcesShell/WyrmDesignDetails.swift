@@ -477,7 +477,7 @@ private struct WyrmEngineSettingsDetail: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 12) {
                     if route.id == "buttons" { ForEach(engine.hotkeys) { hotkey in WyrmHotkeyDesignRow(engine: engine, hotkey: hotkey) } }
-                    ForEach(rows) { row in WyrmEngineSettingDesignRow(engine: engine, row: row).id(row.id + row.displayValue) }
+                    ForEach(rows) { row in WyrmEngineSettingDesignRow(engine: engine, row: row) }
                     if rows.isEmpty && route.id != "buttons" { WyrmPaperCard { WyrmEmptyPanel(title: "Engine is starting", note: "These controls appear as soon as the native settings mailbox is ready.") } }
                 }.padding(.vertical, 16)
             }
@@ -501,12 +501,22 @@ private struct WyrmEngineSettingDesignRow: View {
     @ObservedObject var engine: WyrmShellStore
     let row: EngineSetting
     @State private var value: Double
+    @State private var isDragging = false
     init(engine: WyrmShellStore, row: EngineSetting) { self.engine = engine; self.row = row; _value = State(initialValue: row.values.first ?? 0) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack { VStack(alignment: .leading, spacing: 2) { Text(row.label).font(.androidWyrm(14.5, .semibold)); if !row.hint.isEmpty { Text(row.hint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) } }; Spacer(); control }
-            if row.type == "float" || row.type == "int" { Slider(value: Binding(get: { value }, set: { value = $0; engine.write(row, values: [$0]) }), in: row.minimum...max(row.minimum, row.maximum), step: row.type == "int" ? 1 : max(0.001, (row.maximum-row.minimum)/100)).tint(ATheme.ink) }
+            if row.type == "float" || row.type == "int" {
+                Slider(value: Binding(get: { value }, set: { value = $0; engine.write(row, values: [$0]) }),
+                       in: row.minimum...max(row.minimum, row.maximum),
+                       step: row.type == "int" ? 1 : max(0.001, (row.maximum-row.minimum)/100),
+                       onEditingChanged: { isDragging = $0 })
+                    .tint(ATheme.ink)
+            }
         }.padding(15).background(Color.white).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(.horizontal, 16)
+            .onChange(of: row.displayValue) { _ in
+                if !isDragging { value = row.values.first ?? value }
+            }
     }
     @ViewBuilder private var control: some View {
         switch row.type {

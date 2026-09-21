@@ -2,7 +2,7 @@
 
 Version: 0.12.0 (37)  
 Phase: 6 — real arena lifecycle and failover  
-Status: source and portable checks passed; Apple compile/runtime pending
+Status: Apple device/Simulator compile and automated runtime smoke tests passed; physical iPhone acceptance remains open
 
 ## Added
 
@@ -34,6 +34,6 @@ Status: source and portable checks passed; Apple compile/runtime pending
 
 ## Remaining proof
 
-- GitHub macOS runner must compile iPhoneOS and Simulator products.
-- Simulator must pass the native refusal-mailbox smoke test.
-- An installed Build 37 must prove live arena admission, visible own snake, stable play, and real refusal failover on an iPhone.
+- GitHub Actions run `35583869475` compiled iPhoneOS and Simulator products and passed the native refusal-mailbox smoke test.
+- Simulator proved live arena admission, own-snake spawn, frame presentation, leaderboard readiness, landscape-shaped drawable geometry, and 120-frame progress.
+- An installed build must still prove stable play and real refusal failover on a physical iPhone.

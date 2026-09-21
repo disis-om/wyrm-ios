@@ -34,7 +34,6 @@ struct WyrmDesignMain: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.985)))
                 .frame(width: proxy.size.width)
                 .padding(.top, proxy.safeAreaInsets.top)
-                .padding(.bottom, 66 + tabBarBottomInset)
 
                 WyrmRootTabBar(selection: $tab, unread: services.unreadCount)
                     .frame(width: proxy.size.width)
@@ -42,9 +41,14 @@ struct WyrmDesignMain: View {
                     .zIndex(10)
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
-                    WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
-                        .background(WyrmPaperBackground())
+                    ZStack {
+                        ATheme.paper.ignoresSafeArea()
+                        WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
+                            .padding(.top, proxy.safeAreaInsets.top)
+                    }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(ATheme.paper.ignoresSafeArea())
+                        .ignoresSafeArea()
                         .zIndex(Double(30 + index))
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
@@ -55,7 +59,7 @@ struct WyrmDesignMain: View {
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
                 }
-            }.clipped().ignoresSafeArea()
+            }.ignoresSafeArea()
         }
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
@@ -148,7 +152,7 @@ private struct WyrmPlayRoot: View {
                     WyrmListRow(title: "Voice rooms", detail: services.liveRooms.first?.name ?? "Own and community rooms", value: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
                     WyrmListRow(title: "Team mode", detail: "Original engine team layer", value: "Open", icon: "person.3.fill", tint: ATheme.live) { open(.team) }
                 }
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 102)
             }
         }
         .onAppear { if nickname.isEmpty { nickname = account.player?.arenaName ?? engine.nickname }; if arena.isEmpty { arena = engine.arena } }
@@ -251,7 +255,7 @@ private struct WyrmSocialRoot: View {
                 }
                 WyrmSectionLabel("Recently played with")
                 WyrmPaperCard { WyrmEmptyPanel(title: "Your arena circle starts here", note: "Players from real conversations and follows appear here.") }
-                Spacer().frame(height: 22)
+                Spacer().frame(height: 102)
             }
         }.refreshable { await services.bootstrap(token: account.sessionToken, playerID: account.player?.id) }
     }
@@ -272,7 +276,7 @@ private struct WyrmAlertsRoot: View {
                         ForEach(services.alerts) { alert in WyrmAlertCard(alert: alert, services: services) }
                     }
                 }
-                Spacer().frame(height: 24)
+                Spacer().frame(height: 102)
             }
         }.refreshable { await services.refreshAlerts() }
     }
@@ -316,6 +320,7 @@ private struct WyrmSkinRoot: View {
                     WyrmListRow(title: "Arena background", value: "Paper") { open(.background) }
                 }
                 Text("Skin screens preserve the design system while the native engine remains the rendering authority.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
+                Spacer().frame(height: 102)
             }
         }
     }
@@ -335,7 +340,7 @@ private struct WyrmSettingsRoot: View {
                 section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
                 section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
                 section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.11.2 · 36", .backup)])
+                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.12.1 · 38", .backup)])
                 VStack(spacing: 0) {
                     WyrmSectionLabel("Developer")
                     WyrmPaperCard {
@@ -352,7 +357,7 @@ private struct WyrmSettingsRoot: View {
                     Text("Developer logs stay on this iPhone until you explicitly share them. They automatically expire after seven days and are capped at 2 MB.")
                         .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
                 }
-                Spacer().frame(height: 22)
+                Spacer().frame(height: 102)
             }
         }
     }

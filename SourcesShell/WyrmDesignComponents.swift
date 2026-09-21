@@ -79,10 +79,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
 
 struct WyrmPaperBackground: View {
     var body: some View {
-        ZStack {
-            ATheme.paper
-            LinearGradient(colors: [ATheme.live.opacity(0.035), .clear, ATheme.link.opacity(0.025)], startPoint: .topLeading, endPoint: .bottomTrailing)
-        }.ignoresSafeArea()
+        ATheme.paper.ignoresSafeArea()
     }
 }
 
@@ -100,8 +97,8 @@ struct WyrmScreenHeader: View {
             Spacer(minLength: 8)
             trailing
         }
-        .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 14)
-        .background(ATheme.paper.opacity(0.94))
+        .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 14)
+        .background(ATheme.paper)
     }
 }
 
@@ -243,7 +240,7 @@ struct WyrmDetailChrome<Content: View>: View {
                         if !actionTitle.isEmpty { Button(actionTitle) { action?() }.font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link) }
                     }
                     Text(title).font(.androidWyrm(16, .semibold))
-                }.padding(.horizontal, 18).frame(height: 52).background(ATheme.paper.opacity(0.97))
+                }.padding(.horizontal, 18).frame(height: 52).background(ATheme.paper)
                 Rectangle().fill(ATheme.rule).frame(height: 1)
                 content
             }
@@ -291,7 +288,7 @@ struct WyrmRootTabBar: View {
                 .zIndex(3)
             }
             .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
+            .highPriorityGesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
                 .updating($dragX) { value, state, _ in
                     let start = selectedIndex * itemWidth
                     state = min(max(value.translation.width, -start), width - itemWidth - start)
@@ -306,7 +303,7 @@ struct WyrmRootTabBar: View {
         }
         .frame(height: 56)
         .shadow(color: ATheme.ink.opacity(0.13), radius: 18, y: 8)
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
     }
 
     private func tabLabel(_ tab: WyrmDesignTab) -> some View {
@@ -369,7 +366,7 @@ private struct WyrmTabSelectionGlass: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             Color.clear
-                .glassEffect(.regular.tint(ATheme.ink.opacity(0.11)).interactive(), in: .rect(cornerRadius: 22))
+                .glassEffect(.regular.tint(ATheme.ink.opacity(0.17)).interactive(), in: .rect(cornerRadius: 22))
                 .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.08), lineWidth: 0.6))
                 .glassEffectID("wyrm-tab-selection", in: namespace)
         } else {
