@@ -84,4 +84,9 @@ void android_team_release_chat(tenv* env);
 /** Runs the bot handover and draws the countdown. Called once a frame. */
 void android_team_tick(tenv* env);
 
+/* Apple service bridge. Credentials and HTTP stay in Swift; this mailbox only
+   moves immutable presence/member snapshots across the engine boundary. */
+const char* WyrmIOSTeamPresenceSnapshot(void);
+void WyrmIOSSetTeamMembers(const char* packed);
+
 #endif

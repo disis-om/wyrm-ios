@@ -587,55 +587,100 @@ private struct WyrmSkinPreview: View {
 
     private func tagPreview(item: WyrmTagAsset, image: CGImage, head: CGPoint,
                             headSize: CGFloat, phase: Double) -> some View {
-        // Native NTL rope constants: ten points, four snake-widths per
-        // segment, anchored eight widths behind the head, with two accent
-        // strokes and a tapered trim back into the anchor.
         let unit = headSize / 29
         let anchor = CGPoint(x: head.x - 8 * unit, y: head.y)
         let segment = 4 * CGFloat(max(1, chain)) * unit
-        let looseness = CGFloat(max(0, min(1, (swing - 1) * 0.5)))
-        let points: [CGPoint] = (0..<10).map { index in
-            let i = CGFloat(index)
-            let fall = CGFloat(pow(Double(i / 9), 1.48)) * segment * (3.9 + looseness * 1.2)
-            let swayWave = CGFloat(sin(phase * 1.35 - Double(index) * 0.72)) * unit * (0.7 + looseness * 1.3) * (i / 9)
-            return CGPoint(x: anchor.x - segment * i * 0.48 + swayWave,
-                           y: anchor.y + fall)
-        }
+        let points = simulatedNTLRope(anchor: anchor, segment: segment,
+                                      unit: unit, phase: phase)
         let end = points.last ?? anchor
         let previous = points.dropLast().last ?? anchor
-        let width = min(94, CGFloat(item.width) * 0.285 * unit * CGFloat(tagScale))
-        let height = min(94, CGFloat(item.height) * 0.285 * unit * CGFloat(tagScale))
-        let attachX = CGFloat(item.anchorX) * 0.285 * unit * CGFloat(tagScale)
-        let attachY = CGFloat(item.anchorY) * 0.285 * unit * CGFloat(tagScale)
-        let imageCentre = CGPoint(x: end.x + width * 0.5 - attachX,
-                                  y: end.y + height * 0.5 - attachY)
+        let rawWidth = CGFloat(item.width) * 0.285 * unit * CGFloat(tagScale)
+        let rawHeight = CGFloat(item.height) * 0.285 * unit * CGFloat(tagScale)
+        let fit = min(1, 108 / max(rawWidth, rawHeight))
+        let width = rawWidth * fit
+        let height = rawHeight * fit
+        let attachX = CGFloat(item.anchorX) * 0.285 * unit * CGFloat(tagScale) * fit
+        let attachY = CGFloat(item.anchorY) * 0.285 * unit * CGFloat(tagScale) * fit
         let angle = atan2(end.y - previous.y, end.x - previous.x)
+        let cs = cos(angle), sn = sin(angle)
+        let localX = attachX + width * 0.5
+        let localY = attachY + height * 0.5
+        let imageCentre = CGPoint(x: end.x + cs * localX - sn * localY,
+                                  y: end.y + sn * localX + cs * localY)
         return ZStack {
-            nativeRopePath(points)
+            nativeRopePath(points, to: 1, closeToAnchor: false)
                 .stroke(Color(rgb: item.accentA), style: StrokeStyle(lineWidth: 5 * unit, lineCap: .round, lineJoin: .round))
-            nativeRopePath(Array(points.dropLast()))
+            nativeRopePath(points, to: 2, closeToAnchor: true)
+                .stroke(Color(rgb: item.accentB).opacity(0.5), style: StrokeStyle(lineWidth: 4 * unit, lineCap: .round, lineJoin: .round))
+            nativeRopePath(points, to: 2, closeToAnchor: true)
                 .stroke(Color(rgb: item.accentB).opacity(0.5), style: StrokeStyle(lineWidth: 3 * unit, lineCap: .round, lineJoin: .round))
-            nativeRopePath(Array(points.dropLast(2)))
+            nativeRopePath(points, to: 2, closeToAnchor: true)
                 .stroke(Color(rgb: item.accentB).opacity(0.5), style: StrokeStyle(lineWidth: 2 * unit, lineCap: .round, lineJoin: .round))
             WyrmAtlasImage(image: image).frame(width: width, height: height)
-                .rotationEffect(.radians(Double(angle) + .pi / 2))
+                .rotationEffect(.radians(Double(angle)))
                 .position(x: imageCentre.x, y: imageCentre.y)
-                .shadow(color: Color(rgb: item.accentA).opacity(0.24), radius: 4, y: 2)
         }
     }
 
-    private func nativeRopePath(_ points: [CGPoint]) -> Path {
+    private func simulatedNTLRope(anchor: CGPoint, segment: CGFloat,
+                                  unit: CGFloat, phase: Double) -> [CGPoint] {
+        let count = 10
+        var points = (0..<count).map {
+            CGPoint(x: anchor.x - CGFloat($0) * segment, y: anchor.y)
+        }
+        var velocity = Array(repeating: CGVector.zero, count: count)
+        let loose = CGFloat(max(0, min(1, (swing - 1) * 0.5)))
+        let push = (3.3332 + 0.6668 * loose) * CGFloat(max(1, chain)) * unit
+        let stiffness = 0.08333 + 0.01667 * loose
+        let damping = min(0.985, 0.838 + 0.145 * loose)
+        let frame = reduceMotion ? 0 : Int((phase * 60).truncatingRemainder(dividingBy: 300))
+        for tick in 0...max(1, frame) {
+            let t = CGFloat(tick) / 60
+            points[0] = CGPoint(x: anchor.x + sin(t * 1.35) * unit * 1.25,
+                                y: anchor.y + sin(t * 0.74) * unit * 0.55)
+            for index in 1..<count {
+                let previous = points[index - 1]
+                let dx = points[index].x - previous.x
+                let dy = points[index].y - previous.y
+                let angle = (dx == 0 && dy == 0) ? CGFloat.pi : atan2(dy, dx)
+                let target = CGPoint(x: previous.x + push * cos(angle),
+                                     y: previous.y + push * sin(angle))
+                velocity[index].dx += stiffness * (target.x - points[index].x)
+                velocity[index].dy += stiffness * (target.y - points[index].y)
+                points[index].x += velocity[index].dx
+                points[index].y += velocity[index].dy
+                velocity[index].dx *= damping
+                velocity[index].dy *= damping
+                let limitX = points[index].x - previous.x
+                let limitY = points[index].y - previous.y
+                let distance = hypot(limitX, limitY)
+                if distance > segment {
+                    let limitAngle = atan2(limitY, limitX)
+                    points[index] = CGPoint(x: previous.x + segment * cos(limitAngle),
+                                            y: previous.y + segment * sin(limitAngle))
+                }
+                velocity[index].dy += 0.30 * unit
+                velocity[index].dx += 0.14 * unit * cos(t - 7 * CGFloat(index) / 9)
+            }
+        }
+        return points
+    }
+
+    private func nativeRopePath(_ points: [CGPoint], to: Int,
+                                closeToAnchor: Bool) -> Path {
         var path = Path()
         guard let last = points.last else { return path }
         path.move(to: last)
-        guard points.count > 1 else { return path }
-        for index in stride(from: points.count - 2, through: 1, by: -1) {
+        guard points.count > to else { return path }
+        for index in stride(from: points.count - 2, through: to, by: -1) {
             let control = points[index]
             let end = CGPoint(x: (points[index].x + points[index - 1].x) * 0.5,
                               y: (points[index].y + points[index - 1].y) * 0.5)
             path.addQuadCurve(to: end, control: control)
         }
-        path.addQuadCurve(to: points[0], control: points[min(1, points.count - 1)])
+        if closeToAnchor {
+            path.addQuadCurve(to: points[0], control: points[1])
+        }
         return path
     }
 }

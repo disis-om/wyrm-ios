@@ -295,9 +295,25 @@ static void auxiliary_packet(game_data* g, const uint8_t* a, size_t n) {
     case 'W': {
       int x=arena_read(&r,1), y=arena_read(&r,1); add_sector(g,x,y); break;
     }
-    case 'S':
-      g->data.session_snake_id=arena_read(&r,2);
-      g->data.session_id=arena_read(&r,4); break;
+    case 'S': {
+      int arena_id = arena_read(&r, 2);
+      uint32_t session_id = (uint32_t)arena_read(&r, 4);
+      g->data.session_snake_id = arena_id;
+      g->data.session_id = session_id;
+
+      /* Exact NTL 9.68 identity transform.  The team endpoint publishes this
+         composite as `sid`; rendering remains keyed by the arena id. */
+      int ntl_id = snake_ntl_id(arena_id, session_id);
+      int count = tdarray_length(g->data.snakes);
+      for (int i = count - 1; i >= 0; --i) {
+        snake* current = g->data.snakes + i;
+        if (current->id == arena_id) {
+          current->ntl_id = ntl_id;
+          break;
+        }
+      }
+      break;
+    }
     case 'm': {
       g->data.victory_score=0;
       int sct=arena_read(&r,3);
@@ -707,6 +723,7 @@ void got_packet(tenv* env, uint8_t* a, int a_len) {
       o.tl = o.sct + o.fam;
       o.cfl = o.tl - .6;
       o.id = id;
+      o.ntl_id = id;
       o.xx = snx;
       o.yy = sny;
       o.cv = cv % NUM_DEFAULT_SKINS;

@@ -21,7 +21,7 @@ struct WyrmDetailHost: View {
         case .room(let id): WyrmRoomDetail(roomID: id, services: services, close: close, open: open)
         case .call(let id): WyrmCallDetail(roomID: id, services: services, close: close)
         case .lobby: WyrmLobbyDetail(engine: engine, account: account, services: services, close: close)
-        case .team, .teamChat, .teamConnect: WyrmTeamDetail(route: route, close: close, open: open)
+        case .team, .teamChat, .teamConnect: WyrmTeamDetail(route: route, engine: engine, close: close, open: open)
         case .display, .controls, .buttons, .modes, .bot, .food: WyrmEngineSettingsDetail(route: route, engine: engine, close: close)
         case .notificationSettings: WyrmNotificationSettingsDetail(close: close)
         case .privacy: WyrmPrivacyDetail(close: close)
@@ -437,32 +437,113 @@ private struct WyrmLobbyDetail: View {
 
 private struct WyrmTeamDetail: View {
     let route: WyrmDesignRoute
+    @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
-    @AppStorage("wyrm.ios.team.id") private var teamID = ""
-    @State private var key = ""
+    @EnvironmentObject private var team: WyrmTeamStore
+    @State private var teamID = ""
+    @State private var auth = ""
     @State private var message = ""
+    @State private var error = ""
     var body: some View {
         WyrmDetailChrome(title: title, onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     if route.id == "team-connect" {
-                        WyrmSectionLabel("Team")
-                        VStack(spacing: 12) { WyrmDesignEditField(label: "Team ID", value: $teamID); WyrmDesignEditField(label: "Auth key", value: $key); WyrmPrimaryAction(title: "Store on this phone", icon: "lock.fill", disabled: teamID.count < 4 || key.count < 8) { key = ""; close() } }.padding(16)
-                        Text("Team credentials stay on this device. The iOS native Team transport adapter is the remaining engine boundary before it can connect.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20)
+                        WyrmSectionLabel("NTL Team")
+                        VStack(spacing: 12) {
+                            WyrmDesignEditField(label: "Team ID", value: $teamID)
+                            SecureField("Auth key", text: $auth)
+                                .font(.androidWyrm(14)).textInputAutocapitalization(.never)
+                                .autocorrectionDisabled(true).padding(14)
+                                .background(Color.white).cornerRadius(14)
+                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
+                            if !error.isEmpty { Text(error).font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
+                            WyrmPrimaryAction(title: "Connect Team", icon: "lock.shield.fill",
+                                              disabled: teamID.count < 16 || auth.count < 16) {
+                                do { try team.connect(auth: auth, teamID: teamID); auth = ""; close() }
+                                catch { self.error = error.localizedDescription }
+                            }
+                        }.padding(16)
+                        Text("Auth and Team ID remain in this iPhone's Keychain. Diagnostics never include either value. Presence follows NTL 9.68 every four seconds.")
+                            .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(.horizontal, 20)
                     } else if route.id == "team-chat" {
-                        WyrmPaperCard { WyrmEmptyPanel(title: teamID.isEmpty ? "No team connected" : teamID, note: "Team chat becomes live when the native iOS Team adapter is available.") }.padding(.top, 18)
-                        HStack { TextField("Message the team", text: $message).padding(12).background(Color.white).cornerRadius(12); Button("Send") {}.disabled(true) }.padding(16)
+                        if team.chat.isEmpty {
+                            WyrmPaperCard { WyrmEmptyPanel(title: "No Team messages yet", note: "Messages from your connected NTL Team appear here.") }.padding(.top, 18)
+                        } else {
+                            LazyVStack(spacing: 10) {
+                                ForEach(team.chat) { line in
+                                    VStack(alignment: .leading, spacing: 4) {
+                                        Text(line.author.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live)
+                                        Text(line.body).font(.androidWyrm(13)).frame(maxWidth: .infinity, alignment: .leading)
+                                    }.padding(14).background(Color.white).cornerRadius(14)
+                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
+                                }
+                            }.padding(16)
+                        }
+                        HStack(spacing: 10) {
+                            TextField("Message the team", text: $message).font(.androidWyrm(13)).padding(12).background(Color.white).cornerRadius(12)
+                            Button("Send") { team.send(message); message = "" }
+                                .font(.androidWyrm(12, .bold)).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                        }.padding(16)
                     } else {
                         WyrmSectionLabel("Team mode")
-                        WyrmPaperCard { WyrmListRow(title: teamID.isEmpty ? "No team connected" : teamID, detail: teamID.isEmpty ? "A team ID comes from your NTL server." : "Saved on this iPhone", value: teamID.isEmpty ? "" : "Stored", showsChevron: false) }
-                        VStack(spacing: 10) { WyrmPrimaryAction(title: teamID.isEmpty ? "Add a team" : "Edit connection", icon: "person.3.fill") { open(.teamConnect) }; if !teamID.isEmpty { WyrmOutlineAction(title: "Open team chat") { open(.teamChat) } } }.padding(16)
+                        WyrmPaperCard {
+                            WyrmListRow(title: team.teamID.isEmpty ? "No team connected" : maskedTeamID,
+                                        detail: statusDetail, value: statusValue, showsChevron: false)
+                        }
+                        if !team.members.isEmpty {
+                            WyrmSectionLabel("Live roster")
+                            WyrmPaperCard {
+                                ForEach(team.members) { member in
+                                    Button {
+                                        guard member.arena != "_GAME_MENU_" else { return }
+                                        engine.enterLobby(name: engine.nickname, address: member.arena)
+                                    } label: {
+                                        HStack(spacing: 12) {
+                                            Circle().fill(member.arena == engine.arena ? ATheme.live : ATheme.quiet.opacity(0.3)).frame(width: 8, height: 8)
+                                            VStack(alignment: .leading, spacing: 2) {
+                                                Text(member.name).font(.androidWyrm(14.5, .semibold))
+                                                Text(member.arena == "_GAME_MENU_" ? "In menu" : member.arena)
+                                                    .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                                            }
+                                            Spacer()
+                                            VStack(alignment: .trailing, spacing: 2) {
+                                                Text("#\(member.rank)").font(.androidWyrm(11, .bold))
+                                                Text("tag \(member.tag)").font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet)
+                                            }
+                                            if member.arena != "_GAME_MENU_" { Image(systemName: "arrow.up.right").foregroundColor(ATheme.quiet) }
+                                        }.padding(.horizontal, 15).frame(minHeight: 62).contentShape(Rectangle())
+                                    }.buttonStyle(.plain)
+                                }
+                            }
+                        }
+                        VStack(spacing: 10) {
+                            WyrmPrimaryAction(title: team.teamID.isEmpty ? "Add a team" : "Edit connection", icon: "person.3.fill") { open(.teamConnect) }
+                            if !team.teamID.isEmpty {
+                                WyrmOutlineAction(title: "Open team chat") { open(.teamChat) }
+                                Button("Disconnect Team") { team.disconnect() }.font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).padding(.top, 4)
+                            }
+                        }.padding(16)
                     }
                 }
             }
         }
+        .onAppear { teamID = team.teamID; NSLog("Wyrm SwiftUI NTL Team presented state=%@", statusValue) }
     }
     private var title: String { route.id == "team-chat" ? "Team chat" : route.id == "team-connect" ? "Connect" : "Team mode" }
+    private var maskedTeamID: String { "•••• \(team.teamID.suffix(4))" }
+    private var statusValue: String {
+        switch team.state { case .connected: return "Live"; case .connecting: return "Joining"; case .failed: return "Offline"; case .disconnected: return "" }
+    }
+    private var statusDetail: String {
+        switch team.state {
+        case .connected: return "\(team.members.count) members · NTL 9.68 compatible"
+        case .connecting: return "Publishing selected tag and arena presence"
+        case .failed(let text): return text
+        case .disconnected: return "Use the Auth and Team ID from your NTL Team."
+        }
+    }
 }
 
 private struct WyrmEngineSettingsDetail: View {

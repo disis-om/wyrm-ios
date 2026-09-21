@@ -24,7 +24,7 @@ checks = {
     "preview batches its 256 beads in an asynchronous canvas": "rendersAsynchronously: true" in STUDIO and "rotated.rotate(by: .degrees(180))" in STUDIO,
     "overview has no explanatory captions or asset status": "Original engine skins" not in STUDIO and "ORIGINAL TEXTURES READY" not in STUDIO,
     "preview has no technical caption": "NATIVE ATLAS PREVIEW" not in STUDIO,
-    "tag rope uses original ten-point constants": "ten points, four snake-widths" in STUDIO and "(0..<10).map" in STUDIO,
+    "tag rope uses original ten-point constants": "let count = 10" in STUDIO and "3.3332" in STUDIO and "0.08333" in STUDIO and "0.838" in STUDIO,
     "picker sprites use shadowless high-resolution derivatives": "accessoryThumbnails" in STUDIO and "tagThumbnails" in STUDIO and "removingSoftShadow" in STUDIO,
     "long editors are constrained to the lower viewport": ".frame(maxHeight: .infinity)" in STUDIO and ".layoutPriority(1)" in STUDIO,
     "skin rows no longer push detail routes": "WyrmSkinRoot(open:" not in MAIN and "open(.presets)" not in MAIN,

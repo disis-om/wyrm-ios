@@ -36,34 +36,17 @@
 
 #define TWO_PI 6.28318530718f
 
-/* Points in the rope, and the length of one segment in snake-widths. Both are
-   the mod's; ten points is enough to look like rope and few enough to run a
-   hundred snakes' worth every frame. */
+/* Points in the rope, and the length of one segment in snake-widths. */
 #define ROPE_POINTS 10
 #define ROPE_SEGMENT 4.0f
 
 /*
- * How often the rope is stepped, and this number is the difference between a
- * rope and a stick.
- *
- * The mod steps once per frame, so how its rope behaves depends on the screen
- * it is drawn on. Stepping at a fixed sixty is frame-rate independent and it is
- * also the worst of both: measured against a head moving at slither's ordinary
- * speed, a small snake's rope sits at **a hundred per cent of its limit** and
- * stays there — a straight rigid line dragged along behind, which is exactly
- * what it looked like.
- *
- * The rope cannot go slacker than its own rest length, which is 3.3332/4 of the
- * limit, so 83% is the floor. What the step rate buys:
- *
- *      60/s  100%      180/s  92%      360/s  88%
- *     110/s   97%      240/s  90%      600/s  86%
- *
- * 240 is where the curve flattens: near enough the floor to hang like rope, and
- * ten points times a screenful of snakes is nothing to run four times a frame.
+ * NTL 9.68 measures elapsed time in 16.667 ms quanta and runs no more than four
+ * catch-up steps. Keeping this literal matters: it makes a Wyrm tag lag and
+ * settle exactly like the same `tg` value rendered by another NTL client.
  */
-#define ROPE_STEP (1.0f / 240.0f)
-#define ROPE_MAX_STEPS 16
+#define ROPE_STEP (1.0f / 60.0f)
+#define ROPE_MAX_STEPS 4
 
 /* How far behind the head the rope is pinned, and the height a bobble is
    allowed to reach when small tags are on — both in snake-widths. */
@@ -132,6 +115,9 @@ typedef struct tag_slot {
   float y[ROPE_POINTS];
   float vx[ROPE_POINTS];
   float vy[ROPE_POINTS];
+  float draw_x[ROPE_POINTS];
+  float draw_y[ROPE_POINTS];
+  bool draw_seeded;
   float debt; /* time owed to the simulation, in seconds */
 } tag_slot;
 
@@ -299,6 +285,7 @@ static void rope_seed(tag_slot* slot, float ax, float ay, float angle,
     slot->vy[i] = 0.0f;
   }
   slot->seeded = true;
+  slot->draw_seeded = false;
   slot->debt = 0.0f;
 }
 
@@ -423,13 +410,27 @@ static void draw_tag(tenv* env, tag_slot* slot, const tag_entry* tag,
     }
   }
 
-  /* Drawn straight from the simulation. There was an easing here, carried over
-     from the mod, which uses one to hide a rope stepped slower than the screen
-     is drawn. At 240 the rope is now stepped faster than any screen, so there
-     is nothing left to hide and the easing was only adding the lag it was
-     supposed to be covering up. */
+  /* NTL 9.68 eases the visible rope by .248 when Swing is above one. The
+     physics arrays keep running at sixty; only the rendered path is softened. */
   const float* rx = slot->x;
   const float* ry = slot->y;
+  if (swing > 1.0f) {
+    if (!slot->draw_seeded) {
+      memcpy(slot->draw_x, slot->x, sizeof(slot->draw_x));
+      memcpy(slot->draw_y, slot->y, sizeof(slot->draw_y));
+      slot->draw_seeded = true;
+    }
+    for (int i = 1; i < ROPE_POINTS; ++i) {
+      slot->draw_x[i] += 0.248f * (slot->x[i] - slot->draw_x[i]);
+      slot->draw_y[i] += 0.248f * (slot->y[i] - slot->draw_y[i]);
+    }
+    slot->draw_x[0] = slot->x[0];
+    slot->draw_y[0] = slot->y[0];
+    rx = slot->draw_x;
+    ry = slot->draw_y;
+  } else {
+    slot->draw_seeded = false;
+  }
 
   float sx[ROPE_POINTS];
   float sy[ROPE_POINTS];

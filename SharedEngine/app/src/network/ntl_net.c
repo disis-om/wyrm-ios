@@ -26,10 +26,12 @@
  *
  * Inbound is a flat array of four-byte records, big-endian throughout:
  *
- *     [ id hi, id lo, tag hi, tag lo ]
+ *     [ NTL id hi, NTL id lo, tag hi, tag lo ]
  *
- * `id` is the snake's own arena id, `tag` is what it is wearing, and 65535
- * means nothing. The whole table arrives each time; there is no delta.
+ * `NTL id` is the packet-S session composite, `tag` is what it is wearing,
+ * and 65535 means nothing. The whole table arrives each time; there is no
+ * delta. The composite is resolved to the renderer's raw arena id before the
+ * tag table is touched.
  */
 
 #define NTL_NET_URL "ws://ws.ntl-slither.com:9000"
@@ -78,11 +80,15 @@ static void send_text(struct mg_connection* c, const char* text) {
  * private tag, most often — resolves to nothing and that snake simply goes
  * without, which is the honest outcome and not a reason to drop the rest.
  */
-static void apply_table(const uint8_t* data, size_t len) {
+static void apply_table(tenv* env, const uint8_t* data, size_t len) {
+  game_data* gdata = &env->usr->gdata;
+  int count = tdarray_length(gdata->data.snakes);
   for (size_t i = 0; i + 3 < len; i += 4) {
-    int id = data[i] << 8 | data[i + 1];
+    int ntl_id = data[i] << 8 | data[i + 1];
     int ntl = data[i + 2] << 8 | data[i + 3];
-    tags_set(id, ntl == 65535 ? -1 : tags_from_ntl_id(ntl));
+    snake* target = snake_find_by_ntl_id(gdata->data.snakes, count, ntl_id);
+    if (target)
+      tags_set(target->id, ntl == 65535 ? -1 : tags_from_ntl_id(ntl));
   }
 }
 
@@ -92,7 +98,7 @@ static void ntl_callback(struct mg_connection* c, int ev, void* ev_data) {
 
   if (ev == MG_EV_WS_MSG) {
     struct mg_ws_message* msg = (struct mg_ws_message*)ev_data;
-    apply_table((const uint8_t*)msg->data.buf, msg->data.len);
+    apply_table(env, (const uint8_t*)msg->data.buf, msg->data.len);
   } else if (ev == MG_EV_ERROR) {
     SDL_Log("Wyrm NTL: %s", (char*)ev_data);
   } else if (ev == MG_EV_CLOSE) {
@@ -140,12 +146,14 @@ void ntl_net_tick(tenv* env) {
   }
 
   int x = 0, y = 0;
+  int sid = gdata->data.snake_id;
   int snakes = tdarray_length(gdata->data.snakes);
   if (snakes > 0) {
     snake* me = gdata->data.snakes + (snakes - 1);
     if (me->id == gdata->data.snake_id) {
       x = (int)(me->xx + me->fx);
       y = (int)(me->yy + me->fy);
+      sid = me->ntl_id;
     }
   }
 
@@ -160,7 +168,7 @@ void ntl_net_tick(tenv* env) {
        otherwise here would be claiming an entitlement it has not been given. */
     char line[sizeof(nick) + sizeof(srv) + 96];
     snprintf(line, sizeof(line), "[%s,%s,\"\",-1,%d,%d,%d,%d]", nick, srv,
-             usrs->default_skin, x, y, gdata->data.snake_id);
+             usrs->default_skin, x, y, sid);
     send_text(ntl_conn, line);
     announced = true;
     last_report_ms = now;

@@ -17,6 +17,8 @@ bool WyrmIOSQueueHotkey(int action, int key, int mode, bool visible, float x, fl
 bool WyrmIOSQueueSkinSelection(int preset, const char* code, int accessory,
                                int tag, int background);
 void WyrmIOSApplySkinSelection(tenv* env);
+const char* WyrmIOSTeamPresenceSnapshot(void);
+void WyrmIOSSetTeamMembers(const char* packed);
 void WyrmIOSSetEnginePresentation(bool enabled);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
 VkResult WyrmIOSCreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*);

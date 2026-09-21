@@ -3,10 +3,12 @@
 #include <stdio.h>
 #include <string.h>
 
+#if defined(VLITHER_ANDROID) || defined(WYRM_IOS)
+#include <SDL3/SDL.h>
 #ifdef VLITHER_ANDROID
 #include <jni.h>
-#include <SDL3/SDL.h>
 #include <SDL3/SDL_system.h>
+#endif
 
 #include "../game/arena_theme.h"
 #include "../game/tags.h"
@@ -34,6 +36,8 @@ typedef struct team_member {
      placed on the map — the coordinates of a snake in another arena mean
      nothing here. */
   bool present;
+  int sid;
+  int tag;
 } team_member;
 
 static tenv* team_env = NULL;
@@ -42,6 +46,8 @@ static team_member members[TEAM_MAX_MEMBERS];
 static int member_count = 0;
 static team_member frame_members[TEAM_MAX_MEMBERS];
 static int frame_member_count = 0;
+static int frame_tag_snakes[TEAM_MAX_MEMBERS];
+static int frame_tag_snake_count = 0;
 
 /* Where this player is, written by the engine thread and read by the app's. */
 static char presence[256] = {0};
@@ -103,6 +109,7 @@ void android_team_poll(tenv* env) {
 
   int x = 0;
   int y = 0;
+  int sid = 0;
   if (playing) {
     int length = tdarray_length(game->data.snakes);
     if (length > 0) {
@@ -110,6 +117,7 @@ void android_team_poll(tenv* env) {
       if (game->data.snake_id == me->id) {
         x = (int)(me->xx + me->fx);
         y = (int)(me->yy + me->fy);
+        sid = me->ntl_id;
       }
     }
   }
@@ -126,8 +134,6 @@ void android_team_poll(tenv* env) {
    * `-1` is no tag, which is what the mod sends when the player has none.
    */
   int tag = tags_ntl_id(usr->usrs.tag_index);
-  int sid = playing ? game->data.snake_id : 0;
-
   char line[sizeof(presence)];
   snprintf(line, sizeof(line), "%s\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%d",
            usr->usrs.nickname, playing ? game->data.score : 0, x, y,
@@ -150,7 +156,22 @@ static int snapshot(team_member* out) {
 }
 
 void android_team_begin_frame(void) {
+  for (int i = 0; i < frame_tag_snake_count; ++i)
+    tags_set(frame_tag_snakes[i], -1);
+  frame_tag_snake_count = 0;
   frame_member_count = snapshot(frame_members);
+  if (!team_env) return;
+  game_data* game = &team_env->usr->gdata;
+  int snake_count = tdarray_length(game->data.snakes);
+  for (int i = 0; i < frame_member_count; ++i) {
+    team_member* member = frame_members + i;
+    if (!member->present || member->sid <= 0) continue;
+    snake* target = snake_find_by_ntl_id(game->data.snakes, snake_count,
+                                         member->sid);
+    if (!target) continue;
+    tags_set(target->id, tags_from_ntl_id(member->tag));
+    frame_tag_snakes[frame_tag_snake_count++] = target->id;
+  }
 }
 
 static ImU32 team_colour(float r, float g, float b, float a) {
@@ -292,6 +313,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
  * underneath it. See `android_team_release_chat`.
  */
 static void notify_java_chat(bool shown) {
+#ifdef VLITHER_ANDROID
   JNIEnv* jni = (JNIEnv*)SDL_GetAndroidJNIEnv();
   if (!jni) return;
   jclass activity = (*jni)->FindClass(jni, "com/wyrm/omrajput/WyrmActivity");
@@ -306,6 +328,9 @@ static void notify_java_chat(bool shown) {
                                  shown ? JNI_TRUE : JNI_FALSE);
   if ((*jni)->ExceptionCheck(jni)) (*jni)->ExceptionClear(jni);
   (*jni)->DeleteLocalRef(jni, activity);
+#else
+  (void)shown;
+#endif
 }
 
 /*
@@ -727,6 +752,7 @@ void android_team_draw_chat_help(tenv* env) {
                              NULL, 0, NULL);
 }
 
+#ifdef VLITHER_ANDROID
 JNIEXPORT void JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeCloseTeamChat(JNIEnv* env,
                                                          jclass clazz,
@@ -735,6 +761,7 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeCloseTeamChat(JNIEnv* env,
   (void)clazz;
   android_team_close_chat(seconds);
 }
+#endif
 
 /* ------------------------------------------------------------------ bridge */
 
@@ -745,6 +772,7 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeCloseTeamChat(JNIEnv* env,
  * literal `_GAME_MENU_` when not in a match, which is what the team service
  * expects and what tells the others you are not on the map.
  */
+#ifdef VLITHER_ANDROID
 JNIEXPORT jstring JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeTeamPresence(JNIEnv* env,
                                                         jclass clazz) {
@@ -756,8 +784,63 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeTeamPresence(JNIEnv* env,
   SDL_UnlockMutex(team_mutex);
   return (*env)->NewStringUTF(env, line);
 }
+#endif
+
+const char* WyrmIOSTeamPresenceSnapshot(void) {
+  static char apple_presence[sizeof(presence)];
+  if (!team_mutex) return "";
+  SDL_LockMutex(team_mutex);
+  memcpy(apple_presence, presence, sizeof(apple_presence));
+  SDL_UnlockMutex(team_mutex);
+  return apple_presence;
+}
+
+static void apply_team_members(const char* text) {
+  if (!team_mutex) return;
+  if (!text) text = "";
+
+  team_member parsed[TEAM_MAX_MEMBERS];
+  int count = 0;
+  const char* line = text;
+  while (*line && count < TEAM_MAX_MEMBERS) {
+    const char* end = strchr(line, '\n');
+    size_t length = end ? (size_t)(end - line) : strlen(line);
+    char row[320];
+    if (length >= sizeof(row)) length = sizeof(row) - 1;
+    memcpy(row, line, length);
+    row[length] = '\0';
+
+    team_member* member = &parsed[count];
+    memset(member, 0, sizeof(*member));
+    int x = 0, y = 0, score = 0, rank = 0, bot = 0, present = 0;
+    int sid = 0, tag = -1;
+    char name[64] = {0};
+    if (sscanf(row, "%63[^\t]\t%d\t%d\t%d\t%d\t%d\t%d\t%d\t%d",
+               name, &x, &y, &score, &rank, &bot, &present, &sid, &tag) == 9) {
+      snprintf(member->name, sizeof(member->name), "%s", name);
+      member->x = x;
+      member->y = y;
+      member->score = score;
+      member->rank = rank;
+      member->bot = bot != 0;
+      member->present = present != 0;
+      member->sid = sid;
+      member->tag = tag;
+      count++;
+    }
+    line = end ? end + 1 : "";
+  }
+
+  SDL_LockMutex(team_mutex);
+  member_count = count;
+  memcpy(members, parsed, sizeof(team_member) * (size_t)count);
+  SDL_UnlockMutex(team_mutex);
+}
+
+void WyrmIOSSetTeamMembers(const char* packed) { apply_team_members(packed); }
 
 /** One line per member: name, x, y, score, rank, bot, in-this-arena. */
+#ifdef VLITHER_ANDROID
 JNIEXPORT void JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeSetTeamMembers(JNIEnv* env,
                                                           jclass clazz,
@@ -766,41 +849,10 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeSetTeamMembers(JNIEnv* env,
   if (!team_mutex) return;
   const char* text = packed ? (*env)->GetStringUTFChars(env, packed, NULL) : "";
 
-  team_member parsed[TEAM_MAX_MEMBERS];
-  int count = 0;
-  const char* line = text;
-  while (line && *line && count < TEAM_MAX_MEMBERS) {
-    const char* end = strchr(line, '\n');
-    size_t length = end ? (size_t)(end - line) : strlen(line);
-    char row[256];
-    if (length >= sizeof(row)) length = sizeof(row) - 1;
-    memcpy(row, line, length);
-    row[length] = '\0';
-
-    team_member* member = &parsed[count];
-    memset(member, 0, sizeof(*member));
-    int x = 0, y = 0, score = 0, rank = 0, bot = 0, present = 0;
-    char name[64] = {0};
-    if (sscanf(row, "%63[^\t]\t%d\t%d\t%d\t%d\t%d\t%d", name, &x, &y, &score,
-               &rank, &bot, &present) == 7) {
-      snprintf(member->name, sizeof(member->name), "%s", name);
-      member->x = x;
-      member->y = y;
-      member->score = score;
-      member->rank = rank;
-      member->bot = bot != 0;
-      member->present = present != 0;
-      count++;
-    }
-    line = end ? end + 1 : NULL;
-  }
-
-  SDL_LockMutex(team_mutex);
-  member_count = count;
-  memcpy(members, parsed, sizeof(team_member) * (size_t)count);
-  SDL_UnlockMutex(team_mutex);
+  apply_team_members(text);
   if (packed) (*env)->ReleaseStringUTFChars(env, packed, text);
 }
+#endif
 
 #else
 
@@ -842,5 +894,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
   (void)centre_y;
   return 0.0f;
 }
+const char* WyrmIOSTeamPresenceSnapshot(void) { return ""; }
+void WyrmIOSSetTeamMembers(const char* packed) { (void)packed; }
 
 #endif

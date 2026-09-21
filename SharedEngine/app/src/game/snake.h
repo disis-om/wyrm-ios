@@ -3,10 +3,18 @@
 
 #include "body_part.h"
 #include "gpt.h"
+#include <stddef.h>
 #include <stdint.h>
 
 typedef struct snake {
   int id;
+  /*
+   * NTL's team service does not identify a snake with the raw arena id.
+   * Packet `S` replaces its high six bits with a session discriminator and
+   * the mod publishes that 16-bit value as `sid`.  Keep both identities so a
+   * team row can be resolved back to the snake the renderer actually owns.
+   */
+  int ntl_id;
   bool local_player;
   int cv;
   int fpos;
@@ -75,5 +83,17 @@ typedef struct snake {
   body_part* pts;
   gpt* gptz;
 } snake;
+
+static inline int snake_ntl_id(int arena_id, uint32_t session_id) {
+  return (int)((((session_id & 63u) << 10) |
+                ((uint32_t)arena_id & 1023u)) & 65535u);
+}
+
+static inline snake* snake_find_by_ntl_id(snake* snakes, int count,
+                                          int ntl_id) {
+  for (int i = count - 1; i >= 0; --i)
+    if (snakes[i].ntl_id == ntl_id) return snakes + i;
+  return NULL;
+}
 
 #endif

@@ -17,6 +17,7 @@ jobs:
       - run: python3 Tests/arena_lifecycle_contract_test.py
       - run: python3 Tests/ui_shell_contract_test.py
       - run: python3 Tests/skin_studio_contract_test.py
+      - run: python3 Tests/team_mode_contract_test.py
       - run: python3 Tests/session_lifecycle_contract_test.py
       - run: xcodegen generate --spec original-engine.yml
       - name: Compile original core on iPhone and Simulator
@@ -31,8 +32,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.13.2-build-41-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.13.2-build-41-simulator.app.zip
+          zip -qry Wyrm-0.14.0-build-42-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.14.0-build-42-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -90,6 +91,11 @@ jobs:
           sleep 6
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin-tags.png
           grep 'Wyrm SwiftUI skin studio presented section=tags' original-artifacts/skin-tags-stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/team-stdout.log" --stderr="$PWD/original-artifacts/team-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-team
+          sleep 4
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-team.png
+          grep 'Wyrm SwiftUI NTL Team presented state=' original-artifacts/team-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/refusal-stdout.log" --stderr="$PWD/original-artifacts/refusal-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-arena-refusal
           sleep 3

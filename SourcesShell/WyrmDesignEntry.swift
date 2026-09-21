@@ -4,6 +4,7 @@ struct WyrmDesignRoot: View {
     @StateObject private var engine = WyrmShellStore()
     @StateObject private var account = WyrmAccountStore()
     @StateObject private var services = WyrmServiceStore()
+    @StateObject private var team = WyrmTeamStore()
 
     private let arguments = ProcessInfo.processInfo.arguments
 
@@ -18,6 +19,8 @@ struct WyrmDesignRoot: View {
     private var skinSmoke: Bool {
         arguments.contains("--smoke-skin") || arguments.contains("--smoke-skin-accessories") || arguments.contains("--smoke-skin-tags")
     }
+
+    private var teamSmoke: Bool { arguments.contains("--smoke-team") }
 
     private var authSmokeStage: WyrmAuthStage? {
         if arguments.contains("--smoke-auth-create") { return .createUsername }
@@ -50,6 +53,9 @@ struct WyrmDesignRoot: View {
                     initialTab: .settings,
                     initialRoute: arguments.contains("--smoke-developer") ? .developer : nil
                 )
+            } else if teamSmoke {
+                WyrmDesignMain(engine: engine, account: account, services: services,
+                               initialTab: .play, initialRoute: .team)
             } else if skinSmoke {
                 WyrmDesignMain(
                     engine: engine,
@@ -88,6 +94,8 @@ struct WyrmDesignRoot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ATheme.paper.ignoresSafeArea())
+        .environmentObject(team)
+        .task { team.start() }
         .task(id: sessionLifecycleID) {
             switch account.phase {
             case .signedIn:

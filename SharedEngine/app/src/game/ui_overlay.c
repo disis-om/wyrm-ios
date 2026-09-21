@@ -222,10 +222,12 @@ void ui_overlay(tenv* env) {
   }
 
   android_team_tick(env);
+  /* Team cosmetics are arena state, not HUD state. Keep their NTL sid mapping
+     live even when the player hides the overlay. */
+  android_team_begin_frame();
 
   usr->r->global.minimap_opacity = 0;
   if (usrs->hotkeys[HOTKEY_HUD].active) {
-    android_team_begin_frame();
     igPushFont(usr->imgui_data.mono_font[usrs->stats_font_size],
                usr->imgui_data.mono_font[usrs->stats_font_size]->LegacySize);
 
