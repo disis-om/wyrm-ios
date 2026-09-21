@@ -134,12 +134,13 @@ void android_team_poll(tenv* env) {
    * `-1` is no tag, which is what the mod sends when the player has none.
    */
   int tag = tags_ntl_id(usr->usrs.tag_index);
+  int cosmetic = playing ? usr->usrs.accessory : -1;
   char line[sizeof(presence)];
-  snprintf(line, sizeof(line), "%s\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%d",
+  snprintf(line, sizeof(line), "%s\t%d\t%d\t%d\t%d\t%s\t%d\t%d\t%d\t%d",
            usr->usrs.nickname, playing ? game->data.score : 0, x, y,
            playing && usr->usrs.hotkeys[HOTKEY_BOT].active ? 1 : 0,
            playing ? usr->usrs.ipv4 : "_GAME_MENU_",
-           playing ? game->data.rank : 0, sid, tag);
+           playing ? game->data.rank : 0, sid, tag, cosmetic);
 
   SDL_LockMutex(team_mutex);
   memcpy(presence, line, sizeof(presence));

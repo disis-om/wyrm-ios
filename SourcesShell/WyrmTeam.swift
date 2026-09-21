@@ -12,6 +12,7 @@ struct WyrmTeamMember: Identifiable, Equatable {
     let rank: Int
     let snakeID: Int
     let tag: Int
+    let cosmetic: Int
 
     func packed(relativeTo currentArena: String) -> String {
         let safeName = name.replacingOccurrences(of: "\t", with: " ")
@@ -91,12 +92,12 @@ private struct WyrmTeamPresence {
         guard let pointer = WyrmIOSTeamPresenceSnapshot() else { return nil }
         let fields = String(cString: pointer)
             .split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
-        guard fields.count == 9, !fields[0].isEmpty else { return nil }
+        guard fields.count == 10, !fields[0].isEmpty else { return nil }
         return WyrmTeamPresence(nickname: fields[0], score: Int(fields[1]) ?? 0,
                                 x: Int(fields[2]) ?? 0, y: Int(fields[3]) ?? 0,
                                 bot: fields[4] == "1", arena: fields[5],
                                 rank: Int(fields[6]) ?? 0, snakeID: Int(fields[7]) ?? 0,
-                                tag: Int(fields[8]) ?? -1)
+                                tag: Int(fields[8]) ?? -1, cosmetic: Int(fields[9]) ?? -1)
     }
 }
 
@@ -198,10 +199,14 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "sid", value: "\(presence.snakeID)"),
             URLQueryItem(name: "msg", value: queuedMessage),
             URLQueryItem(name: "rank", value: "\(presence.rank)"),
+            URLQueryItem(name: "an", value: "false"),
             URLQueryItem(name: "dt", value: "Wyrm iOS"),
+            URLQueryItem(name: "cs", value: "\(presence.cosmetic)"),
             URLQueryItem(name: "tg", value: "\(presence.tag)"),
-            URLQueryItem(name: "ver", value: "9.68-wyrm-ios"),
+            URLQueryItem(name: "ver", value: "9.68"),
+            URLQueryItem(name: "tlm", value: ""),
             URLQueryItem(name: "di", value: "0"),
+            URLQueryItem(name: "tar", value: ""),
         ]
         guard let url = components.url else { return }
         do {

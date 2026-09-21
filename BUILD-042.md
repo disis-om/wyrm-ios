@@ -7,7 +7,8 @@ Status: source and local contracts accepted; Apple CI/runtime evidence pending
 
 - Inspected the read-only NTL 9.68 mod and matched its Team request contract:
   Auth/Team ID, nickname, score, position, bot/SOS/food, arena, `sid`, message,
-  rank, client detail, selected `tg`, version and device fields.
+  rank, anonymous flag, client detail, cosmetic, selected `tg`, version,
+  team-limit, device and target fields.
 - Added an iOS Team client with the original four-second cadence and two-second
   request timeout. Auth and Team ID require at least 16 characters and live in
   this-device-only Keychain storage; diagnostics contain neither secret.

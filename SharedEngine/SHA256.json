@@ -145,7 +145,7 @@
   "app/src/platform/android_skin.h": "001f759dfb044cfee10c92148eb07b456f17732881b5dcb3565e354795a3de3a",
   "app/src/platform/android_startup.c": "4a47631e18693197912258195b6eb9bab5272c38be8fa5f01c13806832b1dc28",
   "app/src/platform/android_startup.h": "96b3012099de2cf652f737d4d9f0b524a9f6f645e406e45e6fad772c9a450865",
-  "app/src/platform/android_team.c": "8000f6812a4357b00f57e6c2108a9293239e5c84aba0d5c73136083a054d4638",
+  "app/src/platform/android_team.c": "4750f678a5a91b963ac27a1e1867d15feabded04ee5e64f9c15f64ed3e2b92c3",
   "app/src/platform/android_team.h": "ba558fb8e596f3862c34f6f4f2d5fcd0752688c703652b4d8c7b936d2f42370f",
   "app/src/platform/android_update.c": "3174e3eeb2339e49849ef2346a4c05b4d87fadce7723fdbd7826d16176b2d813",
   "app/src/platform/android_update.h": "ff044776d1fd5997a3693c309552b5f52852fceb8f4c1ba3b35d8f33a3515c32",

@@ -11,9 +11,11 @@ ntl_net_c = (root / "SharedEngine" / "app" / "src" / "network" / "ntl_net.c").re
 overlay_c = (root / "SharedEngine" / "app" / "src" / "game" / "ui_overlay.c").read_text()
 
 for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
-              "food", "srv", "sid", "msg", "rank", "tg", "ver"):
+              "food", "srv", "sid", "msg", "rank", "an", "dt", "cs", "tg",
+              "ver", "tlm", "di", "tar"):
     assert f'URLQueryItem(name: "{field}"' in swift, field
 assert "4_000_000_000" in swift
+assert 'URLQueryItem(name: "ver", value: "9.68")' in swift
 assert "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" in swift
 assert "WyrmDiagnostics.record(\"NTL Team poll accepted members=" in swift
 for line in swift.splitlines():
@@ -25,6 +27,7 @@ assert "tags_set(target->id, tags_from_ntl_id(member->tag))" in team_c
 assert "WyrmIOSTeamPresenceSnapshot" in team_c
 assert "WyrmIOSSetTeamMembers" in team_c
 assert "%63[^\\t]\\t%d\\t%d\\t%d\\t%d\\t%d\\t%d\\t%d\\t%d" in team_c
+assert '"%s\\t%d\\t%d\\t%d\\t%d\\t%s\\t%d\\t%d\\t%d\\t%d"' in team_c
 
 assert "int ntl_id;" in snake_h
 assert "session_id & 63u" in snake_h
