@@ -541,7 +541,7 @@ private struct WyrmSkinPreview: View {
 
     private func nativeBodyShadows(x: CGFloat, headY: CGFloat, tailY: CGFloat,
                                    scale: CGFloat, step: CGFloat) -> some View {
-        ZStack {
+        return ZStack {
             ForEach(0..<20, id: \.self) { segment in
                 let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
                                          scale: scale, step: step)
@@ -580,7 +580,7 @@ private struct WyrmSkinPreview: View {
         let unit = scale / 29
         let iris = 12 * unit
         let pupil = 5 * unit
-        ZStack {
+        return ZStack {
             Circle().fill(.white).frame(width: iris, height: iris).offset(y: -6.5 * unit)
             Circle().fill(.white).frame(width: iris, height: iris).offset(y: 6 * unit)
             Circle().fill(ATheme.ink).frame(width: pupil, height: pupil).offset(x: 2.5 * unit, y: -6 * unit)
