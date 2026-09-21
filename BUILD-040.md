@@ -1,7 +1,7 @@
 # Build 040 — clean sessions, stable controls and native skin geometry
 
 Version: 0.13.1 (40)  
-Status: source contracts pass; Apple CI, Simulator runtime and physical-iPhone acceptance pending
+Status: source contracts, Apple CI and Simulator runtime passed; physical-iPhone acceptance pending
 
 ## What changed
 
@@ -38,12 +38,19 @@ Status: source contracts pass; Apple CI, Simulator runtime and physical-iPhone a
 - Full-screen shell, glass, drag and optimistic-control contracts: 14/14.
 - Skin Studio asset and geometry contracts: 18/18.
 - Account session lifecycle contracts: 8/8.
-- Apple CI must compile iPhoneOS and Simulator targets, package both artifacts,
-  capture auth/session/Skin Studio screens, and pass existing lobby, offline-AI
-  and live-online-arena smoke gates.
+- Apple CI run `35599809190` compiled iPhoneOS and Simulator targets, packaged
+  both artifacts, captured auth/session/Skin Studio screens, and passed the
+  lobby, offline-AI and live-online-arena smoke gates.
+- Build source commit: `7559cb4f84bb64359c1b691e833b555035989a13`.
+- Physical-iPhone behavior remains a separate acceptance gate for the owner.
 
 ## Expected artifacts
 
 - `Wyrm-0.13.1-build-40-unsigned.ipa`
 - `Wyrm-0.13.1-build-40-simulator.app.zip`
 - `SHA256SUMS`, screenshots and runtime logs
+
+## Artifact checksums
+
+- IPA: `12e664bfe1598b966a5dc28c43c06aa0f0f1ae17687fbe90720b8413f8590d74`
+- Appetize ZIP: `937a7850dba8c4a6ec6fa394460dae05a54d6513b32a4740d366a31dcaa2bbe5`
