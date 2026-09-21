@@ -16,6 +16,10 @@ for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
     assert f'URLQueryItem(name: "{field}"' in swift, field
 assert "4_000_000_000" in swift
 assert 'URLQueryItem(name: "ver", value: "9.68")' in swift
+presence = swift.split("private struct WyrmTeamPresence", 1)[1].split("@MainActor", 1)[0]
+member = swift.split("struct WyrmTeamMember", 1)[1].split("struct WyrmTeamChatLine", 1)[0]
+assert "let cosmetic: Int" in presence
+assert "let cosmetic: Int" not in member
 assert "kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly" in swift
 assert "WyrmDiagnostics.record(\"NTL Team poll accepted members=" in swift
 for line in swift.splitlines():

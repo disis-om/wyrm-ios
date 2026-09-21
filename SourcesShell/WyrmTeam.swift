@@ -12,7 +12,6 @@ struct WyrmTeamMember: Identifiable, Equatable {
     let rank: Int
     let snakeID: Int
     let tag: Int
-    let cosmetic: Int
 
     func packed(relativeTo currentArena: String) -> String {
         let safeName = name.replacingOccurrences(of: "\t", with: " ")
@@ -87,6 +86,7 @@ private struct WyrmTeamPresence {
     let rank: Int
     let snakeID: Int
     let tag: Int
+    let cosmetic: Int
 
     static func current() -> WyrmTeamPresence? {
         guard let pointer = WyrmIOSTeamPresenceSnapshot() else { return nil }
