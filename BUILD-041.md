@@ -1,7 +1,7 @@
 # Build 041 — full native skin body and independent glass lens
 
 Version: 0.13.2 (41)  
-Status: source contracts pass; Apple CI, Simulator runtime and physical-iPhone acceptance pending
+Status: Apple CI and Simulator runtime accepted; physical-iPhone acceptance pending
 
 ## What changed
 
@@ -25,12 +25,21 @@ Status: source contracts pass; Apple CI, Simulator runtime and physical-iPhone a
 
 - Skin Studio source and asset contracts: 22/22.
 - Full-screen shell, Liquid Glass, drag and control contracts: 15/15.
-- Existing session and arena lifecycle suites must remain green.
-- Apple CI must compile iPhoneOS and Simulator, capture the corrected Skin
-  screen, package the IPA/Appetize ZIP and pass offline and online arena smoke.
+- Session lifecycle contracts: 8/8.
+- Arena lifecycle contracts: 13/13.
+- Apple CI run `35603493751` compiled iPhoneOS and Simulator, captured the
+  corrected Skin screen, packaged the IPA/Appetize ZIP and passed offline and
+  online arena smoke.
+- Visual proof confirms 128 beads per strip, no outer blurred body shadow, no
+  technical preview/status labels, and a distinct raised glass selection lens.
 
 ## Expected artifacts
 
 - `Wyrm-0.13.2-build-41-unsigned.ipa`
 - `Wyrm-0.13.2-build-41-simulator.app.zip`
 - `SHA256SUMS`, screenshots and runtime logs
+
+## Artifact integrity
+
+- IPA SHA-256: `2b6302662e0406521a3372917faeaeceb915a2e3456d3fb9e33f488b7969e291`
+- Simulator ZIP SHA-256: `201cd07a76ca53ce8b7b0e0cb20dbcaefd3875560bbc5e51475c0d614bbae675`

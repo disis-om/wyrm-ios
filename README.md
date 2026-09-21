@@ -41,8 +41,8 @@ compiled and tested by CI, then exposed as a workflow artifact.
   and player-created rooms.
 - Native engine settings and on-screen controls connected through a narrow,
   thread-safe Swift/C bridge.
-- Native SwiftUI Skin Studio with the original engine's exact two-strip,
-  20-segment preview geometry, atlas bead spacing, eye/accessory proportions,
+- Native SwiftUI Skin Studio with the original engine's full two-strip,
+  256-segment preview geometry (128 beads per strip), atlas bead spacing, eye/accessory proportions,
   ten-point dual-stroke NTL tag rope, all 66 presets, 32 accessories, 164 tags
   and 22 arena floors. Editors replace the lower panel in place and selections
   persist through a bounded engine-thread mailbox.
