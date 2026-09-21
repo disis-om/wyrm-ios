@@ -1,7 +1,7 @@
 # Build 038 — full-screen paper and stable glass controls
 
 Version: 0.12.1 (38)  
-Status: Apple CI validation required
+Status: Apple CI passed; physical iPhone interaction acceptance remains open
 
 ## What changed
 
@@ -22,9 +22,16 @@ Status: Apple CI validation required
 - `Tests/ui_shell_contract_test.py` guards the full-screen canvas, floating navigation, grouped interactive glass, draggable lens, and stable setting-control identity.
 - `Tests/arena_lifecycle_contract_test.py` continues to guard the engine lifecycle and protocol timing path.
 - GitHub Actions compiles device and Simulator targets, captures SwiftUI screens, then performs rotated lobby, AI arena, and real online arena smoke tests.
+- GitHub Actions run `35585299813` passed every compile, contract, screenshot, rotated-engine, and online-arena step.
+- Visual inspection confirmed that the Settings root, Social root, and pushed Leaderboard route share one edge-to-edge paper background, including the top safe area.
 
 ## Artifacts
 
 - `Wyrm-0.12.1-build-38-unsigned.ipa` — unsigned device package for AltStore signing.
 - `Wyrm-0.12.1-build-38-simulator.app.zip` — Simulator/Appetize package.
 - `SHA256SUMS` — artifact integrity hashes.
+
+Validated SHA-256:
+
+- IPA: `2775db0952fbd5cad298ecc6ada8ed686eecf445a34d39d9e6616da9804d2b60`
+- Simulator: `718cd8d8944ad62da2dc30fe30cb3b8cb068a04fbdd7fe61bc22fdb9154e464a`
