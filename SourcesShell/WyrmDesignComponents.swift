@@ -266,40 +266,43 @@ struct WyrmRootTabBar: View {
             let width = max(1, proxy.size.width - inset * 2)
             let itemWidth = width / CGFloat(WyrmDesignTab.allCases.count)
             let selectedIndex = CGFloat(WyrmDesignTab.allCases.firstIndex(of: selection) ?? 0)
-            WyrmGlassGroup {
-                ZStack(alignment: .leading) {
-                    WyrmTabGlassSurface()
-                        .zIndex(0)
-                    WyrmTabSelectionGlass(namespace: glassNamespace)
-                        .frame(width: itemWidth - 4, height: 46)
-                        .offset(x: inset + selectedIndex * itemWidth + dragX)
-                        .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
-                        .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
-                        .zIndex(1)
-                    HStack(spacing: 0) {
-                        ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
-                            Button { select(tab) } label: {
-                                tabLabel(tab).frame(width: itemWidth, height: 48)
-                            }.buttonStyle(.plain)
-                        }
+            ZStack(alignment: .leading) {
+                WyrmGlassGroup {
+                    ZStack(alignment: .leading) {
+                        WyrmTabGlassSurface()
+                            .zIndex(0)
+                        WyrmTabSelectionGlass(namespace: glassNamespace)
+                            .frame(width: itemWidth - 4, height: 46)
+                            .offset(x: inset + selectedIndex * itemWidth + dragX)
+                            .scaleEffect(x: dragX == 0 ? 1 : 1.08, y: dragX == 0 ? 1 : 0.94)
+                            .animation(.interactiveSpring(response: 0.32, dampingFraction: 0.72, blendDuration: 0.12), value: selection)
+                            .zIndex(1)
                     }
-                    .padding(.horizontal, inset)
-                    .zIndex(3)
                 }
-                .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-                .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
-                    .updating($dragX) { value, state, _ in
-                        let start = selectedIndex * itemWidth
-                        state = min(max(value.translation.width, -start), width - itemWidth - start)
-                        preview(at: start + state, itemWidth: itemWidth)
+                HStack(spacing: 0) {
+                    ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
+                        Button { select(tab) } label: {
+                            tabLabel(tab).frame(width: itemWidth, height: 48)
+                        }.buttonStyle(.plain)
                     }
-                    .onEnded { value in
-                        let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
-                        let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
-                        select(WyrmDesignTab.allCases[index])
-                        lastPreview = nil
-                    })
+                }
+                .padding(.horizontal, inset)
+                .compositingGroup()
+                .zIndex(3)
             }
+            .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+            .gesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
+                .updating($dragX) { value, state, _ in
+                    let start = selectedIndex * itemWidth
+                    state = min(max(value.translation.width, -start), width - itemWidth - start)
+                    preview(at: start + state, itemWidth: itemWidth)
+                }
+                .onEnded { value in
+                    let raw = selectedIndex + value.predictedEndTranslation.width / itemWidth
+                    let index = min(max(Int(raw.rounded()), 0), WyrmDesignTab.allCases.count - 1)
+                    select(WyrmDesignTab.allCases[index])
+                    lastPreview = nil
+                })
         }
         .frame(height: 56)
         .shadow(color: ATheme.ink.opacity(0.13), radius: 18, y: 8)

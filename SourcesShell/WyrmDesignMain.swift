@@ -43,8 +43,7 @@ struct WyrmDesignMain: View {
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
                     WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
-                        .frame(width: proxy.size.width, height: max(1, proxy.size.height - proxy.safeAreaInsets.top))
-                        .padding(.top, proxy.safeAreaInsets.top)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
                         .background(WyrmPaperBackground())
                         .zIndex(Double(30 + index))
                         .transition(.wyrmCinematicPush)
@@ -56,9 +55,8 @@ struct WyrmDesignMain: View {
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
                 }
-            }.clipped()
+            }.clipped().ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
     }
