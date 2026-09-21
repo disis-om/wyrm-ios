@@ -18,6 +18,7 @@ checks = {
     "tag preview crops the original tag atlas": "res/textures/wyrm_tags.png" in STUDIO and "Self.crop(tagAtlas" in STUDIO,
     "large images are downsampled off main": "DispatchQueue.global(qos: .userInitiated)" in STUDIO and "CGImageSourceCreateThumbnailAtIndex" in STUDIO,
     "preview stays fixed above inline content": "WyrmSkinPreview" in STUDIO and "ScrollView(showsIndicators: false)" in STUDIO,
+    "long editors are constrained to the lower viewport": ".frame(maxHeight: .infinity)" in STUDIO and ".layoutPriority(1)" in STUDIO,
     "skin rows no longer push detail routes": "WyrmSkinRoot(open:" not in MAIN and "open(.presets)" not in MAIN,
     "selection crosses a bounded engine mailbox": "WyrmIOSQueueSkinSelection" in MAILBOX and "save_user_settings(settings)" in MAILBOX,
 }

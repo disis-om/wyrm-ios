@@ -199,7 +199,10 @@ struct WyrmSkinRoot: View {
                 .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
                 .padding(.bottom, 108)
             }
+            .frame(maxHeight: .infinity)
+            .layoutPriority(1)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(ATheme.paper)
         .onAppear {
             textures.prepare()

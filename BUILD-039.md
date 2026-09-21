@@ -15,6 +15,8 @@ Status: source and portable contracts pending Apple CI; physical iPhone acceptan
   presets, 42 atlas colour groups, 32 accessories, 164 tags and 22 backgrounds.
 - Added real accessory placement, animated tag rope/art, custom bead-pattern
   editing, tag motion controls and exact background previews.
+- Constrained long editors to the lower viewport so the header and atlas
+  preview remain fixed instead of being pushed beyond the top edge.
 - Downsamples atlas/background images off the main thread, crops once, keeps
   stable grid identity and uses lazy grids to avoid launch hangs and scroll
   churn.
