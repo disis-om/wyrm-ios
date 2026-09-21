@@ -62,6 +62,27 @@ for path in sorted(OUTPUT.rglob("*")):
         text = text.replace("VLITHER_ANDROID", "WYRM_MOBILE")
     if relative == "app/src/game/redraw.c":
         text = text.replace("__ANDROID__", "WYRM_MOBILE")
+    if relative == "app/src/game/game_data.c":
+        # Slither's 3333 ms value is the lifetime of the current unanswered
+        # attempt, not a global delay before every later Play request. The
+        # attempt timeout remains in loop.c. Apple failover is serialized by
+        # the existing one-current-socket rule, so only wait for a socket which
+        # is actually still closing.
+        cooldown = '''  uint64_t now = SDL_GetTicks();
+  uint64_t due = gdata->last_connect_ms + min_interval_ms;
+  if (gdata->last_connect_ms && now < due) {
+    gdata->rejoin_at_ms = due;
+    SDL_Log("Wyrm arena: holding the join for %llums — the last one was %llums "
+            "ago",
+            (unsigned long long)(due - now),
+            (unsigned long long)(now - gdata->last_connect_ms));
+    return;
+  }
+'''
+        assert text.count(cooldown) == 1
+        text = text.replace(cooldown, '''  (void)min_interval_ms;
+  uint64_t now = SDL_GetTicks();
+''')
     if relative == "app/src/game/arena_theme.c":
         text = text.replace("#include <jni.h>", "#ifdef __ANDROID__\n#include <jni.h>\n#endif")
         text = text.replace("JNIEXPORT void JNICALL", "#ifdef __ANDROID__\nJNIEXPORT void JNICALL", 1)
@@ -109,7 +130,8 @@ for path in sorted(OUTPUT.rglob("*")):
             'record_finished_run': '(void)env; /* Local score is retained by the original engine. */',
             'android_home_set_screen': '(void)screen;',
             'android_home_publish_state': '(void)env_ptr;',
-            'android_home_arena_refused': 'SDL_Log("Wyrm arena refused: %s (%d seconds)", endpoint, seconds);',
+            'android_home_arena_refused': '''WyrmIOSPublishArenaRefusal(endpoint, seconds);
+  SDL_Log("Wyrm arena refused: %s (%d seconds)", endpoint, seconds);''',
         }.items():
             text = replace_body(text, name, body)
         for name in ('raise_death_card', 'dismiss_death'):
@@ -118,6 +140,43 @@ for path in sorted(OUTPUT.rglob("*")):
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
+    if relative == "app/src/network/callback.c":
+        # A silent close after the own snake spawned is not a transport
+        # handshake failure, but repeatedly retrying the same endpoint caused
+        # the observed 0.2-0.6 second eject loop. Preserve real death packets;
+        # only classify a server-initiated short life with no active death
+        # watch as a refused endpoint and hand it to the Apple selector.
+        text = text.replace('#include "arena_trace.h"',
+                            '#include "arena_trace.h"\n#include "arena_taint.h"')
+        close_block = '''    if (gdata->arena_ready && gdata->curr_screen == PLAYING &&
+        !gdata->leaving && !gdata->restart_req) {
+      android_home_notify_death(env);
+      game_clear_world(gdata);
+      gdata->arena_ready = false;
+    }
+'''
+        assert text.count(close_block) == 1
+        text = text.replace(close_block, '''    bool refused_short_life =
+        gdata->arena_ready && gdata->join_spawned &&
+        gdata->last_life > 0 && gdata->last_life < SHORT_LIFE &&
+        !gdata->closed_by_us && !gdata->leaving && !gdata->restart_req &&
+        !android_home_death_pending();
+    if (refused_short_life) {
+      arena_taint_mark(usr->usrs.ipv4);
+      android_home_arena_refused(
+          usr->usrs.ipv4,
+          (int)(arena_taint_remaining(usr->usrs.ipv4) / 1000));
+      /* Let loop.c take the ordinary non-spawned close branch. A genuine 'v'
+         packet already armed the death watch and never reaches this path. */
+      gdata->join_spawned = false;
+    }
+    if (gdata->arena_ready && gdata->curr_screen == PLAYING &&
+        !gdata->leaving && !gdata->restart_req) {
+      if (!refused_short_life) android_home_notify_death(env);
+      game_clear_world(gdata);
+      gdata->arena_ready = false;
+    }
+''')
     if relative == "app/src/platform/android_settings.c":
         # The settings table, validation, persistence and once-per-frame
         # mailbox are engine code, not Android UI code. Compile that exact

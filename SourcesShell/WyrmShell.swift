@@ -73,6 +73,9 @@ final class WyrmShellStore: ObservableObject {
     @Published var hotkeys: [EngineHotkey] = []
     @Published var settingsVersion = ""
     @Published var toast = ""
+    @Published private(set) var arenaRefusalSequence: UInt64 = 0
+    @Published private(set) var refusedArena = ""
+    @Published private(set) var refusedArenaSeconds = 0
     private var timer: Timer?
 
     init() {
@@ -84,6 +87,12 @@ final class WyrmShellStore: ObservableObject {
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--smoke-settings-write") {
             verifySmokeSettingsWrite(attemptsRemaining: 20)
+        }
+        if args.contains("--smoke-arena-refusal") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+                "127.0.0.1:444".withCString { WyrmIOSPublishArenaRefusal($0, 120) }
+                self?.refresh()
+            }
         }
     }
 
@@ -115,6 +124,21 @@ final class WyrmShellStore: ObservableObject {
             score = Int(home[2]) ?? 0
             kills = Int(home[3]) ?? 0
         }
+        let refusal = copiedCString(WyrmIOSArenaRefusalSnapshot())
+            .split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
+        if refusal.count >= 3, let sequence = UInt64(refusal[0]), sequence > arenaRefusalSequence {
+            arenaRefusalSequence = sequence
+            refusedArena = refusal[1]
+            refusedArenaSeconds = Int(refusal[2]) ?? 120
+            WyrmDiagnostics.record(
+                "arena refusal bridge sequence=\(sequence) endpoint=\(refusedArena) taint=\(refusedArenaSeconds)s",
+                category: "NETWORK"
+            )
+            if ProcessInfo.processInfo.arguments.contains("--smoke-arena-refusal") {
+                NSLog("Wyrm arena refusal bridge verified sequence=%llu endpoint=%@ taint=%ds",
+                      sequence, refusedArena, refusedArenaSeconds)
+            }
+        }
         settingsVersion = copiedCString(WyrmIOSSettingsVersion())
         settings = Self.parseSettings(copiedCString(WyrmIOSSettingsSnapshot()))
         hotkeys = Self.parseHotkeys(copiedCString(WyrmIOSHotkeysSnapshot()))
@@ -124,6 +148,14 @@ final class WyrmShellStore: ObservableObject {
         WyrmDiagnostics.record("lobby requested address=\(address.isEmpty ? "automatic" : "manual")", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestLobby(namePointer, addressPointer) }
+        }
+    }
+
+    func playOnline(name: String, address: String) {
+        guard !address.isEmpty else { return }
+        WyrmDiagnostics.record("online failover requested address=alternate", category: "ENGINE")
+        name.withCString { namePointer in
+            address.withCString { addressPointer in WyrmIOSRequestPlay(namePointer, addressPointer, false) }
         }
     }
 

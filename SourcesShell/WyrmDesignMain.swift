@@ -82,11 +82,12 @@ private struct WyrmPlayRoot: View {
     @State private var nickname = ""
     @State private var arena = ""
     @State private var showArenas = false
+    @State private var lastPlayedName = "Wyrm Player"
+    @State private var lastHandledRefusal: UInt64 = 0
 
     private var nearest: WyrmArena? {
-        if let selected = services.arenas.first(where: { $0.endpoint == arena }) { return selected }
-        let reachable = services.arenas.filter { services.arenaLatencies[$0.id] != nil }
-        return reachable.min { (services.arenaLatencies[$0.id] ?? .max) < (services.arenaLatencies[$1.id] ?? .max) } ?? services.arenas.first
+        if let selected = services.arenas.first(where: { $0.endpoint == arena }), !services.isArenaTainted(selected.endpoint) { return selected }
+        return services.recommendedArena
     }
     private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
     private var food: String { engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original" }
@@ -152,6 +153,20 @@ private struct WyrmPlayRoot: View {
         }
         .onAppear { if nickname.isEmpty { nickname = account.player?.arenaName ?? engine.nickname }; if arena.isEmpty { arena = engine.arena } }
         .onChange(of: nearest?.endpoint) { value in if arena.isEmpty, let value { arena = value } }
+        .onChange(of: engine.arenaRefusalSequence) { sequence in
+            guard sequence > lastHandledRefusal, !engine.refusedArena.isEmpty else { return }
+            lastHandledRefusal = sequence
+            let refused = engine.refusedArena
+            guard let alternate = services.failoverArena(refused: refused) else {
+                WyrmDiagnostics.record("arena failover unavailable refused=\(refused)", category: "NETWORK")
+                return
+            }
+            arena = alternate.endpoint
+            WyrmDiagnostics.record("arena failover refused=\(refused) alternate=\(alternate.endpoint)", category: "NETWORK")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                engine.playOnline(name: lastPlayedName, address: alternate.endpoint)
+            }
+        }
         .task {
             while !Task.isCancelled {
                 await services.refreshArenasLive()
@@ -164,7 +179,8 @@ private struct WyrmPlayRoot: View {
     private func enterOriginalLobby() {
         guard let selected = nearest else { return }
         arena = selected.endpoint
-        engine.enterLobby(name: nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname, address: selected.endpoint)
+        lastPlayedName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
+        engine.enterLobby(name: lastPlayedName, address: selected.endpoint)
     }
 }
 

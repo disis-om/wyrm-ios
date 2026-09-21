@@ -6,6 +6,8 @@ void WyrmIOSDrawShell(tenv* env);
 void WyrmIOSRequestPlay(const char* name, const char* address, bool offline);
 void WyrmIOSRequestLobby(const char* name, const char* address);
 const char* WyrmIOSHomeSnapshot(void);
+void WyrmIOSPublishArenaRefusal(const char* endpoint, int seconds);
+const char* WyrmIOSArenaRefusalSnapshot(void);
 const char* WyrmIOSSettingsSnapshot(void);
 const char* WyrmIOSSettingsVersion(void);
 bool WyrmIOSQueueSetting(const char* id, float a, float b, float c, float d, int count);

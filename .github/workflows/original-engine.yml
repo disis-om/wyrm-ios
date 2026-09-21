@@ -14,6 +14,7 @@ jobs:
       - run: brew install xcodegen
       - run: bash Scripts/fetch-ios-dependencies.sh
       - run: python3 Scripts/prepare-original-engine.py
+      - run: python3 Tests/arena_lifecycle_contract_test.py
       - run: xcodegen generate --spec original-engine.yml
       - name: Compile original core on iPhone and Simulator
         shell: bash
@@ -27,8 +28,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.11.2-build-36-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.11.2-build-36-simulator.app.zip
+          zip -qry Wyrm-0.12.0-build-37-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.12.0-build-37-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -67,6 +68,10 @@ jobs:
           grep 'Wyrm engine bootstrap scheduled off main thread' original-artifacts/settings-stderr.log
           grep -E 'Wyrm engine bootstrap completed off main thread in [0-9]+ ms' original-artifacts/settings-stderr.log
           grep -E 'Wyrm SwiftUI settings bridge verified rows=[1-9][0-9]* id=general.minimap_size' original-artifacts/settings-stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/refusal-stdout.log" --stderr="$PWD/original-artifacts/refusal-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-arena-refusal
+          sleep 3
+          grep -E 'Wyrm arena refusal bridge verified sequence=[1-9][0-9]* endpoint=127.0.0.1:444 taint=120s' original-artifacts/refusal-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/social-stdout.log" --stderr="$PWD/original-artifacts/social-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-social
           sleep 3
