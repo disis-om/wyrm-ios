@@ -53,8 +53,8 @@ struct WyrmDesignMain: View {
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
                 }
-                if !services.errorMessage.isEmpty || !engine.toast.isEmpty {
-                    Text(!engine.toast.isEmpty ? engine.toast : services.errorMessage)
+                if !engine.toast.isEmpty {
+                    Text(engine.toast)
                         .font(.androidWyrm(11.5, .semibold)).foregroundColor(.white).lineLimit(2)
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
@@ -257,7 +257,7 @@ private struct WyrmSocialRoot: View {
                 WyrmPaperCard { WyrmEmptyPanel(title: "Your arena circle starts here", note: "Players from real conversations and follows appear here.") }
                 Spacer().frame(height: 102)
             }
-        }.refreshable { await services.bootstrap(token: account.sessionToken, playerID: account.player?.id) }
+        }.refreshable { await services.refreshSocial() }
     }
     private var messageDetail: String { let unread = services.conversations.reduce(0) { $0 + $1.unreadCount }; return unread == 0 ? "No unread messages" : "\(unread) unread" }
     private var leaderboardDetail: String { guard let id = account.player?.id, let rank = services.killLeaders.firstIndex(where: { $0.id == id }) else { return "Score and kills" }; return "You are \(rank + 1) by kills" }
@@ -290,9 +290,16 @@ private struct WyrmAlertCard: View {
         VStack(alignment: .leading, spacing: 11) {
             HStack { Circle().fill(alert.read ? Color.clear : ATheme.live).frame(width: 7, height: 7); Text(alert.kind.replacingOccurrences(of: "_", with: " ").uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live); Spacer(); Text(relative(alert.createdAt)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet); Button { showingMenu = true } label: { Image(systemName: "ellipsis").foregroundColor(ATheme.quiet).frame(width: 28, height: 28) }.buttonStyle(.plain) }
             Text(alert.title).font(.androidWyrm(18, .bold))
-            Text(alert.body).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineSpacing(3)
+            Text((try? AttributedString(markdown: alert.body,
+                                        options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)))
+                ?? AttributedString(alert.body))
+                .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineSpacing(3)
             if !alert.meta.isEmpty { ForEach(alert.meta.sorted(by: { $0.key < $1.key }), id: \.key) { pair in HStack { Text(pair.key.capitalized).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) } }
         }.padding(16).background(Color.white.opacity(0.92)).cornerRadius(17).overlay(RoundedRectangle(cornerRadius: 17).stroke(ATheme.rule)).padding(.horizontal, 16)
+            .contextMenu {
+                Button(alert.read ? "Mark as unread" : "Mark as read") { Task { await services.setRead(alert, read: !alert.read) } }
+                Button("Delete notification", role: .destructive) { Task { await services.delete(alert) } }
+            }
             .confirmationDialog(alert.title, isPresented: $showingMenu) {
                 Button(alert.read ? "Mark unread" : "Mark as read") { Task { await services.setRead(alert, read: !alert.read) } }
                 Button("Delete notification", role: .destructive) { Task { await services.delete(alert) } }

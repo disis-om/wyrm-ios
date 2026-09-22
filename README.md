@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.14.0 (build 42)** and targets **iOS 15 or newer**.
+**0.15.0 (build 43)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -46,6 +46,14 @@ compiled and tested by CI, then exposed as a workflow artifact.
   ten-point dual-stroke NTL tag rope, all 66 presets, 32 accessories, 164 tags
   and 22 arena floors. Editors replace the lower panel in place and selections
   persist through a bounded engine-thread mailbox.
+- Skin Studio now supports 256-position code editing over the selected preset,
+  100 tinted atlas-bead colours, original preset eye variants, one-row-per-skin
+  browsing, and a device-gravity-driven tag preview. Motion is bounded behind
+  the head and respects Reduce Motion.
+- Social pull-to-refresh updates sections in place without restarting account
+  bootstrap. Transient optional-service failures no longer become a global
+  disconnected toast; notification bodies support Markdown and read/delete
+  actions are available on long press.
 - NTL 9.68-compatible Team mode with Keychain-held Auth/Team credentials,
   four-second presence/roster/chat polling, live member arena handoff, selected
   tag publication and exact packet-S session-ID mapping back to rendered
@@ -82,8 +90,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.14.0-build-42-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.14.0-build-42-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.15.0-build-43-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.15.0-build-43-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

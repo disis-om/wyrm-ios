@@ -18,17 +18,21 @@ typedef struct apple_skin_selection {
   int tag;
   int background;
   char code[MAX_SKIN_CODE_LEN + 1];
+  uint32_t colors[MAX_SKIN_CODE_LEN];
 } apple_skin_selection;
 
 static SDL_Mutex* skin_mutex;
 static apple_skin_selection queued;
 
-bool WyrmIOSQueueSkinSelection(int preset, const char* code, int accessory,
+bool WyrmIOSQueueSkinSelection(int preset, const char* code,
+                               const uint32_t* colors, int color_count, int accessory,
                                int tag, int background) {
   if (!skin_mutex || preset < 0 || preset >= NUM_DEFAULT_SKINS ||
       accessory < -1 || accessory >= NUM_ACCESSORIES ||
       tag < -1 || tag >= TAG_COUNT ||
-      background < 0 || background >= NUM_BACKGROUNDS)
+      background < 0 || background >= NUM_BACKGROUNDS ||
+      color_count < 0 || color_count > MAX_SKIN_CODE_LEN ||
+      (color_count > 0 && !colors))
     return false;
   SDL_LockMutex(skin_mutex);
   queued.pending = true;
@@ -37,6 +41,8 @@ bool WyrmIOSQueueSkinSelection(int preset, const char* code, int accessory,
   queued.tag = tag;
   queued.background = background;
   snprintf(queued.code, sizeof(queued.code), "%s", code ? code : "");
+  memset(queued.colors, 0, sizeof(queued.colors));
+  if (color_count) memcpy(queued.colors, colors, (size_t)color_count * sizeof(uint32_t));
   SDL_UnlockMutex(skin_mutex);
   return true;
 }
@@ -61,7 +67,7 @@ void WyrmIOSApplySkinSelection(tenv* env) {
   settings->arena_background = background_clamp(next.background);
   snprintf(settings->skin_code, sizeof(settings->skin_code), "%s", next.code);
   settings->custom_skin = settings->skin_code[0] != '\0';
-  memset(settings->skin_rgba, 0, sizeof(settings->skin_rgba));
+  memcpy(settings->skin_rgba, next.colors, sizeof(settings->skin_rgba));
   renderer_set_background(env->usr->r, env->ctx, settings->arena_background);
   save_user_settings(settings);
   SDL_Log("Wyrm Apple skin applied preset=%d custom=%d accessory=%d tag=%d background=%d",

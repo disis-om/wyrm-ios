@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stdint.h>
 #include <vulkan/vulkan.h>
 typedef struct tenv tenv;
 void WyrmIOSDrawShell(tenv* env);
@@ -14,7 +15,8 @@ bool WyrmIOSQueueSetting(const char* id, float a, float b, float c, float d, int
 void WyrmIOSSettingsAction(int action);
 const char* WyrmIOSHotkeysSnapshot(void);
 bool WyrmIOSQueueHotkey(int action, int key, int mode, bool visible, float x, float y);
-bool WyrmIOSQueueSkinSelection(int preset, const char* code, int accessory,
+bool WyrmIOSQueueSkinSelection(int preset, const char* code,
+                               const uint32_t* colors, int color_count, int accessory,
                                int tag, int background);
 void WyrmIOSApplySkinSelection(tenv* env);
 const char* WyrmIOSTeamPresenceSnapshot(void);

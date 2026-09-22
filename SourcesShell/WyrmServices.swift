@@ -61,7 +61,11 @@ struct WyrmServiceAlert: Identifiable, Equatable {
         createdAt = json.string("createdAt")
         read = json.bool("read")
         let raw = json["meta"] as? [String: Any] ?? [:]
-        meta = raw.reduce(into: [:]) { result, pair in result[pair.key] = String(describing: pair.value) }
+        meta = raw.reduce(into: [:]) { result, pair in
+            if let value = pair.value as? String { result[pair.key] = value }
+            else if let data = try? JSONSerialization.data(withJSONObject: pair.value, options: [.fragmentsAllowed, .sortedKeys]),
+                    let string = String(data: data, encoding: .utf8) { result[pair.key] = string }
+        }
     }
 }
 
@@ -531,6 +535,29 @@ final class WyrmServiceStore: ObservableObject {
     }
 
     func refreshAlerts() async { await perform { self.alerts = try await WyrmServiceClient.shared.notifications(token: self.token) } }
+    /// A pull never invalidates the signed-in session or clears already visible rows.
+    func refreshSocial() async {
+        guard !token.isEmpty else { return }
+        let revision = sessionRevision
+        let currentToken = token
+        let playerID = preparedPlayerID
+        async let score: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "score", token: currentToken)
+        async let kills: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "kills", token: currentToken)
+        async let chats: [WyrmConversation]? = try? await WyrmServiceClient.shared.conversations(token: currentToken)
+        async let rooms: [WyrmVoiceRoom]? = try? await WyrmServiceClient.shared.voiceRooms(token: currentToken)
+        async let notices: [WyrmServiceAlert]? = try? await WyrmServiceClient.shared.notifications(token: currentToken)
+        let values = await (score, kills, chats, rooms, notices)
+        guard !Task.isCancelled, revision == sessionRevision else { return }
+        if let rows = values.0 { scoreLeaders = rows }
+        if let rows = values.1 { killLeaders = rows }
+        if let rows = values.2 { conversations = rows }
+        if let rows = values.3 { voiceRooms = rows }
+        if let rows = values.4 { alerts = rows }
+        if let playerID {
+            await loadConnectionLists(playerID: playerID)
+        }
+        lastRefresh = Date()
+    }
     func markAllRead() async { await perform { try await WyrmServiceClient.shared.markAllRead(token: self.token); await self.refreshAlerts() } }
     func setRead(_ alert: WyrmServiceAlert, read: Bool) async { await perform { try await WyrmServiceClient.shared.setRead(alert.id, read: read, token: self.token); await self.refreshAlerts() } }
     func delete(_ alert: WyrmServiceAlert) async { await perform { try await WyrmServiceClient.shared.deleteAlert(alert.id, token: self.token); await self.refreshAlerts() } }

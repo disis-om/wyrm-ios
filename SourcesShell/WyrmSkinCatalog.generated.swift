@@ -331,6 +331,9 @@ enum WyrmSkinCatalog {
     ]
 
     static func code(for groups: [Int]) -> String {
-        String(groups.prefix(64).compactMap { groupCodes.indices.contains($0) && validGroups.contains($0) ? groupCodes[$0] : nil })
+        String(groups.prefix(256).compactMap { groupCodes.indices.contains($0) && validGroups.contains($0) ? groupCodes[$0] : nil })
+    }
+    static func group(for code: Character) -> Int? {
+        groupCodes.indices.first { validGroups.contains($0) && groupCodes[$0] == code }
     }
 }
