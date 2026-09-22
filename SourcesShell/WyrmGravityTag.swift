@@ -44,7 +44,7 @@ struct WyrmGravityTag: View {
         return ZStack {
             ropePath(rope, to: 1, close: false)
                 .stroke(Color(rgb: item.accentA), style: StrokeStyle(lineWidth: 5 * unit, lineCap: .round, lineJoin: .round))
-            for width in [CGFloat(4), 3, 2] {
+            ForEach([CGFloat(4), 3, 2], id: \.self) { width in
                 ropePath(rope, to: 2, close: true)
                     .stroke(Color(rgb: item.accentB).opacity(0.5), style: StrokeStyle(lineWidth: width * unit, lineCap: .round, lineJoin: .round))
             }
