@@ -81,7 +81,7 @@ targets:
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
         MARKETING_VERSION: "0.16.2"
-        CURRENT_PROJECT_VERSION: "47"
+        CURRENT_PROJECT_VERSION: "48"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

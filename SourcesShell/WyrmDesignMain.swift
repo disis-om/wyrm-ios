@@ -264,7 +264,7 @@ private struct WyrmArenaPicker: View {
                             HStack(spacing: 8) {
                                 TextField("IPv4 address:port", text: $customAddress)
                                     .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).disableAutocorrection(true)
-                                Button("Save") { saveCustom() }.fontWeight(.bold)
+                                Button("Save") { saveCustom() }.font(.androidWyrm(13, .bold))
                             }.font(.androidWyrm(13)).padding(14).background(Color.white).cornerRadius(14)
                             if addressError { Text("Enter a valid IPv4 address and port (1–65535).")
                                 .font(.androidWyrm(11)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
