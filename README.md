@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.16.2 (build 48)** and targets **iOS 15 or newer**.
+**0.16.3 (build 49)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -30,6 +30,9 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Full-bleed Play, Alerts, Social, Skin and Settings product surfaces with a
   draggable glass navigation control and one-level-at-a-time route stacking.
 - Original Wyrm C gameplay and network engine—not a Swift reimplementation.
+- Arena joins retain the original engine's paced retry window. Socket diagnostics
+  distinguish TCP, WebSocket upgrade, challenge, configuration and spawn phases
+  without exposing nicknames or challenge contents.
 - SDL3 window/input integration and Vulkan rendering through MoltenVK/Metal.
 - Original landscape lobby and arena inside a portrait-owned iOS application.
 - Live backend integration for profiles and avatars, notifications,
@@ -94,8 +97,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.16.2-build-48-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.16.2-build-48-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.16.3-build-49-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.16.3-build-49-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

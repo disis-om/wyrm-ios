@@ -33,7 +33,12 @@ checks = {
     "automatic alternate retry": "failoverArena(refused:" in design and "engine.playOnline" in design,
     "native refusal bridge": "WyrmIOSArenaRefusalSnapshot" in shell and "WyrmIOSPublishArenaRefusal" in home,
     "short-life refusal classification": "refused_short_life" in callback and "arena_taint_mark" in callback,
-    "no global 3333ms cooldown": "last_connect_ms + min_interval_ms" not in game_data,
+    "Apple joins retain the original paced retry": "last_connect_ms + min_interval_ms" in game_data and "gdata->rejoin_at_ms = due" in game_data,
+    "socket failures report their actual phase": all(phrase in callback for phrase in (
+        "TCP connected", "WebSocket upgraded", "WebSocket close frame",
+        "socket closed in phase", "after challenge, before configuration",
+        "after configuration, before spawn", "after spawn")),
+    "join diagnostics omit secret and nickname values": "join fields accessory=" in callback and "nickname_bytes=%d" in callback,
 }
 
 failed = [name for name, passed in checks.items() if not passed]

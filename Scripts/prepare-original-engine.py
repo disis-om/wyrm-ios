@@ -62,27 +62,6 @@ for path in sorted(OUTPUT.rglob("*")):
         text = text.replace("VLITHER_ANDROID", "WYRM_MOBILE")
     if relative == "app/src/game/redraw.c":
         text = text.replace("__ANDROID__", "WYRM_MOBILE")
-    if relative == "app/src/game/game_data.c":
-        # Slither's 3333 ms value is the lifetime of the current unanswered
-        # attempt, not a global delay before every later Play request. The
-        # attempt timeout remains in loop.c. Apple failover is serialized by
-        # the existing one-current-socket rule, so only wait for a socket which
-        # is actually still closing.
-        cooldown = '''  uint64_t now = SDL_GetTicks();
-  uint64_t due = gdata->last_connect_ms + min_interval_ms;
-  if (gdata->last_connect_ms && now < due) {
-    gdata->rejoin_at_ms = due;
-    SDL_Log("Wyrm arena: holding the join for %llums — the last one was %llums "
-            "ago",
-            (unsigned long long)(due - now),
-            (unsigned long long)(now - gdata->last_connect_ms));
-    return;
-  }
-'''
-        assert text.count(cooldown) == 1
-        text = text.replace(cooldown, '''  (void)min_interval_ms;
-  uint64_t now = SDL_GetTicks();
-''')
     if relative == "app/src/game/arena_theme.c":
         text = text.replace("#include <jni.h>", "#ifdef __ANDROID__\n#include <jni.h>\n#endif")
         text = text.replace("JNIEXPORT void JNICALL", "#ifdef __ANDROID__\nJNIEXPORT void JNICALL", 1)
@@ -150,6 +129,45 @@ for path in sorted(OUTPUT.rglob("*")):
         # watch as a refused endpoint and hand it to the Apple selector.
         text = text.replace('#include "arena_trace.h"',
                             '#include "arena_trace.h"\n#include "arena_taint.h"')
+        # Preserve every original gameplay packet. Add only socket-stage
+        # diagnostics, so a silent pre-upgrade close cannot be mistaken for a
+        # rejected challenge or a post-spawn protocol failure.
+        opened = '  } else if (ev == MG_EV_WS_OPEN) {'
+        assert text.count(opened) == 1
+        text = text.replace(opened, '''  } else if (ev == MG_EV_CONNECT) {
+    SDL_Log("Wyrm arena: TCP connected to '%s'", usr->usrs.ipv4);
+  } else if (ev == MG_EV_WS_OPEN) {
+    SDL_Log("Wyrm arena: WebSocket upgraded for '%s'", usr->usrs.ipv4);''')
+        error = '  } else if (ev == MG_EV_ERROR) {'
+        assert text.count(error) == 1
+        text = text.replace(error, '''  } else if (ev == MG_EV_WS_CTL) {
+    struct mg_ws_message* ctl = (struct mg_ws_message*)ev_data;
+    if (ctl && (ctl->flags & 15) == WEBSOCKET_OP_CLOSE) {
+      unsigned code = ctl->data.len >= 2
+          ? ((unsigned)(uint8_t)ctl->data.buf[0] << 8) |
+            (uint8_t)ctl->data.buf[1]
+          : 0;
+      SDL_Log("Wyrm arena: WebSocket close frame from '%s' code=%u",
+              usr->usrs.ipv4, code);
+    }
+  } else if (ev == MG_EV_ERROR) {''')
+        joined = '    arena_send(c, ba, m);\n    free(ba);'
+        assert text.count(joined) == 1
+        text = text.replace(joined, '''    SDL_Log("Wyrm arena: join fields accessory=%u custom_skin=%d nickname_bytes=%d packet_bytes=%d",
+            (unsigned)usrs->accessory, usrs->custom_skin ? 1 : 0,
+            nick_len, m);
+    arena_send(c, ba, m);
+    free(ba);''')
+        closing = '    gdata->last_life = gdata->join_spawned ? glfwGetTime() - gdata->life_started_sec : 0;'
+        assert text.count(closing) == 1
+        text = text.replace(closing, '''    const char* phase = !c->is_websocket ? "before WebSocket upgrade" :
+        !gdata->persona_tested ? "before challenge" :
+        !gdata->arena_ready ? "after challenge, before configuration" :
+        !gdata->join_spawned ? "after configuration, before spawn" :
+        "after spawn";
+    SDL_Log("Wyrm arena: socket closed in phase '%s' after %llums",
+            phase, (unsigned long long)(SDL_GetTicks() - gdata->attempt_started_ms));
+''' + closing)
         close_block = '''    if (gdata->arena_ready && gdata->curr_screen == PLAYING &&
         !gdata->leaving && !gdata->restart_req) {
       android_home_notify_death(env);

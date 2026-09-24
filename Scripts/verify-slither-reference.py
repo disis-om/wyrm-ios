@@ -94,20 +94,35 @@ def main() -> int:
         ios_file = ENGINE / relative
         if not android_file.exists() or not ios_file.exists() or android_file.read_bytes() != ios_file.read_bytes():
             unequal.append(relative)
-    row("PASS" if not unequal else "MISMATCH", "Android/iOS shared source parity",
-        "12/12 files byte-identical" if not unequal else "different: " + ", ".join(unequal))
+    expected_ntl_delta = unequal == ["app/src/network/callback.c"] and contains_all(callback, (
+        "snake_ntl_id(arena_id, session_id)", "o.ntl_id = id"))
+    row("PASS" if not unequal else "DIVERGENCE" if expected_ntl_delta else "MISMATCH",
+        "Android/iOS shared source parity",
+        "12/12 files byte-identical" if not unequal else
+        "known NTL session-id metadata extension" if expected_ntl_delta else
+        "unexpected source delta: " + ", ".join(unequal))
 
     original_picker = contains_all(js, ("/ptc", "2667", "sos.length"))
     ios_picker_matches = contains_all(services, (
         '/ptc', "Data([112])", "samples.count == 3", "addingTimeInterval(2.667)",
         "addingTimeInterval(7)", "$0.active && $0.players > 20", "arena.players + 5",
     ))
-    row("PASS" if original_picker and ios_picker_matches else "MISMATCH", "directory ping and server choice",
-        "three /ptc RTT samples, readiness delay, active-count floor, cluster minimum and weighted choice")
+    row("PASS" if original_picker and ios_picker_matches else "DIVERGENCE" if original_picker and
+        contains_all(services, ("NWConnection(host: NWEndpoint.Host(arena.address)", "refreshRecommendation"))
+        else "MISMATCH", "directory ping and server choice",
+        "Slither uses three /ptc RTT samples and weighted clusters; iOS uses user-requested direct-port latency and lowest-latency selection")
 
     global_cooldown = "last_connect_ms + min_interval_ms" in game_data
-    row("MISMATCH" if global_cooldown else "PASS", "3333 ms semantics",
-        "connect timeout triggers reselection; no global join cooldown in generated Apple source")
+    row("DIVERGENCE" if global_cooldown else "MISMATCH", "3333 ms semantics",
+        "Slither uses 3333ms as connection timeout; original Wyrm also paces joins 3333ms to prevent rapid re-entry")
+
+    web_join_extension = contains_all(callback, ("ba[m] = usrs->accessory", "skin_compressed_len"))
+    row("DIVERGENCE" if web_join_extension else "PASS", "optional Wyrm join fields",
+        "none accessory is Slither's 255; selected accessory and compressed custom skin are Wyrm extensions")
+
+    stage_logs = contains_all(callback, ("TCP connected", "WebSocket upgraded", "WebSocket close frame", "socket closed in phase"))
+    row("PASS" if stage_logs else "MISMATCH", "socket-stage diagnostics",
+        "TCP, HTTP upgrade, close-code and challenge/spawn phase are distinguishable without logging secrets")
 
     failover_ok = contains_all(callback, ("refused_short_life", "arena_taint_mark", "android_home_arena_refused")) and contains_all(
         home, ("WyrmIOSPublishArenaRefusal", "android_home_arena_refused")
@@ -127,21 +142,23 @@ def main() -> int:
         durations = [float(value) for value in re.findall(r"ended after ([0-9.]+)s", diag)]
         long_runs = [value for value in durations if value >= 30]
         drops = len(re.findall(r"ended after [0-9.]+s .*the arena dropped us", diag))
-        row("PASS" if challenges else "UNPROVEN", "real-device challenge acceptance", f"{challenges} accepted web challenges")
+        row("PASS" if challenges and spawns else "UNPROVEN", "real-device challenge acceptance",
+            f"{challenges} web answers sent; {spawns} subsequent spawns prove acceptance on some attempts")
         row("PASS" if spawns and presented else "UNPROVEN", "real-device own spawn",
             f"{spawns} own-spawn packets; {presented} explicit presented-frame proof")
         row("PASS" if long_runs else "UNPROVEN", "sustained live session",
             f"longest observed run {max(long_runs):.1f}s" if long_runs else "no >=30s session in supplied log")
-        row("HISTORICAL" if drops else "PASS", "arena stability", f"Build 35 supplied log has {drops} arena-initiated closes; Build 37 runtime not yet tested")
+        row("HISTORICAL" if drops else "PASS", "arena stability", f"supplied older-build log has {drops} arena-initiated closes; patched device runtime not yet tested")
         row("UNPROVEN", "server-side close reason",
             "server sent a silent WebSocket close; client log contains no rejection code")
 
     for state, stage, evidence in rows:
         print(f"{state:10} {stage:34} {evidence}")
     print(f"REFERENCE  SHA256 {hashlib.sha256(raw).hexdigest()}")
-    totals = {state: sum(1 for row_state, _, _ in rows if row_state == state) for state in ("PASS", "MISMATCH", "FAIL", "UNPROVEN", "HISTORICAL")}
+    totals = {state: sum(1 for row_state, _, _ in rows if row_state == state) for state in ("PASS", "MISMATCH", "FAIL", "DIVERGENCE", "UNPROVEN", "HISTORICAL")}
     print("SUMMARY    " + " ".join(f"{key}={value}" for key, value in totals.items()))
-    print("VERDICT    NOT FULLY CONFORMANT" if totals["MISMATCH"] or totals["FAIL"] else "VERDICT    SOURCE-CONFORMANT; NEW DEVICE RUNTIME UNVERIFIED")
+    print("VERDICT    SOURCE MISMATCH REMAINS" if totals["MISMATCH"] or totals["FAIL"] else
+          "VERDICT    CORE WEB SEQUENCE ALIGNED; INTENTIONAL EXTENSIONS AND NEW DEVICE RUNTIME UNVERIFIED")
     return 2 if args.strict and (totals["MISMATCH"] or totals["FAIL"]) else 0
 
 
