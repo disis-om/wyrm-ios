@@ -321,7 +321,7 @@ struct WyrmSkinRoot: View {
         HStack(spacing: 10) {
             Button { enter(.overview) } label: {
                 Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold))
-                    .frame(width: 34, height: 34).background(Color.white.opacity(0.92)).clipShape(Circle())
+                    .frame(width: 34, height: 34).background(ATheme.card.opacity(0.92)).clipShape(Circle())
             }.buttonStyle(.plain).accessibilityLabel("Back to skin wardrobe")
             Text(section.title).font(.androidWyrm(18, .bold))
             Spacer()
@@ -373,7 +373,7 @@ struct WyrmSkinRoot: View {
             ))
                 .font(.system(size: 15, design: .monospaced))
                 .textInputAutocapitalization(.never).disableAutocorrection(true)
-                .padding(13).background(Color.white.opacity(0.9)).cornerRadius(11)
+                .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
                 .padding(.horizontal, 20)
             WyrmSectionLabel("Build a Wyrm")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
@@ -384,7 +384,7 @@ struct WyrmSkinRoot: View {
                     } label: {
                         WyrmAtlasImage(image: textures.beads[group]).padding(5)
                             .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                            .background(Color.white.opacity(0.72)).clipShape(Circle())
+                            .background(ATheme.card.opacity(0.72)).clipShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
                 }
                 ForEach(0..<400, id: \.self) { index in
@@ -414,7 +414,7 @@ struct WyrmSkinRoot: View {
                         accessory = item.id; apply(accessory: item.id)
                     } label: {
                         ZStack {
-                            RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.92))
+                            RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
                             WyrmAtlasImage(image: textures.accessoryThumbnails[item.id]).padding(8)
                             if accessory == item.id { selectionCheck }
                         }.aspectRatio(1, contentMode: .fit)
@@ -441,7 +441,7 @@ struct WyrmSkinRoot: View {
                         tag = item.id; apply(tag: item.id)
                     } label: {
                         ZStack(alignment: .bottomTrailing) {
-                            RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.92))
+                            RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
                             WyrmAtlasImage(image: textures.tagThumbnails[item.id]).padding(7)
                             Text("\(item.ntlID)").font(.androidWyrm(7.5, .bold)).foregroundColor(ATheme.quiet).padding(6)
                             if tag == item.id { selectionCheck }
@@ -471,7 +471,7 @@ struct WyrmSkinRoot: View {
                                 }
                             }.frame(height: 78).clipShape(RoundedRectangle(cornerRadius: 13))
                             HStack { Text(item.label).font(.androidWyrm(10.5, .semibold)).lineLimit(1); Spacer(); if background == item.id { Image(systemName: "checkmark.circle.fill").font(.system(size: 13)) } }
-                        }.padding(8).background(Color.white.opacity(0.92)).cornerRadius(16)
+                        }.padding(8).background(ATheme.card.opacity(0.92)).cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(background == item.id ? ATheme.ink : ATheme.rule, lineWidth: background == item.id ? 2 : 1))
                     }.buttonStyle(.plain)
                 }
@@ -487,7 +487,7 @@ struct WyrmSkinRoot: View {
     private func selectionTile(selected: Bool, label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             ZStack {
-                RoundedRectangle(cornerRadius: 15).fill(Color.white.opacity(0.92))
+                RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
                 Text(label.uppercased()).font(.androidWyrm(9, .bold)).tracking(0.7)
                 if selected { selectionCheck }
             }.aspectRatio(1, contentMode: .fit)
@@ -500,7 +500,7 @@ struct WyrmSkinRoot: View {
             HStack { Text(title).font(.androidWyrm(11.5, .semibold)); Spacer(); Text(String(format: "%.2f", value.wrappedValue)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
             Slider(value: value, in: range).tint(ATheme.ink)
                 .onChange(of: value.wrappedValue) { next in writeTagSetting(setting, next) }
-        }.padding(12).background(Color.white.opacity(0.88)).cornerRadius(14)
+        }.padding(12).background(ATheme.card.opacity(0.88)).cornerRadius(14)
     }
 
     private func enter(_ target: WyrmSkinStudioSection) {

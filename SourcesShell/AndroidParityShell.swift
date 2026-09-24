@@ -1,24 +1,6 @@
 import SwiftUI
 import UIKit
 
-enum ATheme {
-    static let paper = Color(red: 247/255, green: 246/255, blue: 243/255)
-    static let card = Color.white
-    static let ink = Color(red: 55/255, green: 53/255, blue: 47/255)
-    static let onInk = Color.white
-    static let quiet = Color(red: 120/255, green: 119/255, blue: 116/255)
-    static let mute = Color(red: 107/255, green: 102/255, blue: 96/255)
-    static let rule = ATheme.ink.opacity(0.078)
-    static let rowRule = ATheme.ink.opacity(0.071)
-    static let live = Color(red: 68/255, green: 131/255, blue: 97/255)
-    static let link = Color(red: 47/255, green: 111/255, blue: 222/255)
-    static let tabIdle = Color(red: 124/255, green: 119/255, blue: 111/255)
-    static let tabBar = Color(red: 252/255, green: 251/255, blue: 250/255).opacity(0.94)
-    static let chevron = Color(red: 198/255, green: 193/255, blue: 184/255)
-    static let well = Color(red: 240/255, green: 238/255, blue: 233/255)
-    static let track = Color(red: 239/255, green: 237/255, blue: 232/255)
-}
-
 extension Font {
     static func androidWyrm(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
         .custom("Manrope", size: size).weight(weight)

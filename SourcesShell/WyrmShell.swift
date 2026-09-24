@@ -49,6 +49,15 @@ struct EngineSetting: Identifiable, Equatable {
         default: return String(format: "%.2f", values.first ?? 0)
         }
     }
+
+    var number: Double { values.first ?? 0 }
+    var index: Int { Int((values.first ?? 0).rounded()) }
+    var enabled: Bool { (values.first ?? 0) != 0 }
+    /// Always four channels, alpha defaulting to opaque, like Android's `channels`.
+    var channels: [Double] {
+        let padded = values + [0, 0, 0, 1].suffix(max(0, 4 - values.count))
+        return Array(padded.prefix(4))
+    }
 }
 
 struct EngineHotkey: Identifiable, Equatable {
@@ -56,11 +65,11 @@ struct EngineHotkey: Identifiable, Equatable {
     let name: String
     let key: Int
     let keyName: String
-    let mode: Int
+    var mode: Int
     let fixedMode: Bool
     var visible: Bool
-    let x: Double
-    let y: Double
+    var x: Double
+    var y: Double
 }
 
 @MainActor
@@ -77,6 +86,12 @@ final class WyrmShellStore: ObservableObject {
     @Published private(set) var refusedArena = ""
     @Published private(set) var refusedArenaSeconds = 0
     private var timer: Timer?
+    /// Values written from SwiftUI that the engine has not echoed back yet. The
+    /// engine drains its mailbox once a frame and this store polls every
+    /// 0.75 s, so without these a switch or slider would snap back to the old
+    /// value for one poll. Android updates its local copy the same way.
+    private var settingOverrides: [String: (values: [Double], until: Date)] = [:]
+    private var hotkeyOverrides: [Int: (hotkey: EngineHotkey, until: Date)] = [:]
 
     init() {
         WyrmDiagnostics.record("SwiftUI shell store started", category: "LIFECYCLE")
@@ -139,10 +154,36 @@ final class WyrmShellStore: ObservableObject {
                       sequence, refusedArena, refusedArenaSeconds)
             }
         }
-        settingsVersion = copiedCString(WyrmIOSSettingsVersion())
-        settings = Self.parseSettings(copiedCString(WyrmIOSSettingsSnapshot()))
-        hotkeys = Self.parseHotkeys(copiedCString(WyrmIOSHotkeysSnapshot()))
+        let version = copiedCString(WyrmIOSSettingsVersion())
+        if version != settingsVersion { settingsVersion = version }
+        let now = Date()
+        var incoming = Self.parseSettings(copiedCString(WyrmIOSSettingsSnapshot()))
+        for index in incoming.indices {
+            guard let pending = settingOverrides[incoming[index].id] else { continue }
+            if Self.same(incoming[index].values, pending.values) || now >= pending.until {
+                settingOverrides[incoming[index].id] = nil
+            } else {
+                incoming[index].values = pending.values
+            }
+        }
+        if incoming != settings { settings = incoming }
+        var keys = Self.parseHotkeys(copiedCString(WyrmIOSHotkeysSnapshot()))
+        for index in keys.indices {
+            guard let pending = hotkeyOverrides[keys[index].id] else { continue }
+            let echoed = keys[index].visible == pending.hotkey.visible && keys[index].mode == pending.hotkey.mode
+                && abs(keys[index].x - pending.hotkey.x) < 0.002 && abs(keys[index].y - pending.hotkey.y) < 0.002
+            if echoed || now >= pending.until { hotkeyOverrides[keys[index].id] = nil } else { keys[index] = pending.hotkey }
+        }
+        if keys != hotkeys { hotkeys = keys }
     }
+
+    private static func same(_ a: [Double], _ b: [Double]) -> Bool {
+        guard !a.isEmpty, a.count >= min(b.count, 3) else { return false }
+        return zip(a, b).allSatisfy { abs($0 - $1) < 0.0015 }
+    }
+
+    func setting(_ id: String) -> EngineSetting? { settings.first { $0.id == id } }
+    func value(_ id: String, _ fallback: Double = 0) -> Double { setting(id)?.values.first ?? fallback }
 
     func enterLobby(name: String, address: String) {
         WyrmDiagnostics.record("lobby requested address=\(address.isEmpty ? "automatic" : "manual")", category: "ENGINE")
@@ -167,20 +208,61 @@ final class WyrmShellStore: ObservableObject {
     }
 
     func write(_ setting: EngineSetting, values: [Double]) {
-        let v = values + Array(repeating: 0, count: max(0, 4 - values.count))
-        let accepted = setting.id.withCString {
-            WyrmIOSQueueSetting($0, Float(v[0]), Float(v[1]), Float(v[2]), Float(v[3]), Int32(values.count))
+        guard !values.isEmpty else { return }
+        guard queue(setting.id, values) else { toast = "Engine is still starting"; return }
+        settingOverrides[setting.id] = (values, Date().addingTimeInterval(1.8))
+        if let index = settings.firstIndex(where: { $0.id == setting.id }) { settings[index].values = values }
+        // Swapping hands mirrors the layout inside the engine, so the positions
+        // held here are stale until the engine is read again (Android does the same).
+        if setting.id == "controls.handedness" {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { [weak self] in self?.refresh() }
         }
-        if !accepted { toast = "Engine is still starting" }
-        WyrmDiagnostics.record("setting queued id=\(setting.id) accepted=\(accepted)", category: "ENGINE")
+    }
+
+    func write(id: String, values: [Double]) {
+        if let row = setting(id) { write(row, values: values) } else { queue(id, values) }
+    }
+
+    /// Positions are one value with two axes; the engine applies both together.
+    func moveLayout(_ prefix: String, x: Double, y: Double) {
+        let safeX = x.isFinite ? min(1, max(0, x)) : 0.5
+        let safeY = y.isFinite ? min(1, max(0, y)) : 0.7
+        guard queue(prefix, [safeX, safeY], log: false) else { return }
+        let until = Date().addingTimeInterval(1.8)
+        for (suffix, value) in [("_x", safeX), ("_y", safeY)] {
+            let id = prefix + suffix
+            settingOverrides[id] = ([value], until)
+            if let index = settings.firstIndex(where: { $0.id == id }) { settings[index].values = [value] }
+        }
+    }
+
+    @discardableResult
+    private func queue(_ id: String, _ values: [Double], log: Bool = true) -> Bool {
+        let v = values + Array(repeating: 0, count: max(0, 4 - values.count))
+        let accepted = id.withCString {
+            WyrmIOSQueueSetting($0, Float(v[0]), Float(v[1]), Float(v[2]), Float(v[3]), Int32(min(values.count, 4)))
+        }
+        if log || !accepted { WyrmDiagnostics.record("setting queued id=\(id) accepted=\(accepted)", category: "ENGINE") }
+        return accepted
     }
 
     func setHotkey(_ hotkey: EngineHotkey, visible: Bool) {
-        if !WyrmIOSQueueHotkey(Int32(hotkey.id), Int32(hotkey.key), Int32(hotkey.mode),
-                               visible, Float(hotkey.x), Float(hotkey.y)) {
+        var next = hotkey
+        next.visible = visible
+        writeHotkey(next)
+    }
+
+    func writeHotkey(_ hotkey: EngineHotkey, log: Bool = true) {
+        guard WyrmIOSQueueHotkey(Int32(hotkey.id), Int32(hotkey.key), Int32(hotkey.mode),
+                                 hotkey.visible, Float(hotkey.x), Float(hotkey.y)) else {
             toast = "Engine is still starting"
+            return
         }
-        WyrmDiagnostics.record("hotkey queued id=\(hotkey.id) visible=\(visible)", category: "ENGINE")
+        hotkeyOverrides[hotkey.id] = (hotkey, Date().addingTimeInterval(1.8))
+        if let index = hotkeys.firstIndex(where: { $0.id == hotkey.id }) { hotkeys[index] = hotkey }
+        if log {
+            WyrmDiagnostics.record("hotkey queued id=\(hotkey.id) visible=\(hotkey.visible) mode=\(hotkey.mode)", category: "ENGINE")
+        }
     }
 
     func applySkin(preset: Int, groups: [Int], colors: [UInt32], custom: Bool,
@@ -203,7 +285,9 @@ final class WyrmShellStore: ObservableObject {
 
     func reset(_ mask: Int32, message: String) {
         WyrmIOSSettingsAction(mask)
-        toast = message
+        settingOverrides.removeAll()
+        hotkeyOverrides.removeAll()
+        if !message.isEmpty { toast = message }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { [weak self] in self?.refresh() }
     }
 
@@ -499,6 +583,7 @@ private struct ShellTabBar: View {
 final class WyrmShellHost: NSObject {
     @objc static func makeViewController() -> UIViewController {
         WyrmFontLoader.register()
+        WyrmThemeStore.shared.publishArenaTheme()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())
     }

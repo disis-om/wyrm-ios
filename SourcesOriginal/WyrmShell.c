@@ -1,6 +1,7 @@
 #include "WyrmOriginalAdapter.h"
 #include "user.h"
 #include "network/server.h"
+#include "game/arena_theme.h"
 #include <stdio.h>
 #include <math.h>
 
@@ -208,4 +209,14 @@ void WyrmIOSDrawShell(tenv* env) {
   igPopStyleColor(3);
   igPopFont();
   igEndGroup();
+}
+
+/* SwiftUI owns the theme choice; the engine only reads the colours. The store
+   is atomic in arena_theme.c, so this may be called from the main thread while
+   the renderer draws. */
+void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark) {
+  if (!colours || count < ARENA_THEME_ROLE_COUNT) return;
+  uint32_t next[ARENA_THEME_ROLE_COUNT];
+  for (int i = 0; i < ARENA_THEME_ROLE_COUNT; ++i) next[i] = colours[i];
+  arena_theme_set(next, dark);
 }

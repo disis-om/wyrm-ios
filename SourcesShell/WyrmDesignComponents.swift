@@ -35,6 +35,10 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case themes
     case backup
     case developer
+    case playControls
+    case playModes
+    case playFood
+    case buildNotes
 
     var id: String {
         switch self {
@@ -63,6 +67,10 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .themes: return "themes"
         case .backup: return "backup"
         case .developer: return "developer"
+        case .playControls: return "play-controls"
+        case .playModes: return "play-modes"
+        case .playFood: return "play-food"
+        case .buildNotes: return "build-notes"
         }
     }
 }
@@ -106,7 +114,7 @@ struct WyrmPaperCard<Content: View>: View {
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(Color.white.opacity(0.92))
+            .background(ATheme.card.opacity(0.92))
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
             .shadow(color: ATheme.ink.opacity(0.035), radius: 18, y: 8)
@@ -154,7 +162,7 @@ struct WyrmAvatar: View {
     var body: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(ATheme.ink)
-            Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(.white)
+            Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(ATheme.onInk)
             if let remote = URL(string: url), !url.isEmpty {
                 AsyncImage(url: remote) { phase in
                     if case .success(let image) = phase { image.resizable().scaledToFill() }
@@ -178,7 +186,7 @@ struct WyrmPrimaryAction: View {
                 Text(title).font(.androidWyrm(15, .bold))
                 Spacer()
                 if let icon { Image(systemName: icon).font(.system(size: 14, weight: .bold)) }
-            }.padding(.horizontal, 17).frame(height: 52).background(disabled ? ATheme.ink.opacity(0.35) : ATheme.ink).foregroundColor(.white)
+            }.padding(.horizontal, 17).frame(height: 52).background(disabled ? ATheme.ink.opacity(0.35) : ATheme.ink).foregroundColor(ATheme.onInk)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }.buttonStyle(.plain).disabled(disabled)
     }
@@ -245,6 +253,12 @@ struct WyrmRootTabBar: View {
 
     @State private var dragLocationX: CGFloat?
     @State private var lastPreview: WyrmDesignTab?
+    /// The lens rises off the bar while a finger holds it, like the system
+    /// segmented control on iOS 26, and settles back with a soft overshoot.
+    @State private var lifted = false
+    @State private var stretch: CGFloat = 0
+    @State private var lastSample: (x: CGFloat, time: Date)?
+    @State private var dropWork: DispatchWorkItem?
 
     var body: some View {
         GeometryReader { proxy in
@@ -258,13 +272,16 @@ struct WyrmRootTabBar: View {
             }
             ZStack(alignment: .leading) {
                 WyrmTabGlassSurface().zIndex(0)
-                WyrmTabSelectionGlass()
+                WyrmTabSelectionGlass(lifted: lifted)
                     .frame(width: itemWidth - 4, height: 46)
-                    .offset(x: draggedOrigin ?? selectedOrigin)
-                    .scaleEffect(x: dragLocationX == nil ? 1 : 1.07,
-                                 y: dragLocationX == nil ? 1 : 0.94)
+                    // Lifted: larger, clearer and floating a point above the bar;
+                    // fast sideways travel stretches it along the direction of motion.
+                    .scaleEffect(x: lifted ? 1.17 + stretch : 1, y: lifted ? 1.26 - stretch * 0.5 : 1)
+                    .shadow(color: ATheme.ink.opacity(lifted ? 0.2 : 0), radius: lifted ? 14 : 0, y: lifted ? 6 : 0)
+                    .offset(x: draggedOrigin ?? selectedOrigin, y: lifted ? -1.5 : 0)
                     .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.76, blendDuration: 0.1), value: selection)
-                    .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.82, blendDuration: 0.06), value: dragLocationX == nil)
+                    .animation(.interactiveSpring(response: 0.16, dampingFraction: 0.86, blendDuration: 0.04), value: dragLocationX)
+                    .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.7), value: stretch)
                     .zIndex(1)
                 HStack(spacing: 0) {
                     ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
@@ -280,6 +297,8 @@ struct WyrmRootTabBar: View {
             .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .highPriorityGesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
                 .onChanged { value in
+                    if !lifted { lift() }
+                    trackStretch(value.location.x)
                     dragLocationX = min(max(value.location.x, inset + itemWidth * 0.5), inset + width - itemWidth * 0.5)
                     preview(at: value.location.x - inset, itemWidth: itemWidth)
                 }
@@ -294,6 +313,8 @@ struct WyrmRootTabBar: View {
                         dragLocationX = nil
                     }
                     lastPreview = nil
+                    lastSample = nil
+                    drop(after: 0.04)
                 })
         }
         .frame(height: 56)
@@ -319,7 +340,37 @@ struct WyrmRootTabBar: View {
     private func select(_ tab: WyrmDesignTab) {
         guard selection != tab else { return }
         UISelectionFeedbackGenerator().selectionChanged()
+        lift()
         withAnimation(.interactiveSpring(response: 0.34, dampingFraction: 0.72, blendDuration: 0.14)) { selection = tab }
+        drop(after: 0.24)
+    }
+
+    private func lift() {
+        dropWork?.cancel()
+        withAnimation(.spring(response: 0.24, dampingFraction: 0.62)) { lifted = true }
+    }
+
+    /// Low damping gives the settle its bubble: a small overshoot below rest
+    /// and back, the way the system glass lands.
+    private func drop(after delay: Double) {
+        dropWork?.cancel()
+        let work = DispatchWorkItem {
+            withAnimation(.interpolatingSpring(stiffness: 320, damping: 14)) {
+                lifted = false
+                stretch = 0
+            }
+        }
+        dropWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay, execute: work)
+    }
+
+    private func trackStretch(_ x: CGFloat) {
+        let now = Date()
+        defer { lastSample = (x, now) }
+        guard let last = lastSample else { return }
+        let dt = max(now.timeIntervalSince(last.time), 1.0 / 240)
+        let speed = abs(x - last.x) / CGFloat(dt)
+        stretch = min(speed / 5200, 0.14)
     }
 
     private func preview(at x: CGFloat, itemWidth: CGFloat) {
@@ -363,6 +414,7 @@ private struct WyrmTabGlassSurface: View {
 }
 
 private struct WyrmTabSelectionGlass: View {
+    var lifted = false
     @ViewBuilder
     var body: some View {
 #if compiler(>=6.2)
@@ -370,8 +422,10 @@ private struct WyrmTabSelectionGlass: View {
             GlassEffectContainer(spacing: 0) {
                 Color.clear
                     .contentShape(Capsule())
-                    .glassEffect(.regular.interactive(), in: .capsule)
-                    .overlay(Capsule().stroke(Color.white.opacity(0.72), lineWidth: 0.9))
+                    // Lifted glass turns clear, so the icon beneath reads
+                    // through the lens the way the system control does.
+                    .glassEffect(lifted ? Glass.clear.interactive() : Glass.regular.interactive(), in: .capsule)
+                    .overlay(Capsule().stroke(Color.white.opacity(lifted ? 0.9 : 0.72), lineWidth: lifted ? 1.1 : 0.9))
                     .overlay(Capsule().stroke(ATheme.ink.opacity(0.07), lineWidth: 0.45))
             }
         } else {
@@ -382,10 +436,11 @@ private struct WyrmTabSelectionGlass: View {
 #endif
     }
     private var fallback: some View {
-        RoundedRectangle(cornerRadius: 22, style: .continuous)
-            .fill(.thinMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.ink.opacity(0.07)))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.12)))
+        Capsule(style: .continuous)
+            .fill(lifted ? Material.ultraThinMaterial : Material.thinMaterial)
+            .overlay(Capsule(style: .continuous).fill(ATheme.ink.opacity(lifted ? 0.03 : 0.07)))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(lifted ? 0.85 : 0.4), lineWidth: lifted ? 1.2 : 0.8))
+            .overlay(Capsule(style: .continuous).stroke(ATheme.ink.opacity(0.12), lineWidth: 0.5))
             .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
     }
 }

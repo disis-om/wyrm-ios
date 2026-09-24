@@ -1,6 +1,14 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.4 (50)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.5 (51)** · Minimum iOS: **15.0**
+
+Build 51 ports the Android settings pages one for one (SourcesShell/WyrmSettingsKit.swift,
+WyrmSettingsPages.swift), adds the Android theme palettes with an engine bridge
+(`WyrmIOSSetArenaTheme` → `arena_theme_set`), a sideways layout editor that
+writes `layout.*`/`hud.*` through the existing settings mailbox, Files backup
+and restore, and a lifting tab-bar lens. The Build 50 Wi-Fi spawn-drop was
+traced to a second slither client (NTL in desktop Chrome) sharing the same
+public IP, not to the iOS client. Build 51 CI and device checks are pending.
 
 Build 50 changes arena entry to Vlither-style single-attempt behavior: one
 selected-server dial per Play request, a five-second entry timeout, no
