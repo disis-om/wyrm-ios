@@ -22,5 +22,7 @@ void WyrmIOSApplySkinSelection(tenv* env);
 const char* WyrmIOSTeamPresenceSnapshot(void);
 void WyrmIOSSetTeamMembers(const char* packed);
 void WyrmIOSSetEnginePresentation(bool enabled);
+/* Twelve ARGB roles in arena_theme_role order; stored atomically. */
+void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
 VkResult WyrmIOSCreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*);

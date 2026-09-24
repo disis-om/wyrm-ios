@@ -4,6 +4,8 @@ struct WyrmDesignMain: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
+    @ObservedObject private var theme = WyrmThemeStore.shared
+    @ObservedObject private var notificationPrefs = WyrmNotificationPrefs.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
 
@@ -27,7 +29,7 @@ struct WyrmDesignMain: View {
                     case .social: WyrmSocialRoot(account: account, services: services, open: open)
                     case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
                     case .skin: WyrmSkinRoot(engine: engine)
-                    case .settings: WyrmSettingsRoot(engine: engine, account: account, open: open)
+                    case .settings: WyrmSettingsHub(engine: engine, account: account, open: open)
                     }
                 }
                 .id(tab)
@@ -35,7 +37,7 @@ struct WyrmDesignMain: View {
                 .frame(width: proxy.size.width)
                 .padding(.top, proxy.safeAreaInsets.top)
 
-                WyrmRootTabBar(selection: $tab, unread: services.unreadCount)
+                WyrmRootTabBar(selection: $tab, unread: services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count)
                     .frame(width: proxy.size.width)
                     .padding(.bottom, tabBarBottomInset)
                     .zIndex(10)
@@ -55,14 +57,25 @@ struct WyrmDesignMain: View {
                 }
                 if !engine.toast.isEmpty {
                     Text(engine.toast)
-                        .font(.androidWyrm(11.5, .semibold)).foregroundColor(.white).lineLimit(2)
+                        .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.onInk).lineLimit(2)
                         .padding(.horizontal, 14).padding(.vertical, 10).background(ATheme.ink).cornerRadius(12)
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }.ignoresSafeArea()
+            // A theme change redraws every screen with the new palette. Tab and
+            // route state live on this view, so the page the player is on stays open.
+            .id(theme.identity)
         }
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
+        .preferredColorScheme(theme.palette.dark ? .dark : .light)
+        .onChange(of: engine.toast) { value in
+            guard !value.isEmpty else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
+                withAnimation(.easeOut(duration: 0.2)) { if engine.toast == value { engine.toast = "" } }
+            }
+        }
     }
 
     private func open(_ value: WyrmDesignRoute) {
@@ -98,8 +111,13 @@ private struct WyrmPlayRoot: View {
            let selected = WyrmArena.custom(arena) { return selected }
         return services.recommendedArena
     }
-    private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
-    private var food: String { engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original" }
+    /// Android's `playControlsLabel`: steering style and hand, e.g. "Joystick · Right".
+    private var controls: String {
+        let steering = engine.setting("controls.joystick_mode")?.index == 2 ? "Arrow" : "Joystick"
+        guard let hand = engine.setting("controls.handedness"), hand.options.indices.contains(hand.index) else { return "\(steering) · Right" }
+        return "\(steering) · \(hand.options[hand.index].prefix(1).uppercased() + hand.options[hand.index].dropFirst())"
+    }
+    private var food: String { WyrmFoodPage.label(engine) }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -133,7 +151,7 @@ private struct WyrmPlayRoot: View {
                         Text(nearest?.endpoint ?? "Choose a live arena or enter an address.").font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).padding(.top, 3)
                         GeometryReader { geometry in ZStack(alignment: .leading) { Capsule().fill(ATheme.track); Capsule().fill(ATheme.ink).frame(width: geometry.size.width * min(1, CGFloat(nearest?.players ?? 0) / 2000)) } }.frame(height: 4).padding(.top, 13)
                         HStack(spacing: 9) {
-                            Button { enterOriginalLobby() } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(.white).frame(maxWidth: .infinity).frame(height: 46).background(nearest == nil ? ATheme.ink.opacity(0.35) : ATheme.ink).cornerRadius(11) }.buttonStyle(.plain).disabled(nearest == nil)
+                            Button { enterOriginalLobby() } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.onInk).frame(maxWidth: .infinity).frame(height: 46).background(nearest == nil ? ATheme.ink.opacity(0.35) : ATheme.ink).cornerRadius(11) }.buttonStyle(.plain).disabled(nearest == nil)
                             Button { showArenas = true } label: { Image(systemName: "globe.asia.australia.fill").foregroundColor(ATheme.mute).frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule)) }.buttonStyle(.plain)
                         }.padding(.top, 16)
                     }.padding(18)
@@ -147,9 +165,9 @@ private struct WyrmPlayRoot: View {
 
                 WyrmSectionLabel("Loadout")
                 WyrmPaperCard {
-                    WyrmListRow(title: "Food", value: food, icon: "circle.grid.2x2.fill", tint: ATheme.live) { open(.food) }
-                    WyrmListRow(title: "Controls", value: controls, icon: "scope") { open(.controls) }
-                    WyrmListRow(title: "Mode", icon: "plus") { open(.modes) }
+                    WyrmLoadoutRow(title: "Food", value: food, first: true, leading: AnyView(WyrmFoodWell())) { open(.playFood) }
+                    WyrmLoadoutRow(title: "Controls", value: controls, leading: AnyView(WyrmLoadoutIcon(symbol: "gamecontroller"))) { open(.playControls) }
+                    WyrmLoadoutRow(title: "Mode", value: "", leading: AnyView(WyrmLoadoutIcon(symbol: "scope"))) { open(.playModes) }
                 }
 
                 WyrmSectionLabel("Rooms & team")
@@ -189,6 +207,42 @@ private struct WyrmPlayRoot: View {
         recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
         let playerName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
         engine.enterLobby(name: playerName, address: selected.endpoint)
+    }
+}
+
+/// Android's `LoadoutRow`: a 26 pt well, the title, its value and a chevron.
+struct WyrmLoadoutRow: View {
+    let title: String
+    let value: String
+    var first = false
+    var leading: AnyView? = nil
+    let onOpen: () -> Void
+    var body: some View {
+        VStack(spacing: 0) {
+            if !first { Rectangle().fill(ATheme.rowRule).frame(height: 1) }
+            Button(action: onOpen) {
+                HStack(spacing: 0) {
+                    if let leading { leading; Spacer().frame(width: 12) }
+                    Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).lineLimit(1)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if !value.isEmpty {
+                        Text(value).font(.androidWyrm(14)).foregroundColor(ATheme.quiet).lineLimit(1)
+                        Spacer().frame(width: 6)
+                    }
+                    Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron)
+                }
+                .padding(.horizontal, 14).frame(height: 52).contentShape(Rectangle())
+            }.buttonStyle(WSPressStyle())
+        }
+    }
+}
+
+struct WyrmLoadoutIcon: View {
+    let symbol: String
+    var body: some View {
+        Image(systemName: symbol).font(.system(size: 12, weight: .semibold)).foregroundColor(ATheme.mute)
+            .frame(width: 26, height: 26).background(ATheme.well)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -241,12 +295,12 @@ private struct WyrmArenaPicker: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) { Text("LIVE DIRECTORY").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.live); Text("Pick a server").font(.androidWyrm(27, .bold)) }
                     Spacer()
-                    Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).frame(width: 36, height: 36).background(Color.white).clipShape(Circle()) }
+                    Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).frame(width: 36, height: 36).background(ATheme.card).clipShape(Circle()) }
                         .buttonStyle(.plain).accessibilityLabel("Add custom arena IP")
                     Button("Close") { presentation.wrappedValue.dismiss() }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
                 }.padding(20)
                 HStack { Image(systemName: "magnifyingglass"); TextField("Arena code or IP", text: $search).textInputAutocapitalization(.never).disableAutocorrection(true) }
-                    .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(Color.white.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)
+                    .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(ATheme.card.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 9, pinnedViews: []) {
                         if showAdd {
@@ -254,7 +308,7 @@ private struct WyrmArenaPicker: View {
                                 TextField("IPv4 address:port", text: $customAddress)
                                     .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).disableAutocorrection(true)
                                 Button("Save") { saveCustom() }.font(.androidWyrm(13, .bold))
-                            }.font(.androidWyrm(13)).padding(14).background(Color.white).cornerRadius(14)
+                            }.font(.androidWyrm(13)).padding(14).background(ATheme.card).cornerRadius(14)
                             if addressError { Text("Enter a valid IPv4 address and port (1–65535).")
                                 .font(.androidWyrm(11)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
                         }
@@ -274,7 +328,7 @@ private struct WyrmArenaPicker: View {
                                     if let arena = WyrmArena.custom(endpoint) { arenaRow(arena) }
                                 }
                             } label: { sectionLabel("SAVED ARENAS · \(saved.count)") }
-                                .tint(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15)
+                                .tint(ATheme.ink).padding(14).background(ATheme.card.opacity(0.9)).cornerRadius(15)
                         }
                         if filtered.isEmpty && recentRows.isEmpty && saved.isEmpty {
                             Text("No active arenas right now. Try refreshing or add a custom IP.")
@@ -311,7 +365,7 @@ private struct WyrmArenaPicker: View {
                 }
                 Spacer()
                 Text(latencyText(arena)).font(.androidWyrm(12, .bold)).foregroundColor(latencyColor(arena))
-            }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15)
+            }.foregroundColor(ATheme.ink).padding(14).background(ATheme.card.opacity(0.9)).cornerRadius(15)
                 .overlay(RoundedRectangle(cornerRadius: 15).stroke((selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: (selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? 2 : 1))
         }.buttonStyle(.plain)
     }
@@ -370,6 +424,7 @@ private struct WyrmSocialRoot: View {
 
 private struct WyrmAlertsRoot: View {
     @ObservedObject var services: WyrmServiceStore
+    @ObservedObject private var prefs = WyrmNotificationPrefs.shared
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
@@ -378,7 +433,7 @@ private struct WyrmAlertsRoot: View {
                     WyrmPaperCard { WyrmEmptyPanel(title: services.loading ? "Checking Wyrm…" : "All caught up", note: services.loading ? "Looking for real invites and notices." : "Nothing new right now.") }
                 } else {
                     LazyVStack(spacing: 12) {
-                        ForEach(services.alerts) { alert in WyrmAlertCard(alert: alert, services: services) }
+                        ForEach(services.alerts.filter { prefs.allows($0.kind) }) { alert in WyrmAlertCard(alert: alert, services: services) }
                     }
                 }
                 Spacer().frame(height: 102)
@@ -400,7 +455,7 @@ private struct WyrmAlertCard: View {
                 ?? AttributedString(alert.body))
                 .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineSpacing(3)
             if !alert.meta.isEmpty { ForEach(alert.meta.sorted(by: { $0.key < $1.key }), id: \.key) { pair in HStack { Text(pair.key.capitalized).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) } }
-        }.padding(16).background(Color.white.opacity(0.92)).cornerRadius(17).overlay(RoundedRectangle(cornerRadius: 17).stroke(ATheme.rule)).padding(.horizontal, 16)
+        }.padding(16).background(ATheme.card.opacity(0.92)).cornerRadius(17).overlay(RoundedRectangle(cornerRadius: 17).stroke(ATheme.rule)).padding(.horizontal, 16)
             .contextMenu {
                 Button(alert.read ? "Mark as unread" : "Mark as read") { Task { await services.setRead(alert, read: !alert.read) } }
                 Button("Delete notification", role: .destructive) { Task { await services.delete(alert) } }
@@ -411,45 +466,4 @@ private struct WyrmAlertCard: View {
             }
     }
     private func relative(_ raw: String) -> String { raw.isEmpty ? "" : String(raw.prefix(10)) }
-}
-
-private struct WyrmSettingsRoot: View {
-    @ObservedObject var engine: WyrmShellStore
-    @ObservedObject var account: WyrmAccountStore
-    let open: (WyrmDesignRoute) -> Void
-    @AppStorage("wyrm.ios.developer-mode") private var developerMode = false
-    var body: some View {
-        ScrollView(showsIndicators: false) {
-            VStack(spacing: 0) {
-                WyrmScreenHeader(kicker: "WYRM", title: "Settings")
-                section("Arena", rows: [("Display", "Scores, names, minimap, text sizes", "", WyrmDesignRoute.display), ("Controls", "Steering, boost, zoom bar", setting("controls.joystick_mode"), .controls), ("On-screen buttons", "Which buttons appear and how they fire", "\(engine.hotkeys.filter(\.visible).count) on", .buttons)])
-                section("Playing help", rows: [("Modes", "Normal, Assist, helper lines and arena colours", "", .modes), ("Bot", "When it circles, how wide it swings", "", .bot)])
-                section("Food", rows: [("Food style", "Original, rings and geometric shapes", engine.settings.first(where: { $0.id.contains("food_type") })?.displayValue ?? "Original", .food)])
-                section("Account", rows: [("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")), ("Notifications", "Invites, team pings, follows", "", .notificationSettings), ("Privacy", "Who can reach you, what is stored", "", .privacy)])
-                section("Accessibility", rows: [("Themes", "Paper, dark and colour appearances", UserDefaults.standard.string(forKey: "wyrm.ios.theme") ?? "Paper", .themes)])
-                section("This device", rows: [("Backup & version", "Skins, controls, settings and team keys", "0.13.1 · 40", .backup)])
-                VStack(spacing: 0) {
-                    WyrmSectionLabel("Developer")
-                    WyrmPaperCard {
-                        Toggle(isOn: $developerMode) {
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text("Developer Mode").font(.androidWyrm(14.5, .semibold))
-                                Text("Local diagnostics and export tools").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
-                            }
-                        }.tint(ATheme.live).padding(.horizontal, 14).frame(minHeight: 58)
-                        if developerMode {
-                            WyrmListRow(title: "Wyrm logs", detail: "App, network and original engine events", value: "7 days") { open(.developer) }
-                        }
-                    }
-                    Text("Developer logs stay on this iPhone until you explicitly share them. They automatically expire after seven days and are capped at 2 MB.")
-                        .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
-                }
-                Spacer().frame(height: 102)
-            }
-        }
-    }
-    private func setting(_ id: String) -> String { engine.settings.first(where: { $0.id == id })?.displayValue ?? "Joystick" }
-    private func section(_ title: String, rows: [(String, String, String, WyrmDesignRoute)]) -> some View {
-        VStack(spacing: 0) { WyrmSectionLabel(title); WyrmPaperCard { ForEach(rows.indices, id: \.self) { index in let row = rows[index]; WyrmListRow(title: row.0, detail: row.1, value: row.2) { open(row.3) } } } }
-    }
 }

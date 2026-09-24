@@ -22,11 +22,20 @@ struct WyrmDetailHost: View {
         case .call(let id): WyrmCallDetail(roomID: id, services: services, close: close)
         case .lobby: WyrmLobbyDetail(engine: engine, account: account, services: services, close: close)
         case .team, .teamChat, .teamConnect: WyrmTeamDetail(route: route, engine: engine, close: close, open: open)
-        case .display, .controls, .buttons, .modes, .bot, .food: WyrmEngineSettingsDetail(route: route, engine: engine, close: close)
-        case .notificationSettings: WyrmNotificationSettingsDetail(close: close)
-        case .privacy: WyrmPrivacyDetail(close: close)
-        case .themes: WyrmThemesDetail(close: close)
-        case .backup: WyrmBackupDetail(engine: engine, close: close)
+        case .display: WyrmDisplayPage(engine: engine, close: close)
+        case .controls: WyrmControlsPage(engine: engine, close: close)
+        case .buttons: WyrmButtonsPage(engine: engine, close: close)
+        case .modes: WyrmModesPage(engine: engine, close: close)
+        case .bot: WyrmBotPage(engine: engine, close: close)
+        case .food: WyrmFoodPage(engine: engine, close: close)
+        case .playControls: WyrmControlsWorkspace(engine: engine, close: close)
+        case .playModes: WyrmModesPage(engine: engine, parent: "Play", close: close)
+        case .playFood: WyrmFoodPage(engine: engine, parent: "Play", close: close)
+        case .notificationSettings: WyrmNotificationSettingsPage(close: close)
+        case .privacy: WyrmPrivacyPage(close: close)
+        case .themes: WyrmAccessibilityPage(close: close)
+        case .backup: WyrmBackupPage(engine: engine, close: close, open: open)
+        case .buildNotes: WyrmBuildNotesPage(close: close)
         case .developer: WyrmDeveloperDetail(close: close)
         }
     }
@@ -118,14 +127,14 @@ private struct WyrmThreadDetail: View {
                         LazyVStack(spacing: 9) {
                             if services.messages.isEmpty { WyrmEmptyPanel(title: "Quiet so far", note: "Say hello when you are ready.") }
                             ForEach(services.messages) { row in
-                                HStack { if row.authorID == account.player?.id { Spacer(minLength: 50) }; Text(row.body).font(.androidWyrm(13)).padding(.horizontal, 14).padding(.vertical, 10).background(row.authorID == account.player?.id ? ATheme.ink : Color.white).foregroundColor(row.authorID == account.player?.id ? .white : ATheme.ink).cornerRadius(15); if row.authorID != account.player?.id { Spacer(minLength: 50) } }.padding(.horizontal, 16)
+                                HStack { if row.authorID == account.player?.id { Spacer(minLength: 50) }; Text(row.body).font(.androidWyrm(13)).padding(.horizontal, 14).padding(.vertical, 10).background(row.authorID == account.player?.id ? ATheme.ink : ATheme.card).foregroundColor(row.authorID == account.player?.id ? ATheme.onInk : ATheme.ink).cornerRadius(15); if row.authorID != account.player?.id { Spacer(minLength: 50) } }.padding(.horizontal, 16)
                             }
                         }.padding(.vertical, 14)
                     }
                 }
                 HStack(spacing: 9) {
-                    TextField("Message", text: $message).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 44).background(Color.white).cornerRadius(14)
-                    Button { send() } label: { Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundColor(.white).frame(width: 44, height: 44).background(ATheme.ink).clipShape(Circle()) }.buttonStyle(.plain).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    TextField("Message", text: $message).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 44).background(ATheme.card).cornerRadius(14)
+                    Button { send() } label: { Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundColor(ATheme.onInk).frame(width: 44, height: 44).background(ATheme.ink).clipShape(Circle()) }.buttonStyle(.plain).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 }.padding(12).background(.ultraThinMaterial)
             }.task { await services.loadThread(playerID: playerID) }
         }
@@ -147,7 +156,7 @@ private struct WyrmPeopleDetail: View {
         WyrmDetailChrome(title: kind == "following" ? "Following" : kind == "search" ? "People" : "Followers", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
-                    HStack { Image(systemName: "magnifyingglass").foregroundColor(ATheme.quiet); TextField("Search players", text: $query).font(.androidWyrm(14)); if !query.isEmpty { Button { Task { await services.searchPeople(query) } } label: { Image(systemName: "arrow.right.circle.fill").foregroundColor(ATheme.ink) } } }.padding(.horizontal, 14).frame(height: 46).background(Color.white).cornerRadius(14).padding(16)
+                    HStack { Image(systemName: "magnifyingglass").foregroundColor(ATheme.quiet); TextField("Search players", text: $query).font(.androidWyrm(14)); if !query.isEmpty { Button { Task { await services.searchPeople(query) } } label: { Image(systemName: "arrow.right.circle.fill").foregroundColor(ATheme.ink) } } }.padding(.horizontal, 14).frame(height: 46).background(ATheme.card).cornerRadius(14).padding(16)
                     WyrmPaperCard {
                         if services.people.isEmpty { WyrmEmptyPanel(title: "No people to show", note: query.isEmpty ? "This list updates from your real Wyrm connections." : "Try another name or username.") }
                         ForEach(services.people) { person in WyrmListRow(title: person.displayName, detail: person.handle, value: person.isFollowing ? "Following" : "", icon: "person.crop.circle.fill") { open(.profile(person.id)) } }
@@ -172,7 +181,7 @@ private struct WyrmConnectionsDetail: View {
                 HStack(spacing: 5) {
                     segment("Followers", index: 0, count: services.followers.count)
                     segment("Following", index: 1, count: services.following.count)
-                }.padding(6).background(Color.white.opacity(0.72)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.rule)).padding(16)
+                }.padding(6).background(ATheme.card.opacity(0.72)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.rule)).padding(16)
                 TabView(selection: $page) {
                     connectionList(services.followers, empty: "No followers yet").tag(0)
                     connectionList(services.following, empty: "Not following anyone yet").tag(1)
@@ -210,7 +219,7 @@ private struct WyrmProfileDetail: View {
                     Text(own ? (account.player?.displayName ?? "Wyrm") : (servicePlayer?.displayName ?? "Player")).font(.androidWyrm(27, .bold)).padding(.top, 14)
                     Text(own ? (account.player?.handle ?? "") : (servicePlayer?.handle ?? "")).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
                     Text(profileBio).font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center).padding(.horizontal, 34).padding(.top, 10)
-                    HStack(spacing: 0) { WyrmMetric(label: "BEST", value: score.wyrmFormatted); Rectangle().fill(ATheme.rule).frame(width: 1, height: 48); WyrmMetric(label: "KILLS", value: kills.wyrmFormatted) }.background(Color.white).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(16)
+                    HStack(spacing: 0) { WyrmMetric(label: "BEST", value: score.wyrmFormatted); Rectangle().fill(ATheme.rule).frame(width: 1, height: 48); WyrmMetric(label: "KILLS", value: kills.wyrmFormatted) }.background(ATheme.card).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(16)
                     WyrmPaperCard {
                         WyrmListRow(title: "Followers", value: "\(followers)") { open(.people("followers")) }
                         WyrmListRow(title: "Following", value: "\(following)") { open(.people("following")) }
@@ -257,7 +266,7 @@ private struct WyrmEditProfileDetail: View {
 private struct WyrmDesignEditField: View {
     let label: String
     @Binding var value: String
-    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(label.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(label, text: $value).font(.androidWyrm(15)).padding(.horizontal, 14).frame(height: 50).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(label.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(label, text: $value).font(.androidWyrm(15)).padding(.horizontal, 14).frame(height: 50).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
 }
 
 private struct WyrmVoiceDetail: View {
@@ -276,7 +285,7 @@ private struct WyrmVoiceDetail: View {
                                 Image(systemName: "checkmark.shield.fill").font(.system(size: 22)).foregroundColor(ATheme.live)
                                 VStack(alignment: .leading, spacing: 3) { Text("Your voice profile is not verified").font(.androidWyrm(14.5, .bold)); Text("Verify once to create and enter player rooms.").font(.androidWyrm(11)).foregroundColor(ATheme.quiet) }
                                 Spacer(); Text("Verify").font(.androidWyrm(12.5, .bold)).foregroundColor(ATheme.link)
-                            }.foregroundColor(ATheme.ink).padding(16).background(Color.white.opacity(0.9)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.live.opacity(0.35)))
+                            }.foregroundColor(ATheme.ink).padding(16).background(ATheme.card.opacity(0.9)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.live.opacity(0.35)))
                         }.buttonStyle(.plain).padding(.horizontal, 16).padding(.top, 16)
                     }
                     WyrmSectionLabel("Official Wyrm rooms")
@@ -331,10 +340,10 @@ private struct WyrmVoiceVerificationDetail: View {
                         Text(stage == 0 ? "Verify your email" : "Enter the six-digit code").font(.androidWyrm(24, .bold)).multilineTextAlignment(.center)
                         Text(stage == 0 ? "Wyrm sends one private code. Your email is protected by the voice control plane." : "The code expires shortly. You can resend it without restarting this flow.").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center).padding(.horizontal, 34)
                         if stage == 0 {
-                            TextField("name@example.com", text: $email).keyboardType(.emailAddress).textContentType(.emailAddress).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(15)).padding(.horizontal, 15).frame(height: 52).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
+                            TextField("name@example.com", text: $email).keyboardType(.emailAddress).textContentType(.emailAddress).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(15)).padding(.horizontal, 15).frame(height: 52).background(ATheme.card).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
                             WyrmPrimaryAction(title: working ? "Sending…" : "Send code", disabled: working || !email.contains("@")) { begin() }.padding(.horizontal, 24)
                         } else {
-                            TextField("000000", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode).font(.androidWyrm(24, .bold)).multilineTextAlignment(.center).padding(.horizontal, 15).frame(height: 56).background(Color.white).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
+                            TextField("000000", text: $code).keyboardType(.numberPad).textContentType(.oneTimeCode).font(.androidWyrm(24, .bold)).multilineTextAlignment(.center).padding(.horizontal, 15).frame(height: 56).background(ATheme.card).cornerRadius(14).overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule)).padding(.horizontal, 24)
                             WyrmPrimaryAction(title: working ? "Checking…" : "Verify", disabled: working || code.count != 6) { confirm() }.padding(.horizontal, 24)
                             Button("Resend code") { Task { _ = await services.resendVoiceVerification(email: email) } }.font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.link)
                         }
@@ -368,7 +377,7 @@ private struct WyrmRoomDetail: View {
                     }
                     if let room {
                         if !room.managedPublic && !room.member && services.voiceVerification.verified {
-                            SecureField("8-character room key", text: $password).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 50).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16).padding(.top, 16)
+                            SecureField("8-character room key", text: $password).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 50).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16).padding(.top, 16)
                         }
                         WyrmPrimaryAction(title: room.member ? "Open call" : room.managedPublic ? "Enter public room" : services.voiceVerification.verified ? "Join room" : "Verify to join", icon: "mic.fill", disabled: !room.managedPublic && !room.member && services.voiceVerification.verified && password.count != 8) { if room.member { open(.call(room.id)) } else if !room.managedPublic && !services.voiceVerification.verified { open(.voiceVerification) } else { Task { await services.joinVoice(room, password: password); if services.errorMessage.isEmpty { open(.call(room.id)) } } } }.padding(16)
                         if room.member { WyrmOutlineAction(title: "Leave room", destructive: true) { Task { await services.leaveVoice(room); close() } }.padding(.horizontal, 16) }
@@ -456,7 +465,7 @@ private struct WyrmTeamDetail: View {
                             SecureField("Auth key", text: $auth)
                                 .font(.androidWyrm(14)).textInputAutocapitalization(.never)
                                 .autocorrectionDisabled(true).padding(14)
-                                .background(Color.white).cornerRadius(14)
+                                .background(ATheme.card).cornerRadius(14)
                                 .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
                             if !error.isEmpty { Text(error).font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
                             WyrmPrimaryAction(title: "Connect Team", icon: "lock.shield.fill",
@@ -476,13 +485,13 @@ private struct WyrmTeamDetail: View {
                                     VStack(alignment: .leading, spacing: 4) {
                                         Text(line.author.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live)
                                         Text(line.body).font(.androidWyrm(13)).frame(maxWidth: .infinity, alignment: .leading)
-                                    }.padding(14).background(Color.white).cornerRadius(14)
+                                    }.padding(14).background(ATheme.card).cornerRadius(14)
                                         .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
                                 }
                             }.padding(16)
                         }
                         HStack(spacing: 10) {
-                            TextField("Message the team", text: $message).font(.androidWyrm(13)).padding(12).background(Color.white).cornerRadius(12)
+                            TextField("Message the team", text: $message).font(.androidWyrm(13)).padding(12).background(ATheme.card).cornerRadius(12)
                             Button("Send") { team.send(message); message = "" }
                                 .font(.androidWyrm(12, .bold)).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                         }.padding(16)
@@ -546,173 +555,6 @@ private struct WyrmTeamDetail: View {
     }
 }
 
-private struct WyrmEngineSettingsDetail: View {
-    let route: WyrmDesignRoute
-    @ObservedObject var engine: WyrmShellStore
-    let close: () -> Void
-    private var rows: [EngineSetting] { engine.settings.filter(matches) }
-    private var title: String { ["display":"Display", "controls":"Controls", "buttons":"On-screen buttons", "modes":"Modes", "bot":"Bot", "food":"Food style"][route.id] ?? "Settings" }
-    var body: some View {
-        WyrmDetailChrome(title: title, onBack: close) {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 12) {
-                    if route.id == "buttons" { ForEach(engine.hotkeys) { hotkey in WyrmHotkeyDesignRow(engine: engine, hotkey: hotkey) } }
-                    ForEach(rows) { row in WyrmEngineSettingDesignRow(engine: engine, row: row) }
-                    if rows.isEmpty && route.id != "buttons" { WyrmPaperCard { WyrmEmptyPanel(title: "Engine is starting", note: "These controls appear as soon as the native settings mailbox is ready.") } }
-                }.padding(.vertical, 16)
-            }
-        }
-    }
-    private func matches(_ row: EngineSetting) -> Bool {
-        guard !row.label.isEmpty else { return false }
-        switch route {
-        case .display: return row.group.hasPrefix("general") && !row.group.contains("bot")
-        case .controls: return row.group.hasPrefix("controls")
-        case .buttons: return row.group == "keys"
-        case .modes: return row.group == "normal" || row.group == "assist"
-        case .bot: return row.group.contains("bot")
-        case .food: return row.id.contains("food")
-        default: return false
-        }
-    }
-}
-
-private struct WyrmEngineSettingDesignRow: View {
-    @ObservedObject var engine: WyrmShellStore
-    let row: EngineSetting
-    @State private var value: Double
-    @State private var isDragging = false
-    @State private var pendingToggle: Bool?
-    @State private var pendingToggleUntil = Date.distantPast
-    init(engine: WyrmShellStore, row: EngineSetting) { self.engine = engine; self.row = row; _value = State(initialValue: row.values.first ?? 0) }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack { VStack(alignment: .leading, spacing: 2) { Text(row.label).font(.androidWyrm(14.5, .semibold)); if !row.hint.isEmpty { Text(row.hint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) } }; Spacer(); control }
-            if row.type == "float" || row.type == "int" {
-                Slider(value: Binding(get: { value }, set: { value = $0; engine.write(row, values: [$0]) }),
-                       in: row.minimum...max(row.minimum, row.maximum),
-                       step: row.type == "int" ? 1 : max(0.001, (row.maximum-row.minimum)/100),
-                       onEditingChanged: { isDragging = $0 })
-                    .tint(ATheme.ink)
-            }
-        }.padding(15).background(Color.white).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(.horizontal, 16)
-            .onChange(of: row.displayValue) { _ in
-                let incoming = row.values.first ?? value
-                if row.type == "bool", let pending = pendingToggle {
-                    if (incoming != 0) == pending {
-                        value = incoming
-                        pendingToggle = nil
-                    } else if Date() >= pendingToggleUntil {
-                        value = incoming
-                        pendingToggle = nil
-                    }
-                } else if !isDragging {
-                    value = incoming
-                }
-            }
-    }
-    @ViewBuilder private var control: some View {
-        switch row.type {
-        case "bool": Toggle("", isOn: Binding(
-            get: { pendingToggle ?? (value != 0) },
-            set: { next in
-                pendingToggle = next
-                pendingToggleUntil = Date().addingTimeInterval(1.8)
-                value = next ? 1 : 0
-                engine.write(row, values: [value])
-            }
-        )).labelsHidden().tint(ATheme.live)
-        case "enum": Picker("", selection: Binding(get: { Int(value) }, set: { value = Double($0); engine.write(row, values: [value]) })) { ForEach(row.options.indices, id: \.self) { Text(row.options[$0]).tag($0) } }.pickerStyle(.menu).tint(ATheme.ink)
-        default: Text(row.displayValue).font(.androidWyrm(12, .bold)).foregroundColor(ATheme.quiet)
-        }
-    }
-}
-
-private struct WyrmHotkeyDesignRow: View {
-    @ObservedObject var engine: WyrmShellStore
-    let hotkey: EngineHotkey
-    @State private var visible: Bool
-    @State private var pending: Bool?
-    @State private var pendingUntil = Date.distantPast
-
-    init(engine: WyrmShellStore, hotkey: EngineHotkey) {
-        self.engine = engine
-        self.hotkey = hotkey
-        _visible = State(initialValue: hotkey.visible)
-    }
-
-    var body: some View {
-        Toggle(isOn: Binding(get: { pending ?? visible }, set: { next in
-            pending = next
-            pendingUntil = Date().addingTimeInterval(1.8)
-            visible = next
-            engine.setHotkey(hotkey, visible: next)
-        })) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(hotkey.name).font(.androidWyrm(14.5, .semibold))
-                Text("\(hotkey.keyName) · \(hotkey.mode == 1 ? "Hold" : "Toggle")")
-                    .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
-            }
-        }
-        .tint(ATheme.live)
-        .padding(15).background(Color.white).cornerRadius(15)
-        .overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule))
-        .padding(.horizontal, 16)
-        .onChange(of: hotkey.visible) { incoming in
-            if let expected = pending {
-                if incoming == expected || Date() >= pendingUntil {
-                    visible = incoming
-                    pending = nil
-                }
-            } else {
-                visible = incoming
-            }
-        }
-    }
-}
-
-private struct WyrmNotificationSettingsDetail: View {
-    let close: () -> Void
-    @AppStorage("wyrm.notify.invites") private var invites = true
-    @AppStorage("wyrm.notify.direct") private var direct = true
-    @AppStorage("wyrm.notify.voice") private var voice = true
-    @AppStorage("wyrm.notify.follows") private var follows = true
-    @AppStorage("wyrm.notify.notices") private var notices = true
-    @AppStorage("wyrm.notify.events") private var events = true
-    @AppStorage("wyrm.notify.achievements") private var achievements = true
-    var body: some View {
-        WyrmDetailChrome(title: "Notifications", onBack: close) {
-            ScrollView(showsIndicators: false) { VStack(spacing: 0) {
-                WyrmSectionLabel("People"); toggles([("Arena invites", "Someone sends you a server and key.", $invites), ("Direct messages", "New thread or reply.", $direct), ("Voice invitations", "Private room invitations.", $voice), ("New followers", "Another player starts following you.", $follows)])
-                WyrmSectionLabel("Wyrm"); toggles([("Notices", "Maintenance and important alerts.", $notices), ("Battledome events", "Scheduled events and arena addresses.", $events), ("Achievements", "Personal bests and milestones.", $achievements)])
-                Text("These preferences filter the real Wyrm feed in-app. APNs delivery still needs an Apple push entitlement and physical-device token.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
-            } }
-        }
-    }
-    private func toggles(_ rows: [(String, String, Binding<Bool>)]) -> some View { WyrmPaperCard { ForEach(rows.indices, id: \.self) { index in Toggle(isOn: rows[index].2) { VStack(alignment: .leading, spacing: 2) { Text(rows[index].0).font(.androidWyrm(14.5)); Text(rows[index].1).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) } }.tint(ATheme.live).padding(.horizontal, 14).frame(minHeight: 58).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 14), alignment: .bottom) } } }
-}
-
-private struct WyrmPrivacyDetail: View {
-    let close: () -> Void
-    var body: some View { WyrmDetailChrome(title: "Privacy", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("What Wyrm keeps"); WyrmPaperCard { WyrmListRow(title: "Stored on this phone", value: "Session, Team ID, settings", showsChevron: false); WyrmListRow(title: "Stored on the server", value: "Profile, scores, social", showsChevron: false); WyrmListRow(title: "Chat retention", value: "Global 24 h · direct history", showsChevron: false); WyrmListRow(title: "Analytics", value: "No fabricated telemetry", showsChevron: false) }; Text("The iOS session bearer is stored in Keychain. Views never log it. Team credentials are not shared with Android Keystore ciphertext.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20) } } } }
-}
-
-private struct WyrmThemesDetail: View {
-    let close: () -> Void
-    @AppStorage("wyrm.ios.theme") private var theme = "Paper"
-    private let themes = ["Paper", "Graphite", "Blush", "Sun", "Slate", "Lilac", "Forest", "Midnight"]
-    var body: some View { WyrmDetailChrome(title: "Accessibility", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("Themes"); WyrmPaperCard { ForEach(themes, id: \.self) { name in Button { theme = name } label: { HStack { Circle().fill(colour(name)).frame(width: 28, height: 28); VStack(alignment: .leading, spacing: 2) { Text(name).font(.androidWyrm(14.5)); Text(description(name)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }; Spacer(); if theme == name { Image(systemName: "checkmark.circle.fill").foregroundColor(ATheme.live) } }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 56) }.buttonStyle(.plain).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 54), alignment: .bottom) } }; Text("Paper remains the production iOS 15 appearance. The saved theme choice is ready for the full token palette pass.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(20) } } } }
-    private func colour(_ name: String) -> Color { ["Paper":ATheme.paper, "Graphite":Color(white: 0.18), "Blush":Color(red: 0.88, green: 0.72, blue: 0.72), "Sun":Color(red: 0.92, green: 0.79, blue: 0.42), "Slate":Color(red: 0.38, green: 0.48, blue: 0.58), "Lilac":Color(red: 0.69, green: 0.56, blue: 0.72), "Forest":Color(red: 0.29, green: 0.48, blue: 0.35), "Midnight":Color(red: 0.08, green: 0.12, blue: 0.18)][name] ?? ATheme.paper }
-    private func description(_ name: String) -> String { name == "Paper" ? "Original warm paper and ink" : name == "Midnight" ? "Deep blue-black with quiet highlights" : "Wyrm palette variation" }
-}
-
-private struct WyrmBackupDetail: View {
-    @ObservedObject var engine: WyrmShellStore
-    let close: () -> Void
-    @State private var confirmReset = false
-    var body: some View { WyrmDetailChrome(title: "Backup", onBack: close) { ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmSectionLabel("This device"); WyrmPaperCard { WyrmListRow(title: "Wyrm", value: "0.11.2 (36)", showsChevron: false); WyrmListRow(title: "Settings format", value: engine.settingsVersion.isEmpty ? "Starting" : engine.settingsVersion, showsChevron: false); WyrmListRow(title: "Engine controls", value: "\(engine.settings.count)", showsChevron: false); WyrmListRow(title: "On-screen actions", value: "\(engine.hotkeys.count)", showsChevron: false) }; VStack(spacing: 10) { WyrmOutlineAction(title: "Reset controls layout") { engine.reset(2, message: "Controls reset") }; WyrmOutlineAction(title: "Reset arena HUD") { engine.reset(8, message: "HUD reset") }; WyrmOutlineAction(title: confirmReset ? "Tap again to reset everything" : "Reset everything to defaults", destructive: true) { if confirmReset { engine.reset(1, message: "All engine settings reset"); confirmReset = false } else { confirmReset = true } } }.padding(16); Text("Portable backup and Files import/export remain a Phase 7 Apple service. Reset actions above are live native-engine mailboxes.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 20) } } } }
-}
-
 private struct WyrmDeveloperDetail: View {
     let close: () -> Void
     @ObservedObject private var diagnostics = WyrmDiagnostics.shared
@@ -753,7 +595,7 @@ private struct WyrmDeveloperDetail: View {
                             .padding(14)
                     }
                     .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
-                    .background(Color.white.opacity(0.94))
+                    .background(ATheme.card.opacity(0.94))
                     .cornerRadius(15)
                     .overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule))
                     .padding(.horizontal, 16)
