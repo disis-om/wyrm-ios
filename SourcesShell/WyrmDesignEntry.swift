@@ -17,7 +17,7 @@ struct WyrmDesignRoot: View {
     }
 
     private var skinSmoke: Bool {
-        arguments.contains("--smoke-skin") || arguments.contains("--smoke-skin-accessories") || arguments.contains("--smoke-skin-tags")
+        arguments.contains("--smoke-skin") || arguments.contains("--smoke-skin-accessories") || arguments.contains("--smoke-skin-tags") || arguments.contains("--smoke-skin-presets") || arguments.contains("--smoke-skin-pattern")
     }
 
     private var teamSmoke: Bool { arguments.contains("--smoke-team") }

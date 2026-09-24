@@ -1,8 +1,7 @@
 import SwiftUI
-import CoreMotion
 
 /// A preview-only rope. The game retains ownership of its own NTL physics.
-struct WyrmGravityTag: View {
+struct WyrmSwingTag: View {
     let item: WyrmTagAsset
     let image: CGImage
     let head: CGPoint
@@ -13,9 +12,9 @@ struct WyrmGravityTag: View {
     let tagScale: Double
     let reduceMotion: Bool
 
-    @State private var motion = CMMotionManager()
     @State private var points: [CGPoint] = []
     @State private var velocity: [CGVector] = []
+    @State private var elapsed: CGFloat = 0
     private let clock = Timer.publish(every: 1.0 / 30.0, on: .main, in: .common).autoconnect()
 
     private var unit: CGFloat { headSize / 29 }
@@ -56,15 +55,6 @@ struct WyrmGravityTag: View {
         .onAppear {
             points = initialPoints
             velocity = Array(repeating: .zero, count: 10)
-            if motion.isDeviceMotionAvailable && !reduceMotion {
-                motion.deviceMotionUpdateInterval = 1.0 / 30.0
-                motion.startDeviceMotionUpdates()
-            }
-        }
-        .onDisappear { motion.stopDeviceMotionUpdates() }
-        .onChange(of: reduceMotion) { reduced in
-            if reduced { motion.stopDeviceMotionUpdates() }
-            else if motion.isDeviceMotionAvailable { motion.startDeviceMotionUpdates() }
         }
         .onReceive(clock) { _ in step() }
     }
@@ -79,10 +69,8 @@ struct WyrmGravityTag: View {
             points = initialPoints
             velocity = Array(repeating: .zero, count: 10)
         }
-        let gravity = motion.deviceMotion?.gravity
-        let gx = CGFloat(gravity?.x ?? 0)
-        let gy = CGFloat(-(gravity?.y ?? -1))
-        let force = 0.17 * unit * CGFloat(max(1, min(2, swing)))
+        elapsed += 1.0 / 30.0
+        let amplitude = CGFloat(max(0, min(2, swing - 1))) * unit * 1.1
         let stiffness = 0.08333 + 0.01667 * CGFloat(swing - 1)
         let damping = min(0.985, 0.838 + 0.145 * CGFloat(swing - 1))
         points[0] = anchor
@@ -93,8 +81,9 @@ struct WyrmGravityTag: View {
             let direction = (dx == 0 && dy == 0) ? CGFloat.pi : atan2(dy, dx)
             let target = CGPoint(x: prior.x + segment * cos(direction),
                                  y: prior.y + segment * sin(direction))
-            velocity[index].dx = (velocity[index].dx + stiffness * (target.x - points[index].x) + force * gx) * damping
-            velocity[index].dy = (velocity[index].dy + stiffness * (target.y - points[index].y) + force * gy) * damping
+            let sway = sin(elapsed * 2.1 - CGFloat(index) * 0.32) * amplitude * CGFloat(index) / 9
+            velocity[index].dx = (velocity[index].dx + stiffness * (target.x - points[index].x) - 0.10 * unit) * damping
+            velocity[index].dy = (velocity[index].dy + stiffness * (target.y + sway - points[index].y)) * damping
             points[index].x += velocity[index].dx
             points[index].y += velocity[index].dy
             let deltaX = points[index].x - prior.x

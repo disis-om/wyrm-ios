@@ -32,8 +32,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.15.0-build-43-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.15.0-build-43-simulator.app.zip
+          zip -qry Wyrm-0.16.0-build-44-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.16.0-build-44-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -91,6 +91,16 @@ jobs:
           sleep 6
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin-tags.png
           grep 'Wyrm SwiftUI skin studio presented section=tags' original-artifacts/skin-tags-stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/skin-presets-stdout.log" --stderr="$PWD/original-artifacts/skin-presets-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-skin-presets
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin-presets.png
+          grep 'Wyrm SwiftUI skin studio presented section=presets' original-artifacts/skin-presets-stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/skin-pattern-stdout.log" --stderr="$PWD/original-artifacts/skin-pattern-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-skin-pattern
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin-pattern.png
+          grep 'Wyrm SwiftUI skin studio presented section=pattern' original-artifacts/skin-pattern-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/team-stdout.log" --stderr="$PWD/original-artifacts/team-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-team
           sleep 4

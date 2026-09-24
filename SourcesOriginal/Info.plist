@@ -24,8 +24,6 @@
     <array>
         <string>manrope.ttf</string>
     </array>
-    <key>NSMotionUsageDescription</key>
-    <string>Move your iPhone to preview how your Wyrm tag swings.</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
     <key>UIApplicationSceneManifest</key>

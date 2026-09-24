@@ -346,67 +346,39 @@ private actor WyrmServiceClient {
     }
 }
 
-private struct WyrmArenaProbeResult {
-    let minimumLatency: Int
-    let firstReplyAt: Date
-}
-
 private final class WyrmArenaProbeSession {
     private let arena: WyrmArena
     private let queue: DispatchQueue
     private var connection: NWConnection?
-    private var completion: ((WyrmArenaProbeResult?) -> Void)?
-    private var samples: [Int] = []
-    private var firstReplyAt: Date?
+    private var completion: ((Int?) -> Void)?
     private var probeStarted: UInt64 = 0
     private var finished = false
 
-    init(arena: WyrmArena, completion: @escaping (WyrmArenaProbeResult?) -> Void) {
+    init(arena: WyrmArena, completion: @escaping (Int?) -> Void) {
         self.arena = arena
         self.completion = completion
         self.queue = DispatchQueue(label: "com.omrajput.wyrmios.ptc.\(arena.id)")
     }
 
     func start() {
-        guard let url = URL(string: "ws://\(arena.address):80/ptc") else { finish(nil); return }
-        let webSocket = NWProtocolWebSocket.Options(.version13)
-        webSocket.maximumMessageSize = 16
-        let parameters = NWParameters.tcp
-        parameters.defaultProtocolStack.applicationProtocols.insert(webSocket, at: 0)
-        let connection = NWConnection(to: .url(url), using: parameters)
+        guard let port = NWEndpoint.Port(rawValue: UInt16(arena.port)) else { finish(nil); return }
+        let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
         self.connection = connection
+        probeStarted = DispatchTime.now().uptimeNanoseconds
         connection.stateUpdateHandler = { [self] state in
             switch state {
-            case .ready: sendProbe()
+            case .ready:
+                let elapsed = DispatchTime.now().uptimeNanoseconds - probeStarted
+                finish(max(1, Int(elapsed / 1_000_000)))
             case .failed, .cancelled: finish(nil)
             default: break
             }
         }
         connection.start(queue: queue)
-        queue.asyncAfter(deadline: .now() + 4.0) { [self] in finish(nil) }
+        queue.asyncAfter(deadline: .now() + 1.5) { [self] in finish(nil) }
     }
 
-    private func sendProbe() {
-        guard !finished, let connection else { return }
-        probeStarted = DispatchTime.now().uptimeNanoseconds
-        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
-        let context = NWConnection.ContentContext(identifier: "slither-ptc", metadata: [metadata])
-        connection.receiveMessage { [self] data, _, _, error in
-            guard error == nil, data == Data([112]) else { finish(nil); return }
-            if firstReplyAt == nil { firstReplyAt = Date() }
-            let elapsed = DispatchTime.now().uptimeNanoseconds - probeStarted
-            samples.append(max(1, Int(elapsed / 1_000_000)))
-            if samples.count == 3, let minimumLatency = samples.min(), let firstReplyAt {
-                finish(WyrmArenaProbeResult(minimumLatency: minimumLatency, firstReplyAt: firstReplyAt))
-            }
-            else { sendProbe() }
-        }
-        connection.send(content: Data([112]), contentContext: context, isComplete: true, completion: .contentProcessed { [self] error in
-            if error != nil { finish(nil) }
-        })
-    }
-
-    private func finish(_ result: WyrmArenaProbeResult?) {
+    private func finish(_ result: Int?) {
         guard !finished else { return }
         finished = true
         connection?.stateUpdateHandler = nil
@@ -419,7 +391,7 @@ private final class WyrmArenaProbeSession {
 }
 
 private enum WyrmArenaProbe {
-    static func latency(to arena: WyrmArena) async -> WyrmArenaProbeResult? {
+    static func latency(to arena: WyrmArena) async -> Int? {
         await withCheckedContinuation { continuation in
             WyrmArenaProbeSession(arena: arena) { continuation.resume(returning: $0) }.start()
         }
@@ -453,9 +425,7 @@ final class WyrmServiceStore: ObservableObject {
     private var token = ""
     private var sessionRevision = UUID()
     private var taintedArenas: [String: Date] = [:]
-    private var directoryLoadedAt: Date?
-    private var selectionReadyAt: Date?
-    private var lastProbeAt: Date?
+    private var arenaRefreshInFlight = false
 
     var unreadCount: Int { alerts.filter { !$0.read }.count }
     var liveRooms: [WyrmVoiceRoom] { voiceRooms.filter { $0.active && !$0.suspended } }
@@ -599,24 +569,23 @@ final class WyrmServiceStore: ObservableObject {
     func leaveVoice(_ room: WyrmVoiceRoom) async { await perform { try await WyrmServiceClient.shared.leaveVoice(roomID: room.id, token: self.token); self.voiceRooms = try await WyrmServiceClient.shared.voiceRooms(token: self.token) } }
 
     func refreshArenasLive() async {
+        guard !arenaRefreshInFlight else { return }
+        arenaRefreshInFlight = true
+        defer { arenaRefreshInFlight = false }
         do {
             let rows = try await WyrmServiceClient.shared.arenas()
             installArenaDirectory(rows)
-            if lastProbeAt == nil || Date().timeIntervalSince(lastProbeAt!) >= 30 {
-                lastProbeAt = Date()
-                let representatives = Dictionary(grouping: arenas.filter(\.active), by: \.cluster).values.compactMap { $0.max(by: { $0.players < $1.players }) }
-                let probeResults = await withTaskGroup(of: (Int, WyrmArenaProbeResult?).self, returning: [(Int, WyrmArenaProbeResult)].self) { group in
-                    for arena in representatives { group.addTask { (arena.cluster, await WyrmArenaProbe.latency(to: arena)) } }
-                    var values: [(Int, WyrmArenaProbeResult)] = []
-                    for await (cluster, value) in group { if let value { values.append((cluster, value)) } }
-                    return values
+            let candidates = arenas.filter(\.active)
+            for batchStart in stride(from: 0, to: candidates.count, by: 24) {
+                guard !Task.isCancelled else { return }
+                let batch = Array(candidates[batchStart..<min(batchStart + 24, candidates.count)])
+                await withTaskGroup(of: (String, Int?).self) { group in
+                    for arena in batch { group.addTask { (arena.id, await WyrmArenaProbe.latency(to: arena)) } }
+                    for await (id, value) in group {
+                        arenaLatencies[id] = value ?? -1
+                    }
                 }
-                var measured: [Int: Int] = [:]
-                for (cluster, result) in probeResults { measured[cluster] = min(measured[cluster] ?? .max, result.minimumLatency) }
-                if let firstReply = probeResults.map({ $0.1.firstReplyAt }).min(), selectionReadyAt == nil {
-                    selectionReadyAt = firstReply.addingTimeInterval(2.667)
-                }
-                arenaLatencies = Dictionary(uniqueKeysWithValues: arenas.compactMap { arena in measured[arena.cluster].map { (arena.id, $0) } })
+                refreshRecommendation()
             }
             refreshRecommendation()
             lastRefresh = Date()
@@ -645,36 +614,21 @@ final class WyrmServiceStore: ObservableObject {
 
     private func installArenaDirectory(_ rows: [WyrmArena]) {
         arenas = rows.sorted { $0.players > $1.players }
-        if directoryLoadedAt == nil { directoryLoadedAt = Date() }
+        let currentIDs = Set(arenas.map(\.id))
+        arenaLatencies = arenaLatencies.filter { currentIDs.contains($0.key) }
         refreshRecommendation()
     }
 
     private func refreshRecommendation(excluding: Set<String> = []) {
         taintedArenas = taintedArenas.filter { $0.value > Date() }
-        let readyAt = selectionReadyAt ?? directoryLoadedAt?.addingTimeInterval(7)
-        guard let readyAt, Date() >= readyAt else { return }
-        if let current = recommendedArena,
-           !excluding.contains(current.endpoint), !isArenaTainted(current.endpoint),
-           arenas.contains(where: { $0.id == current.id }) { return }
-        let candidates = arenas.filter { $0.active && $0.players > 20 && !excluding.contains($0.endpoint) && !isArenaTainted($0.endpoint) }
+        let candidates = arenas.filter { $0.active && !excluding.contains($0.endpoint) && !isArenaTainted($0.endpoint) }
         guard !candidates.isEmpty else { recommendedArena = nil; return }
-        let measuredClusters = Set(candidates.compactMap { arenaLatencies[$0.id] == nil ? nil : $0.cluster })
-        let pool: [WyrmArena]
-        if let bestCluster = measuredClusters.min(by: { clusterLatency($0) < clusterLatency($1) }) {
-            pool = candidates.filter { $0.cluster == bestCluster }
-        } else {
-            pool = candidates.sorted { $0.port < $1.port }
+        recommendedArena = candidates.min { a, b in
+            let left = arenaLatencies[a.id].flatMap { $0 > 0 ? $0 : nil } ?? .max
+            let right = arenaLatencies[b.id].flatMap { $0 > 0 ? $0 : nil } ?? .max
+            if left != right { return left < right }
+            return a.players > b.players
         }
-        let total = pool.reduce(0) { $0 + $1.players + 5 }
-        var ticket = Int.random(in: 0..<max(1, total))
-        recommendedArena = pool.first { arena in
-            ticket -= arena.players + 5
-            return ticket < 0
-        } ?? pool.first
-    }
-
-    private func clusterLatency(_ cluster: Int) -> Int {
-        arenas.filter { $0.cluster == cluster }.compactMap { arenaLatencies[$0.id] }.min() ?? .max
     }
 
     private func perform(_ operation: @escaping () async throws -> Void) async {
@@ -703,8 +657,5 @@ final class WyrmServiceStore: ObservableObject {
         lastRefresh = nil
         preparedPlayerID = nil
         taintedArenas = [:]
-        directoryLoadedAt = nil
-        selectionReadyAt = nil
-        lastProbeAt = nil
     }
 }

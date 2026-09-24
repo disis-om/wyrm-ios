@@ -8,7 +8,7 @@ CATALOG = (ROOT / "SourcesShell/WyrmSkinCatalog.generated.swift").read_text()
 STUDIO = (ROOT / "SourcesShell/WyrmSkinStudio.swift").read_text()
 MAIN = (ROOT / "SourcesShell/WyrmDesignMain.swift").read_text()
 MAILBOX = (ROOT / "SourcesOriginal/AppleSkinMailbox.c").read_text()
-GRAVITY = (ROOT / "SourcesShell/WyrmGravityTag.swift").read_text()
+SWING = (ROOT / "SourcesShell/WyrmGravityTag.swift").read_text()
 
 checks = {
     "catalog has all 66 original presets": CATALOG.count("        [") == 66,
@@ -25,9 +25,9 @@ checks = {
     "preview batches its 256 beads in an asynchronous canvas": "rendersAsynchronously: true" in STUDIO and "rotated.rotate(by: .degrees(180))" in STUDIO,
     "overview has no explanatory captions or asset status": "Original engine skins" not in STUDIO and "ORIGINAL TEXTURES READY" not in STUDIO,
     "preview has no technical caption": "NATIVE ATLAS PREVIEW" not in STUDIO,
-    "tag preview reads device gravity with bounded ten-point rope": "motion.deviceMotion?.gravity" in GRAVITY and "0..<10" in GRAVITY and "anchor.x - segment * 0.25" in GRAVITY,
+    "tag swings toward tail without reading device gravity": "CMMotionManager" not in SWING and "0..<10" in SWING and "anchor.x - segment * 0.25" in SWING and "let sway = sin" in SWING,
     "skin code supports original 256 slots": "prefix(256)" in CATALOG and "/ 256 beads" in STUDIO,
-    "100 tinted beads can cross native mailbox": "ForEach(0..<100" in STUDIO and "queued.colors" in MAILBOX and "settings->skin_rgba" in MAILBOX,
+    "400 tinted beads share the Build a Wyrm palette and native mailbox": "ForEach(0..<400" in STUDIO and 'Colour studio' not in STUDIO and "queued.colors" in MAILBOX and "settings->skin_rgba" in MAILBOX,
     "picker sprites use shadowless high-resolution derivatives": "accessoryThumbnails" in STUDIO and "tagThumbnails" in STUDIO and "removingSoftShadow" in STUDIO,
     "long editors are constrained to the lower viewport": ".frame(maxHeight: .infinity)" in STUDIO and ".layoutPriority(1)" in STUDIO,
     "skin rows no longer push detail routes": "WyrmSkinRoot(open:" not in MAIN and "open(.presets)" not in MAIN,

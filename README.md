@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.15.0 (build 43)** and targets **iOS 15 or newer**.
+**0.16.0 (build 44)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -35,7 +35,7 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Live backend integration for profiles and avatars, notifications,
   leaderboards, connections, mutual direct conversations and voice-room
   control operations.
-- One-second arena directory updates, real TCP latency measurements, four-digit
+- Two-second arena directory updates, direct game-port TCP latency measurements, four-digit
   arena codes, and direct handoff from Play into the original C lobby.
 - Email-code voice verification plus separately presented official Wyrm rooms
   and player-created rooms.
@@ -47,9 +47,9 @@ compiled and tested by CI, then exposed as a workflow artifact.
   and 22 arena floors. Editors replace the lower panel in place and selections
   persist through a bounded engine-thread mailbox.
 - Skin Studio now supports 256-position code editing over the selected preset,
-  100 tinted atlas-bead colours, original preset eye variants, one-row-per-skin
-  browsing, and a device-gravity-driven tag preview. Motion is bounded behind
-  the head and respects Reduce Motion.
+  400 tinted atlas-bead colours in one palette, original preset eye variants,
+  tightly packed one-row-per-skin browsing, and a tail-directed tag swing set by
+  Chain and Swing controls. The preview respects Reduce Motion.
 - Social pull-to-refresh updates sections in place without restarting account
   bootstrap. Transient optional-service failures no longer become a global
   disconnected toast; notification bodies support Markdown and read/delete
@@ -90,8 +90,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.15.0-build-43-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.15.0-build-43-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.16.0-build-44-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.16.0-build-44-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

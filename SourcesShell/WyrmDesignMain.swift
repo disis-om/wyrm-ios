@@ -85,12 +85,15 @@ private struct WyrmPlayRoot: View {
     let open: (WyrmDesignRoute) -> Void
     @State private var nickname = ""
     @State private var arena = ""
+    @State private var userSelectedArena = false
     @State private var showArenas = false
     @State private var lastPlayedName = "Wyrm Player"
     @State private var lastHandledRefusal: UInt64 = 0
 
     private var nearest: WyrmArena? {
-        if let selected = services.arenas.first(where: { $0.endpoint == arena }), !services.isArenaTainted(selected.endpoint) { return selected }
+        if userSelectedArena,
+           let selected = services.arenas.first(where: { $0.endpoint == arena }),
+           !services.isArenaTainted(selected.endpoint) { return selected }
         return services.recommendedArena
     }
     private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
@@ -174,10 +177,14 @@ private struct WyrmPlayRoot: View {
         .task {
             while !Task.isCancelled {
                 await services.refreshArenasLive()
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
             }
         }
-        .fullScreenCover(isPresented: $showArenas) { WyrmArenaPicker(services: services, selection: $arena) }
+        .fullScreenCover(isPresented: $showArenas) {
+            WyrmArenaPicker(services: services, selection: Binding(
+                get: { userSelectedArena ? arena : services.recommendedArena?.endpoint ?? "" },
+                set: { arena = $0; userSelectedArena = true }))
+        }
     }
 
     private func enterOriginalLobby() {
@@ -217,21 +224,25 @@ private struct WyrmArenaPicker: View {
                                 HStack(spacing: 12) {
                                     VStack(alignment: .leading, spacing: 3) { Text("Arena \(arena.code)").font(.androidWyrm(15, .bold)); Text(arena.endpoint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
                                     Spacer()
-                                    VStack(alignment: .trailing, spacing: 3) { Text("\(arena.players) players").font(.androidWyrm(11.5, .semibold)); Text(latencyText(arena)).font(.androidWyrm(11, .bold)).foregroundColor(latencyColor(arena)) }
-                                }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(selection == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: selection == arena.endpoint ? 2 : 1))
+                                    Text(latencyText(arena)).font(.androidWyrm(12, .bold)).foregroundColor(latencyColor(arena))
+                                }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke((selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: (selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? 2 : 1))
                             }.buttonStyle(.plain)
                         }
                     }.padding(16)
                 }
             }
         }
-        .task { while !Task.isCancelled { await services.refreshArenasLive(); try? await Task.sleep(nanoseconds: 1_000_000_000) } }
+        .task { while !Task.isCancelled { await services.refreshArenasLive(); try? await Task.sleep(nanoseconds: 2_000_000_000) } }
     }
 
-    private func latencyText(_ arena: WyrmArena) -> String { services.arenaLatencies[arena.id].map { "\($0)ms" } ?? "measuring" }
+    private func latencyText(_ arena: WyrmArena) -> String {
+        guard let value = services.arenaLatencies[arena.id] else { return "Measuring…" }
+        return value > 0 ? "\(value)ms" : "—"
+    }
     private func latencyColor(_ arena: WyrmArena) -> Color {
-        guard let value = services.arenaLatencies[arena.id], !services.arenaLatencies.isEmpty else { return ATheme.quiet }
-        let values = services.arenaLatencies.values
+        guard let value = services.arenaLatencies[arena.id] else { return ATheme.quiet }
+        if value <= 0 { return Color(red: 0.75, green: 0.25, blue: 0.22) }
+        let values = services.arenaLatencies.values.filter { $0 > 0 }
         let low = values.min() ?? value, high = values.max() ?? value
         let ratio = high == low ? 0 : Double(value - low) / Double(high - low)
         return Color(red: 0.18 + 0.68 * ratio, green: 0.68 - 0.45 * ratio, blue: 0.27 - 0.08 * ratio)

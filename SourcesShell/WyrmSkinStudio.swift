@@ -1,7 +1,6 @@
 import SwiftUI
 import UIKit
 import ImageIO
-import CoreMotion
 
 /// SwiftUI owns this editor and its preview. It reads the exact immutable
 /// textures bundled with the engine; no engine render surface is embedded.
@@ -193,11 +192,31 @@ struct WyrmSkinRoot: View {
     @AppStorage("wyrm.ios.skin.tag-swing") private var swing = 1.0
     @AppStorage("wyrm.ios.skin.tag-scale") private var tagScale = 1.0
 
+    private static let palette: [UInt32] = (0..<400).map { index in
+        let family = index / 100
+        let slot = index % 100
+        let hue = Double(slot % 20) / 20
+        let variation = Double(slot / 20) / 4
+        let saturation: Double
+        let brightness: Double
+        switch family {
+        case 0: saturation = 0.72; brightness = 0.54 + variation * 0.40
+        case 1: saturation = 0.53 + variation * 0.27; brightness = 0.91 + variation * 0.09
+        case 2: saturation = 0.68 + variation * 0.25; brightness = 0.22 + variation * 0.23
+        default: saturation = 0.62 + variation * 0.22; brightness = 0.48 + variation * 0.26
+        }
+        return UIColor(hue: hue, saturation: saturation, brightness: brightness, alpha: 1).wyrmRGBA
+    }
+
+    private static func paletteColor(_ index: Int) -> UInt32 { palette[index] }
+
     init(engine: WyrmShellStore) {
         self.engine = engine
         let arguments = ProcessInfo.processInfo.arguments
         let initial: WyrmSkinStudioSection = arguments.contains("--smoke-skin-tags") ? .tags
             : arguments.contains("--smoke-skin-accessories") ? .accessories
+            : arguments.contains("--smoke-skin-presets") ? .presets
+            : arguments.contains("--smoke-skin-pattern") ? .pattern
             : .overview
         _section = State(initialValue: initial)
     }
@@ -357,19 +376,14 @@ struct WyrmSkinRoot: View {
                             .background(Color.white.opacity(0.72)).clipShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
                 }
-            }.padding(.horizontal, 16)
-            WyrmSectionLabel("Colour studio")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                ForEach(0..<100, id: \.self) { index in
-                    let hue = Double(index % 20) / 20
-                    let brightness = 0.54 + Double(index / 20) * 0.1
-                    let color = UIColor(hue: hue, saturation: 0.72, brightness: min(0.94, brightness), alpha: 1)
+                ForEach(0..<400, id: \.self) { index in
+                    let color = WyrmSkinRoot.paletteColor(index)
                     Button {
                         guard customGroups.count < 256 else { return }
                         var groups = customGroups; groups.append(9)
-                        savePattern(groups, colors: customColors + [color.wyrmRGBA])
+                        savePattern(groups, colors: customColors + [color])
                     } label: {
-                        WyrmAtlasImage(image: textures.beads[40]).colorMultiply(Color(color))
+                        WyrmTintedBead(image: textures.beads[40], rgba: color)
                             .padding(5).frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
                     }.buttonStyle(.plain).accessibilityLabel("Custom colour \(index + 1)")
                 }
@@ -559,7 +573,7 @@ private struct WyrmSkinPreview: View {
                 }
                 if let item = WyrmSkinCatalog.tags[safe: tagID],
                    let image = textures.tags[tagID] {
-                    WyrmGravityTag(item: item, image: image, head: head,
+                    WyrmSwingTag(item: item, image: image, head: head,
                                    headSize: scale, bounds: proxy.size,
                                    chain: chain, swing: swing, tagScale: tagScale,
                                    reduceMotion: reduceMotion)
@@ -744,8 +758,8 @@ private struct WyrmMiniSnake: View {
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: true) { context, size in
             let bead = min(size.height * 0.87, 38)
-            let step = bead * 0.42
-            let count = max(1, Int((size.width - bead) / step) + 1)
+            let step = bead * (8.0 / 48.0)
+            let count = max(1, Int(ceil(size.width / step)) + 1)
             for index in 0..<count {
                 let group = groups.isEmpty ? 7 : groups[index % groups.count]
                 guard let texture = textures.beads[group] else { continue }
@@ -754,6 +768,25 @@ private struct WyrmMiniSnake: View {
                                         width: bead, height: bead))
             }
         }.frame(maxWidth: .infinity)
+    }
+}
+
+private struct WyrmTintedBead: View {
+    let image: CGImage?
+    let rgba: UInt32
+    var body: some View {
+        if let image {
+            let mask = Image(decorative: image, scale: 1).resizable().interpolation(.high).scaledToFit()
+            mask.colorMultiply(Color(rgb: rgba))
+                .overlay {
+                    LinearGradient(stops: [
+                        .init(color: .black.opacity(0.47), location: 0),
+                        .init(color: .clear, location: 0.29),
+                        .init(color: .clear, location: 0.69),
+                        .init(color: .black.opacity(0.53), location: 1)
+                    ], startPoint: .top, endPoint: .bottom).mask(mask)
+                }
+        } else { Color.clear }
     }
 }
 
