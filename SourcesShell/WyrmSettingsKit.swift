@@ -143,27 +143,23 @@ struct WSAdvancedFold: View {
     }
 }
 
-/// `InkSwitch`: ink track when on, the card colour for the thumb.
+/// The system switch, so iOS 26 gives it the Liquid Glass thumb that lifts
+/// while it is held and dragged. Tinted with the theme's live colour.
 struct WSInkSwitch: View {
     let on: Bool
     var onToggle: ((Bool) -> Void)? = nil
     var body: some View {
-        ZStack(alignment: on ? .trailing : .leading) {
-            Capsule().fill(on ? ATheme.ink : ATheme.track)
-            Circle().fill(ATheme.card).frame(width: 22, height: 22).padding(2.5)
-                .shadow(color: Color.black.opacity(0.12), radius: 1.5, y: 1)
-        }
-        .frame(width: 44, height: 27)
-        .animation(.easeInOut(duration: 0.24), value: on)
-        .contentShape(Capsule())
-        .onTapGesture { onToggle?(!on) }
-        .accessibilityElement()
-        .accessibilityAddTraits(.isButton)
-        .accessibilityValue(on ? "On" : "Off")
+        Toggle("", isOn: Binding(get: { on }, set: { onToggle?($0) }))
+            .labelsHidden()
+            .tint(ATheme.live)
+            .fixedSize()
     }
 }
 
-/// `PaperSegmented`: a card-coloured pill that slides over a track.
+/// Android's `PaperSegmented`, drawn by the system segmented control: at rest
+/// a plain thumb, and on iOS 26 a Liquid Glass lens that lifts under the
+/// finger, can be dragged across segments and settles with a bounce — the
+/// same control the leaderboard uses.
 struct WSSegmented: View {
     let options: [String]
     let selected: Int
@@ -172,33 +168,12 @@ struct WSSegmented: View {
     let onSelect: (Int) -> Void
 
     var body: some View {
-        GeometryReader { proxy in
-            let count = max(options.count, 1)
-            let width = (proxy.size.width - 6) / CGFloat(count)
-            let safe = min(max(selected, 0), count - 1)
-            ZStack(alignment: .leading) {
-                RoundedRectangle(cornerRadius: 8, style: .continuous).fill(ATheme.card)
-                    .shadow(color: Color.black.opacity(0.06), radius: 2, y: 1)
-                    .frame(width: width, height: height - 6)
-                    .offset(x: CGFloat(safe) * width)
-                    .animation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.26), value: safe)
-                HStack(spacing: 0) {
-                    ForEach(options.indices, id: \.self) { index in
-                        Button { if index != safe { UISelectionFeedbackGenerator().selectionChanged() }; onSelect(index) } label: {
-                            Text(options[index])
-                                .font(.androidWyrm(fontSize, index == safe ? .semibold : .regular))
-                                .foregroundColor(index == safe ? ATheme.ink : ATheme.mute)
-                                .lineLimit(1).minimumScaleFactor(0.7)
-                                .frame(width: width, height: height - 6).contentShape(Rectangle())
-                        }.buttonStyle(.plain)
-                    }
-                }
-            }
-            .padding(3)
+        Picker("", selection: Binding(get: { min(max(selected, 0), max(options.count - 1, 0)) },
+                                      set: { next in if next != selected { onSelect(next) } })) {
+            ForEach(options.indices, id: \.self) { index in Text(options[index]).tag(index) }
         }
-        .frame(height: height)
-        .background(ATheme.track)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 }
 
@@ -224,13 +199,15 @@ struct WSBoolRow: View {
     var body: some View {
         VStack(spacing: 0) {
             if !first { WSHairline() }
-            Button { onToggle(!on) } label: {
-                HStack(spacing: 12) {
-                    WSRowText(title: title, detail: detail).frame(maxWidth: .infinity, alignment: .leading)
-                    WSInkSwitch(on: on).allowsHitTesting(false)
-                }
-                .padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 58).contentShape(Rectangle())
-            }.buttonStyle(.plain)
+            HStack(spacing: 12) {
+                // The words toggle too, like a settings row; the switch itself
+                // stays a live system control so its glass thumb can be dragged.
+                WSRowText(title: title, detail: detail).frame(maxWidth: .infinity, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .onTapGesture { onToggle(!on) }
+                WSInkSwitch(on: on, onToggle: onToggle)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 58)
         }
     }
 }

@@ -22,6 +22,14 @@ void WyrmIOSApplySkinSelection(tenv* env);
 const char* WyrmIOSTeamPresenceSnapshot(void);
 void WyrmIOSSetTeamMembers(const char* packed);
 void WyrmIOSSetEnginePresentation(bool enabled);
+/* SwiftUI draws the landscape Ready Room and the layout editor above the
+   rotated engine surface; these let it drive the original home mailbox. */
+void WyrmIOSSetShellOverlay(bool enabled);
+void WyrmIOSSaveNickname(const char* name);
+void WyrmIOSLobbyHome(void);
+void WyrmIOSEnterLayoutEditor(const char* name);
+void WyrmIOSExitLayoutEditor(void);
+void WyrmIOSToggleEditorLeaderboard(void);
 /* Twelve ARGB roles in arena_theme_role order; stored atomically. */
 void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);

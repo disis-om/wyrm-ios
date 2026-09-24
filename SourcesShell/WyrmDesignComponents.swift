@@ -318,7 +318,8 @@ struct WyrmRootTabBar: View {
                 })
         }
         .frame(height: 56)
-        .shadow(color: ATheme.ink.opacity(0.13), radius: 18, y: 8)
+        // A soft contact shadow only; a heavy one makes clear glass read as a slab.
+        .shadow(color: ATheme.ink.opacity(0.07), radius: 14, y: 6)
         .padding(.horizontal, 18)
     }
 
@@ -333,7 +334,10 @@ struct WyrmRootTabBar: View {
             }
             Text(tab.rawValue).font(.androidWyrm(8.5, selection == tab ? .bold : .semibold)).lineLimit(1)
         }
-        .foregroundColor(selection == tab ? ATheme.ink : ATheme.ink.opacity(0.58))
+        // Clear glass shows whatever scrolls beneath it, so the glyphs carry a
+        // paper halo in every theme and idle tabs keep the theme's tab colour.
+        .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
+        .shadow(color: ATheme.paper.opacity(0.7), radius: 1.4)
         .animation(.easeOut(duration: 0.16), value: selection)
     }
 
@@ -394,39 +398,12 @@ private struct WyrmTabGlassSurface: View {
             GlassEffectContainer(spacing: 0) {
                 Color.clear
                     .contentShape(Capsule())
-                    .glassEffect(.regular.tint(ATheme.paper.opacity(0.035)).interactive(), in: .capsule)
-                    .overlay(Capsule().stroke(Color.white.opacity(0.5), lineWidth: 0.7))
-                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.1), lineWidth: 0.45))
-            }
-        } else {
-            fallback
-        }
-#else
-        fallback
-#endif
-    }
-    private var fallback: some View {
-        RoundedRectangle(cornerRadius: 28, style: .continuous)
-            .fill(.ultraThinMaterial)
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.paper.opacity(0.18)))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.ink.opacity(0.12), lineWidth: 0.8))
-    }
-}
-
-private struct WyrmTabSelectionGlass: View {
-    var lifted = false
-    @ViewBuilder
-    var body: some View {
-#if compiler(>=6.2)
-        if #available(iOS 26.0, *) {
-            GlassEffectContainer(spacing: 0) {
-                Color.clear
-                    .contentShape(Capsule())
-                    // Lifted glass turns clear, so the icon beneath reads
-                    // through the lens the way the system control does.
-                    .glassEffect(lifted ? Glass.clear.interactive() : Glass.regular.interactive(), in: .capsule)
-                    .overlay(Capsule().stroke(Color.white.opacity(lifted ? 0.9 : 0.72), lineWidth: lifted ? 1.1 : 0.9))
-                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.07), lineWidth: 0.45))
+                    // Clear glass: the page refracts through the bar instead of
+                    // being frosted out. A breath of paper keeps edges readable.
+                    .glassEffect(Glass.clear.tint(ATheme.paper.opacity(0.08)).interactive(), in: .capsule)
+                    .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],
+                                                             startPoint: .top, endPoint: .bottom), lineWidth: 0.8))
+                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.06), lineWidth: 0.45))
             }
         } else {
             fallback
@@ -437,11 +414,57 @@ private struct WyrmTabSelectionGlass: View {
     }
     private var fallback: some View {
         Capsule(style: .continuous)
-            .fill(lifted ? Material.ultraThinMaterial : Material.thinMaterial)
-            .overlay(Capsule(style: .continuous).fill(ATheme.ink.opacity(lifted ? 0.03 : 0.07)))
-            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(lifted ? 0.85 : 0.4), lineWidth: lifted ? 1.2 : 0.8))
-            .overlay(Capsule(style: .continuous).stroke(ATheme.ink.opacity(0.12), lineWidth: 0.5))
-            .shadow(color: ATheme.ink.opacity(0.08), radius: 8, y: 3)
+            .fill(.ultraThinMaterial)
+            .overlay(Capsule(style: .continuous).fill(ATheme.paper.opacity(0.06)))
+            .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.4), lineWidth: 0.8))
+            .overlay(Capsule(style: .continuous).stroke(ATheme.ink.opacity(0.08), lineWidth: 0.5))
+    }
+}
+
+/// At rest a plain tinted capsule, as the system segmented thumb is; only
+/// while a finger holds, drags or taps it does it become a clear lens.
+private struct WyrmTabSelectionGlass: View {
+    var lifted = false
+    var body: some View {
+        ZStack {
+            Capsule(style: .continuous)
+                .fill(ATheme.ink.opacity(ATheme.dark ? 0.16 : 0.085))
+                .opacity(lifted ? 0 : 1)
+            lens.opacity(lifted ? 1 : 0)
+        }
+    }
+
+    @ViewBuilder
+    private var lens: some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            GlassEffectContainer(spacing: 0) {
+                Color.clear
+                    .contentShape(Capsule())
+                    .glassEffect(Glass.clear.interactive(), in: .capsule)
+                    .overlay(prismEdge)
+            }
+        } else {
+            fallback
+        }
+#else
+        fallback
+#endif
+    }
+
+    /// A bright rim along the top that fades round the sides: the edge light
+    /// that makes the lens read as a raised drop rather than a flat disc.
+    private var prismEdge: some View {
+        Capsule(style: .continuous)
+            .stroke(LinearGradient(colors: [Color.white.opacity(0.95), Color.white.opacity(0.25), Color.white.opacity(0.6)],
+                                   startPoint: .top, endPoint: .bottom), lineWidth: 1.1)
+    }
+
+    private var fallback: some View {
+        Capsule(style: .continuous)
+            .fill(Material.ultraThinMaterial)
+            .overlay(Capsule(style: .continuous).fill(Color.white.opacity(0.06)))
+            .overlay(prismEdge)
     }
 }
 

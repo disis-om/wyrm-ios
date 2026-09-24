@@ -4,6 +4,7 @@
 #include "game/arena_theme.h"
 #include <stdio.h>
 #include <math.h>
+#include <stdatomic.h>
 
 static ImU32 apple_rgba(unsigned char r, unsigned char g, unsigned char b,
                         unsigned char a) {
@@ -151,9 +152,23 @@ static void apple_draw_lobby(tenv* env) {
 
 /* This is only the Apple shell. Every Play action enters the original mailbox;
  * simulation, rendering, input and protocol remain original engine functions. */
+static atomic_bool apple_home_requested;
+
+/* Main thread (SwiftUI) asks; the engine thread leaves the lobby next frame,
+   exactly as the native Home button below does. */
+void WyrmIOSLobbyHome(void) { atomic_store(&apple_home_requested, true); }
+
 void WyrmIOSDrawShell(tenv* env) {
-  // Android owns this Ready Room in Compose; Apple draws the same bridge over
-  // the original engine's intentionally black LOBBY clear.
+  if (atomic_exchange(&apple_home_requested, false) &&
+      env->usr->gdata.curr_screen == LOBBY) {
+    save_user_settings(&env->usr->usrs);
+    env->usr->gdata.stay_in_lobby = false;
+    env->usr->gdata.curr_screen = TITLE_SCREEN;
+    WyrmIOSSetEnginePresentation(false);
+    return;
+  }
+  // Android owns this Ready Room in Compose; SwiftUI draws it above the
+  // rotated surface. This ImGui copy only shows if that overlay is absent.
   if (env->usr->gdata.curr_screen == LOBBY) {
     apple_draw_lobby(env);
     return;

@@ -14,6 +14,10 @@ PAGES = (ROOT / "SourcesShell" / "WyrmSettingsPages.swift").read_text(encoding="
 KIT = (ROOT / "SourcesShell" / "WyrmSettingsKit.swift").read_text(encoding="utf-8")
 THEME = (ROOT / "SourcesShell" / "WyrmTheme.swift").read_text(encoding="utf-8")
 SHELL_C = (ROOT / "SourcesOriginal" / "WyrmShell.c").read_text(encoding="utf-8")
+LOBBY = (ROOT / "SourcesShell" / "WyrmLobby.swift").read_text(encoding="utf-8")
+ENTRY = (ROOT / "SourcesShell" / "WyrmDesignEntry.swift").read_text(encoding="utf-8")
+MAIN_M = (ROOT / "SourcesOriginal" / "Main.m").read_text(encoding="utf-8")
+MAILBOX = (ROOT / "SourcesOriginal" / "HomeMailbox.inc").read_text(encoding="utf-8")
 
 
 checks = {
@@ -43,6 +47,17 @@ checks = {
     "eight Android themes with intensity": THEME.count("case .") >= 16 and "func withIntensity(_ intensity: Double) -> WyrmPalette" in THEME,
     "theme reaches the engine atomically": "arena_theme_set(next, dark)" in SHELL_C and "WyrmIOSSetArenaTheme" in THEME,
     "tab lens lifts and settles with a spring": "lifted" in COMPONENTS and ".interpolatingSpring(stiffness: 320, damping: 14)" in COMPONENTS,
+    "Ready Room follows Android placement and theme": all(s in LOBBY for s in (
+        "Ready room", "Enter the arena", "Selected arena", "Playing as", "Quick settings", "Play with AI", "WyrmBrandStroke()"))
+        and "ATheme.paper" in LOBBY,
+    "shell stays above the engine for lobby and editor": "reported_screen == LOBBY || shell_overlay" in MAIN_M
+        and "WyrmEngineScreenChanged" in MAIN_M and "UIColor.clearColor" in MAIN_M,
+    "layout editor runs over the original AI editor arena": "pending_ai_editor_enter = true" in MAILBOX
+        and "engine.openLayoutEditor()" in PAGES and "fullScreenCover(isPresented: $editing)" not in PAGES
+        and ".opacity(0.012)" in PAGES,
+    "segmented pills and switches are system Liquid Glass controls": ".pickerStyle(.segmented)" in KIT and "Toggle(\"\", isOn:" in KIT,
+    "cold start syncs behind the launch mark": "launchSyncing" in ENTRY and "WyrmDesignLaunch()" in ENTRY,
+    "tab pill rests plain and lifts into clear glass": "Glass.clear.interactive()" in COMPONENTS and ".opacity(lifted ? 0 : 1)" in COMPONENTS,
     "no GitHub in player-visible settings copy": "GitHub" not in PAGES and "GitHub" not in KIT,
     "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
     "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,

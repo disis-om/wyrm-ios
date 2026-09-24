@@ -255,6 +255,23 @@ final class WyrmThemeStore: ObservableObject {
     private func recompute() {
         palette = theme.palette.withIntensity(intensity)
         publishArenaTheme()
+        applyControlAppearance()
+    }
+
+    /// System segmented controls take their type from UIAppearance, which is
+    /// read when a control is created; a theme change rebuilds the shell, so
+    /// every picker after it picks up the new palette.
+    func applyControlAppearance() {
+        func manrope(_ weight: UIFont.Weight, _ size: CGFloat) -> UIFont {
+            let descriptor = UIFontDescriptor(fontAttributes: [
+                .family: "Manrope",
+                .traits: [UIFontDescriptor.TraitKey.weight: weight.rawValue],
+            ])
+            return UIFont(descriptor: descriptor, size: size)
+        }
+        let control = UISegmentedControl.appearance()
+        control.setTitleTextAttributes([.font: manrope(.medium, 13), .foregroundColor: UIColor(palette.mute.color)], for: .normal)
+        control.setTitleTextAttributes([.font: manrope(.bold, 13), .foregroundColor: UIColor(palette.ink.color)], for: .selected)
     }
 
     /// The engine's twelve arena roles, in `arena_theme_role` order.

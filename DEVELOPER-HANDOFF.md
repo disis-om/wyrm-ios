@@ -1,6 +1,13 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.5 (51)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.6 (52)** · Minimum iOS: **15.0**
+
+Build 52 moves the Ready Room to SwiftUI above the rotated engine (Main.m keeps
+the shell visible and clear while `screen == LOBBY` or `WyrmIOSSetShellOverlay`),
+opens the layout editor over the original AI editor arena
+(`WyrmIOSEnterLayoutEditor` → `pending_ai_editor_enter`), uses system segmented
+controls and switches for Liquid Glass, and syncs a restored session behind the
+launch mark instead of a separate "Syncing" screen.
 
 Build 51 ports the Android settings pages one for one (SourcesShell/WyrmSettingsKit.swift,
 WyrmSettingsPages.swift), adds the Android theme palettes with an engine bridge

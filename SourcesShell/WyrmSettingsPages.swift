@@ -188,7 +188,6 @@ struct WyrmControlsContent: View {
     @ObservedObject var engine: WyrmShellStore
     @State var behaviourOpen = false
     @State var zoomOpen = false
-    @State var editing = false
 
     var body: some View {
         let steeringSetting = engine.setting("controls.joystick_mode")
@@ -249,12 +248,11 @@ struct WyrmControlsContent: View {
             }
 
             VStack(spacing: 9) {
-                WSPrimaryButton(label: "Arrange the layout") { editing = true }
+                WSPrimaryButton(label: "Arrange the layout") { engine.openLayoutEditor() }
                 WSOutlineButton(label: "Reset positions") { engine.reset(2, message: "Control positions reset") }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Opens sideways, the way you hold the phone in a match.")
         }
-        .fullScreenCover(isPresented: $editing) { WyrmLayoutEditor(engine: engine) { editing = false } }
     }
 }
 
@@ -375,8 +373,10 @@ struct WyrmPaperZoomBar: View {
             Capsule().fill(ATheme.card)
             Rectangle().fill(ATheme.track)
                 .frame(width: vertical ? thickness : length * value, height: vertical ? length * value : thickness)
+            // Android's PaperZoomBar: the knob rides the centre line and only
+            // travels along the bar, four points in from either end.
             Circle().fill(ATheme.ink).frame(width: knob, height: knob)
-                .offset(x: vertical ? 4 : travel * value + 4, y: vertical ? travel * value + 4 : 4)
+                .offset(x: vertical ? 0 : travel * value + 4, y: vertical ? travel * value + 4 : 0)
         }
         .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
         .clipShape(Capsule())
@@ -408,7 +408,6 @@ struct WyrmButtonsPage: View {
 
 struct WyrmButtonsContent: View {
     @ObservedObject var engine: WyrmShellStore
-    @State var editing = false
     /// Same allowlist as the Android keys page and the engine.
     static let order = [1, 2, 3, 4, 6, 7, 8, 9]
     static func allowed(_ keys: [EngineHotkey]) -> [EngineHotkey] { order.compactMap { id in keys.first { $0.id == id } } }
@@ -460,14 +459,13 @@ struct WyrmButtonsContent: View {
             WSCard { WSRows(rows: [size, opacity].compactMap { $0 }, engine: engine) }
 
             VStack(spacing: 9) {
-                WSPrimaryButton(label: "Arrange the layout", enabled: !visible.isEmpty) { editing = true }
+                WSPrimaryButton(label: "Arrange the layout", enabled: !visible.isEmpty) { engine.openLayoutEditor() }
                 WSOutlineButton(label: "Reset positions") { engine.reset(4, message: "Button positions reset") }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption(visible.isEmpty
                       ? "Turn on at least one button above before arranging the layout."
                       : "The preview uses each button's real position, size and opacity. Toggle and Hold choose how a press behaves; the switch controls whether it appears.")
         }
-        .fullScreenCover(isPresented: $editing) { WyrmLayoutEditor(engine: engine) { editing = false } }
     }
 }
 
@@ -475,7 +473,6 @@ struct WyrmButtonsContent: View {
 
 struct WyrmArenaUIContent: View {
     @ObservedObject var engine: WyrmShellStore
-    @State var editing = false
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             WSSectionLabel("Arena HUD", top: 18)
@@ -488,12 +485,11 @@ struct WyrmArenaUIContent: View {
             WSCard { WSRows(rows: ["general.minimap_size", "general.lb_font", "general.stats_font"].compactMap { engine.setting($0) }, engine: engine) }
             WSCaption("These are the same saved values shown in Settings › Display. Changes stay synchronized.")
             VStack(spacing: 9) {
-                WSPrimaryButton(label: "Arrange arena UI") { editing = true }
+                WSPrimaryButton(label: "Arrange arena UI") { engine.openLayoutEditor() }
                 WSOutlineButton(label: "Reset arena positions") { engine.reset(8, message: "Arena positions reset") }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Leaderboard, stats, minimap, team roster and chat can each be placed independently in landscape.")
         }
-        .fullScreenCover(isPresented: $editing) { WyrmLayoutEditor(engine: engine) { editing = false } }
     }
 }
 
@@ -1209,20 +1205,22 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
-        "Settings rebuilt to match the Android app page for page: Display, Controls, On-screen buttons, Arena UI, Modes, Bot, Food, Notifications, Privacy, Themes and Backup.",
-        "Arrange the layout: a sideways editor for the joystick, boost, zoom bar, buttons, minimap, leaderboard, stats, team and chat. Hold any object for size and opacity.",
-        "Eight themes with an intensity control. The lobby and arena interface follow the chosen theme.",
-        "Play › Loadout opens Food, Controls (with Buttons and Arena UI tabs) and Modes directly.",
-        "Backups are a single file in Files; restore brings back every setting, button, skin and theme.",
-        "The tab bar lens lifts like Liquid Glass while you drag or tap it and settles with a bounce.",
+        "The Ready Room is laid out like the Android app — the faint W top right, the selected arena card, Playing as and the four actions — and follows your theme.",
+        "Arrange the layout now opens over a live bot arena, so the real joystick, buttons, minimap and leaderboard move under your finger. Tap the leaderboard to toggle it.",
+        "Every switch and segmented pill is the system control: on iOS 26 it lifts into Liquid Glass and can be dragged between options.",
+        "The tab bar is clear glass; its pill rests flat and lifts into a lens when held, dragged or tapped. Icons keep their contrast in every theme.",
+        "Opening the app syncs your account behind the launch mark; \"Syncing your Wyrm…\" appears only after signing in or creating an account.",
+        "The zoom bar preview knob sits on the bar's centre line again.",
     ]
 }
 
 // MARK: - Layout editor
 
 /// Android's `UnifiedArenaLayoutEditor`: one sideways canvas for every piece of
-/// the match surface. Positions are the engine's normalized centres, written
-/// live; Cancel puts back what was there when the editor opened.
+/// the match surface, laid over a bot-driven AI arena. The engine draws the
+/// real joystick, buttons, minimap and leaderboard; this layer holds only
+/// near-invisible drag targets at the same places, like Android's 0.01 alpha.
+/// Positions are written live; Cancel puts back what was there on entry.
 struct WyrmLayoutEditor: View {
     @ObservedObject var engine: WyrmShellStore
     let onClose: () -> Void
@@ -1249,18 +1247,8 @@ struct WyrmLayoutEditor: View {
     }
 
     var body: some View {
-        GeometryReader { outer in
-            // The phone stays portrait; the editor is drawn sideways with the
-            // same quarter turn the engine surface uses for the arena.
-            let size = CGSize(width: outer.size.height, height: outer.size.width)
-            canvas(size)
-                .frame(width: size.width, height: size.height)
-                .rotationEffect(.degrees(90))
-                .position(x: outer.size.width / 2, y: outer.size.height / 2)
-        }
-        .ignoresSafeArea()
-        .background(ATheme.paper.ignoresSafeArea())
-        .statusBar(hidden: true)
+        WyrmLandscapeStage { size, _ in canvas(size) }
+            .statusBar(hidden: true)
         .onAppear { snapshot = engine.settings; keySnapshot = engine.hotkeys }
     }
 
@@ -1277,8 +1265,9 @@ struct WyrmLayoutEditor: View {
         let chatScale = engine.value("layout.chat_scale", 1)
 
         return ZStack {
-            ATheme.well
-            Text("ARENA").font(.androidWyrm(40, .bold)).tracking(8).foregroundColor(ATheme.ink.opacity(0.05))
+            // Clear: the AI arena shows through. The near-zero fill still
+            // catches stray touches so they never reach the engine below.
+            Color.black.opacity(0.001)
             Group {
                 if engine.setting("controls.joystick_mode")?.index != 2 {
                     piece("layout.joystick", size, CGSize(width: 112 * joystick, height: 112 * joystick),
@@ -1323,7 +1312,7 @@ struct WyrmLayoutEditor: View {
             }
             piece(HUD.leaderboard.prefix, size, CGSize(width: 250 * lbScale / scale, height: 132 * lbScale / scale),
                   Options(id: "leaderboard", title: "LEADERBOARD", sliders: [Slider(label: "TEXT SIZE", id: "general.lb_font", range: 0...2, whole: true)]),
-                  fallback: HUD.leaderboard.fallback) {
+                  fallback: HUD.leaderboard.fallback, onTap: { engine.toggleEditorLeaderboard() }) {
                 panel("LEADERBOARD\n1  Wyrm Player     9503\n2  Northwind       2819\n3  Orbit            418\n4  Meadow           389\n5  Drift            248",
                       CGSize(width: 250 * lbScale / scale, height: 132 * lbScale / scale))
             }
@@ -1365,11 +1354,12 @@ struct WyrmLayoutEditor: View {
 
     /// A draggable control or HUD panel whose position is a `prefix_x/_y` pair.
     private func piece<V: View>(_ prefix: String, _ area: CGSize, _ child: CGSize, _ more: Options,
-                                fallback: CGPoint = CGPoint(x: 0.5, y: 0.7), @ViewBuilder content: () -> V) -> some View {
+                                fallback: CGPoint = CGPoint(x: 0.5, y: 0.7), onTap: (() -> Void)? = nil,
+                                @ViewBuilder content: () -> V) -> some View {
         let x = engine.setting("\(prefix)_x")?.number ?? fallback.x
         let y = engine.setting("\(prefix)_y")?.number ?? fallback.y
         return draggable(key: prefix, centre: wsPreviewCentre(x: x, y: y, in: area, child: child), area: area, child: child, more: more,
-                         move: { engine.moveLayout(prefix, x: $0.x, y: $0.y) }, content: content)
+                         onTap: onTap, move: { engine.moveLayout(prefix, x: $0.x, y: $0.y) }, content: content)
     }
 
     private func keyPiece<V: View>(_ key: EngineHotkey, _ area: CGSize, _ child: CGSize, _ more: Options, @ViewBuilder content: () -> V) -> some View {
@@ -1384,10 +1374,13 @@ struct WyrmLayoutEditor: View {
     /// Reads the centre when the drag begins and adds the whole translation to
     /// it, so the piece follows the finger instead of chasing stale positions.
     private func draggable<V: View>(key: String, centre: CGPoint, area: CGSize, child: CGSize, more: Options,
+                                    onTap: (() -> Void)? = nil,
                                     move: @escaping (CGPoint) -> Void, @ViewBuilder content: () -> V) -> some View {
         content()
+            .opacity(0.012)
             .frame(width: child.width, height: child.height)
             .contentShape(Rectangle())
+            .simultaneousGesture(TapGesture().onEnded { onTap?() })
             .position(centre)
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("wyrm-layout"))
                 .onChanged { value in

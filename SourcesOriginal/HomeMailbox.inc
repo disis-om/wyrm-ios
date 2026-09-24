@@ -25,6 +25,38 @@ void WyrmIOSRequestLobby(const char* name, const char* address) {
   SDL_UnlockMutex(home_mutex);
 }
 
+void WyrmIOSSaveNickname(const char* name) {
+  if (!home_mutex || !name) return;
+  SDL_LockMutex(home_mutex);
+  snprintf(pending_saved_nickname, sizeof(pending_saved_nickname), "%s", name);
+  pending_nickname_save = true;
+  SDL_UnlockMutex(home_mutex);
+}
+
+/* Android's layout editor: a bot-driven AI arena drawing the real controls
+ * and HUD while the editor above it only captures the drags. */
+void WyrmIOSEnterLayoutEditor(const char* name) {
+  if (!home_mutex || !name) return;
+  SDL_LockMutex(home_mutex);
+  snprintf(pending_nickname, sizeof(pending_nickname), "%s", name);
+  pending_ai_editor_enter = true;
+  SDL_UnlockMutex(home_mutex);
+}
+
+void WyrmIOSExitLayoutEditor(void) {
+  if (!home_mutex) return;
+  SDL_LockMutex(home_mutex);
+  pending_ai_editor_exit = true;
+  SDL_UnlockMutex(home_mutex);
+}
+
+void WyrmIOSToggleEditorLeaderboard(void) {
+  if (!home_mutex) return;
+  SDL_LockMutex(home_mutex);
+  pending_editor_leaderboard_toggle = true;
+  SDL_UnlockMutex(home_mutex);
+}
+
 /* Engine-thread refusal publication for the Apple product shell. The native
  * engine remains the authority for deciding that an attempt failed and for
  * applying the 120-second taint. Swift receives only an immutable event copy
