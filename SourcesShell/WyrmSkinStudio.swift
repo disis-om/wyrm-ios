@@ -327,10 +327,10 @@ struct WyrmSkinRoot: View {
                         preset = index; customEnabled = false; apply(preset: index, custom: false)
                     } label: {
                         HStack(spacing: 12) {
-                            Text(String(format: "%02d", index + 1)).font(.androidWyrm(10.5, .bold)).foregroundColor(ATheme.quiet).frame(width: 24)
+                            Text(String(format: "%02d", index + 1)).font(.androidWyrm(10.5, .bold))
+                                .foregroundColor(!customEnabled && preset == index ? ATheme.live : ATheme.quiet).frame(width: 24)
                             WyrmMiniSnake(textures: textures, groups: WyrmSkinCatalog.presets[index])
                                 .frame(height: 38)
-                            if !customEnabled && preset == index { Image(systemName: "checkmark.circle.fill").foregroundColor(ATheme.live) }
                         }.frame(maxWidth: .infinity).frame(height: 57)
                     }.buttonStyle(.plain).accessibilityLabel("Default skin \(index + 1)")
                     Rectangle().fill(ATheme.rule).frame(height: 1)
