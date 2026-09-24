@@ -106,6 +106,9 @@ signing material is never stored in this repository.
 
 ## Repository guide
 
+For build/signing steps, source-reference rules and the current physical-device
+arena investigation, read [the developer handoff](DEVELOPER-HANDOFF.md).
+
 | Path | Purpose |
 |---|---|
 | `SourcesShell/` | SwiftUI interface, account/services clients and diagnostics |
@@ -131,4 +134,5 @@ Physical-device acceptance, realtime voice audio, APNs, avatar upload and
 Files-based backup/restore remain in development. Voice room
 authority and verification are wired; the realtime media adapter is not. CI success
 proves Apple compilation and Simulator behavior; it is not a physical-device or
-App Store acceptance claim.
+App Store acceptance claim. Build 49 still has intermittent short-lived arena
+connections on the owner's iPhone; the cause is under investigation.
