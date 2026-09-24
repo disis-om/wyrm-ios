@@ -89,7 +89,11 @@ struct WyrmReadyRoom: View {
     }
 
     private func readyRoom(_ size: CGSize, _ safe: EdgeInsets) -> some View {
-        ZStack(alignment: .topTrailing) {
+        // Android splits the row by weight, 1.25 : 0.92, with 34 between.
+        let inner = max(size.width - safe.leading - safe.trailing - 80, 200)
+        let cardWidth = (inner - 34) * 1.25 / 2.17
+        let nameWidth = inner - 34 - cardWidth
+        return ZStack(alignment: .topTrailing) {
             WyrmBrandStroke()
                 .stroke(ATheme.ink.opacity(0.045), style: StrokeStyle(lineWidth: 110 * 0.16, lineCap: .round, lineJoin: .round))
                 .frame(width: 110, height: 110)
@@ -102,7 +106,7 @@ struct WyrmReadyRoom: View {
                 }
                 Spacer().frame(height: 18)
                 Rectangle().fill(ATheme.rule).frame(height: 1)
-                Spacer(minLength: 8).frame(maxHeight: .infinity).layoutPriority(-0.35)
+                Spacer(minLength: 8)
 
                 HStack(alignment: .bottom, spacing: 34) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -118,11 +122,10 @@ struct WyrmReadyRoom: View {
                         }
                     }
                     .padding(.horizontal, 22).padding(.vertical, 18)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: cardWidth, alignment: .leading)
                     .background(ATheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                    .layoutPriority(1.25)
 
                     VStack(alignment: .leading, spacing: 0) {
                         WyrmCapsLabel("Playing as")
@@ -144,10 +147,10 @@ struct WyrmReadyRoom: View {
                             .frame(height: 1)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 4)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(width: nameWidth, alignment: .leading)
                 }
 
-                Spacer(minLength: 8).frame(maxHeight: .infinity)
+                Spacer(minLength: 8)
 
                 HStack(spacing: 10) {
                     paperButton("Quick settings", "slider.horizontal.3", width: 176, enabled: !entering) {
