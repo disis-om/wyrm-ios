@@ -273,10 +273,10 @@ private struct WyrmArenaPicker: View {
                             sectionLabel("RECENTLY JOINED")
                             ForEach(recentRows) { arena in arenaRow(arena) }
                         }
-                        sectionLabel(search.isEmpty ? "LOWEST PING" : "SEARCH RESULTS")
+                        sectionLabel(search.isEmpty ? "ARENAS" : "SEARCH RESULTS")
                         ForEach(showAll || !search.isEmpty ? ranked : Array(ranked.prefix(10))) { arena in arenaRow(arena) }
                         if search.isEmpty && ranked.count > 10 {
-                            Button(showAll ? "Show top 10" : "See all \(ranked.count) arenas") { withAnimation { showAll.toggle() } }
+                            Button(showAll ? "Show less" : "See all") { withAnimation { showAll.toggle() } }
                                 .font(.androidWyrm(13, .bold)).frame(maxWidth: .infinity).padding(14)
                         }
                         if !saved.isEmpty {
