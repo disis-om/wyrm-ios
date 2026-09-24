@@ -89,11 +89,15 @@ private struct WyrmPlayRoot: View {
     @State private var showArenas = false
     @State private var lastPlayedName = "Wyrm Player"
     @State private var lastHandledRefusal: UInt64 = 0
+    @AppStorage("wyrm.ios.arena.recent") private var recentArenaEndpoints = ""
+    @AppStorage("wyrm.ios.arena.saved") private var savedArenaEndpoints = ""
 
     private var nearest: WyrmArena? {
         if userSelectedArena,
            let selected = services.arenas.first(where: { $0.endpoint == arena }),
            !services.isArenaTainted(selected.endpoint) { return selected }
+        if userSelectedArena, savedArenaEndpoints.split(separator: ";").contains(Substring(arena)),
+           let selected = WyrmArena.custom(arena), !services.isArenaTainted(selected.endpoint) { return selected }
         return services.recommendedArena
     }
     private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
@@ -124,7 +128,7 @@ private struct WyrmPlayRoot: View {
                     VStack(alignment: .leading, spacing: 0) {
                         HStack(spacing: 6) { Circle().fill(nearest == nil ? ATheme.quiet : ATheme.live).frame(width: 6, height: 6); Text(nearest == nil ? "ARENA DIRECTORY" : "LIVE ARENA").font(.androidWyrm(10.5, .bold)).tracking(0.8).foregroundColor(nearest == nil ? ATheme.quiet : ATheme.live) }
                         HStack(alignment: .bottom) {
-                            Text(nearest.map { "Arena \($0.code)" } ?? "Pick a server").font(.androidWyrm(21, .bold)).lineLimit(1)
+                            Text(nearest.map { $0.number == 0 ? "Custom arena" : "Arena \($0.code)" } ?? "Pick a server").font(.androidWyrm(21, .bold)).lineLimit(1)
                             Spacer()
                             Text(nearest == nil ? "" : "\(nearest!.players) players").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
                         }.padding(.top, 11)
@@ -190,6 +194,10 @@ private struct WyrmPlayRoot: View {
     private func enterOriginalLobby() {
         guard let selected = nearest else { return }
         arena = selected.endpoint
+        var recent = recentArenaEndpoints.split(separator: ";").map(String.init)
+        recent.removeAll { $0 == selected.endpoint }
+        recent.insert(selected.endpoint, at: 0)
+        recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
         lastPlayedName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
         engine.enterLobby(name: lastPlayedName, address: selected.endpoint)
     }
@@ -205,42 +213,137 @@ private struct WyrmArenaPicker: View {
     @Binding var selection: String
     @Environment(\.presentationMode) private var presentation
     @State private var search = ""
+    @State private var showAll = false
+    @State private var showSaved = false
+    @State private var showAdd = false
+    @State private var customAddress = ""
+    @State private var addressError = false
+    @State private var customLatencies: [String: Int] = [:]
+    @AppStorage("wyrm.ios.arena.recent") private var recentArenaEndpoints = ""
+    @AppStorage("wyrm.ios.arena.saved") private var savedArenaEndpoints = ""
 
-    private var filtered: [WyrmArena] { search.isEmpty ? services.arenas : services.arenas.filter { $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search) } }
+    private var saved: [String] { savedArenaEndpoints.split(separator: ";").map(String.init) }
+    private var recent: [String] { recentArenaEndpoints.split(separator: ";").map(String.init) }
+
+    private var filtered: [WyrmArena] {
+        let live = services.arenas.filter(\.active)
+        let matching = search.isEmpty ? live : live.filter {
+            $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search)
+        }
+        return matching.sorted { left, right in
+            let leftPing = services.arenaLatencies[left.id].flatMap { $0 > 0 ? $0 : nil } ?? .max
+            let rightPing = services.arenaLatencies[right.id].flatMap { $0 > 0 ? $0 : nil } ?? .max
+            if leftPing != rightPing { return leftPing < rightPing }
+            return left.code < right.code
+        }
+    }
+    private var recentRows: [WyrmArena] {
+        recent.compactMap { endpoint in
+            services.arenas.first(where: { $0.endpoint == endpoint && $0.active })
+                ?? (saved.contains(endpoint) ? WyrmArena.custom(endpoint) : nil)
+        }.filter { search.isEmpty || $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search) }
+    }
+    private var ranked: [WyrmArena] { filtered.filter { row in !recent.contains(row.endpoint) } }
+
     var body: some View {
         ZStack {
             WyrmPaperBackground()
             VStack(spacing: 0) {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) { Text("LIVE DIRECTORY").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.live); Text("Pick a server").font(.androidWyrm(27, .bold)) }
-                    Spacer(); Button("Close") { presentation.wrappedValue.dismiss() }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                    Spacer()
+                    Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).frame(width: 36, height: 36).background(Color.white).clipShape(Circle()) }
+                        .buttonStyle(.plain).accessibilityLabel("Add custom arena IP")
+                    Button("Close") { presentation.wrappedValue.dismiss() }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
                 }.padding(20)
                 HStack { Image(systemName: "magnifyingglass"); TextField("Arena code or IP", text: $search).textInputAutocapitalization(.never).disableAutocorrection(true) }
                     .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(Color.white.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)
                 ScrollView(showsIndicators: false) {
-                    LazyVStack(spacing: 9) {
-                        ForEach(filtered) { arena in
-                            Button { selection = arena.endpoint; presentation.wrappedValue.dismiss() } label: {
-                                HStack(spacing: 12) {
-                                    VStack(alignment: .leading, spacing: 3) { Text("Arena \(arena.code)").font(.androidWyrm(15, .bold)); Text(arena.endpoint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
-                                    Spacer()
-                                    Text(latencyText(arena)).font(.androidWyrm(12, .bold)).foregroundColor(latencyColor(arena))
-                                }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke((selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: (selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? 2 : 1))
-                            }.buttonStyle(.plain)
+                    LazyVStack(spacing: 9, pinnedViews: []) {
+                        if showAdd {
+                            HStack(spacing: 8) {
+                                TextField("IPv4 address:port", text: $customAddress)
+                                    .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).disableAutocorrection(true)
+                                Button("Save") { saveCustom() }.fontWeight(.bold)
+                            }.font(.androidWyrm(13)).padding(14).background(Color.white).cornerRadius(14)
+                            if addressError { Text("Enter a valid IPv4 address and port (1–65535).")
+                                .font(.androidWyrm(11)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
+                        }
+                        if !recentRows.isEmpty {
+                            sectionLabel("RECENTLY JOINED")
+                            ForEach(recentRows) { arena in arenaRow(arena) }
+                        }
+                        sectionLabel(search.isEmpty ? "LOWEST PING" : "SEARCH RESULTS")
+                        ForEach(showAll || !search.isEmpty ? ranked : Array(ranked.prefix(10))) { arena in arenaRow(arena) }
+                        if search.isEmpty && ranked.count > 10 {
+                            Button(showAll ? "Show top 10" : "See all \(ranked.count) arenas") { withAnimation { showAll.toggle() } }
+                                .font(.androidWyrm(13, .bold)).frame(maxWidth: .infinity).padding(14)
+                        }
+                        if !saved.isEmpty {
+                            DisclosureGroup(isExpanded: $showSaved) {
+                                ForEach(saved, id: \.self) { endpoint in
+                                    if let arena = WyrmArena.custom(endpoint) { arenaRow(arena) }
+                                }
+                            } label: { sectionLabel("SAVED ARENAS · \(saved.count)") }
+                                .tint(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15)
+                        }
+                        if filtered.isEmpty && recentRows.isEmpty && saved.isEmpty {
+                            Text("No active arenas right now. Try refreshing or add a custom IP.")
+                                .font(.androidWyrm(12)).foregroundColor(ATheme.quiet).padding(20)
                         }
                     }.padding(16)
                 }
             }
         }
-        .task { while !Task.isCancelled { await services.refreshArenasLive(); try? await Task.sleep(nanoseconds: 2_000_000_000) } }
+        .task {
+            while !Task.isCancelled {
+                await services.refreshArenasLive()
+                for endpoint in saved {
+                    guard !Task.isCancelled else { return }
+                    customLatencies[endpoint] = await services.measureCustomArena(endpoint) ?? -1
+                }
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
+            }
+        }
+    }
+
+    private func sectionLabel(_ text: String) -> some View {
+        Text(text).font(.androidWyrm(10, .bold)).tracking(0.8).foregroundColor(ATheme.quiet)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.bottom, 3)
+    }
+    private func arenaRow(_ arena: WyrmArena) -> some View {
+        Button { selection = arena.endpoint; presentation.wrappedValue.dismiss() } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(arena.number == 0 ? "Custom arena" : "Arena \(arena.code)").font(.androidWyrm(15, .bold))
+                    Text(arena.endpoint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                }
+                Spacer()
+                Text(latencyText(arena)).font(.androidWyrm(12, .bold)).foregroundColor(latencyColor(arena))
+            }.foregroundColor(ATheme.ink).padding(14).background(Color.white.opacity(0.9)).cornerRadius(15)
+                .overlay(RoundedRectangle(cornerRadius: 15).stroke((selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? ATheme.ink : ATheme.rule, lineWidth: (selection.isEmpty ? services.recommendedArena?.endpoint : selection) == arena.endpoint ? 2 : 1))
+        }.buttonStyle(.plain)
+    }
+    private func saveCustom() {
+        guard let arena = WyrmArena.custom(customAddress) else { addressError = true; return }
+        addressError = false
+        var entries = saved
+        entries.removeAll { $0 == arena.endpoint }
+        entries.insert(arena.endpoint, at: 0)
+        savedArenaEndpoints = entries.prefix(20).joined(separator: ";")
+        showSaved = true
+        showAdd = false
+        customAddress = ""
+        selection = arena.endpoint
+        Task { customLatencies[arena.endpoint] = await services.measureCustomArena(arena.endpoint) ?? -1 }
     }
 
     private func latencyText(_ arena: WyrmArena) -> String {
-        guard let value = services.arenaLatencies[arena.id] else { return "Measuring…" }
-        return value > 0 ? "\(value)ms" : "—"
+        guard let value = arena.number == 0 ? customLatencies[arena.endpoint] : services.arenaLatencies[arena.id] else { return "Measuring…" }
+        return value > 0 ? "\(value)ms" : "Unavailable"
     }
     private func latencyColor(_ arena: WyrmArena) -> Color {
-        guard let value = services.arenaLatencies[arena.id] else { return ATheme.quiet }
+        guard let value = arena.number == 0 ? customLatencies[arena.endpoint] : services.arenaLatencies[arena.id] else { return ATheme.quiet }
         if value <= 0 { return Color(red: 0.75, green: 0.25, blue: 0.22) }
         let values = services.arenaLatencies.values.filter { $0 > 0 }
         let low = values.min() ?? value, high = values.max() ?? value

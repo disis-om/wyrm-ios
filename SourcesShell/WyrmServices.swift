@@ -147,6 +147,18 @@ struct WyrmArena: Identifiable, Equatable {
     var endpoint: String { "\(address):\(port)" }
     var code: String { String(format: "%04d", number % 10_000) }
     var title: String { "Arena \(code)" }
+
+    static func custom(_ raw: String) -> WyrmArena? {
+        let parts = raw.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":", omittingEmptySubsequences: false)
+        guard parts.count == 1 || parts.count == 2 else { return nil }
+        let octets = parts[0].split(separator: ".", omittingEmptySubsequences: false)
+        guard octets.count == 4, octets.allSatisfy({ UInt8($0) != nil }),
+              let first = UInt8(octets[0]), (1...223).contains(first) else { return nil }
+        let port = parts.count == 2 ? Int(parts[1]) : 444
+        guard let port, (1...65535).contains(port) else { return nil }
+        return WyrmArena(active: true, address: octets.joined(separator: "."), port: port,
+                         players: 0, number: 0, cluster: 0)
+    }
 }
 
 struct WyrmVoiceVerification: Equatable {
@@ -576,22 +588,25 @@ final class WyrmServiceStore: ObservableObject {
             let rows = try await WyrmServiceClient.shared.arenas()
             installArenaDirectory(rows)
             let candidates = arenas.filter(\.active)
-            for batchStart in stride(from: 0, to: candidates.count, by: 24) {
-                guard !Task.isCancelled else { return }
-                let batch = Array(candidates[batchStart..<min(batchStart + 24, candidates.count)])
-                await withTaskGroup(of: (String, Int?).self) { group in
-                    for arena in batch { group.addTask { (arena.id, await WyrmArenaProbe.latency(to: arena)) } }
-                    for await (id, value) in group {
-                        arenaLatencies[id] = value ?? -1
-                    }
+            WyrmDiagnostics.record("arena probes started active=\(candidates.count) total=\(arenas.count)", category: "NETWORK")
+            await withTaskGroup(of: (String, Int?).self) { group in
+                for arena in candidates { group.addTask { (arena.id, await WyrmArenaProbe.latency(to: arena)) } }
+                for await (id, value) in group {
+                    arenaLatencies[id] = value ?? -1
                 }
-                refreshRecommendation()
             }
             refreshRecommendation()
             lastRefresh = Date()
+            let measured = candidates.filter { (arenaLatencies[$0.id] ?? -1) > 0 }.count
+            WyrmDiagnostics.record("arena probes finished measured=\(measured) unavailable=\(candidates.count - measured)", category: "NETWORK")
         } catch {
             WyrmDiagnostics.record("live arena refresh failed=\(error.localizedDescription)", category: "NETWORK")
         }
+    }
+
+    func measureCustomArena(_ endpoint: String) async -> Int? {
+        guard let arena = WyrmArena.custom(endpoint) else { return nil }
+        return await WyrmArenaProbe.latency(to: arena)
     }
 
     func isArenaTainted(_ endpoint: String) -> Bool {

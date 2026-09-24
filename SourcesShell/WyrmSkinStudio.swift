@@ -180,6 +180,9 @@ struct WyrmSkinRoot: View {
     @ObservedObject var engine: WyrmShellStore
     @StateObject private var textures = WyrmSkinTextureLibrary()
     @State private var section: WyrmSkinStudioSection
+    @State private var editingPattern = false
+    @State private var previewBaseGroups: [Int] = []
+    @State private var previewBaseColors: [UInt32] = []
 
     @AppStorage("wyrm.ios.skin.preset") private var preset = 2
     @AppStorage("wyrm.ios.skin.custom-enabled") private var customEnabled = false
@@ -236,12 +239,17 @@ struct WyrmSkinRoot: View {
     private var activeGroups: [Int] {
         guard WyrmSkinCatalog.presets.indices.contains(preset) else { return [7] }
         let base = WyrmSkinCatalog.presets[preset]
-        guard customEnabled else { return base }
-        return (0..<256).map { $0 < customGroups.count ? customGroups[$0] : base[$0 % base.count] }
+        let source = customEnabled && !customGroups.isEmpty ? customGroups : base
+        let repeated = (0..<256).map { source[$0 % source.count] }
+        guard editingPattern else { return repeated }
+        return (0..<256).map { $0 < customGroups.count ? customGroups[$0] : previewBaseGroups[$0] }
     }
 
     private var activeColors: [UInt32] {
-        (0..<256).map { customEnabled && $0 < customColors.count ? customColors[$0] : 0 }
+        let source = customEnabled && !customGroups.isEmpty ? customColors : []
+        let repeated = (0..<256).map { source.isEmpty ? 0 : source[$0 % source.count] }
+        guard editingPattern else { return repeated }
+        return (0..<256).map { $0 < customGroups.count ? customColors[$0] : previewBaseColors[$0] }
     }
 
     var body: some View {
@@ -283,6 +291,9 @@ struct WyrmSkinRoot: View {
             if ProcessInfo.processInfo.arguments.contains("--smoke-skin-accessories"), accessory < 0 { accessory = 0 }
             if ProcessInfo.processInfo.arguments.contains("--smoke-skin-tags"), tag < 0 { tag = 0 }
             NSLog("Wyrm SwiftUI skin studio presented section=%@", section.rawValue)
+        }
+        .onDisappear {
+            if editingPattern { editingPattern = false; apply() }
         }
     }
 
@@ -493,14 +504,20 @@ struct WyrmSkinRoot: View {
     }
 
     private func enter(_ target: WyrmSkinStudioSection) {
+        if target != .pattern && editingPattern { editingPattern = false; apply() }
         withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.1)) { section = target }
     }
 
     private func savePattern(_ groups: [Int], colors: [UInt32]) {
+        if !editingPattern {
+            previewBaseGroups = activeGroups
+            previewBaseColors = activeColors
+            editingPattern = true
+        }
         pattern = groups.map(String.init).joined(separator: ",")
         patternColors = colors.prefix(groups.count).map { String($0, radix: 16) }.joined(separator: ",")
-        customEnabled = true
-        apply(custom: true)
+        customEnabled = !groups.isEmpty
+        apply(custom: !groups.isEmpty)
     }
 
     private func writeTagSetting(_ id: String, _ value: Double) {
@@ -508,13 +525,13 @@ struct WyrmSkinRoot: View {
         engine.write(setting, values: [value])
     }
 
-    private func apply(preset newPreset: Int? = nil, groups: [Int]? = nil,
+    private func apply(preset newPreset: Int? = nil, groups: [Int]? = nil, colors: [UInt32]? = nil,
                        custom: Bool? = nil, accessory newAccessory: Int? = nil,
                        tag newTag: Int? = nil, background newBackground: Int? = nil) {
         engine.applySkin(
             preset: newPreset ?? preset,
             groups: groups ?? activeGroups,
-            colors: activeColors,
+            colors: colors ?? activeColors,
             custom: custom ?? customEnabled,
             accessory: newAccessory ?? accessory,
             tag: newTag ?? tag,
@@ -759,7 +776,7 @@ private struct WyrmMiniSnake: View {
         Canvas(opaque: false, rendersAsynchronously: true) { context, size in
             let bead = min(size.height * 0.87, 38)
             let step = bead * (8.0 / 48.0)
-            let count = max(1, Int(ceil(size.width / step)) + 1)
+            let count = min(128, max(1, Int(ceil(max(0, size.width - bead) / step)) + 1))
             for index in 0..<count {
                 let group = groups.isEmpty ? 7 : groups[index % groups.count]
                 guard let texture = textures.beads[group] else { continue }
