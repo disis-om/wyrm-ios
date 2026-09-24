@@ -436,7 +436,6 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var preparedPlayerID: String?
     private var token = ""
     private var sessionRevision = UUID()
-    private var taintedArenas: [String: Date] = [:]
     private var arenaRefreshInFlight = false
 
     var unreadCount: Int { alerts.filter { !$0.read }.count }
@@ -587,44 +586,35 @@ final class WyrmServiceStore: ObservableObject {
         do {
             let rows = try await WyrmServiceClient.shared.arenas()
             installArenaDirectory(rows)
-            let candidates = arenas.filter(\.active)
-            WyrmDiagnostics.record("arena probes started active=\(candidates.count) total=\(arenas.count)", category: "NETWORK")
-            await withTaskGroup(of: (String, Int?).self) { group in
-                for arena in candidates { group.addTask { (arena.id, await WyrmArenaProbe.latency(to: arena)) } }
-                for await (id, value) in group {
-                    arenaLatencies[id] = value ?? -1
-                }
-            }
-            refreshRecommendation()
             lastRefresh = Date()
-            let measured = candidates.filter { (arenaLatencies[$0.id] ?? -1) > 0 }.count
-            WyrmDiagnostics.record("arena probes finished measured=\(measured) unavailable=\(candidates.count - measured)", category: "NETWORK")
         } catch {
             WyrmDiagnostics.record("live arena refresh failed=\(error.localizedDescription)", category: "NETWORK")
         }
     }
 
+    /// The directory may refresh in the background, but game-port TCP probes
+    /// happen only while the user is looking at the picker. At most ten are
+    /// measured, one at a time; no fleet-wide connection burst runs alongside
+    /// an arena join.
+    func measurePickerArenas(preferredEndpoints: [String]) async {
+        var seen = Set<String>()
+        let preferred = preferredEndpoints.compactMap { endpoint in
+            arenas.first { $0.active && $0.endpoint == endpoint }
+        }
+        let candidates = (preferred + arenas.filter(\.active))
+            .filter { seen.insert($0.endpoint).inserted }
+            .prefix(10)
+        for arena in candidates {
+            guard !Task.isCancelled else { return }
+            arenaLatencies[arena.id] = await WyrmArenaProbe.latency(to: arena) ?? -1
+            refreshRecommendation()
+        }
+        WyrmDiagnostics.record("picker probes finished sampled=\(candidates.count) total=\(arenas.count)", category: "NETWORK")
+    }
+
     func measureCustomArena(_ endpoint: String) async -> Int? {
         guard let arena = WyrmArena.custom(endpoint) else { return nil }
         return await WyrmArenaProbe.latency(to: arena)
-    }
-
-    func isArenaTainted(_ endpoint: String) -> Bool {
-        guard let until = taintedArenas[endpoint] else { return false }
-        return until > Date()
-    }
-
-    func taintArena(_ endpoint: String, seconds: Int = 120) {
-        taintedArenas[endpoint] = Date().addingTimeInterval(TimeInterval(max(1, seconds)))
-        if recommendedArena?.endpoint == endpoint { recommendedArena = nil }
-        refreshRecommendation(excluding: [endpoint])
-        WyrmDiagnostics.record("arena tainted endpoint=\(endpoint) seconds=\(seconds)", category: "NETWORK")
-    }
-
-    func failoverArena(refused endpoint: String) -> WyrmArena? {
-        taintArena(endpoint)
-        refreshRecommendation(excluding: [endpoint])
-        return recommendedArena
     }
 
     private func installArenaDirectory(_ rows: [WyrmArena]) {
@@ -634,9 +624,8 @@ final class WyrmServiceStore: ObservableObject {
         refreshRecommendation()
     }
 
-    private func refreshRecommendation(excluding: Set<String> = []) {
-        taintedArenas = taintedArenas.filter { $0.value > Date() }
-        let candidates = arenas.filter { $0.active && !excluding.contains($0.endpoint) && !isArenaTainted($0.endpoint) }
+    private func refreshRecommendation() {
+        let candidates = arenas.filter(\.active)
         guard !candidates.isEmpty else { recommendedArena = nil; return }
         recommendedArena = candidates.min { a, b in
             let left = arenaLatencies[a.id].flatMap { $0 > 0 ? $0 : nil } ?? .max
@@ -671,6 +660,5 @@ final class WyrmServiceStore: ObservableObject {
         errorMessage = ""
         lastRefresh = nil
         preparedPlayerID = nil
-        taintedArenas = [:]
     }
 }

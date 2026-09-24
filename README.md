@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.16.3 (build 49)** and targets **iOS 15 or newer**.
+**0.16.4 (build 50)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -30,18 +30,19 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Full-bleed Play, Alerts, Social, Skin and Settings product surfaces with a
   draggable glass navigation control and one-level-at-a-time route stacking.
 - Original Wyrm C gameplay and network engine—not a Swift reimplementation.
-- Arena joins retain the original engine's paced retry window. Socket diagnostics
-  distinguish TCP, WebSocket upgrade, challenge, configuration and spawn phases
-  without exposing nicknames or challenge contents.
+- Each Play action dials the selected arena once. Entry timeout or refusal
+  returns to the native lobby without automatic retries or server failover.
+  Socket diagnostics distinguish TCP, WebSocket upgrade, challenge,
+  configuration and spawn phases without exposing nicknames or challenge contents.
 - SDL3 window/input integration and Vulkan rendering through MoltenVK/Metal.
 - Original landscape lobby and arena inside a portrait-owned iOS application.
 - Live backend integration for profiles and avatars, notifications,
   leaderboards, connections, mutual direct conversations and voice-room
   control operations.
-- Two-second arena directory updates, direct game-port TCP latency measurements, four-digit
-  arena codes, and direct handoff from Play into the original C lobby. The picker
-  prioritizes recently joined arenas and the ten lowest-latency active arenas,
-  with an expandable full list and locally saved custom IPv4 addresses.
+- Two-second arena directory updates, bounded on-demand game-port TCP latency
+  measurements, four-digit arena codes, and direct handoff from Play into the
+  original C lobby. The picker prioritizes recently joined and sampled active
+  arenas, with an expandable full list and locally saved custom IPv4 addresses.
 - Email-code voice verification plus separately presented official Wyrm rooms
   and player-created rooms.
 - Native engine settings and on-screen controls connected through a narrow,
@@ -97,8 +98,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.16.3-build-49-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.16.3-build-49-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.16.4-build-50-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.16.4-build-50-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

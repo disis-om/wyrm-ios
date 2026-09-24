@@ -1,6 +1,16 @@
 # Wyrm iOS — developer handoff
 
-Last verified: **2026-09-24** · Source: **0.16.3 (49)**, commit `29c5671` on `main` · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.4 (50)** · Minimum iOS: **15.0**
+
+Build 50 changes arena entry to Vlither-style single-attempt behavior: one
+selected-server dial per Play request, a five-second entry timeout, no
+automatic same-server retry or alternate-server failover, and return to the
+native landscape lobby on entry failure. A short silent life also returns to
+the lobby without a death card. The directory continues refreshing, but
+game-port latency probes run only while the picker is open, bounded to ten
+sequential samples. Local source contracts passed; **Build 50 Apple CI and
+physical iPhone stability still require separate verification**. The Build 49
+evidence below is historical and must not be presented as Build 50 proof.
 
 This is the starting point for an agent or developer working on the public iOS repository. It records what is built, what is only tested in Simulator, how the unsigned artifacts are produced and signed, and the open physical-device arena problem. Read the source and the latest CI/device evidence again before changing a claim here.
 
@@ -76,8 +86,8 @@ These local commands **compile but do not sign**. If making a new deliverable bu
 
 ## Which file to install, and who signs it?
 
-- The current device artifact is `Wyrm-0.16.3-build-49-unsigned.ipa`. Its `Payload/Wyrm.app` is compiled for **real iPhone**, but contains no distribution signature. The owner uses **AltStore/AltServer** to apply their own Apple ID signing/provisioning and install it. The phone must be trusted/reachable by AltServer. This repository has no Apple signing key, provisioning profile or App Store Connect credential.
-- The Appetize/Simulator artifact is `Wyrm-0.16.3-build-49-simulator.app.zip`. Upload **this ZIP**, not the device IPA, for Simulator testing. Its success does not prove iPhone signing or real-device stability.
+- The last verified device artifact is `Wyrm-0.16.3-build-49-unsigned.ipa`; the Build 50 pipeline is configured to produce `Wyrm-0.16.4-build-50-unsigned.ipa`. Its `Payload/Wyrm.app` is compiled for **real iPhone**, but contains no distribution signature. The owner uses **AltStore/AltServer** to apply their own Apple ID signing/provisioning and install it. The phone must be trusted/reachable by AltServer. This repository has no Apple signing key, provisioning profile or App Store Connect credential.
+- The Build 50 Appetize/Simulator artifact will be `Wyrm-0.16.4-build-50-simulator.app.zip`. Upload **this ZIP**, not the device IPA, for Simulator testing. Its success does not prove iPhone signing or real-device stability.
 - The accepted Build 49 local copy is `dist/build-49-arena-retry-pacing/original-engine-compile-35999171841/original-artifacts/`, with the unsigned IPA, Simulator ZIP, checksum file, screenshots and logs. The public [Build 49 CI run](https://github.com/disis-om/wyrm-ios/actions/runs/35999171841) is the reproducible source artifact until its retention expires.
 - TestFlight/App Store signing and distribution are future work. Do not describe AltStore user-side signing as official App Store signing.
 
@@ -108,9 +118,9 @@ Owner-provided Build 49 diagnostics were generated on **2026-09-24 13:23 UTC** f
 | Closes after spawn | 2 |
 | WebSocket close codes received | 0 |
 
-The restored 3333 ms retry pacing **is active**, but it did not remove these closes. Both post-spawn attempts reported optional join fields (`accessory=0`, `custom_skin=1`) and ended less than a second after dial. This is a **lead**, not proof that the skin/accessory caused rejection: both sessions spawned, and the server did not give a close reason. Likewise, several endpoints accepted TCP but closed before the WebSocket upgrade; that could involve the path, server, proxy, throttling or request behavior. Do not label all of them “challenge failed” or blame only the owner's Wi-Fi.
+In Build 49, the 3333 ms join pacing **was active**, but it did not remove these closes. Both post-spawn attempts reported optional join fields (`accessory=0`, `custom_skin=1`) and ended less than a second after dial. This is a **lead**, not proof that the skin/accessory caused rejection: both sessions spawned, and the server did not give a close reason. Likewise, several endpoints accepted TCP but closed before the WebSocket upgrade; that could involve the path, server, proxy, throttling or request behavior. Do not label all of them “challenge failed” or blame only the owner's Wi-Fi.
 
-The arena directory still returned HTTP 200 and 144 entries. `SourcesShell/WyrmDesignMain.swift` starts live arena refresh loops for Play and (while open) the picker; `SourcesShell/WyrmServices.swift` probes roughly 32–34 active arena game ports with new `NWConnection` TCP dials per refresh. This may create unnecessary connection pressure, including while joining, and a successful TCP probe does **not** validate the WebSocket upgrade or game admission. This is a **client-side hypothesis**, not a proven server rejection mechanism.
+The Build 49 arena directory returned HTTP 200 and 144 entries. That build probed roughly 32–34 active arena game ports with new `NWConnection` TCP dials per refresh, including while joining. Build 50 removes that continuous fleet-wide probe and samples at most ten sequential endpoints only while the picker is open. Connection pressure was a **client-side hypothesis**, not a proven server rejection mechanism; a successful TCP probe does **not** validate the WebSocket upgrade or game admission.
 
 The supplied diagnostics do not identify whether these events occurred on Wi-Fi or cellular. Network quality/routing **could** contribute, but neither is proven as the root cause. Use a controlled comparison on the **same arena**: default skin and no accessory vs custom skin, Wi-Fi vs mobile data, with a pause between attempts; avoid changing several variables at once. Record network path, selected endpoint, TCP/HTTP-upgrade phase, any HTTP status or WebSocket close code, challenge/config/spawn and session duration. Compare the same tests with the Android reference when possible. Ask for arena/server-side close logs if available before changing packet semantics. Do not hammer public arenas with rapid probes.
 
@@ -120,4 +130,3 @@ The supplied diagnostics do not identify whether these events occurred on Wi-Fi 
 2. Separate source contract, CI compile, Simulator runtime, physical install, physical launch, live join and **sustained** play in every report. “Build passed” does not mean “device issue fixed.”
 3. Keep signing material, Team/Auth credentials, player diagnostics, nicknames, messages and private local notes out of the public repository. Commit only redacted aggregate evidence. Do not commit `Slither.txt` or raw owner diagnostic exports.
 4. Before another arena patch, reproduce a clean Build 49 baseline and test the client-side probe-pressure and optional join-field hypotheses separately. A code change, new CI artifact and owner device test are separate gates.
-

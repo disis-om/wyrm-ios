@@ -15,6 +15,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 ANDROID = ROOT.parent / "Wyrm Android"
+VLITHER = ROOT.parent / "vlither-master" / "app" / "src"
 ENGINE = ROOT / "SharedEngine"
 PREPARED = ROOT / "build-original-source" / "app" / "src"
 
@@ -41,6 +42,11 @@ def main() -> int:
     runtime = PREPARED if (PREPARED / "network/callback.c").exists() else ENGINE / "app/src"
     callback = (runtime / "network/callback.c").read_text()
     server = (runtime / "network/server.c").read_text()
+    loop_c = (runtime / "game/loop.c").read_text()
+    vlither_callback = compact((VLITHER / "network/callback.c").read_text())
+    vlither_server = compact((VLITHER / "network/server.c").read_text())
+    vlither_loop = compact((VLITHER / "game/loop.c").read_text())
+    vlither_constants = compact((VLITHER / "constants.h").read_text())
     input_c = (runtime / "game/input.c").read_text()
     loop = (runtime / "game/loop.c").read_text()
     game_data = (runtime / "game/game_data.c").read_text()
@@ -71,6 +77,21 @@ def main() -> int:
     fingerprint_ok = bool(fingerprint_match and fingerprint_match.group(1) in persona)
     row("PASS" if "client_version=291" in js and "291" in persona and fingerprint_ok else "MISMATCH",
         "web persona", "client 291 and 20-byte challenge fingerprint")
+
+    vlither_web_identity = contains_all(vlither_constants, ("#defineCLIENT_VERSION291",)) and contains_all(
+        vlither_callback, ("uint8_tcwa[20]={54,206,204,169,97,178,74,136,124,117,",
+                           "decode_secret(a,a_len,secret)", "mg_ws_send(c,secret,27,WEBSOCKET_OP_BINARY)"))
+    row("PASS" if vlither_web_identity else "MISMATCH", "Slither to Vlither identity",
+        "Vlither uses web version 291, matching fingerprint and 27-byte decoded answer")
+    vlither_open = contains_all(vlither_callback, ("(uint8_t[]){1}", "(uint8_t[]){'c',0}"))
+    row("PASS" if vlither_open else "MISMATCH", "Slither to Vlither preamble",
+        "web default: byte 1, then c and zero; no timing/sequence prefix")
+    row("DIVERGENCE" if "ba[m]=usrs->accessory" in vlither_callback and "ba[m]=255" in js else "UNPROVEN",
+        "web versus Vlither cosmetics", "web uses accessory 255; Vlither sends selected accessory and compressed custom skin")
+    row("DIVERGENCE" if "glfwGetTime()>TIMEOUT" in vlither_loop and "#defineTIMEOUT5" in vlither_constants else "UNPROVEN",
+        "web versus Vlither timeout", "web taints/reselects after 3333ms; Vlither waits 5s then disconnects")
+    row("DIVERGENCE" if "https://slither.com" in vlither_server and "https://slither.io" in compact(server) else "UNPROVEN",
+        "native Origin difference", "Vlither sends slither.com; Wyrm retains the live-proven slither.io Origin; JS cannot specify the browser header")
 
     row("PASS" if contains_all(server, ("ws://%s/slither", "https://slither.io")) else "MISMATCH",
         "WebSocket transport", "ws://IP:port/slither with Slither Origin")
@@ -117,18 +138,19 @@ def main() -> int:
         "Slither uses 3333ms as connection timeout; original Wyrm also paces joins 3333ms to prevent rapid re-entry")
 
     web_join_extension = contains_all(callback, ("ba[m] = usrs->accessory", "skin_compressed_len"))
-    row("DIVERGENCE" if web_join_extension else "PASS", "optional Wyrm join fields",
-        "none accessory is Slither's 255; selected accessory and compressed custom skin are Wyrm extensions")
+    row("DIVERGENCE" if web_join_extension else "PASS", "native cosmetic join fields",
+        "plain web sends accessory 255; Vlither and Wyrm send selected accessory and compressed custom skin")
 
     stage_logs = contains_all(callback, ("TCP connected", "WebSocket upgraded", "WebSocket close frame", "socket closed in phase"))
     row("PASS" if stage_logs else "MISMATCH", "socket-stage diagnostics",
         "TCP, HTTP upgrade, close-code and challenge/spawn phase are distinguishable without logging secrets")
 
-    failover_ok = contains_all(callback, ("refused_short_life", "arena_taint_mark", "android_home_arena_refused")) and contains_all(
-        home, ("WyrmIOSPublishArenaRefusal", "android_home_arena_refused")
-    ) and contains_all(design, ("failoverArena(refused:", "engine.playOnline"))
-    row("PASS" if failover_ok else "MISMATCH", "taint and automatic failover",
-        "short silent life is tainted for 120s, bridged to Swift, excluded and retried on an alternate endpoint")
+    one_shot = contains_all(callback, ("refused_short_life", "gdata->join_spawned = false")) and contains_all(
+        loop_c, ("game_fail_connection(gdata, \"configuration timeout\")", "gdata->curr_screen = LOBBY"))
+    one_shot = one_shot and "ios_retry_or_finish" not in loop_c and "failoverArena(refused:" not in design
+    one_shot = one_shot and "gdata->rejoin_at_ms = SDL_GetTicks() + 50" not in loop_c
+    row("PASS" if one_shot else "MISMATCH", "Vlither-style single Play attempt",
+        "one selected-server dial; failure returns to native lobby without automatic retry or alternate server")
 
     join_alive_calls = len(re.findall(r"\binput_join_alive\s*\(", input_c))
     row("UNPROVEN" if join_alive_calls == 1 else "PASS", "forced first live input",

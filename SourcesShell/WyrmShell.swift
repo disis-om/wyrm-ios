@@ -153,7 +153,7 @@ final class WyrmShellStore: ObservableObject {
 
     func playOnline(name: String, address: String) {
         guard !address.isEmpty else { return }
-        WyrmDiagnostics.record("online failover requested address=alternate", category: "ENGINE")
+        WyrmDiagnostics.record("online play requested address=selected", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestPlay(namePointer, addressPointer, false) }
         }

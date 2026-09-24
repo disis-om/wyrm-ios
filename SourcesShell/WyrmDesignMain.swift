@@ -87,17 +87,15 @@ private struct WyrmPlayRoot: View {
     @State private var arena = ""
     @State private var userSelectedArena = false
     @State private var showArenas = false
-    @State private var lastPlayedName = "Wyrm Player"
     @State private var lastHandledRefusal: UInt64 = 0
     @AppStorage("wyrm.ios.arena.recent") private var recentArenaEndpoints = ""
     @AppStorage("wyrm.ios.arena.saved") private var savedArenaEndpoints = ""
 
     private var nearest: WyrmArena? {
         if userSelectedArena,
-           let selected = services.arenas.first(where: { $0.endpoint == arena }),
-           !services.isArenaTainted(selected.endpoint) { return selected }
+           let selected = services.arenas.first(where: { $0.endpoint == arena }) { return selected }
         if userSelectedArena, savedArenaEndpoints.split(separator: ";").contains(Substring(arena)),
-           let selected = WyrmArena.custom(arena), !services.isArenaTainted(selected.endpoint) { return selected }
+           let selected = WyrmArena.custom(arena) { return selected }
         return services.recommendedArena
     }
     private var controls: String { engine.settings.first(where: { $0.id == "controls.joystick_mode" })?.displayValue ?? "Joystick" }
@@ -167,16 +165,7 @@ private struct WyrmPlayRoot: View {
         .onChange(of: engine.arenaRefusalSequence) { sequence in
             guard sequence > lastHandledRefusal, !engine.refusedArena.isEmpty else { return }
             lastHandledRefusal = sequence
-            let refused = engine.refusedArena
-            guard let alternate = services.failoverArena(refused: refused) else {
-                WyrmDiagnostics.record("arena failover unavailable refused=\(refused)", category: "NETWORK")
-                return
-            }
-            arena = alternate.endpoint
-            WyrmDiagnostics.record("arena failover refused=\(refused) alternate=\(alternate.endpoint)", category: "NETWORK")
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                engine.playOnline(name: lastPlayedName, address: alternate.endpoint)
-            }
+            WyrmDiagnostics.record("arena join ended; returning to lobby endpoint=\(engine.refusedArena)", category: "NETWORK")
         }
         .task {
             while !Task.isCancelled {
@@ -198,8 +187,8 @@ private struct WyrmPlayRoot: View {
         recent.removeAll { $0 == selected.endpoint }
         recent.insert(selected.endpoint, at: 0)
         recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
-        lastPlayedName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
-        engine.enterLobby(name: lastPlayedName, address: selected.endpoint)
+        let playerName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
+        engine.enterLobby(name: playerName, address: selected.endpoint)
     }
 }
 
@@ -296,13 +285,15 @@ private struct WyrmArenaPicker: View {
             }
         }
         .task {
+            await services.refreshArenasLive()
+            await services.measurePickerArenas(preferredEndpoints: [selection] + recent)
+            if let selected = WyrmArena.custom(selection), selected.number == 0 {
+                customLatencies[selected.endpoint] = await services.measureCustomArena(selected.endpoint) ?? -1
+            }
             while !Task.isCancelled {
-                await services.refreshArenasLive()
-                for endpoint in saved {
-                    guard !Task.isCancelled else { return }
-                    customLatencies[endpoint] = await services.measureCustomArena(endpoint) ?? -1
-                }
                 try? await Task.sleep(nanoseconds: 2_000_000_000)
+                guard !Task.isCancelled else { return }
+                await services.refreshArenasLive()
             }
         }
     }
@@ -339,7 +330,7 @@ private struct WyrmArenaPicker: View {
     }
 
     private func latencyText(_ arena: WyrmArena) -> String {
-        guard let value = arena.number == 0 ? customLatencies[arena.endpoint] : services.arenaLatencies[arena.id] else { return "Measuring…" }
+        guard let value = arena.number == 0 ? customLatencies[arena.endpoint] : services.arenaLatencies[arena.id] else { return "—" }
         return value > 0 ? "\(value)ms" : "Unavailable"
     }
     private func latencyColor(_ arena: WyrmArena) -> Color {

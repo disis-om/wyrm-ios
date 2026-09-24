@@ -121,14 +121,50 @@ for path in sorted(OUTPUT.rglob("*")):
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
+    if relative == "app/src/game/game_data.c":
+        # One explicit Play request may wait for the old socket to finish,
+        # but must never schedule a second dial after its first dial fails.
+        pending = 'gdata->rejoin_at_ms = server_connect(env) ? 0 : now + 50;'
+        assert text.count(pending) == 1
+        text = text.replace(pending, '''gdata->rejoin_at_ms = 0;
+  if (!server_connect(env)) game_fail_connection(gdata, "previous socket still closing");''')
+    if relative == "app/src/game/loop.c":
+        pending = 'if (!server_connect(env)) gdata->rejoin_at_ms = SDL_GetTicks() + 50;'
+        assert text.count(pending) == 1
+        text = text.replace(pending, 'if (!server_connect(env)) game_fail_connection(gdata, "previous socket still closing");')
+        timeout_clock = 'SDL_GetTicks() - gdata->attempt_started_ms > ARENA_RETRY_MS'
+        assert text.count(timeout_clock) == 1
+        text = text.replace(timeout_clock, 'SDL_GetTicks() - gdata->attempt_started_ms > 5000')
+        connect_gate = 'if (!gdata->arena_ready && gdata->connection &&'
+        assert text.count(connect_gate) == 1
+        text = text.replace(connect_gate, 'if (gdata->connection &&')
+        timeout = '''          arena_taint_mark(usrs->ipv4);
+          android_home_arena_refused(
+              usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));
+          game_fail_connection(gdata, "configuration timeout");'''
+        assert text.count(timeout) == 1
+        text = text.replace(timeout, '          game_fail_connection(gdata, "configuration timeout");')
+        failed = '''          /* Slither taints a refused arena and chooses another one. Retrying
+             the same endpoint forever both hid the actual failure and caused
+             the fleet to throttle the phone. Compose owns the live directory,
+             so hand the refusal back to it and let it pick the next reachable
+             endpoint after the lobby has settled. */
+          arena_taint_mark(usrs->ipv4);
+          android_home_arena_refused(
+              usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));
+          game_data_reset(env);
+          gdata->conn = DISCONNECTED;
+          gdata->curr_screen = LOBBY;'''
+        assert text.count(failed) == 1
+        text = text.replace(failed, '''          /* Vlither ends this connection attempt here. On iOS the native
+             landscape lobby is the equivalent of its title screen. */
+          android_home_arena_refused(usrs->ipv4, 0);
+          game_data_reset(env);
+          gdata->conn = DISCONNECTED;
+          gdata->curr_screen = LOBBY;''')
     if relative == "app/src/network/callback.c":
-        # A silent close after the own snake spawned is not a transport
-        # handshake failure, but repeatedly retrying the same endpoint caused
-        # the observed 0.2-0.6 second eject loop. Preserve real death packets;
-        # only classify a server-initiated short life with no active death
-        # watch as a refused endpoint and hand it to the Apple selector.
-        text = text.replace('#include "arena_trace.h"',
-                            '#include "arena_trace.h"\n#include "arena_taint.h"')
+        # Preserve real death packets. A silent short life is a terminal
+        # refusal of this Play attempt, never an automatic retry or failover.
         # Preserve every original gameplay packet. Add only socket-stage
         # diagnostics, so a silent pre-upgrade close cannot be mistaken for a
         # rejected challenge or a post-spawn protocol failure.
@@ -182,17 +218,15 @@ for path in sorted(OUTPUT.rglob("*")):
         !gdata->closed_by_us && !gdata->leaving && !gdata->restart_req &&
         !android_home_death_pending();
     if (refused_short_life) {
-      arena_taint_mark(usr->usrs.ipv4);
-      android_home_arena_refused(
-          usr->usrs.ipv4,
-          (int)(arena_taint_remaining(usr->usrs.ipv4) / 1000));
-      /* Let loop.c take the ordinary non-spawned close branch. A genuine 'v'
-         packet already armed the death watch and never reaches this path. */
+      android_home_arena_refused(usr->usrs.ipv4, 0);
+      /* A genuine 'v' packet already armed the death watch. A silent short
+         life returns to the native lobby without a second dial. */
       gdata->join_spawned = false;
     }
     if (gdata->arena_ready && gdata->curr_screen == PLAYING &&
         !gdata->leaving && !gdata->restart_req) {
-      if (!refused_short_life) android_home_notify_death(env);
+      if (!refused_short_life && gdata->join_spawned)
+        android_home_notify_death(env);
       game_clear_world(gdata);
       gdata->arena_ready = false;
     }
