@@ -7,6 +7,15 @@ struct WyrmDesignRoot: View {
     @StateObject private var team = WyrmTeamStore()
 
     private let arguments = ProcessInfo.processInfo.arguments
+    /// True from launch until the first account snapshot is installed. A
+    /// session restored at launch syncs silently behind the W launch screen;
+    /// only a fresh sign-in or sign-up shows "Syncing your Wyrm…".
+    @State private var coldStart = true
+
+    private var launchSyncing: Bool {
+        account.phase == .restoring
+            || (coldStart && account.phase == .signedIn && !services.isPrepared(for: account.player?.id))
+    }
 
     private var settingsSmoke: Bool {
         arguments.contains("--smoke-settings") || arguments.contains("--smoke-developer")
@@ -39,7 +48,44 @@ struct WyrmDesignRoot: View {
         "\(String(describing: account.phase)):\(account.player?.id ?? "none")"
     }
 
+    /// The Ready Room and the layout editor sit above the rotated engine
+    /// surface; the portrait shell underneath is kept alive but hidden.
+    private var engineOverlay: Bool {
+        engine.layoutEditorActive || engine.engineScreen == WyrmShellStore.lobbyScreen
+    }
+
     var body: some View {
+        ZStack {
+            shell
+                .opacity(engineOverlay ? 0 : 1)
+                .allowsHitTesting(!engineOverlay)
+            if engine.layoutEditorActive {
+                WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
+            } else if engine.engineScreen == WyrmShellStore.lobbyScreen {
+                WyrmReadyRoom(engine: engine, services: services)
+            }
+        }
+        .environmentObject(team)
+        .onChange(of: account.phase) { phase in if phase == .signedOut || phase == .signingOut { coldStart = false } }
+        .onChange(of: services.isPrepared(for: account.player?.id)) { prepared in if prepared { coldStart = false } }
+        .task { team.start() }
+        .task(id: sessionLifecycleID) {
+            switch account.phase {
+            case .signedIn:
+                guard !services.isPrepared(for: account.player?.id) else { return }
+                await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
+            case .signingOut:
+                services.resetSession()
+                try? await Task.sleep(nanoseconds: 920_000_000)
+                guard !Task.isCancelled else { return }
+                account.completeSignOut()
+            default:
+                break
+            }
+        }
+    }
+
+    private var shell: some View {
         Group {
             if let sessionSmokeTitle {
                 WyrmSessionTransition(title: sessionSmokeTitle)
@@ -71,6 +117,8 @@ struct WyrmDesignRoot: View {
                     initialTab: .social,
                     initialRoute: arguments.contains("--smoke-leaderboard") ? .leaderboard : nil
                 )
+            } else if launchSyncing {
+                WyrmDesignLaunch()
             } else {
                 switch account.phase {
                 case .restoring:
@@ -94,22 +142,6 @@ struct WyrmDesignRoot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(ATheme.paper.ignoresSafeArea())
-        .environmentObject(team)
-        .task { team.start() }
-        .task(id: sessionLifecycleID) {
-            switch account.phase {
-            case .signedIn:
-                guard !services.isPrepared(for: account.player?.id) else { return }
-                await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
-            case .signingOut:
-                services.resetSession()
-                try? await Task.sleep(nanoseconds: 920_000_000)
-                guard !Task.isCancelled else { return }
-                account.completeSignOut()
-            default:
-                break
-            }
-        }
     }
 }
 

@@ -173,6 +173,28 @@ static void wyrm_log_output(void* userdata, int category,
 
 
 static WyrmEngineContainerController* engine_container;
+static bool shell_overlay;
+
+/* The SwiftUI shell stays visible above the rotated engine while it draws the
+   Ready Room (LOBBY) or the layout editor; its hosting view turns clear so the
+   engine shows wherever SwiftUI paints nothing. Main thread only. */
+static void apply_shell_visibility(void) {
+  UIView* shell = engine_container.shellController.view;
+  if (!shell) return;
+  static UIColor* original_background;
+  static bool captured;
+  if (!captured) { original_background = shell.backgroundColor; captured = true; }
+  bool overlay = engine_presentation && (reported_screen == LOBBY || shell_overlay);
+  shell.hidden = engine_presentation && !overlay;
+  shell.backgroundColor = overlay ? UIColor.clearColor : original_background;
+}
+
+void WyrmIOSSetShellOverlay(bool enabled) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    shell_overlay = enabled;
+    apply_shell_visibility();
+  });
+}
 
 static const char* screen_name(int screen) {
   switch (screen) {
@@ -219,7 +241,7 @@ void WyrmIOSSetEnginePresentation(bool enabled) {
     [engine_container installShellControllerIfNeeded];
     [UIView performWithoutAnimation:^{
       engine_container.landscapePresentation = enabled;
-      engine_container.shellController.view.hidden = enabled;
+      apply_shell_visibility();
     }];
     CGRect portrait = engine_container.view.bounds;
     CGFloat width = CGRectGetWidth(portrait);
@@ -256,6 +278,13 @@ static void frame(void* unused) {
     reported_screen = (int)engine.usr->gdata.curr_screen;
     WyrmIOSSetEnginePresentation(reported_screen != TITLE_SCREEN &&
                                  reported_screen != SKIN_EDITOR);
+    int screen = reported_screen;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      apply_shell_visibility();
+      [NSNotificationCenter.defaultCenter postNotificationName:@"WyrmEngineScreenChanged"
+                                                        object:nil
+                                                      userInfo:@{@"screen": @(screen)}];
+    });
     SDL_Log("Wyrm original engine: screen=%s (%d)",
             screen_name(reported_screen), reported_screen);
   }

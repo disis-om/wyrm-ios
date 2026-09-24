@@ -771,7 +771,7 @@ private struct WyrmAuthWorkingStatus: View {
     }
 }
 
-private struct WyrmBrandStroke: Shape {
+struct WyrmBrandStroke: Shape {
     func path(in rect: CGRect) -> Path {
         let width = min(rect.width, rect.height)
         let height = width * 0.78

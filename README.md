@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.16.5 (build 51)** and targets **iOS 15 or newer**.
+**0.16.6 (build 52)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -73,7 +73,9 @@ compiled and tested by CI, then exposed as a workflow artifact.
   On-screen buttons, Arena UI, Modes, Bot, Food, Notifications, Privacy,
   Themes and Backup, all written live into the original engine. Play's
   Loadout opens Food, a tabbed Controls workspace and Modes directly.
-- A sideways layout editor for joystick, boost, zoom bar, buttons, minimap,
+- Android's Ready Room in SwiftUI above the rotated engine, themed with the
+  app palette.
+- A sideways layout editor over a bot-driven AI arena, for joystick, boost, zoom bar, buttons, minimap,
   leaderboard, stats, team and chat, with per-object size and opacity.
 - Eight Android themes with an intensity control, pushed into the engine so
   the lobby and arena interface follow them. File-based backup and restore.
@@ -106,8 +108,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.16.5-build-51-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.16.5-build-51-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.16.6-build-52-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.16.6-build-52-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

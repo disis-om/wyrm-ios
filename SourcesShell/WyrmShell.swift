@@ -17,8 +17,11 @@ private extension Font {
 
 private enum WyrmFontLoader {
     static func register() {
-        guard let url = Bundle.main.url(forResource: "manrope", withExtension: "ttf") else { return }
-        CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        // Manrope for body text; Bodoni Moda is Android's Wyrm.Display face.
+        for name in ["manrope", "bodoni_moda"] {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { continue }
+            CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil)
+        }
     }
 }
 
@@ -85,6 +88,11 @@ final class WyrmShellStore: ObservableObject {
     @Published private(set) var arenaRefusalSequence: UInt64 = 0
     @Published private(set) var refusedArena = ""
     @Published private(set) var refusedArenaSeconds = 0
+    /// The original engine's `screen` (0 home, 2 playing, 3 lobby), pushed by
+    /// Main.m on every change so the Ready Room overlay appears with the lobby.
+    @Published private(set) var engineScreen = 0
+    @Published private(set) var layoutEditorActive = false
+    static let lobbyScreen = 3
     private var timer: Timer?
     /// Values written from SwiftUI that the engine has not echoed back yet. The
     /// engine drains its mailbox once a frame and this store polls every
@@ -95,6 +103,11 @@ final class WyrmShellStore: ObservableObject {
 
     init() {
         WyrmDiagnostics.record("SwiftUI shell store started", category: "LIFECYCLE")
+        NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineScreenChanged"),
+                                               object: nil, queue: .main) { [weak self] note in
+            let screen = note.userInfo?["screen"] as? Int ?? 0
+            Task { @MainActor in self?.engineScreen = screen }
+        }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
@@ -186,11 +199,45 @@ final class WyrmShellStore: ObservableObject {
     func value(_ id: String, _ fallback: Double = 0) -> Double { setting(id)?.values.first ?? fallback }
 
     func enterLobby(name: String, address: String) {
+        // Shown at once; the engine confirms with its own screen change.
+        engineScreen = Self.lobbyScreen
         WyrmDiagnostics.record("lobby requested address=\(address.isEmpty ? "automatic" : "manual")", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestLobby(namePointer, addressPointer) }
         }
     }
+
+    func saveNickname(_ name: String) {
+        name.withCString { WyrmIOSSaveNickname($0) }
+        nickname = name
+    }
+
+    func leaveLobby() {
+        WyrmIOSLobbyHome()
+        engineScreen = 0
+    }
+
+    /// Android's editor: a bot plays an AI arena that draws the real controls
+    /// and HUD; SwiftUI stays above it, clear, holding only the drag targets.
+    func openLayoutEditor() {
+        guard !layoutEditorActive else { return }
+        layoutEditorActive = true
+        WyrmIOSSetShellOverlay(true)
+        let name = nickname.trimmingCharacters(in: .whitespaces).isEmpty ? "Wyrm Player" : nickname
+        name.withCString { WyrmIOSEnterLayoutEditor($0) }
+        WyrmDiagnostics.record("layout editor opened over AI arena", category: "ENGINE")
+    }
+
+    func closeLayoutEditor() {
+        guard layoutEditorActive else { return }
+        WyrmIOSExitLayoutEditor()
+        layoutEditorActive = false
+        // Keep the clear shell until the engine is back on its home screen.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { WyrmIOSSetShellOverlay(false) }
+        WyrmDiagnostics.record("layout editor closed", category: "ENGINE")
+    }
+
+    func toggleEditorLeaderboard() { WyrmIOSToggleEditorLeaderboard() }
 
     func playOnline(name: String, address: String) {
         guard !address.isEmpty else { return }
@@ -584,6 +631,7 @@ final class WyrmShellHost: NSObject {
     @objc static func makeViewController() -> UIViewController {
         WyrmFontLoader.register()
         WyrmThemeStore.shared.publishArenaTheme()
+        WyrmThemeStore.shared.applyControlAppearance()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())
     }
