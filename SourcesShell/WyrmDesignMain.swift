@@ -197,12 +197,10 @@ private struct WyrmPlayRoot: View {
             lastHandledRefusal = sequence
             WyrmDiagnostics.record("arena join ended; returning to lobby endpoint=\(engine.refusedArena)", category: "NETWORK")
         }
-        .task {
-            while !Task.isCancelled {
-                await services.refreshArenasLive()
-                try? await Task.sleep(nanoseconds: 2_000_000_000)
-            }
-        }
+        // One directory read for the recommendation. It used to repeat every
+        // two seconds for as long as this page existed — which is also under
+        // the lobby and the match. The picker keeps its own refresh while open.
+        .task { await services.refreshArenasLive() }
         .fullScreenCover(isPresented: $showArenas) {
             WyrmArenaPicker(services: services, selection: Binding(
                 get: { userSelectedArena ? arena : services.recommendedArena?.endpoint ?? "" },

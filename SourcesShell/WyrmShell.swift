@@ -101,6 +101,7 @@ final class WyrmShellStore: ObservableObject {
     private var timer: Timer?
     @Published private(set) var arenaPlayPending = false
     private var arenaPortBusySeen = false
+    private var arenaGateGeneration = 0
     /// Values written from SwiftUI that the engine has not echoed back yet. The
     /// engine drains its mailbox once a frame and this store polls every
     /// 0.75 s, so without these a switch or slider would snap back to the old
@@ -185,6 +186,24 @@ final class WyrmShellStore: ObservableObject {
         arenaPlayPending = false
         arenaPortBusySeen = false
         WyrmArenaProbeGate.shared.endPlay()
+    }
+
+    /// The engine takes a request on its next frame and reports the port busy
+    /// at once. If it never does, it declined the request without dialling (a
+    /// join still active, a stale request) and nothing will ever report the
+    /// port free again — Play would sit disabled until the app restarted.
+    private func armArenaGate() {
+        arenaPlayPending = true
+        arenaPortBusySeen = false
+        WyrmArenaProbeGate.shared.beginPlay()
+        arenaGateGeneration += 1
+        let generation = arenaGateGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4) { [weak self] in
+            guard let self = self, self.arenaGateGeneration == generation,
+                  self.arenaPlayPending, !self.arenaPortBusySeen else { return }
+            WyrmDiagnostics.record("play request not taken by the engine; Play enabled again", category: "ENGINE")
+            self.finishArenaPlay()
+        }
     }
 
     func refresh() {
@@ -307,9 +326,7 @@ final class WyrmShellStore: ObservableObject {
 
     func playOnline(name: String, address: String) {
         guard !address.isEmpty, !arenaPlayPending else { return }
-        arenaPlayPending = true
-        arenaPortBusySeen = false
-        WyrmArenaProbeGate.shared.beginPlay()
+        armArenaGate()
         adopt(name)
         WyrmDiagnostics.record("online play requested address=selected", category: "ENGINE")
         name.withCString { namePointer in
@@ -319,9 +336,7 @@ final class WyrmShellStore: ObservableObject {
 
     func playOffline(name: String) {
         guard !arenaPlayPending else { return }
-        arenaPlayPending = true
-        arenaPortBusySeen = false
-        WyrmArenaProbeGate.shared.beginPlay()
+        armArenaGate()
         adopt(name)
         WyrmDiagnostics.record("offline practice requested", category: "ENGINE")
         name.withCString { namePointer in
