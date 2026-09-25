@@ -224,6 +224,10 @@ private actor WyrmServiceClient {
         _ = try await request("/v1/notifications/\(id)", method: "DELETE", token: token)
     }
 
+    func player(_ id: String, token: String) async throws -> WyrmServicePlayer {
+        WyrmServicePlayer(try await request("/v1/players/\(id)", token: token))
+    }
+
     func leaderboard(sort: String, token: String) async throws -> [WyrmServicePlayer] {
         try await request("/v1/leaderboard?sort=\(sort)", token: token).array("players").map(WyrmServicePlayer.init)
     }
@@ -239,6 +243,18 @@ private actor WyrmServiceClient {
 
     func setFollow(playerID: String, following: Bool, token: String) async throws -> WyrmServicePlayer {
         WyrmServicePlayer(try await request("/v1/players/\(playerID)/follow", method: following ? "PUT" : "DELETE", token: token))
+    }
+
+    func globalMessages(token: String) async throws -> [WyrmChatItem] {
+        try await request("/v1/chat/messages", token: token).array("messages").map { WyrmChatItem($0) }
+    }
+
+    func sendGlobal(body: String, token: String) async throws {
+        _ = try await request("/v1/chat/messages", method: "POST", body: ["body": body, "channel": "global"], token: token)
+    }
+
+    func report(messageID: String, reason: String, token: String) async throws {
+        _ = try await request("/v1/chat/messages/\(messageID)/report", method: "POST", body: ["reason": reason], token: token)
     }
 
     func conversations(token: String) async throws -> [WyrmConversation] {
@@ -425,6 +441,12 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var arenaLatencies: [String: Int] = [:]
     @Published private(set) var recommendedArena: WyrmArena?
     @Published private(set) var people: [WyrmServicePlayer] = []
+    /// Players opened by id (a profile reached from a message, a room or a
+    /// leaderboard row), fetched fresh from /v1/players/:id.
+    @Published private(set) var profiles: [String: WyrmServicePlayer] = [:]
+    /// The global channel, last 24 hours, oldest first.
+    @Published private(set) var globalChat: [WyrmChatItem] = []
+    private var syncObservers: [NSObjectProtocol] = []
     @Published private(set) var followers: [WyrmServicePlayer] = []
     @Published private(set) var following: [WyrmServicePlayer] = []
     @Published private(set) var messages: [WyrmChatItem] = []
@@ -513,6 +535,40 @@ final class WyrmServiceStore: ObservableObject {
         }
         loading = false
         WyrmDiagnostics.record("service bootstrap finished player=\(playerID ?? "none") failures=\(failures)", category: "ACCOUNT")
+    }
+
+    func refreshGlobalChat() async {
+        await perform { self.globalChat = try await WyrmServiceClient.shared.globalMessages(token: self.token) }
+    }
+
+    func sendGlobal(_ body: String) async -> Bool {
+        var sent = false
+        await perform {
+            try await WyrmServiceClient.shared.sendGlobal(body: body, token: self.token)
+            sent = true
+            self.globalChat = try await WyrmServiceClient.shared.globalMessages(token: self.token)
+        }
+        return sent
+    }
+
+    func report(_ message: WyrmChatItem, reason: String) async {
+        await perform { try await WyrmServiceClient.shared.report(messageID: message.id, reason: reason, token: self.token) }
+    }
+
+    func loadPlayer(_ id: String) async {
+        guard !id.isEmpty else { return }
+        await perform { self.profiles[id] = try await WyrmServiceClient.shared.player(id, token: self.token) }
+    }
+
+    /// A counted run moves the leaderboards and may earn achievement notices.
+    func observeGameSync() {
+        guard syncObservers.isEmpty else { return }
+        syncObservers.append(NotificationCenter.default.addObserver(forName: WyrmGameSync.profileChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refreshLeaderboards() }
+        })
+        syncObservers.append(NotificationCenter.default.addObserver(forName: WyrmGameSync.achievementsEarned, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refreshAlerts() }
+        })
     }
 
     func refreshAlerts() async { await perform { self.alerts = try await WyrmServiceClient.shared.notifications(token: self.token) } }
@@ -652,6 +708,8 @@ final class WyrmServiceStore: ObservableObject {
         arenaLatencies = [:]
         recommendedArena = nil
         people = []
+        profiles = [:]
+        globalChat = []
         followers = []
         following = []
         messages = []

@@ -1205,12 +1205,12 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
-        "The Ready Room is laid out like the Android app — the faint W top right, the selected arena card, Playing as and the four actions — and follows your theme.",
-        "Arrange the layout now opens over a live bot arena, so the real joystick, buttons, minimap and leaderboard move under your finger. Tap the leaderboard to toggle it.",
-        "Every switch and segmented pill is the system control: on iOS 26 it lifts into Liquid Glass and can be dragged between options.",
-        "The tab bar is clear glass; its pill rests flat and lifts into a lens when held, dragged or tapped. Icons keep their contrast in every theme.",
-        "Opening the app syncs your account behind the launch mark; \"Syncing your Wyrm…\" appears only after signing in or creating an account.",
-        "The zoom bar preview knob sits on the bar's centre line again.",
+        "Scores and kills from every online life are now sent to Wyrm, so the leaderboard and your profile move after each run. Runs made offline are kept and sent later.",
+        "Custom skins you build are shown to other Wyrm players in the same arena, and theirs are shown to you.",
+        "Your arena name follows your account when you change it on Play or in the Ready Room.",
+        "Edit profile can add, change or remove your photo, and shows how many renames are left this month.",
+        "Global chat is in Social: everyone in Wyrm, the last 24 hours, with a report option on each message.",
+        "Your own photo now loads correctly, and profiles opened from messages or leaderboards are fetched fresh.",
     ]
 }
 

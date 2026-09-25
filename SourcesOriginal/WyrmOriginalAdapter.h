@@ -30,6 +30,14 @@ void WyrmIOSLobbyHome(void);
 void WyrmIOSEnterLayoutEditor(const char* name);
 void WyrmIOSExitLayoutEditor(void);
 void WyrmIOSToggleEditorLeaderboard(void);
+/* Finished-run receipts and arena skin sync (HomeMailbox.inc). */
+void WyrmIOSRecordFinishedRun(int score, int kills);
+const char* WyrmIOSDrainFinishedRuns(void);
+void WyrmIOSArenaSyncPoll(tenv* env);
+const char* WyrmIOSArenaIdentitySnapshot(void);
+const char* WyrmIOSArenaVisibleSnapshot(void);
+void WyrmIOSArenaSkinSet(int snake_id, const char* nickname, const uint32_t* colours, int count);
+void WyrmIOSArenaSkinsClear(void);
 /* Twelve ARGB roles in arena_theme_role order; stored atomically. */
 void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);

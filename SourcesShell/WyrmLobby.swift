@@ -198,7 +198,10 @@ struct WyrmReadyRoom: View {
 
     private func saveName() {
         let clean = nickname.trimmingCharacters(in: .whitespaces)
-        if clean != engine.nickname { engine.saveNickname(clean) }
+        if clean != engine.nickname {
+            engine.saveNickname(clean)
+            WyrmGameSync.shared.syncIngameName(clean)
+        }
     }
 
     private func identity(_ label: String, _ value: String) -> some View {

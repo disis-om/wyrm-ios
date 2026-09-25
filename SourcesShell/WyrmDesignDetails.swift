@@ -36,6 +36,7 @@ struct WyrmDetailHost: View {
         case .themes: WyrmAccessibilityPage(close: close)
         case .backup: WyrmBackupPage(engine: engine, close: close, open: open)
         case .buildNotes: WyrmBuildNotesPage(close: close)
+        case .globalChat: WyrmGlobalChatDetail(account: account, services: services, close: close, open: open)
         case .developer: WyrmDeveloperDetail(close: close)
         }
     }
@@ -210,7 +211,7 @@ private struct WyrmProfileDetail: View {
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     private var own: Bool { playerID.isEmpty || playerID == account.player?.id }
-    private var servicePlayer: WyrmServicePlayer? { services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
+    private var servicePlayer: WyrmServicePlayer? { services.profiles[playerID] ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
     var body: some View {
         WyrmDetailChrome(title: "Profile", actionTitle: own ? "Edit" : "", onBack: close, action: { if own { open(.editProfile) } }) {
             ScrollView(showsIndicators: false) {
@@ -230,6 +231,7 @@ private struct WyrmProfileDetail: View {
                 }
             }
         }
+        .task(id: playerID) { if !own { await services.loadPlayer(playerID) } }
     }
     private var profileBio: String { own ? ((account.player?.bio.isEmpty == false ? account.player?.bio : "Nothing yet. Add a line about how you play.") ?? "") : (servicePlayer?.bio.isEmpty == false ? servicePlayer!.bio : "Nothing here yet.") }
     private var score: Int64 { own ? (account.player?.highestScore ?? 0) : (servicePlayer?.highestScore ?? 0) }
@@ -246,18 +248,43 @@ private struct WyrmEditProfileDetail: View {
     @State private var username = ""
     @State private var bio = ""
     @State private var avatar = "mono-ink"
+    @State private var choosingPhoto = false
     var body: some View {
         WyrmDetailChrome(title: "Edit profile", actionTitle: "Save", onBack: close, action: save) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 13) {
+                    VStack(spacing: 10) {
+                        WyrmAvatar(initials: account.player?.initials ?? "W", size: 76, url: account.player?.avatarURL ?? "")
+                        HStack(spacing: 18) {
+                            Button(account.player?.avatarURL.isEmpty == false ? "Change photo" : "Add photo") { choosingPhoto = true }
+                                .font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                            if account.player?.avatarURL.isEmpty == false {
+                                Button("Remove") { Task { await account.removeAvatar() } }
+                                    .font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.badge)
+                            }
+                        }
+                        if account.busy { ProgressView().tint(ATheme.quiet) }
+                    }.padding(.vertical, 8)
                     WyrmDesignEditField(label: "Display name", value: $displayName)
                     WyrmDesignEditField(label: "Arena name", value: $ingameName)
                     WyrmDesignEditField(label: "Username", value: $username)
                     WyrmDesignEditField(label: "Bio", value: $bio)
+                    if let renames = account.renames {
+                        Text("Renames left this month: display name \(renames.displayName) · username \(renames.username)")
+                            .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).frame(maxWidth: .infinity, alignment: .leading)
+                    }
                     if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(.red) }
                     WyrmOutlineAction(title: "Delete account", destructive: true) { Task { await account.deleteAccount() } }
                 }.padding(16)
             }.onAppear { displayName = account.player?.displayName ?? ""; ingameName = account.player?.ingameName ?? ""; username = account.player?.username ?? ""; bio = account.player?.bio ?? ""; avatar = account.player?.avatarKey ?? "mono-ink" }
+        }
+        .task { await account.loadRenames() }
+        .sheet(isPresented: $choosingPhoto) {
+            WyrmPhotoPicker { image in
+                choosingPhoto = false
+                guard let image, let jpeg = WyrmPhotoPicker.jpeg(image) else { return }
+                Task { await account.uploadAvatar(jpeg) }
+            }
         }
     }
     private func save() { Task { if await account.update(displayName: displayName, ingameName: ingameName, username: username, bio: bio, avatarKey: avatar) { close() } } }

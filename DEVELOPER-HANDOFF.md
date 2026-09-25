@@ -1,6 +1,16 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.7 (53)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.8 (54)** · Minimum iOS: **15.0**
+
+Build 54 closes the backend audit gaps: finished runs now reach
+`POST /v1/me/stats` (engine `record_finished_run` → `WyrmIOSRecordFinishedRun`
+→ SwiftUI durable outbox, UUID event ids, five-hour `/v1/me/stats/reconcile`);
+custom arena skins publish, heartbeat every 60 s under the backend's two-minute
+TTL, clear and look up through `/v1/arena/skin(s)` via `WyrmIOSArenaSyncPoll`;
+the IGN follows the account; own avatar paths are made absolute; avatar
+upload/remove, rename allowance, global chat and fresh `/v1/players/:id`
+profiles are wired. Not wired on iOS: realtime voice media, push tokens (no
+APNs entitlement), voice room creation/moderation.
 
 Build 52 moves the Ready Room to SwiftUI above the rotated engine (Main.m keeps
 the shell visible and clear while `screen == LOBBY` or `WyrmIOSSetShellOverlay`),
