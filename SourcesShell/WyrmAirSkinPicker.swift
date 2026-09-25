@@ -219,37 +219,80 @@ struct WyrmAirWheelToggle: View {
     }
 }
 
-/// The AIR colour wheel, bezel and pointers, with Liquid Glass chrome.
-/// All positions are stored in AIR wheel units so the Android maths applies
-/// unchanged.
-struct WyrmAirColourWheel: View {
+/// The AIR colour wheel, its two bead buttons and their live colour.
+///
+/// Dragging only touches this view's own `@State`; the persisted values are
+/// written once, when the finger lifts. Writing `@AppStorage` every frame
+/// re-rendered the whole Skin page (and its 256-bead preview) per touch
+/// sample, and live Liquid Glass on the moving knobs and on a bezel whose
+/// tint changes every frame re-sampled the backdrop each frame: together
+/// they made the picker flicker and lag (Build 56 device report). The
+/// moving parts are therefore glass-styled but drawn as plain layers.
+struct WyrmAirWheelPanel: View {
     let wheel: CGImage?
-    @Binding var pointerX: Double
-    @Binding var pointerY: Double
-    @Binding var bezelAngle: Double
-    @Binding var rgb: Int
+    let beads: [Int: CGImage]
+    @Binding var storedX: Double
+    @Binding var storedY: Double
+    @Binding var storedAngle: Double
+    @Binding var storedRGB: Int
+    let onAdd: (_ kind: Int, _ rgb: UInt32) -> Void
 
-    @State private var pointerStart: CGPoint?
-    @State private var bezelStart: CGPoint?
+    @State private var pointerX: Double
+    @State private var pointerY: Double
+    @State private var bezelAngle: Double
+    @State private var rgb: UInt32
+    @State private var drag: WheelDrag?
+
+    /// A pointer drag remembers where the pointer started; the finger's
+    /// translation is added to it.
+    private enum WheelDrag { case pointer(x: Double, y: Double), bezel }
+
+    init(wheel: CGImage?, beads: [Int: CGImage],
+         storedX: Binding<Double>, storedY: Binding<Double>,
+         storedAngle: Binding<Double>, storedRGB: Binding<Int>,
+         onAdd: @escaping (_ kind: Int, _ rgb: UInt32) -> Void) {
+        self.wheel = wheel
+        self.beads = beads
+        _storedX = storedX
+        _storedY = storedY
+        _storedAngle = storedAngle
+        _storedRGB = storedRGB
+        self.onAdd = onAdd
+        _pointerX = State(initialValue: storedX.wrappedValue)
+        _pointerY = State(initialValue: storedY.wrappedValue)
+        _bezelAngle = State(initialValue: storedAngle.wrappedValue)
+        _rgb = State(initialValue: UInt32(truncatingIfNeeded: storedRGB.wrappedValue) & 0xFF_FFFF)
+    }
 
     private var pureColour: (Double, Double, Double) { WyrmAirSkin.pure(x: pointerX, y: pointerY) }
     private var brightness: Double { WyrmAirSkin.brightness(angle: bezelAngle) }
-    private var current: UInt32 { UInt32(truncatingIfNeeded: rgb) & 0xFF_FFFF }
 
     var body: some View {
+        VStack(spacing: 18) {
+            wheelView
+                .frame(maxWidth: 300)
+                .padding(.horizontal, 20)
+            HStack(spacing: 22) {
+                ForEach(0..<2, id: \.self) { kind in
+                    WyrmAirBeadButton(image: beads[kind], rgb: rgb,
+                                      label: kind == 0 ? "Add plain bead" : "Add rim bead") {
+                        onAdd(kind, rgb)
+                    }
+                }
+            }
+        }
+    }
+
+    private var wheelView: some View {
         GeometryReader { proxy in
             let side = min(proxy.size.width, proxy.size.height)
             let unit = side / (2 * 172)
             let centre = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
             let rounded = WyrmAirSkin.rounded(pureColour)
             let pure = UInt32(rounded.0) << 16 | UInt32(rounded.1) << 8 | UInt32(rounded.2)
+            let bezelDiameter = 2 * (WyrmAirSkin.wheelRadius + WyrmAirSkin.bezelWidth) * unit
             ZStack {
-                // Bezel: AIR tints it with the unshaded wheel colour.
-                Circle()
-                    .fill(Color.clear)
-                    .frame(width: 2 * (WyrmAirSkin.wheelRadius + WyrmAirSkin.bezelWidth) * unit,
-                           height: 2 * (WyrmAirSkin.wheelRadius + WyrmAirSkin.bezelWidth) * unit)
-                    .airGlass(Circle(), tint: Color(airRGB: pure).opacity(0.85), interactive: false)
+                bezel(tint: Color(airRGB: pure), diameter: bezelDiameter)
                     .position(centre)
                 Group {
                     if let wheel {
@@ -266,71 +309,111 @@ struct WyrmAirColourWheel: View {
                     .opacity(abs(brightness))
                     .frame(width: 2 * 128 * 1.005 * unit, height: 2 * 128 * 1.005 * unit)
                     .position(centre)
-                    .allowsHitTesting(false)
-                // Gestures sit on the knobs themselves (as AIR's buttons do)
-                // and win over the surrounding scroll view.
-                knob(diameter: 44 * unit)
-                    .highPriorityGesture(DragGesture(minimumDistance: 0)
-                        .onChanged { value in movePointer(value, unit: unit) }
-                        .onEnded { _ in pointerStart = nil })
-                    .accessibilityLabel("Colour pointer")
+                knob(diameter: 46 * unit)
                     .position(x: centre.x + pointerX * unit, y: centre.y + pointerY * unit)
-                knob(diameter: 40 * unit)
-                    .highPriorityGesture(DragGesture(minimumDistance: 0)
-                        .onChanged { value in moveBezel(value, unit: unit) }
-                        .onEnded { _ in bezelStart = nil })
-                    .accessibilityLabel("Brightness knob")
+                knob(diameter: 42 * unit)
                     .position(x: centre.x + cos(bezelAngle) * WyrmAirSkin.bezelPointerRadius * unit,
                               y: centre.y + sin(bezelAngle) * WyrmAirSkin.bezelPointerRadius * unit)
             }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            // One gesture for the whole control, so a finger never has to
+            // land exactly on a small knob, and it wins over the scroll view.
+            .contentShape(Rectangle())
+            .highPriorityGesture(DragGesture(minimumDistance: 0)
+                .onChanged { value in dragChanged(value, centre: centre, unit: unit) }
+                .onEnded { _ in dragEnded() })
+            .accessibilityElement()
+            .accessibilityLabel("Colour wheel")
+            .accessibilityValue(String(format: "#%06X", rgb))
         }
         .aspectRatio(1, contentMode: .fit)
     }
 
-    private func knob(diameter: CGFloat) -> some View {
+    /// Glass-styled, but rendered as plain layers: a tinted body, a light
+    /// top and a shaded bottom (AIR's `cwbo` highlight and shade) and a rim.
+    private func bezel(tint: Color, diameter: CGFloat) -> some View {
         Circle()
-            .fill(Color(airRGB: current))
-            .frame(width: diameter * 0.66, height: diameter * 0.66)
-            .overlay(Circle().stroke(Color.white.opacity(0.9), lineWidth: 1.5))
+            .fill(tint.opacity(0.88))
+            .overlay(Circle().fill(LinearGradient(gradient: Gradient(stops: [
+                .init(color: Color.white.opacity(0.42), location: 0),
+                .init(color: Color.white.opacity(0.06), location: 0.46),
+                .init(color: Color.black.opacity(0.16), location: 1),
+            ]), startPoint: .top, endPoint: .bottom)))
+            .overlay(Circle().stroke(LinearGradient(gradient: Gradient(colors: [
+                Color.white.opacity(0.85), Color.white.opacity(0.18),
+            ]), startPoint: .top, endPoint: .bottom), lineWidth: 1.2))
             .frame(width: diameter, height: diameter)
-            .contentShape(Circle().inset(by: -10))
-            .airGlass(Circle())
-            .shadow(color: .black.opacity(0.22), radius: 3, y: 2)
+            .shadow(color: .black.opacity(0.14), radius: 6, y: 3)
     }
 
-    /// The wheel pointer moves by the drag, not to the finger, and stays
-    /// inside `pointerLimit`; colour follows `touchMove` exactly.
-    private func movePointer(_ value: DragGesture.Value, unit: CGFloat) {
-        let start = pointerStart ?? CGPoint(x: pointerX, y: pointerY)
-        if pointerStart == nil { pointerStart = start }
-        var x = Double(start.x) + Double(value.translation.width / unit)
-        var y = Double(start.y) + Double(value.translation.height / unit)
-        let d = (x * x + y * y).squareRoot()
-        if d > WyrmAirSkin.pointerLimit {
-            x *= WyrmAirSkin.pointerLimit / d
-            y *= WyrmAirSkin.pointerLimit / d
+    private func knob(diameter: CGFloat) -> some View {
+        ZStack {
+            Circle().fill(LinearGradient(gradient: Gradient(colors: [
+                Color.white.opacity(0.62), Color.white.opacity(0.30),
+            ]), startPoint: .top, endPoint: .bottom))
+            Circle().stroke(LinearGradient(gradient: Gradient(colors: [
+                Color.white.opacity(0.98), Color.white.opacity(0.35),
+            ]), startPoint: .top, endPoint: .bottom), lineWidth: 1.6)
+            Circle()
+                .fill(Color(airRGB: rgb))
+                .overlay(Circle().stroke(Color.white.opacity(0.95), lineWidth: 1.5))
+                .padding(diameter * 0.17)
         }
-        pointerX = x
-        pointerY = y
-        rgb = Int(WyrmAirSkin.shaded(WyrmAirSkin.pure(x: x, y: y), brightness: brightness))
+        .frame(width: diameter, height: diameter)
+        .shadow(color: .black.opacity(0.25), radius: 3, y: 2)
     }
 
-    /// The bezel pointer snaps to radius 151; its angle is `bsk_br`, applied
-    /// to the rounded wheel colour as the AIR bezel handler does.
-    private func moveBezel(_ value: DragGesture.Value, unit: CGFloat) {
-        let startPoint = bezelStart ?? CGPoint(x: cos(bezelAngle) * WyrmAirSkin.bezelPointerRadius,
-                                               y: sin(bezelAngle) * WyrmAirSkin.bezelPointerRadius)
-        if bezelStart == nil { bezelStart = startPoint }
-        let x = Double(startPoint.x) + Double(value.translation.width / unit)
-        let y = Double(startPoint.y) + Double(value.translation.height / unit)
-        bezelAngle = atan2(y, x)
-        rgb = Int(WyrmAirSkin.shaded(WyrmAirSkin.rounded(pureColour),
-                                     brightness: WyrmAirSkin.brightness(angle: bezelAngle)))
+    /// Where the finger lands decides what it drives. On the hue pointer it
+    /// moves the pointer by the drag, as AIR does; elsewhere on the wheel the
+    /// pointer starts under the finger. On the bezel the knob follows the
+    /// finger's angle. Colour follows AIR's `touchMove` maths.
+    private func dragChanged(_ value: DragGesture.Value, centre: CGPoint, unit: CGFloat) {
+        if drag == nil {
+            let sx = Double((value.startLocation.x - centre.x) / unit)
+            let sy = Double((value.startLocation.y - centre.y) / unit)
+            if hypot(sx - pointerX, sy - pointerY) <= 30 {
+                drag = .pointer(x: pointerX, y: pointerY)
+            } else if (sx * sx + sy * sy).squareRoot() <= WyrmAirSkin.wheelRadius {
+                drag = .pointer(x: sx, y: sy)
+            } else {
+                drag = .bezel
+            }
+        }
+        switch drag {
+        case .pointer(let originX, let originY):
+            var x = originX + Double(value.translation.width / unit)
+            var y = originY + Double(value.translation.height / unit)
+            let d = (x * x + y * y).squareRoot()
+            if d > WyrmAirSkin.pointerLimit {
+                x *= WyrmAirSkin.pointerLimit / d
+                y *= WyrmAirSkin.pointerLimit / d
+            }
+            pointerX = x
+            pointerY = y
+            rgb = WyrmAirSkin.shaded(WyrmAirSkin.pure(x: x, y: y), brightness: brightness)
+        case .bezel:
+            let x = Double((value.location.x - centre.x) / unit)
+            let y = Double((value.location.y - centre.y) / unit)
+            bezelAngle = atan2(y, x)
+            rgb = WyrmAirSkin.shaded(WyrmAirSkin.rounded(pureColour),
+                                     brightness: WyrmAirSkin.brightness(angle: bezelAngle))
+        case nil:
+            break
+        }
+    }
+
+    private func dragEnded() {
+        drag = nil
+        storedX = pointerX
+        storedY = pointerY
+        storedAngle = bezelAngle
+        storedRGB = Int(rgb)
     }
 }
 
 /// One of the two AIR bead buttons: its texture tinted with the picked colour,
-/// turned half a revolution as AIR shows it.
+/// turned half a revolution as AIR shows it. The button itself never moves,
+/// so its Liquid Glass backing does not re-sample every frame.
 struct WyrmAirBeadButton: View {
     let image: CGImage?
     let rgb: UInt32
@@ -350,8 +433,8 @@ struct WyrmAirBeadButton: View {
             }
             .padding(9)
             .frame(width: 66, height: 66)
+            .background(Circle().fill(Color.clear).airGlass(Circle(), interactive: false))
             .contentShape(Circle())
-            .airGlass(Circle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)

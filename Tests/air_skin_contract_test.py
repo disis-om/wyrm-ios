@@ -20,6 +20,7 @@ AIR_ATLAS = ROOT / "Resources/AirSkin/tex_atlas_8k.png"
 WHEEL = ROOT / "Resources/AirSkin/air_colour_wheel.png"
 PREPARED_REDRAW = ROOT / "build-original-source/app/src/game/redraw.c"
 PREPARED_ATLAS = ROOT / "build-original-source/app/res/textures/tex_atlas_8k.png"
+PREPARED_CALLBACK = ROOT / "build-original-source/app/src/network/callback.c"
 
 pinned = re.search(r'AIR_ATLAS_SHA256 = "([0-9a-f]{64})"', PREPARE)
 checks = {
@@ -34,12 +35,16 @@ checks = {
     "palette matches engine cg_colors row count": PICKER.count("(0.") + PICKER.count("(0, ") + PICKER.count("(1, 1, 1)") >= 42,
     # Liquid Glass chrome with an iOS 15 fallback.
     "Liquid Glass on iOS 26 with material fallback": "if #available(iOS 26.0, *)" in PICKER and "glassEffect(glass, in: shape)" in PICKER and ".ultraThinMaterial" in PICKER and "#if compiler(>=6.2)" in PICKER,
-    "bezel is glass tinted with the unshaded colour": "airGlass(Circle(), tint: Color(airRGB: pure)" in PICKER,
-    "knobs drag relatively and beat the scroll view": PICKER.count(".highPriorityGesture(DragGesture(minimumDistance: 0)") == 2 and "pointerStart ?? CGPoint" in PICKER,
+    "bezel is tinted with the unshaded colour": "bezel(tint: Color(airRGB: pure)" in PICKER,
+    # Build 56 device report: live glass on moving parts flickered.
+    "moving knobs and bezel carry no live glass": "airGlass" not in PICKER[PICKER.index("private func bezel("):PICKER.index("private func dragChanged(")],
+    "one wheel-wide drag that beats the scroll view": PICKER.count(".highPriorityGesture(DragGesture(minimumDistance: 0)") == 1 and ".contentShape(Rectangle())" in PICKER,
+    "pointer grabbed on the knob moves by the drag": "drag = .pointer(x: pointerX, y: pointerY)" in PICKER and "originX + Double(value.translation.width / unit)" in PICKER,
+    "drag stays local; storage is written on lift": "private func dragEnded()" in PICKER and "storedRGB = Int(rgb)" in PICKER and "@AppStorage(" not in PICKER,
     "toggle button is glass": "struct WyrmAirWheelToggle" in PICKER and ".airGlass(Circle())" in PICKER,
     # Studio wiring.
     "pattern toggle swaps the bead grid for the wheel": "WyrmAirWheelToggle(showingWheel: showingWheel)" in STUDIO and "if showingWheel {" in STUDIO and "airWheelPanel" in STUDIO,
-    "exactly AIR's first two beads are offered": "ForEach(0..<2, id: \\.self) { kind in" in STUDIO and "textures.airBeads[kind]" in STUDIO,
+    "exactly AIR's first two beads are offered": "ForEach(0..<2, id: \\.self) { kind in" in PICKER and "beads: textures.airBeads" in STUDIO,
     "wheel bead keeps exact RGB and a nearest group": "WyrmAirSkin.nearestGroup(rgb)" in STUDIO and "WyrmAirSkin.marker(kind: kind) | rgb" in STUDIO,
     "wheel state persists": all(k in STUDIO for k in ("air-pointer-x", "air-pointer-y", "air-bezel", "air-rgb")),
     "studio crops the AIR atlas cells": "x: Double(2 + kind) / 7, y: 6.0 / 9" in STUDIO and "width: 102.0 / 64 / 7, height: 102.0 / 64 / 9" in STUDIO,
@@ -62,6 +67,10 @@ if PREPARED_REDRAW.is_file():
     checks["engine draws AIR bead UV and tint"] = "? apple_air_bead_uv(apple_air_kind(built))" in redraw and "? apple_air_tint(built, a)" in redraw
     checks["engine stamps ksmc head, tail and interleaved"] = redraw.count("apple_air_shadow(env, p, apple_air_half") == 3
     checks["Wyrm tail shadow skips AIR beads"] = "!(apple_air_any && apple_air_kind_at(env, o, (int)j) >= 0)" in redraw
+
+if PREPARED_CALLBACK.is_file():
+    callback = PREPARED_CALLBACK.read_text()
+    checks["arena skin bytes logged without nickname, capped"] = 'SDL_Log("Wyrm arena skin id=%d len=%d bytes=%s", id, skl, hex);' in callback and "apple_skin_logged < 24" in callback
 
 failed = [name for name, ok in checks.items() if not ok]
 for name, ok in checks.items():
