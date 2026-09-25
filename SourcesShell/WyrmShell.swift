@@ -122,9 +122,19 @@ final class WyrmShellStore: ObservableObject {
             verifySmokeSettingsWrite(attemptsRemaining: 20)
         }
         if args.contains("--smoke-arena-refusal") {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
-                "127.0.0.1:444".withCString { WyrmIOSPublishArenaRefusal($0, 120) }
-                self?.refresh()
+            publishSmokeRefusal(attemptsRemaining: 20)
+        }
+    }
+
+    /// The refusal mailbox only exists once the engine has bootstrapped off the
+    /// main thread; a publish before that is dropped, so retry until it lands.
+    private func publishSmokeRefusal(attemptsRemaining: Int) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1) { [weak self] in
+            guard let self = self else { return }
+            "127.0.0.1:444".withCString { WyrmIOSPublishArenaRefusal($0, 120) }
+            self.refresh()
+            if self.arenaRefusalSequence == 0 && attemptsRemaining > 1 {
+                self.publishSmokeRefusal(attemptsRemaining: attemptsRemaining - 1)
             }
         }
     }
