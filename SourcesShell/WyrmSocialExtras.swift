@@ -69,39 +69,16 @@ struct WyrmGlobalChatDetail: View {
     var body: some View {
         WyrmDetailChrome(title: "Global chat", onBack: close) {
             VStack(spacing: 0) {
-                ScrollViewReader { reader in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 10) {
-                            if services.globalChat.isEmpty {
-                                WyrmPaperCard { WyrmEmptyPanel(title: "Quiet right now", note: "Messages stay here for 24 hours. Say hello.") }
-                                    .padding(.top, 16)
-                            }
-                            ForEach(services.globalChat) { message in row(message).id(message.id) }
-                        }
-                        .padding(.vertical, 14)
-                    }
-                    .onChange(of: services.globalChat.last?.id) { last in
-                        guard let last else { return }
-                        withAnimation(.easeOut(duration: 0.2)) { reader.scrollTo(last, anchor: .bottom) }
-                    }
-                }
-                HStack(spacing: 10) {
-                    TextField("Message everyone", text: $draft)
-                        .font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 44)
-                        .background(ATheme.card).cornerRadius(22)
-                        .overlay(RoundedRectangle(cornerRadius: 22).stroke(ATheme.rule))
-                        .submitLabel(.send).onSubmit(send)
-                    Button(action: send) {
-                        Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundColor(ATheme.onInk)
-                            .frame(width: 44, height: 44).background(Circle().fill(canSend ? ATheme.ink : ATheme.ink.opacity(0.3)))
-                    }.buttonStyle(.plain).disabled(!canSend)
-                }
-                .padding(.horizontal, 16).padding(.vertical, 10)
-                .background(ATheme.paper)
+                WyrmChatTranscript(messages: services.globalChat, myID: account.player?.id,
+                                   emptyTitle: "Quiet right now", emptyNote: "Messages stay here for 24 hours. Say hello.",
+                                   onAuthor: { open(.profile($0)) }, onReport: { reporting = $0 })
                 if !services.errorMessage.isEmpty {
                     Text(friendly(services.errorMessage)).font(.androidWyrm(11.5)).foregroundColor(ATheme.badge)
-                        .padding(.horizontal, 16).padding(.bottom, 8)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18).padding(.vertical, 6)
+                        .transition(.opacity)
                 }
+                WyrmChatComposer(text: $draft, placeholder: "Message everyone", limit: 280, sending: sending, onSend: send)
             }
         }
         .task {
@@ -118,34 +95,14 @@ struct WyrmGlobalChatDetail: View {
         }
     }
 
-    private var canSend: Bool { !sending && !draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
-
-    private func row(_ message: WyrmChatItem) -> some View {
-        let mine = message.authorID == account.player?.id
-        return VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
-            if !mine {
-                Button { open(.profile(message.authorID)) } label: {
-                    Text(message.authorUsername.isEmpty ? message.authorName : "\(message.authorName) · @\(message.authorUsername)")
-                        .font(.androidWyrm(10.5, .semibold)).foregroundColor(ATheme.quiet)
-                }.buttonStyle(.plain)
-            }
-            Text(message.body).font(.androidWyrm(13.5))
-                .foregroundColor(mine ? ATheme.onInk : ATheme.ink)
-                .padding(.horizontal, 13).padding(.vertical, 9)
-                .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(mine ? ATheme.ink : ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(mine ? Color.clear : ATheme.rule))
-                .contextMenu { if !mine { Button("Report", role: .destructive) { reporting = message } } }
-        }
-        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
-        .padding(.horizontal, 16)
-    }
-
     private func send() {
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty, !sending else { return }
         sending = true
+        draft = ""
         Task {
-            if await services.sendGlobal(String(body.prefix(280))) { draft = "" }
+            // Cleared at once so the send feels immediate; put back if refused.
+            if !(await services.sendGlobal(String(body.prefix(280)))) && draft.isEmpty { draft = body }
             sending = false
         }
     }

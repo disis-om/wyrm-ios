@@ -119,28 +119,32 @@ private struct WyrmThreadDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     @State private var message = ""
-    private var person: WyrmServicePlayer? { services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) }
+    @State private var sending = false
+    private var person: WyrmServicePlayer? { services.profiles[playerID] ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) }
     var body: some View {
         WyrmDetailChrome(title: person?.displayName ?? "Message", onBack: close) {
             VStack(spacing: 0) {
-                ScrollViewReader { _ in
-                    ScrollView(showsIndicators: false) {
-                        LazyVStack(spacing: 9) {
-                            if services.messages.isEmpty { WyrmEmptyPanel(title: "Quiet so far", note: "Say hello when you are ready.") }
-                            ForEach(services.messages) { row in
-                                HStack { if row.authorID == account.player?.id { Spacer(minLength: 50) }; Text(row.body).font(.androidWyrm(13)).padding(.horizontal, 14).padding(.vertical, 10).background(row.authorID == account.player?.id ? ATheme.ink : ATheme.card).foregroundColor(row.authorID == account.player?.id ? ATheme.onInk : ATheme.ink).cornerRadius(15); if row.authorID != account.player?.id { Spacer(minLength: 50) } }.padding(.horizontal, 16)
-                            }
-                        }.padding(.vertical, 14)
-                    }
+                WyrmChatTranscript(messages: services.messages, myID: account.player?.id, showsAuthors: false,
+                                   emptyTitle: "Quiet so far", emptyNote: "Say hello when you are ready.")
+                WyrmChatComposer(text: $message, placeholder: "Message \(person?.displayName ?? "")", limit: 1000,
+                                 sending: sending, onSend: send)
+            }
+            // A thread is live while it is open, like Global chat.
+            .task {
+                while !Task.isCancelled {
+                    await services.loadThread(playerID: playerID)
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
                 }
-                HStack(spacing: 9) {
-                    TextField("Message", text: $message).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 44).background(ATheme.card).cornerRadius(14)
-                    Button { send() } label: { Image(systemName: "arrow.up").font(.system(size: 15, weight: .bold)).foregroundColor(ATheme.onInk).frame(width: 44, height: 44).background(ATheme.ink).clipShape(Circle()) }.buttonStyle(.plain).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }.padding(12).background(.ultraThinMaterial)
-            }.task { await services.loadThread(playerID: playerID) }
+            }
         }
     }
-    private func send() { let body = message.trimmingCharacters(in: .whitespacesAndNewlines); guard !body.isEmpty else { return }; message = ""; Task { await services.sendDirect(playerID: playerID, body: body) } }
+    private func send() {
+        let body = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !body.isEmpty, !sending else { return }
+        message = ""
+        sending = true
+        Task { await services.sendDirect(playerID: playerID, body: String(body.prefix(1000))); sending = false }
+    }
 }
 
 private struct WyrmPeopleDetail: View {

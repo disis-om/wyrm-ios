@@ -1,8 +1,79 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.0 (56)**, CI run 36092431933 green · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.1 (57)**, CI pending (Build 56 CI 36092431933 green) · Minimum iOS: **15.0**
 
-**Source changes after Build 55, not yet built by this session:**
+**Build 57 (0.17.1) — keyboard, chat, settings search. Local `Tests/*.py` all green (`ui_shell` 52/52); CI result below once it runs; not device-tested:**
+
+- *Wyrm keyboard.* `SourcesShell/WyrmKeyboard.swift` replaces the system keyboard
+  in every `UITextField`/`UITextView` (so every SwiftUI `TextField`/`TextEditor`).
+  It swizzles the `inputView` getter (`class_addMethod` then exchange), so a
+  field's own `inputView` still wins. `WyrmKeyboardController.shared` tracks the
+  focused field through `UITextField/UITextView.textDidBegin/EndEditing` and
+  types through `UITextInput`: insert, delete with repeat, return →
+  `textFieldShouldReturn` + `.editingDidEndOnExit`, shift/caps lock, and
+  letters/123/#+= plus a digits pad for number and email pads. It is drawn
+  in SwiftUI with the paper palette (card keys, well specials, ink return), so
+  it follows the theme.
+  - *Gear key.* Swaps the keys for Size −/+ (80-130 %, 5 % steps), a
+    transparency slider (0-60 %), Reset and Done. The values persist in
+    `wyrm.ios.keyboard.scale/opacity`.
+  - *Lobby (sideways canvas).* The swizzle returns a 1 pt placeholder
+    (`embedded`), and `WyrmLobby` draws `WyrmKeyboardView(compact: true)` inside
+    the rotated canvas. A knob on its bottom edge drags it anywhere
+    (`wyrm.ios.keyboard.offset-x/-y`, clamped to the canvas). The Ready Room
+    lifts 118 pt while it is up.
+  - *Installation.* `WyrmShellHost.makeViewController` calls `install()` once.
+  - *Needs device checks.* Dictation, emoji, other languages and the
+    autocorrect bar are gone by design. Secure fields work but also use it.
+    Hardware keyboards still type.
+- *Keyboard avoidance.* The route container and the main ZStack in
+  `WyrmDesignMain` use `.ignoresSafeArea(.container)` instead of all regions,
+  so every route (DMs, global chat, voice verification email/code, profile edit,
+  team fields) moves up for the keyboard. The tab bar fades out while a field
+  is focused.
+- *Chat.* `SourcesShell/WyrmChatUI.swift` is shared by global chat
+  (`WyrmSocialExtras`) and DMs (`WyrmThreadDetail`).
+  - `WyrmChatComposer` is a growing 1-5 line field and a send button in
+    Liquid Glass (`GlassEffectContainer` on iOS 26, material before). The
+    button springs in with text, and its arrow launches up on send. A counter
+    appears near the limit: 280 for global chat, 1000 for DMs.
+  - `WyrmChatTranscript` groups bubbles by author and minute with tight
+    corners, animates new bubbles in, scrolls to the bottom on arrival and on
+    keyboard show, and has Copy/Report context menus.
+  - Global chat polls every 3 s and DMs every 4 s. Sends clear optimistically
+    and restore the text if refused.
+- *Settings search.* `SourcesShell/WyrmSettingsSearch.swift` puts a search field
+  under the Settings title.
+  - *Index* (`WyrmSettingsIndex`). Every setting a page actually draws,
+    placed where that page draws it:
+    - Display: `general*`.
+    - Controls: steering, handedness, boost, sizes, the zoom bar, and the
+      arrow card in arrow mode.
+    - Buttons: each hotkey plus size/opacity.
+    - Modes and Food: normal/assist, split by `WyrmFoodPage.isFood`.
+    - Bot: circle/radius.
+    - Notifications: each kind.
+    - Accessibility: theme, intensity, and the new Keyboard card.
+    - The hub: Developer Mode.
+  - *Results.* Each result card holds the real control, live, with an ↗
+    button. The button sets `WyrmSettingsFocus.shared.reveal(id)` and opens the
+    route.
+  - *Scroll and blink.* `WSScaffold` scrolls the target to the centre after
+    0.38 s. Pages open the fold or pick the Normal/Assist tab that holds it.
+    Every `WSTypedRow` and each custom row carries
+    `.wyrmSettingAnchor(id)`, which blinks twice.
+  - *Query storage.* The query lives in `WyrmSettingsFocus` because a theme
+    change rebuilds the shell.
+  - *Refactors.* The hotkey row became `WyrmHotkeyRow`.
+    `WyrmNotificationSettingsPage.groups` is now `static`.
+- *Build steps when OM says go.* Commit, push, run the Apple workflow, then
+  device-check:
+  1. Typing, and return/submit in chat, auth and the arena picker.
+  2. The lobby keyboard: rotation, drag and the knob.
+  3. Composer lift above the keyboard.
+  4. Every search arrow.
+
+**Source changes after Build 55 (carried into Build 56's commit):**
 
 - *Image arrow skins.* `Scripts/generate-arrow-skins.py` packs the 20 NTL VANCED
   arrows (`../NTL VANCED/sc/*.webp`, everything except the code-drawn "Vanced
