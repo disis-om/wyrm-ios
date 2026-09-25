@@ -384,6 +384,30 @@ final class WyrmArenaProbeGate {
     private var playActive = false
     private var sessions: [ObjectIdentifier: WyrmArenaProbeSession] = [:]
 
+    /// Measured on 2026-09-25: thirty bare TCP connects to one arena, one every
+    /// two seconds, and that arena reset every connection from the same public
+    /// IP for about a minute afterwards — the WebSocket never upgraded, so every
+    /// Play in that minute failed. So a
+    /// round trip is remembered for a minute and an arena is never re-dialled
+    /// inside it, however often the picker is opened.
+    private static let reuseSeconds: TimeInterval = 60
+    private var measured: [String: (at: Date, value: Int?)] = [:]
+
+    fileprivate func recent(_ endpoint: String) -> (hit: Bool, value: Int?) {
+        lock.lock()
+        defer { lock.unlock() }
+        guard let last = measured[endpoint],
+              Date().timeIntervalSince(last.at) < Self.reuseSeconds else { return (false, nil) }
+        return (true, last.value)
+    }
+
+    fileprivate func remember(_ endpoint: String, _ value: Int?) {
+        lock.lock()
+        // A probe cut short by Play measured nothing.
+        if !playActive { measured[endpoint] = (Date(), value) }
+        lock.unlock()
+    }
+
     private init() {}
 
     fileprivate func register(_ session: WyrmArenaProbeSession) -> Bool {
@@ -476,9 +500,13 @@ fileprivate final class WyrmArenaProbeSession {
 
 private enum WyrmArenaProbe {
     static func latency(to arena: WyrmArena) async -> Int? {
-        await withCheckedContinuation { continuation in
+        let recent = WyrmArenaProbeGate.shared.recent(arena.endpoint)
+        if recent.hit { return recent.value }
+        let value: Int? = await withCheckedContinuation { continuation in
             WyrmArenaProbeSession(arena: arena) { continuation.resume(returning: $0) }.start()
         }
+        WyrmArenaProbeGate.shared.remember(arena.endpoint, value)
+        return value
     }
 }
 
