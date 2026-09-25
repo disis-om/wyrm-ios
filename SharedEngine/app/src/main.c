@@ -84,10 +84,18 @@ void tdestroy(tenv* env) {
  */
 static void sync_screen(tenv* env) {
   static int reported = -1;
+  static int reported_arena_port_available = -1;
   static bool title_ready_reported = false;
   static bool skin_tables_published = false;
 
   int screen = (int)env->usr->gdata.curr_screen;
+  game_data* gdata = &env->usr->gdata;
+  bool arena_port_available = screen != PLAYING &&
+      gdata->conn == DISCONNECTED && !gdata->connection;
+  if (reported_arena_port_available != (int)arena_port_available) {
+    reported_arena_port_available = (int)arena_port_available;
+    android_home_set_arena_port_available(arena_port_available);
+  }
   if (screen == TITLE_SCREEN && !title_ready_reported) {
     title_ready_reported = true;
     android_update_notify_title_ready(&env->usr->usrs,

@@ -28,6 +28,9 @@ void android_home_poll(tenv* env);
  */
 void android_home_set_screen(int screen);
 
+/** Reports when the arena socket has actually finished closing. */
+void android_home_set_arena_port_available(bool available);
+
 /** Pushes the persisted nickname and the selected arena up to Compose. */
 void android_home_publish_state(tenv* env);
 

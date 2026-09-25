@@ -175,11 +175,9 @@ void game_loop(tenv* env) {
         if (gdata->leaving) gdata->conn = DISCONNECTED;
         else if (android_home_death_pending()) gdata->conn = CONNECTED;
         else {
-          /* Slither taints a refused arena and chooses another one. Retrying
-             the same endpoint forever both hid the actual failure and caused
-             the fleet to throttle the phone. Compose owns the live directory,
-             so hand the refusal back to it and let it pick the next reachable
-             endpoint after the lobby has settled. */
+          /* Report this attempt's refusal and return to the lobby. A new
+             endpoint may be chosen there only by the player; one Play must
+             not silently create another arena connection. */
           arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
               usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));

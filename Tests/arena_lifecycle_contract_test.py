@@ -11,6 +11,8 @@ subprocess.run([sys.executable, str(ROOT / "Scripts" / "prepare-original-engine.
 services = (ROOT / "SourcesShell" / "WyrmServices.swift").read_text(encoding="utf-8")
 design = (ROOT / "SourcesShell" / "WyrmDesignMain.swift").read_text(encoding="utf-8")
 shell = (ROOT / "SourcesShell" / "WyrmShell.swift").read_text(encoding="utf-8")
+main = (ROOT / "SourcesOriginal" / "Main.m").read_text(encoding="utf-8")
+mailbox = (ROOT / "SourcesOriginal" / "HomeMailbox.inc").read_text(encoding="utf-8")
 generated = ROOT / "build-original-source" / "app" / "src"
 game_data = (generated / "game" / "game_data.c").read_text(encoding="utf-8")
 loop = (generated / "game" / "loop.c").read_text(encoding="utf-8")
@@ -38,6 +40,10 @@ checks = {
     "no death card before own spawn": "if (!refused_short_life && gdata->join_spawned)" in callback,
     "Vlither five-second entry timeout": "SDL_GetTicks() - gdata->attempt_started_ms > 5000" in loop and "if (gdata->connection &&" in loop,
     "one dial per Play request": "ios_retry_or_finish" not in loop and "gdata->rejoin_at_ms = SDL_GetTicks() + 50" not in loop and "gdata->join_attempts++" not in server,
+    "picker probes cancel before the native Play request": shell.index("WyrmArenaProbeGate.shared.beginPlay()") < shell.index("WyrmIOSRequestPlay(namePointer, addressPointer, false)") and "pending.forEach { $0.cancel() }" in services,
+    "picker probes stay blocked until native socket is gone": "gdata->conn == DISCONNECTED && !gdata->connection" in main and "WyrmEngineArenaPortAvailable" in main and "guard arenaPortBusySeen else { return }" in shell,
+    "same-frame failed join still publishes busy edge": main.count("publish_arena_port_availability();") == 2,
+    "zero-second terminal refusal reaches Swift": "seconds < 0" in mailbox and "apple_refusal_sequence++" in mailbox,
     "failure is reported without alternate attempt": "android_home_arena_refused(usrs->ipv4, 0)" in loop and "failoverArena(refused:" not in design,
     "manual join respects previous socket close": "last_connect_ms + min_interval_ms" in game_data and "gdata->rejoin_at_ms = due" in game_data,
     "socket failures report their actual phase": all(phrase in callback for phrase in (

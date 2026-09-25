@@ -99,6 +99,8 @@ final class WyrmShellStore: ObservableObject {
     @Published private(set) var layoutEditorActive = false
     static let lobbyScreen = 3
     private var timer: Timer?
+    @Published private(set) var arenaPlayPending = false
+    private var arenaPortBusySeen = false
     /// Values written from SwiftUI that the engine has not echoed back yet. The
     /// engine drains its mailbox once a frame and this store polls every
     /// 0.75 s, so without these a switch or slider would snap back to the old
@@ -112,6 +114,14 @@ final class WyrmShellStore: ObservableObject {
                                                object: nil, queue: .main) { [weak self] note in
             let screen = note.userInfo?["screen"] as? Int ?? 0
             Task { @MainActor in self?.engineScreen = screen }
+        }
+        NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineArenaPortAvailable"),
+                                               object: nil, queue: .main) { [weak self] note in
+            let available = note.userInfo?["available"] as? Bool ?? false
+            // NotificationCenter delivers on the main queue. Process the
+            // busy/available pair in posting order, including a same-frame
+            // failed join, before another Play can become enabled.
+            MainActor.assumeIsolated { self?.observeArenaPortAvailable(available) }
         }
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
@@ -156,6 +166,25 @@ final class WyrmShellStore: ObservableObject {
                 NSLog("Wyrm SwiftUI settings bridge unavailable after bootstrap wait")
             }
         }
+    }
+
+    private func observeArenaPortAvailable(_ available: Bool) {
+        guard arenaPlayPending else { return }
+        if !available {
+            arenaPortBusySeen = true
+            return
+        }
+        guard arenaPortBusySeen else { return }
+        // A lobby screen can appear while the previous Mongoose socket is
+        // still closing. The engine reports availability only after it is nil.
+        finishArenaPlay()
+    }
+
+    private func finishArenaPlay() {
+        guard arenaPlayPending else { return }
+        arenaPlayPending = false
+        arenaPortBusySeen = false
+        WyrmArenaProbeGate.shared.endPlay()
     }
 
     func refresh() {
@@ -277,7 +306,10 @@ final class WyrmShellStore: ObservableObject {
     func toggleEditorLeaderboard() { WyrmIOSToggleEditorLeaderboard() }
 
     func playOnline(name: String, address: String) {
-        guard !address.isEmpty else { return }
+        guard !address.isEmpty, !arenaPlayPending else { return }
+        arenaPlayPending = true
+        arenaPortBusySeen = false
+        WyrmArenaProbeGate.shared.beginPlay()
         adopt(name)
         WyrmDiagnostics.record("online play requested address=selected", category: "ENGINE")
         name.withCString { namePointer in
@@ -286,6 +318,10 @@ final class WyrmShellStore: ObservableObject {
     }
 
     func playOffline(name: String) {
+        guard !arenaPlayPending else { return }
+        arenaPlayPending = true
+        arenaPortBusySeen = false
+        WyrmArenaProbeGate.shared.beginPlay()
         adopt(name)
         WyrmDiagnostics.record("offline practice requested", category: "ENGINE")
         name.withCString { namePointer in

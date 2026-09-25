@@ -1,6 +1,8 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.3 (59)**, CI pending (Builds 57/58 compiled; smoke-hook race fixed in 59) · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.4 (60)**, CI pending (single arena connection and probe gate changes) · Minimum iOS: **15.0**
+
+**Build 60 (0.17.4) candidate.** One Play now cancels picker TCP probes before native admission and keeps new probes blocked until the engine reports the previous arena socket fully closed. A duplicate Play cannot replace an active join. Zero-second terminal refusals reach Swift. Android shared engine sources and the SHA manifest were refreshed together. Local arena lifecycle source contracts pass; Apple compilation, CI smoke and physical iPhone behavior must be reported separately after this commit's run.
 
 **Build 59 (0.17.3) — Build 58 plus a smoke-test fix.** Build 58 (commit cebc96a, CI 36095349401) compiled iPhone and Simulator and packaged the IPA, but `--smoke-arena-refusal` failed again. The same race had also failed Build 57: the hook published the refusal 1 s after the shell started, and `WyrmIOSPublishArenaRefusal` silently drops a publish until the engine's bootstrap creates `home_mutex`. Bootstrap took 1207 ms on that runner (679 ms in Build 57), so the publish landed before the mutex existed. `WyrmShellStore.publishSmokeRefusal` now retries every second, up to 20 times, until the snapshot sequence moves. The workflow also polls the log for up to 15 s instead of sleeping 3 s. No product behaviour changed.
 

@@ -186,7 +186,7 @@ struct WyrmReadyRoom: View {
                     }
                     Spacer(minLength: 0)
                     paperButton("Home", "house", width: 112, enabled: !entering) { saveName(); engine.leaveLobby() }
-                    paperButton("Play with AI", "sparkles", width: 142, enabled: !nickname.isEmpty && !entering) {
+                    paperButton("Play with AI", "sparkles", width: 142, enabled: !nickname.isEmpty && !entering && !engine.arenaPlayPending) {
                         saveName(); engine.playOffline(name: nickname)
                     }
                     playButton
@@ -202,7 +202,7 @@ struct WyrmReadyRoom: View {
     }
 
     private var playButton: some View {
-        let enabled = !engine.arena.isEmpty && !nickname.isEmpty && !entering
+        let enabled = !engine.arena.isEmpty && !nickname.isEmpty && !entering && !engine.arenaPlayPending
         return Button(action: play) {
             HStack(spacing: 10) {
                 if entering { ProgressView().tint(ATheme.quiet).scaleEffect(0.8) }
@@ -218,7 +218,7 @@ struct WyrmReadyRoom: View {
     }
 
     private func play() {
-        guard !engine.arena.isEmpty, !nickname.isEmpty, !entering else { return }
+        guard !engine.arena.isEmpty, !nickname.isEmpty, !entering, !engine.arenaPlayPending else { return }
         saveName()
         entering = true
         engine.playOnline(name: nickname, address: engine.arena)
