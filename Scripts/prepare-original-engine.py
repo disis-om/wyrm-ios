@@ -360,6 +360,31 @@ for path in sorted(OUTPUT.rglob("*")):
               usr->usrs.ipv4, code);
     }
   } else if (ev == MG_EV_ERROR) {''')
+        # Diagnostic only: record what the arena sends for another player's
+        # custom skin, so whether an official Android (AIR) wheel skin reaches
+        # a web-identity client with its RGB is settled by one capture. Bytes
+        # and snake id only, no nickname; at most 24 per connection.
+        skin_skip = '      m += skl;\n'
+        assert text.count(skin_skip) == 1
+        text = text.replace(skin_skip, '''      {
+        static void* apple_skin_socket;
+        static int apple_skin_logged;
+        if (apple_skin_socket != (void*)gdata->connection) {
+          apple_skin_socket = (void*)gdata->connection;
+          apple_skin_logged = 0;
+        }
+        int shown = skl < 64 ? skl : 64;
+        if (m + shown > alen) shown = alen - m;
+        if (skl > 0 && shown > 0 && apple_skin_logged < 24) {
+          char hex[64 * 2 + 1];
+          for (int b = 0; b < shown; ++b)
+            snprintf(hex + b * 2, 3, "%02X", (unsigned)a[m + b]);
+          hex[shown * 2] = '\\0';
+          SDL_Log("Wyrm arena skin id=%d len=%d bytes=%s", id, skl, hex);
+          apple_skin_logged++;
+        }
+      }
+''' + skin_skip)
         joined = '    arena_send(c, ba, m);\n    free(ba);'
         assert text.count(joined) == 1
         text = text.replace(joined, '''    SDL_Log("Wyrm arena: join fields accessory=%u custom_skin=%d nickname_bytes=%d packet_bytes=%d",

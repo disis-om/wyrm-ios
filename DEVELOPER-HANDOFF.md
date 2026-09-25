@@ -1,8 +1,8 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.1 (57)**, CI pending (Build 56 CI 36092431933 green) · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.2 (58)**, CI pending (Build 57 CI 36094255012 compiled; smoke flake) · Minimum iOS: **15.0**
 
-**Build 57 (0.17.1) — keyboard, chat, settings search. Local `Tests/*.py` all green (`ui_shell` 52/52); CI result below once it runs; not device-tested:**
+**Build 57 (0.17.1, commit 2399932) — keyboard, chat, settings search. CI 36094255012 compiled iPhone and Simulator and packaged the IPA; the `--smoke-arena-refusal` step failed on a timing race (its expected log line was written at the same moment the 3 s grep ran). Not device-tested:**
 
 - *Wyrm keyboard.* `SourcesShell/WyrmKeyboard.swift` replaces the system keyboard
   in every `UITextField`/`UITextView` (so every SwiftUI `TextField`/`TextEditor`).
@@ -92,6 +92,24 @@ Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current 
   from stale snapshots for 3 s), the arena join and NTL Team presence read it,
   and the account IGN follows through `WyrmGameSync.syncIngameName`. The account
   name only seeds an engine that has never had one, so a restart never swaps it.
+
+**Build 58 (0.17.2) — wheel feel and skin-bytes diagnostic, on top of Build 57:**
+
+- Owner's iPhone (Build 56): everything worked, but the wheel knobs and bezel
+  flickered and were hard to move. Cause: live Liquid Glass on views that move
+  or re-tint every frame, plus `@AppStorage` writes on every drag sample that
+  re-rendered the whole Skin page and its 256-bead preview. Fix in
+  `WyrmAirSkinPicker.swift` (`WyrmAirWheelPanel`): bezel and knobs are
+  glass-styled plain layers, one wheel-wide `highPriorityGesture` (pointer
+  grab = AIR relative drag, elsewhere on the disc = start under the finger,
+  bezel = direct angle), live values in panel `@State`, persisted on lift.
+  The toggle and bead buttons keep real Liquid Glass (they never move).
+- `prepare-original-engine.py` adds a capped `Wyrm arena skin id=… bytes=…`
+  log in the `s` packet parser (no nickname, 24 per connection) to settle what
+  the arena sends for official Android-app wheel skins; see
+  `AIR-BUILD-A-SLITHER.md` › Other players' skins. No packet changes.
+- Local: `Tests/air_skin_contract_test.py` 34/34, all other contract tests pass,
+  `gcc -fsyntax-only` clean on the prepared `callback.c`. Swift not compiled yet.
 
 **Build 56 — Android Build-a-Slither wheel (commit ba81ab7, CI 36092431933 green incl. `--smoke-skin-wheel`; not yet device-tested):**
 

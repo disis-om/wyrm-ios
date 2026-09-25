@@ -17,9 +17,18 @@ the 42-bead palette for the wheel; pressed again it brings the palette back.
 - **Bezel knob**: rides on radius 151. Its angle is AIR's `bsk_br`: the top half
   lightens toward white (to 1), the bottom half darkens (to −0.5). The wheel is
   overlaid with white or black at alpha |br|, as AIR does.
-- **Bezel**: a Liquid Glass ring tinted with the unshaded wheel colour (AIR
-  tints its bezel bitmap the same colour). Knobs, bezel and the toggle are
-  Liquid Glass on iOS 26 and a material lens on iOS 15–25.
+- **Bezel**: a ring tinted with the unshaded wheel colour (AIR tints its bezel
+  bitmap the same colour), with a light top and shaded bottom.
+- **Glass**: the toggle and the two bead buttons are Liquid Glass on iOS 26 and
+  a material lens on iOS 15–25. Since Build 57 the bezel and both knobs are
+  glass-styled plain layers instead: live Liquid Glass on parts that move or
+  re-tint every frame flickered and lagged on the owner's iPhone (Build 56).
+- **Dragging** (Build 57): one gesture covers the whole wheel. A finger on the
+  hue pointer moves it by the drag (AIR's behaviour); a finger elsewhere on the
+  disc starts the pointer under the finger; a finger on the bezel sets the
+  knob's angle directly. Only the panel's own state changes while dragging;
+  the persisted wheel state is written once, when the finger lifts, so the
+  Skin page and its 256-bead preview are not re-rendered per touch sample.
 - **Two bead buttons**: AIR's `n_bskbtns` 0 and 1 (its first row starts with
   them): nsk 0, the plain bead (`kmc_ts[9][0]`), and nsk 1, the dark-core bead
   with a light rim (`kmc_ts[29][0]`). They show the picked colour untouched
@@ -40,6 +49,25 @@ before, through settings and `/v1/arena/skin(s)`. Wyrm iOS draws the AIR bead;
 Android/Desktop Wyrm draw any non-zero ARGB as a flat tinted bead until they
 learn the two alpha markers. An Android Wyrm colour whose alpha is exactly
 253 or 254 would be read as an AIR bead on iOS; the colour is unchanged.
+
+## Other players' skins
+
+- **Wyrm iOS players** who build with the wheel: their exact colour and AIR
+  bead texture reach every other Wyrm iOS player in the same arena through
+  `/v1/arena/skin(s)` (engine `built_skin_rgba` reads remote rows the same way
+  as the local snake), shadow included. Both must be signed in; the id and
+  nickname must still match the live snake.
+- **Android/Desktop Wyrm players** with exact colours: shown in their exact
+  colour (flat bead), as before.
+- **Official slither.io Android app players** who use its wheel: *not*
+  possible today. Their RGB beads reach the arena in the AIR `custom_skin2`
+  format (opcodes 2–7), which the server forwards only to AIR-identity
+  clients. Wyrm joins with the web identity because the arena refused the AIR
+  identity (`arena_persona.h`: the server hung up after the AIR challenge
+  answer), so Wyrm receives the web palette form and draws that. Build 57 logs
+  the raw skin bytes the arena sends (`Wyrm arena skin id=… len=… bytes=…`, at
+  most 24 per connection, no nickname) so one Developer Mode export beside an
+  Android-app player wearing a wheel skin settles exactly what arrives.
 
 ## Engine rendering
 

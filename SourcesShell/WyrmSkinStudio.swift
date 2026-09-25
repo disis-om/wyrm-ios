@@ -418,33 +418,22 @@ struct WyrmSkinRoot: View {
     }
 
     /// The Android Build-a-Slither wheel: bezel knob for brightness, pointer
-    /// for hue and saturation, and AIR's first two bead buttons.
+    /// for hue and saturation, and AIR's first two bead buttons. Its live
+    /// state stays inside the panel; only a lifted finger is persisted.
     private var airWheelPanel: some View {
-        VStack(spacing: 18) {
-            WyrmAirColourWheel(wheel: textures.airWheel,
-                               pointerX: $airPointerX, pointerY: $airPointerY,
-                               bezelAngle: $airBezel, rgb: $airRGB)
-                .frame(maxWidth: 300)
-                .padding(.horizontal, 20)
-            HStack(spacing: 22) {
-                ForEach(0..<2, id: \.self) { kind in
-                    WyrmAirBeadButton(image: textures.airBeads[kind],
-                                      rgb: UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF,
-                                      label: kind == 0 ? "Add plain bead" : "Add rim bead") {
-                        addAirBead(kind: kind)
-                    }
-                }
-            }
+        WyrmAirWheelPanel(wheel: textures.airWheel, beads: textures.airBeads,
+                          storedX: $airPointerX, storedY: $airPointerY,
+                          storedAngle: $airBezel, storedRGB: $airRGB) { kind, rgb in
+            addAirBead(kind: kind, rgb: rgb)
         }
         .onAppear { NSLog("Wyrm AIR colour wheel presented rgb=%06X", UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF) }
     }
 
     /// A wheel bead: the arena gets the nearest colour group, Wyrm keeps the
     /// exact picked RGB with the AIR texture named in its alpha byte.
-    private func addAirBead(kind: Int) {
+    private func addAirBead(kind: Int, rgb: UInt32) {
         var groups = customGroups
         guard groups.count < 256 else { return }
-        let rgb = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
         groups.append(WyrmAirSkin.nearestGroup(rgb))
         savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
     }
