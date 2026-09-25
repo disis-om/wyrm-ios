@@ -77,7 +77,12 @@ struct EngineHotkey: Identifiable, Equatable {
 
 @MainActor
 final class WyrmShellStore: ObservableObject {
-    @Published var nickname = "Wyrm Player"
+    /// The in-game name the engine has saved: the one name Play, the Ready
+    /// Room, the arena join and NTL Team presence all use. Empty until the
+    /// engine answers or when no name has ever been chosen.
+    @Published private(set) var nickname = ""
+    @Published private(set) var nicknameLoaded = false
+    private var nicknameOverride: (name: String, until: Date)?
     @Published var arena = ""
     @Published var score = 0
     @Published var kills = 0
@@ -147,7 +152,12 @@ final class WyrmShellStore: ObservableObject {
         let home = copiedCString(WyrmIOSHomeSnapshot())
             .split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         if home.count >= 4 {
-            nickname = home[0].isEmpty ? "Wyrm Player" : home[0]
+            let incoming = home[0]
+            if let pending = nicknameOverride {
+                if incoming == pending.name || Date() >= pending.until { nicknameOverride = nil }
+            }
+            if nicknameOverride == nil, incoming != nickname { nickname = incoming }
+            if !nicknameLoaded { nicknameLoaded = true }
             arena = home[1]
             score = Int(home[2]) ?? 0
             kills = Int(home[3]) ?? 0
@@ -201,15 +211,32 @@ final class WyrmShellStore: ObservableObject {
     func enterLobby(name: String, address: String) {
         // Shown at once; the engine confirms with its own screen change.
         engineScreen = Self.lobbyScreen
+        adopt(name)
         WyrmDiagnostics.record("lobby requested address=\(address.isEmpty ? "automatic" : "manual")", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestLobby(namePointer, addressPointer) }
         }
     }
 
-    func saveNickname(_ name: String) {
+    /// Writes a new in-game name into the engine (which persists it) and
+    /// shows it everywhere immediately.
+    func setNickname(_ raw: String) {
+        let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+        guard !name.isEmpty, name != nickname else { return }
         name.withCString { WyrmIOSSaveNickname($0) }
+        adopt(name)
+        WyrmDiagnostics.record("in-game name saved", category: "ENGINE")
+    }
+
+    func saveNickname(_ name: String) { setNickname(name) }
+
+    /// Holds a name the engine is about to apply, so the next snapshot cannot
+    /// flash the old one back before the mailbox is drained.
+    private func adopt(_ raw: String) {
+        let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+        guard !name.isEmpty else { return }
         nickname = name
+        nicknameOverride = (name, Date().addingTimeInterval(3))
     }
 
     func leaveLobby() {
@@ -241,6 +268,7 @@ final class WyrmShellStore: ObservableObject {
 
     func playOnline(name: String, address: String) {
         guard !address.isEmpty else { return }
+        adopt(name)
         WyrmDiagnostics.record("online play requested address=selected", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestPlay(namePointer, addressPointer, false) }
@@ -248,6 +276,7 @@ final class WyrmShellStore: ObservableObject {
     }
 
     func playOffline(name: String) {
+        adopt(name)
         WyrmDiagnostics.record("offline practice requested", category: "ENGINE")
         name.withCString { namePointer in
             "".withCString { empty in WyrmIOSRequestPlay(namePointer, empty, true) }
@@ -632,6 +661,7 @@ final class WyrmShellHost: NSObject {
         WyrmFontLoader.register()
         WyrmThemeStore.shared.publishArenaTheme()
         WyrmThemeStore.shared.applyControlAppearance()
+        WyrmArrowSkinStore.shared.publish()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())
     }

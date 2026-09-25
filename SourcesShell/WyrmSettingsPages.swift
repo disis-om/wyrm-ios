@@ -200,7 +200,6 @@ struct WyrmControlsContent: View {
         let opacity = engine.setting("controls.opacity")
         let handedness = engine.setting("controls.handedness")
         let zoomRows = engine.settings.filter { $0.group == "controls.zoom" }
-        let arrowRows = engine.settings.filter { $0.group == "controls.arrow" }
 
         VStack(alignment: .leading, spacing: 0) {
             WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
@@ -237,9 +236,9 @@ struct WyrmControlsContent: View {
                 WSRows(rows: sizeRows, engine: engine)
             }
 
-            if arrow && !arrowRows.isEmpty {
+            if arrow {
                 WSSectionLabel("Basic · arrow")
-                WSCard { WSRows(rows: arrowRows, engine: engine) }
+                WyrmArrowSettingsCard(engine: engine)
             }
 
             if !zoomRows.isEmpty {
@@ -283,6 +282,7 @@ enum WyrmArrowShapes {
 /// The controls as they will appear, placed at their saved landscape positions.
 struct WyrmControlsPreview: View {
     @ObservedObject var engine: WyrmShellStore
+    @ObservedObject var arrowSkins = WyrmArrowSkinStore.shared
     var body: some View {
         let steering = engine.setting("controls.joystick_mode")?.index ?? 0
         let opacity = engine.value("controls.opacity", 1)
@@ -296,13 +296,12 @@ struct WyrmControlsPreview: View {
                     WyrmPaperJoystick(diameter: 60 * engine.value("controls.joystick_size", 1), opacity: opacity)
                         .position(previewCentre("layout.joystick", proxy.size, child: 60 * engine.value("controls.joystick_size", 1)))
                 } else {
-                    Canvas { context, size in
-                        let path = WyrmArrowShapes.path(style: arrowStyle, center: CGPoint(x: size.width / 2, y: size.height / 2),
-                                                        length: 52 * arrowSize, width: 30 * arrowSize)
-                        let fill = Color(.sRGB, red: arrowChannels[0], green: arrowChannels[1], blue: arrowChannels[2], opacity: min(max(opacity, 0), 1))
-                        context.fill(path, with: .color(fill))
-                        context.stroke(path, with: .color(Color(red: 0.016, green: 0.024, blue: 0.035).opacity(opacity)), lineWidth: 2)
-                    }.padding(18)
+                    // The arena's arrow as chosen: a drawn style or an image skin.
+                    WyrmArrowGlyph(codeStyle: arrowStyle, imageSkin: arrowSkins.skin, colour: arrowChannels,
+                                   brightness: arrowSkins.brightness)
+                        .frame(width: 104 * arrowSize, height: 74 * arrowSize)
+                        .opacity(min(max(opacity, 0), 1))
+                        .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
                 if engine.setting("controls.boost_mode")?.index == 1 {
                     let d = 46 * engine.value("controls.boost_size", 1)

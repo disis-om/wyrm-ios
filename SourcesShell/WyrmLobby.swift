@@ -198,8 +198,8 @@ struct WyrmReadyRoom: View {
 
     private func saveName() {
         let clean = nickname.trimmingCharacters(in: .whitespaces)
-        if clean != engine.nickname {
-            engine.saveNickname(clean)
+        if !clean.isEmpty, clean != engine.nickname {
+            engine.setNickname(clean)
             WyrmGameSync.shared.syncIngameName(clean)
         }
     }

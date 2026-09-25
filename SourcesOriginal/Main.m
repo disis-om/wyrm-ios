@@ -374,8 +374,21 @@ static int engine_main(int argc, char** argv) {
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
-    if (![files fileExistsAtPath:assets.path] && ![files copyItemAtURL:bundle toURL:assets error:&error]) {
-      NSLog(@"Wyrm asset preparation failed: %@", error); return 1;
+    // The copy is made once per asset revision. Bump the revision whenever a
+    // bundled engine asset changes (56: the Android Build-a-Slither cells in
+    // the atlas); user.dat lives beside app/, not in it, and is kept.
+    NSString* assetRevision = @"56-air-skin";
+    NSURL* stamp = [assets URLByAppendingPathComponent:@".wyrm-assets"];
+    NSString* installed = [NSString stringWithContentsOfURL:stamp encoding:NSUTF8StringEncoding error:nil];
+    if ([files fileExistsAtPath:assets.path] && ![installed isEqualToString:assetRevision] &&
+        ![files removeItemAtURL:assets error:&error]) {
+      NSLog(@"Wyrm stale assets kept: %@", error);
+    }
+    if (![files fileExistsAtPath:assets.path]) {
+      if (![files copyItemAtURL:bundle toURL:assets error:&error]) {
+        NSLog(@"Wyrm asset preparation failed: %@", error); return 1;
+      }
+      [assetRevision writeToURL:stamp atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
     if (chdir(working.path.fileSystemRepresentation) != 0) return 1;
     // UIKit always remains portrait. Lobby/arena rotate only the SDL surface,

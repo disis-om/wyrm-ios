@@ -97,6 +97,7 @@ private struct WyrmPlayRoot: View {
     @ObservedObject var services: WyrmServiceStore
     let open: (WyrmDesignRoute) -> Void
     @State private var nickname = ""
+    @FocusState private var nameFocused: Bool
     @State private var arena = ""
     @State private var userSelectedArena = false
     @State private var showArenas = false
@@ -126,6 +127,8 @@ private struct WyrmPlayRoot: View {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Wyrm").font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                         TextField("Wyrm Player", text: $nickname).font(.androidWyrm(29, .bold)).textInputAutocapitalization(.never).disableAutocorrection(true)
+                            .focused($nameFocused).submitLabel(.done).onSubmit(commitName)
+                            .onChange(of: nameFocused) { focused in if !focused { commitName() } }
                         Text("Tap to rename in-game name").font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet.opacity(0.55))
                     }
                     Spacer()
@@ -178,7 +181,9 @@ private struct WyrmPlayRoot: View {
                 Spacer().frame(height: 102)
             }
         }
-        .onAppear { if nickname.isEmpty { nickname = account.player?.arenaName ?? engine.nickname }; if arena.isEmpty { arena = engine.arena } }
+        .onAppear { adoptEngineName(); if arena.isEmpty { arena = engine.arena } }
+        .onChange(of: engine.nickname) { _ in if !nameFocused { adoptEngineName() } }
+        .onChange(of: engine.nicknameLoaded) { _ in adoptEngineName() }
         .onChange(of: nearest?.endpoint) { value in if arena.isEmpty, let value { arena = value } }
         .onChange(of: engine.arenaRefusalSequence) { sequence in
             guard sequence > lastHandledRefusal, !engine.refusedArena.isEmpty else { return }
@@ -205,9 +210,30 @@ private struct WyrmPlayRoot: View {
         recent.removeAll { $0 == selected.endpoint }
         recent.insert(selected.endpoint, at: 0)
         recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
-        let playerName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
-        if playerName != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(playerName) }
+        commitName()
+        let playerName = engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname
         engine.enterLobby(name: playerName, address: selected.endpoint)
+    }
+
+    /// The engine's saved name wins, so a restart never swaps it. Only when
+    /// the engine has never had one does the account's arena name seed it.
+    private func adoptEngineName() {
+        guard engine.nicknameLoaded else { return }
+        if engine.nickname.isEmpty, let seed = account.player?.ingameName, !seed.isEmpty {
+            engine.setNickname(seed)
+            nickname = seed
+        } else {
+            nickname = engine.nickname
+        }
+    }
+
+    private func commitName() {
+        let clean = String(nickname.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
+        guard !clean.isEmpty else { nickname = engine.nickname; return }
+        nickname = clean
+        guard clean != engine.nickname else { return }
+        engine.setNickname(clean)
+        if clean != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(clean) }
     }
 }
 

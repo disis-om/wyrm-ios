@@ -52,6 +52,175 @@ def replace_body(text, name, body):
     start, end = function_span(text, name)
     return text[:start] + '{\n' + body + '\n}' + text[end:]
 
+# The slither.io Android (AIR) Build-a-Slither beads. The atlas below is the
+# original one plus three cells written by Scripts/generate-air-skin-assets.py
+# (exact ports of AIR's nsk 0/1 bead bitmaps and its `ksmc_t` shadow, checked
+# against the baked AIR sheets). Both hashes are pinned so neither can drift.
+ORIGINAL_ATLAS_SHA256 = "73805db544b97b51c3ce7d898dbc48d5ea2bc173dcd402e072f0c63642342fed"
+AIR_ATLAS = ROOT / "Resources" / "AirSkin" / "tex_atlas_8k.png"
+AIR_ATLAS_SHA256 = "cf9e6251272704d6161cfeea875b6a5ba0d276a161c332ae0d6d5029487be7a9"
+atlas_target = OUTPUT / "app/res/textures/tex_atlas_8k.png"
+if hashlib.sha256(atlas_target.read_bytes()).hexdigest() != ORIGINAL_ATLAS_SHA256:
+    raise SystemExit("Original atlas changed; regenerate Resources/AirSkin")
+if hashlib.sha256(AIR_ATLAS.read_bytes()).hexdigest() != AIR_ATLAS_SHA256:
+    raise SystemExit("Resources/AirSkin/tex_atlas_8k.png does not match its pinned hash")
+shutil.copyfile(AIR_ATLAS, atlas_target)
+
+AIR_HELPERS = r'''/* Wyrm iOS — the slither.io Android client's Build-a-Slither beads.
+ *
+ * A bead built with the colour wheel keeps its exact picked RGB in the low
+ * 24 bits and names its Android texture in the alpha byte, so it travels
+ * unchanged through settings and Wyrm's arena skin sync:
+ *   0xFE  nsk 0, AIR `kmc_ts[9][0]`  (plain bead)
+ *   0xFD  nsk 1, AIR `kmc_ts[29][0]` (dark core, light rim)
+ * Their atlas cells hold exact ports of those AIR bitmaps and of `ksmc_t`,
+ * the outline and drop shadow AIR draws beneath each such bead. */
+#define APPLE_AIR_SHADOW_SCALE (102.0f / 64.0f)
+
+static int apple_air_kind(uint32_t rgba) {
+  uint32_t tag = rgba >> 24;
+  return tag == 0xFEu ? 0 : tag == 0xFDu ? 1 : -1;
+}
+
+static vec4s apple_air_bead_uv(int kind) {
+  return (vec4s){{(2 + kind) / 7.0f, 6 / 9.0f, 1 / 7.0f, 1 / 9.0f}};
+}
+
+static vec4s apple_air_shadow_uv(void) {
+  return (vec4s){{4 / 7.0f, 6 / 9.0f, APPLE_AIR_SHADOW_SCALE / 7.0f,
+                  APPLE_AIR_SHADOW_SCALE / 9.0f}};
+}
+
+/* AIR setSkin: when mid + max channel is below nsk_min2c (255 for nsk 0 and
+ * 1) every channel is lifted by 1 + (255 - (mid + max)) / 2, capped at 255,
+ * then truncated by the `<< 16 | << 8 |` pack. */
+static vec4s apple_air_tint(uint32_t rgba, float alpha) {
+  float c[3] = {(float)((rgba >> 16) & 0xFF), (float)((rgba >> 8) & 0xFF),
+                (float)(rgba & 0xFF)};
+  float lo = fminf(c[0], fminf(c[1], c[2]));
+  float hi = fmaxf(c[0], fmaxf(c[1], c[2]));
+  float mid = c[0] + c[1] + c[2] - lo - hi;
+  if (mid + hi < 255) {
+    float lift = 1 + (255 - (mid + hi)) / 2;
+    for (int i = 0; i < 3; ++i) c[i] = fminf(255, c[i] + lift);
+  }
+  for (int i = 0; i < 3; ++i) c[i] = floorf(c[i]);
+  return (vec4s){{c[0] / 255.0f, c[1] / 255.0f, c[2] / 255.0f, alpha}};
+}
+
+static int apple_air_kind_at(tenv* env, snake* o, int point) {
+  if (!o->cusk || o->cusk_len <= 0 || point < 0) return -1;
+  uint32_t built = built_skin_rgba(env, o, point % o->cusk_len);
+  return built ? apple_air_kind(built) : -1;
+}
+
+/* One `ksmc_t` stamp: unrotated, centred on the point, AIR's size. */
+static void apple_air_shadow(tenv* env, int point, float half, float alpha,
+                             float mww2, float mhh2) {
+  game_data* gdata = &env->usr->gdata;
+  float fix = (gdata->data.pbx[point] - gdata->data.view_xx) * gdata->data.gsc + mww2;
+  float fiy = (gdata->data.pby[point] - gdata->data.view_yy) * gdata->data.gsc + mhh2;
+  bp_renderer_push(env->usr->r->bpr,
+                   &(bp_instance){{fix - half, fiy - half, 2 * half, 0},
+                                  apple_air_shadow_uv(),
+                                  {0, 0, 0, alpha}});
+}
+
+/* AIR's `_loc18_`: a shadow fades where consecutive stamps bunch up. */
+static float apple_air_spacing(tenv* env, int point, float* sx, float* sy) {
+  game_data* gdata = &env->usr->gdata;
+  float ox = *sx, oy = *sy;
+  *sx = gdata->data.pbx[point];
+  *sy = gdata->data.pby[point];
+  float d = fabsf(*sx - ox) + fabsf(*sy - oy);
+  return fminf(1, d / 6);
+}
+
+'''
+
+AIR_PREPASS = r'''            float shadow_strength = 0.25f;
+
+            /* Wyrm iOS: AIR draws `ksmc_t` beneath every Build-a-Slither
+               bead — the head's first nine fading out, then the tail's last
+               four; the rest interleave with the body below, four points
+               behind, exactly as AIR's redraw does. */
+            const float apple_air_half =
+                gdata->data.gsc * lsz * APPLE_AIR_SHADOW_SCALE;
+            bool apple_air_any = false;
+            for (int s = 0; o->cusk && s < o->cusk_len && !apple_air_any; ++s)
+              apple_air_any = apple_air_kind_at(env, o, s) >= 0;
+            float apple_air_sx = 31337357, apple_air_sy = 31337357;
+            if (apple_air_any) {
+              for (int p = bp - 1 < 8 ? bp - 1 : 8; p >= 0; p--)
+                if (gdata->data.pbu[p] == 2 && apple_air_kind_at(env, o, p) >= 0)
+                  apple_air_shadow(env, p, apple_air_half, a * (1 - p / 9.0f),
+                                   mww2, mhh2);
+              for (int n = 1; n <= 4; ++n) {
+                int p = bp - n;
+                if (p < 0 || gdata->data.pbu[p] != 2 ||
+                    apple_air_kind_at(env, o, p) < 0)
+                  continue;
+                float spacing =
+                    apple_air_spacing(env, p, &apple_air_sx, &apple_air_sy);
+                if (n == 1) spacing = 1;
+                apple_air_shadow(env, p, apple_air_half,
+                                 spacing * a * (p < 9 ? p / 9.0f : 1), mww2,
+                                 mhh2);
+              }
+            }'''
+
+def apply_air_skin_render(text):
+    anchor = '/* Food style is presentation only.'
+    assert text.count(anchor) == 1
+    text = text.replace(anchor, AIR_HELPERS + anchor, 1)
+
+    start = text.index('          if (mode->render_mode == 0) {')
+    end = text.index('          } else if (mode->render_mode == 1) {')
+    chunk = text[start:end]
+
+    prepass = '            float shadow_strength = 0.25f;'
+    assert chunk.count(prepass) == 1
+    chunk = chunk.replace(prepass, AIR_PREPASS, 1)
+
+    # Wyrm's own tail shadows skip AIR beads, which have `ksmc_t` instead.
+    tail = '''              for (j = start; j < bp; j++) {
+                if (gdata->data.pbu[(int)j] >= 1) {'''
+    assert chunk.count(tail) == 1
+    chunk = chunk.replace(tail, '''              for (j = start; j < bp; j++) {
+                if (gdata->data.pbu[(int)j] >= 1 &&
+                    !(apple_air_any && apple_air_kind_at(env, o, (int)j) >= 0)) {''', 1)
+
+    # Interleaved: the first such block in this chunk is the custom-skin one.
+    interleave = '''                  if (j >= 4 && show_snake_shadows) {
+                    k = j - 4;'''
+    assert chunk.count(interleave) == 2
+    chunk = chunk.replace(interleave, '''                  if (j >= 4 && apple_air_any &&
+                      apple_air_kind_at(env, o, (int)j - 4) >= 0) {
+                    int p = (int)j - 4;
+                    if (gdata->data.pbu[p] == 2) {
+                      float spacing = apple_air_spacing(env, p, &apple_air_sx,
+                                                        &apple_air_sy);
+                      apple_air_shadow(env, p, apple_air_half,
+                                       spacing * a * (p < 9 ? p / 9.0f : 1),
+                                       mww2, mhh2);
+                    }
+                  } else if (j >= 4 && show_snake_shadows) {
+                    k = j - 4;''', 1)
+
+    bead = '''                          built ? gdata->cg_uvs[BLANK_UV] : gdata->cg_uvs[cg_id],
+                          built ? built_skin_color(built, a)
+                                : (vec4s){{1, 1, 1, a}}});'''
+    assert chunk.count(bead) == 1
+    chunk = chunk.replace(bead, '''                          apple_air_kind(built) >= 0
+                              ? apple_air_bead_uv(apple_air_kind(built))
+                          : built ? gdata->cg_uvs[BLANK_UV]
+                                  : gdata->cg_uvs[cg_id],
+                          apple_air_kind(built) >= 0
+                              ? apple_air_tint(built, a)
+                          : built ? built_skin_color(built, a)
+                                  : (vec4s){{1, 1, 1, a}}});''', 1)
+    return text[:start] + chunk + text[end:]
+
 for path in sorted(OUTPUT.rglob("*")):
     if path.suffix not in (".c", ".cpp", ".h"):
         continue
@@ -62,6 +231,7 @@ for path in sorted(OUTPUT.rglob("*")):
         text = text.replace("VLITHER_ANDROID", "WYRM_MOBILE")
     if relative == "app/src/game/redraw.c":
         text = text.replace("__ANDROID__", "WYRM_MOBILE")
+        text = apply_air_skin_render(text)
     if relative == "app/src/game/arena_theme.c":
         text = text.replace("#include <jni.h>", "#ifdef __ANDROID__\n#include <jni.h>\n#endif")
         text = text.replace("JNIEXPORT void JNICALL", "#ifdef __ANDROID__\nJNIEXPORT void JNICALL", 1)
@@ -280,3 +450,56 @@ for path in sorted(OUTPUT.rglob("*")):
         changed.append(relative)
 print(f"Verified {len(manifest)} original files; platform selection adjusted in {len(changed)} files")
 (OUTPUT / "platform-selection.json").write_text(json.dumps(changed, indent=2))
+
+
+# --- Image arrow skins (SourcesOriginal/AppleArrowSkins.c) -------------------
+# Kept as its own pass after the main loop so it never interleaves with other
+# adapters. The polygon arrow stays the engine's own; an image skin, when one is
+# chosen, is drawn in its place with the geometry draw_arrow already computed.
+def _arrow_patch(relative, pairs):
+    target = OUTPUT / relative
+    text = target.read_text(encoding="utf-8")
+    for old, new in pairs:
+        if old not in text:
+            raise SystemExit(f"arrow skins: anchor missing in {relative}: {old[:60]!r}")
+        text = text.replace(old, new, 1)
+    target.write_text(text, encoding="utf-8")
+
+
+_arrow_patch("app/src/rendering/renderer.c", [
+    ("""  r->tags_descriptor = igImplVulkan_AddTexture(
+      r->linear_sampler, r->tags_tex->view,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+""", """  r->tags_descriptor = igImplVulkan_AddTexture(
+      r->linear_sampler, r->tags_tex->view,
+      VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+  {
+    extern void WyrmIOSArrowSkinsCreate(renderer* r, tcontext* ctx);
+    WyrmIOSArrowSkinsCreate(r, ctx);
+  }
+"""),
+    ("""  if (r->tags_descriptor) igImplVulkan_RemoveTexture(r->tags_descriptor);
+""", """  {
+    extern void WyrmIOSArrowSkinsDestroy(tcontext* ctx);
+    WyrmIOSArrowSkinsDestroy(ctx);
+  }
+  if (r->tags_descriptor) igImplVulkan_RemoveTexture(r->tags_descriptor);
+"""),
+])
+_arrow_patch("app/src/mobile/mobile_controls.c", [
+    ("""  float alpha = cfg->opacity * (env->usr->mobile_controls.arrow_opacity / 0.85f);
+  mobile_arrow_shape shape = arrow_shape(env->usr->usrs.arrow_style);""",
+     """  float alpha = cfg->opacity * (env->usr->mobile_controls.arrow_opacity / 0.85f);
+  extern bool WyrmIOSDrawArrowImage(ImDrawList* dl, float ax, float ay, float dx,
+                                    float dy, float length, float alpha);
+  extern float WyrmIOSArrowBrightness(void);
+  if (WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length, alpha)) return;
+  float wyrm_brightness = WyrmIOSArrowBrightness();
+  mobile_arrow_shape shape = arrow_shape(env->usr->usrs.arrow_style);"""),
+    ("""  ImU32 fill =
+      color_u32(arrow->color[0], arrow->color[1], arrow->color[2], alpha);""",
+     """  ImU32 fill = color_u32(arrow->color[0] * wyrm_brightness,
+                         arrow->color[1] * wyrm_brightness,
+                         arrow->color[2] * wyrm_brightness, alpha);"""),
+])
+print("Arrow skins: renderer atlas and draw_arrow hook applied")
