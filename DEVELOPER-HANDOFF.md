@@ -1,6 +1,6 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.0 (56, not yet committed or built)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.0 (56)**, CI run 36092431933 green · Minimum iOS: **15.0**
 
 **Source changes after Build 55, not yet built by this session:**
 
@@ -22,7 +22,7 @@ Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current 
   and the account IGN follows through `WyrmGameSync.syncIngameName`. The account
   name only seeds an engine that has never had one, so a restart never swaps it.
 
-**Build 56 source — Android Build-a-Slither wheel (not yet committed, built or device-tested):**
+**Build 56 — Android Build-a-Slither wheel (commit ba81ab7, CI 36092431933 green incl. `--smoke-skin-wheel`; not yet device-tested):**
 
 - *Picker.* Skin › Pattern has a Liquid Glass toggle beside UNDO/CLEAR. It swaps
   the 42-bead palette for the slither.io Android (AIR) client's colour wheel:
@@ -51,8 +51,8 @@ Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current 
   (RGB exact; edge alpha mean < 1/255), `gcc -fsyntax-only` on the prepared
   `redraw.c` is clean apart from the warnings the original already has,
   `Tests/air_skin_contract_test.py` 30/30 and every existing contract test
-  pass locally. Swift compilation, Simulator (`--smoke-skin-wheel`) and iPhone
-  checks have **not** run yet. Details: `AIR-BUILD-A-SLITHER.md`.
+  pass locally. CI then compiled Swift and C for iPhone and Simulator and passed the
+  `--smoke-skin-wheel` launch; physical iPhone checks have **not** run yet. Details: `AIR-BUILD-A-SLITHER.md`.
 
 Build 54 closes the backend audit gaps: finished runs now reach
 `POST /v1/me/stats` (engine `record_finished_run` → `WyrmIOSRecordFinishedRun`
