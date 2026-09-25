@@ -181,8 +181,6 @@ struct WyrmSkinRoot: View {
     @StateObject private var textures = WyrmSkinTextureLibrary()
     @State private var section: WyrmSkinStudioSection
     @State private var editingPattern = false
-    @State private var previewBaseGroups: [Int] = []
-    @State private var previewBaseColors: [UInt32] = []
 
     @AppStorage("wyrm.ios.skin.preset") private var preset = 2
     @AppStorage("wyrm.ios.skin.custom-enabled") private var customEnabled = false
@@ -195,23 +193,6 @@ struct WyrmSkinRoot: View {
     @AppStorage("wyrm.ios.skin.tag-swing") private var swing = 1.0
     @AppStorage("wyrm.ios.skin.tag-scale") private var tagScale = 1.0
 
-    private static let palette: [UInt32] = (0..<400).map { index in
-        let family = index / 100
-        let slot = index % 100
-        let hue = Double(slot % 20) / 20
-        let variation = Double(slot / 20) / 4
-        let saturation: Double
-        let brightness: Double
-        switch family {
-        case 0: saturation = 0.72; brightness = 0.54 + variation * 0.40
-        case 1: saturation = 0.53 + variation * 0.27; brightness = 0.91 + variation * 0.09
-        case 2: saturation = 0.68 + variation * 0.25; brightness = 0.22 + variation * 0.23
-        default: saturation = 0.62 + variation * 0.22; brightness = 0.48 + variation * 0.26
-        }
-        return UIColor(hue: hue, saturation: saturation, brightness: brightness, alpha: 1).wyrmRGBA
-    }
-
-    private static func paletteColor(_ index: Int) -> UInt32 { palette[index] }
 
     init(engine: WyrmShellStore) {
         self.engine = engine
@@ -240,22 +221,33 @@ struct WyrmSkinRoot: View {
         guard WyrmSkinCatalog.presets.indices.contains(preset) else { return [7] }
         let base = WyrmSkinCatalog.presets[preset]
         let source = customEnabled && !customGroups.isEmpty ? customGroups : base
-        let repeated = (0..<256).map { source[$0 % source.count] }
-        guard editingPattern else { return repeated }
-        return (0..<256).map { $0 < customGroups.count ? customGroups[$0] : previewBaseGroups[$0] }
+        // What the engine wears: the code repeated along the body, as in a match.
+        return (0..<256).map { source[$0 % source.count] }
+    }
+
+    /// While a pattern is being built, Android shows only the beads placed so
+    /// far and leaves the rest of the body empty; the repeat appears in a
+    /// match or on returning to the editor. -1 marks an empty position.
+    private var previewGroups: [Int] {
+        guard editingPattern else { return activeGroups }
+        return (0..<256).map { $0 < customGroups.count ? customGroups[$0] : -1 }
+    }
+
+    private var previewColors: [UInt32] {
+        guard editingPattern else { return activeColors }
+        return (0..<256).map { $0 < customGroups.count ? customColors[$0] : 0 }
     }
 
     private var activeColors: [UInt32] {
         let source = customEnabled && !customGroups.isEmpty ? customColors : []
         let repeated = (0..<256).map { source.isEmpty ? 0 : source[$0 % source.count] }
-        guard editingPattern else { return repeated }
-        return (0..<256).map { $0 < customGroups.count ? customColors[$0] : previewBaseColors[$0] }
+        return repeated
     }
 
     var body: some View {
         VStack(spacing: 0) {
             WyrmScreenHeader(kicker: "WYRM", title: "Skin")
-            WyrmSkinPreview(textures: textures, groups: activeGroups, colors: activeColors,
+            WyrmSkinPreview(textures: textures, groups: previewGroups, colors: previewColors,
                             preset: preset, custom: customEnabled,
                             accessoryID: accessory, tagID: tag,
                             backgroundID: background, chain: chain,
@@ -387,17 +379,6 @@ struct WyrmSkinRoot: View {
                             .background(ATheme.card.opacity(0.72)).clipShape(Circle())
                     }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
                 }
-                ForEach(0..<400, id: \.self) { index in
-                    let color = WyrmSkinRoot.paletteColor(index)
-                    Button {
-                        guard customGroups.count < 256 else { return }
-                        var groups = customGroups; groups.append(9)
-                        savePattern(groups, colors: customColors + [color])
-                    } label: {
-                        WyrmTintedBead(image: textures.beads[40], rgba: color)
-                            .padding(5).frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                    }.buttonStyle(.plain).accessibilityLabel("Custom colour \(index + 1)")
-                }
             }.padding(.horizontal, 16)
         }
     }
@@ -509,11 +490,7 @@ struct WyrmSkinRoot: View {
     }
 
     private func savePattern(_ groups: [Int], colors: [UInt32]) {
-        if !editingPattern {
-            previewBaseGroups = activeGroups
-            previewBaseColors = activeColors
-            editingPattern = true
-        }
+        editingPattern = true
         pattern = groups.map(String.init).joined(separator: ",")
         patternColors = colors.prefix(groups.count).map { String($0, radix: 16) }.joined(separator: ",")
         customEnabled = !groups.isEmpty
@@ -615,6 +592,7 @@ private struct WyrmSkinPreview: View {
                     let segment = firstSegment + local
                     let codeIndex = totalSegments - 1 - segment
                     let group = groups.isEmpty ? 7 : groups[codeIndex % groups.count]
+                    if group < 0 { continue }
                     let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
                     guard let bead = textures.beads[rgba == 0 ? group : 40] else { continue }
                     let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,

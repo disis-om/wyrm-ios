@@ -1,6 +1,6 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.8 (54)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.9 (55)** · Minimum iOS: **15.0**
 
 Build 54 closes the backend audit gaps: finished runs now reach
 `POST /v1/me/stats` (engine `record_finished_run` → `WyrmIOSRecordFinishedRun`

@@ -1205,6 +1205,8 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "The tab bar lens now rises over the icons and bends them like the system glass, with a springier lift and a larger resting pill.",
+        "Build a Wyrm uses the 42 original beads only. While you build, only the beads you place show on an empty body; the repeat appears in a match.",
         "Scores and kills from every online life are now sent to Wyrm, so the leaderboard and your profile move after each run. Runs made offline are kept and sent later.",
         "Custom skins you build are shown to other Wyrm players in the same arena, and theirs are shown to you.",
         "Your arena name follows your account when you change it on Play or in the Ready Room.",
