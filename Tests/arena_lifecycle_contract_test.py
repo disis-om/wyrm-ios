@@ -42,6 +42,7 @@ checks = {
     "one dial per Play request": "ios_retry_or_finish" not in loop and "gdata->rejoin_at_ms = SDL_GetTicks() + 50" not in loop and "gdata->join_attempts++" not in server,
     "picker probes cancel before the native Play request": shell.index("WyrmArenaProbeGate.shared.beginPlay()") < shell.index("WyrmIOSRequestPlay(namePointer, addressPointer, false)") and "pending.forEach { $0.cancel() }" in services,
     "picker probes stay blocked until native socket is gone": "gdata->conn == DISCONNECTED && !gdata->connection" in main and "WyrmEngineArenaPortAvailable" in main and "guard arenaPortBusySeen else { return }" in shell,
+    "Apple generated bridge has no JNI port callback": "void android_home_set_arena_port_available(bool available) {\n(void)available;\n}" in home,
     "same-frame failed join still publishes busy edge": main.count("publish_arena_port_availability();") == 2,
     "zero-second terminal refusal reaches Swift": "seconds < 0" in mailbox and "apple_refusal_sequence++" in mailbox,
     "failure is reported without alternate attempt": "android_home_arena_refused(usrs->ipv4, 0)" in loop and "failoverArena(refused:" not in design,
