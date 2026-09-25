@@ -437,6 +437,15 @@ final class WyrmArenaProbeGate {
         playActive = false
         lock.unlock()
     }
+
+    /// The picker closed: a dial still in flight is closed now rather than
+    /// being left to run out its 1.5-second deadline behind the lobby.
+    func cancelProbes() {
+        lock.lock()
+        let pending = Array(sessions.values)
+        lock.unlock()
+        pending.forEach { $0.cancel() }
+    }
 }
 
 fileprivate final class WyrmArenaProbeSession {

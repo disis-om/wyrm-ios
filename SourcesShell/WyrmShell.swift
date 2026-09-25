@@ -170,6 +170,7 @@ final class WyrmShellStore: ObservableObject {
     }
 
     private func observeArenaPortAvailable(_ available: Bool) {
+        WyrmDiagnostics.record("arena port \(available ? "free" : "busy")", category: "ENGINE")
         guard arenaPlayPending else { return }
         if !available {
             arenaPortBusySeen = true

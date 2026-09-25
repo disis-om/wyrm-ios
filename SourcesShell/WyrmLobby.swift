@@ -114,6 +114,10 @@ struct WyrmReadyRoom: View {
             lastRefusal = sequence
             entering = false
         }
+        // The same stuck ENTERING Android had: if the engine declines a Play
+        // without dialling, the screen never changes and no refusal arrives,
+        // so this flag was never cleared. The store's gate always ends.
+        .onChange(of: engine.arenaPlayPending) { pending in if !pending { entering = false } }
     }
 
     private func readyRoom(_ size: CGSize, _ safe: EdgeInsets) -> some View {
