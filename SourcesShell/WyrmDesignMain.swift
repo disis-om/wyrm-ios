@@ -382,6 +382,7 @@ private struct WyrmArenaPicker: View {
                 await services.refreshArenasLive()
             }
         }
+        .onDisappear { WyrmArenaProbeGate.shared.cancelProbes() }
     }
 
     private func sectionLabel(_ text: String) -> some View {
