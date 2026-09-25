@@ -25,6 +25,10 @@ SPEC = (ROOT / "original-engine.yml").read_text(encoding="utf-8")
 PREPARE = (ROOT / "Scripts" / "prepare-original-engine.py").read_text(encoding="utf-8")
 ACCOUNT = (ROOT / "SourcesShell" / "WyrmAccount.swift").read_text(encoding="utf-8")
 SERVICES = (ROOT / "SourcesShell" / "WyrmServices.swift").read_text(encoding="utf-8")
+KEYBOARD = (ROOT / "SourcesShell" / "WyrmKeyboard.swift").read_text(encoding="utf-8")
+CHAT = (ROOT / "SourcesShell" / "WyrmChatUI.swift").read_text(encoding="utf-8")
+SEARCH = (ROOT / "SourcesShell" / "WyrmSettingsSearch.swift").read_text(encoding="utf-8")
+SOCIAL = (ROOT / "SourcesShell" / "WyrmSocialExtras.swift").read_text(encoding="utf-8")
 
 
 checks = {
@@ -86,6 +90,20 @@ checks = {
     "no GitHub in player-visible settings copy": "GitHub" not in PAGES and "GitHub" not in KIT,
     "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
     "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,
+    "every text field and view gets the Wyrm keyboard": "#selector(getter: UITextField.inputView)" in KEYBOARD
+        and "#selector(getter: UITextView.inputView)" in KEYBOARD and "class_addMethod" in KEYBOARD
+        and "WyrmKeyboardController.shared.install()" in LEGACY,
+    "keyboard size, transparency and drag position persist": all(k in KEYBOARD for k in (
+        "wyrm.ios.keyboard.scale", "wyrm.ios.keyboard.opacity", "wyrm.ios.keyboard.offset-x", "wyrm.ios.keyboard.offset-y")),
+    "the lobby draws its own sideways keyboard": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.embedded = true" in LOBBY,
+    "routes leave the keyboard region so fields rise above it": ".ignoresSafeArea(.container)" in MAIN and "keyboard.focused ? 0 : 1" in MAIN,
+    "chat composer and transcript are shared by global chat and DMs": "WyrmChatComposer(" in SOCIAL and "WyrmChatComposer(" in DETAILS
+        and "WyrmChatTranscript(" in SOCIAL and "WyrmChatTranscript(" in DETAILS and "GlassEffectContainer(spacing: 14)" in CHAT,
+    "settings search sits on the hub with live controls": "WyrmSettingsSearchField(query: $search.query)" in PAGES
+        and "WSTypedRow(setting: setting, first: true, engine: engine)" in SEARCH and "arrow.up.right" in SEARCH,
+    "a search arrow scrolls to its setting and blinks it twice": "proxy.scrollTo(target, anchor: .center)" in KIT
+        and "row.wyrmSettingAnchor(setting.id)" in KIT and "for _ in 0..<2" in SEARCH,
+    "searched settings open the fold or mode that holds them": PAGES.count("WyrmSettingsFocus.shared") >= 5,
 }
 
 failed = [name for name, ok in checks.items() if not ok]

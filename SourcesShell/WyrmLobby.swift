@@ -54,6 +54,7 @@ struct WyrmReadyRoom: View {
     @State var quickSettings = false
     @State var lastRefusal: UInt64 = 0
     @FocusState var nameFocused: Bool
+    @ObservedObject var keyboard = WyrmKeyboardController.shared
 
     private var arena: WyrmArena? { services.arenas.first { $0.endpoint == engine.arena } }
     private var serverCode: String {
@@ -64,21 +65,48 @@ struct WyrmReadyRoom: View {
 
     var body: some View {
         WyrmLandscapeStage { size, safe in
-            ZStack {
+            ZStack(alignment: .bottom) {
                 ATheme.paper
                 if quickSettings {
                     quickSettingsPage(safe).transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: size.width / 7)),
                                                                    removal: .opacity.combined(with: .offset(x: size.width / 7))))
                 } else {
-                    readyRoom(size, safe).transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -size.width / 9)),
-                                                                 removal: .opacity.combined(with: .offset(x: -size.width / 12))))
+                    readyRoom(size, safe)
+                        // Typing lifts the room so the name stays above the keys.
+                        .offset(y: keyboard.focused ? -118 : 0)
+                        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: keyboard.focused)
+                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: -size.width / 9)),
+                                                removal: .opacity.combined(with: .offset(x: -size.width / 12))))
+                }
+                // The phone stays portrait, so the keyboard is drawn here, in
+                // the landscape canvas, the way the player is holding it.
+                if keyboard.focused && keyboard.embedded {
+                    let width = min(size.width - safe.leading - safe.trailing - 24, 640 * keyboard.scale)
+                    let height = keyboard.keysHeight(compact: true) + 20
+                    // Dragged by its knob, but never off the canvas.
+                    let limitX = max(0, (size.width - width) / 2 - 8)
+                    let limitY = max(0, size.height - height - 16)
+                    WyrmKeyboardView(compact: true)
+                        .frame(width: width)
+                        .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
+                        .offset(x: min(max(keyboard.landscapeOffset.width, -limitX), limitX),
+                                y: min(max(keyboard.landscapeOffset.height, -limitY), 0))
+                        .padding(.bottom, 8)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                        .zIndex(20)
                 }
             }
+            .animation(.spring(response: 0.32, dampingFraction: 0.88), value: keyboard.focused)
         }
         .foregroundColor(ATheme.ink)
         .onAppear {
+            keyboard.embedded = true
             nickname = engine.nickname
             lastRefusal = engine.arenaRefusalSequence
+        }
+        .onDisappear {
+            nameFocused = false
+            keyboard.embedded = false
         }
         .onChange(of: engine.engineScreen) { screen in if screen != WyrmShellStore.lobbyScreen { entering = false } }
         .onChange(of: engine.arenaRefusalSequence) { sequence in

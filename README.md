@@ -12,7 +12,7 @@
 ## Project status
 
 Wyrm for iOS is under active development. The current source version is
-**0.17.0 (build 56)** and targets **iOS 15 or newer**.
+**0.17.1 (build 57)** and targets **iOS 15 or newer**.
 
 The repository contains the iOS application source and its automated Apple
 build pipeline. It does not publish GitHub Releases; each accepted build is
@@ -81,6 +81,13 @@ compiled and tested by CI, then exposed as a workflow artifact.
 - Arrow steering offers the five drawn Wyrm arrows plus twenty image arrows in
   a visual picker, with size and brightness for all and colour for drawn ones.
 - One in-game name everywhere: Play, the Ready Room, the arena and NTL Team.
+- Wyrm's own themed keyboard in every text field (size and transparency behind
+  its gear key; in the lobby it is drawn sideways and can be dragged by its
+  knob). Fields and chat composers rise above it.
+- Global chat and DMs share a Liquid Glass composer with an animated send
+  arrow and grouped, animated message bubbles.
+- Settings search: every setting's live control in the results, with an arrow
+  that opens its page and blinks it twice.
 - The slither.io Android Build-a-Slither colour wheel in Skin › Pattern: a
   brightness bezel and a hue pointer in Liquid Glass, and the Android client's
   first two bead textures, drawn in the arena with their exact texture, tint
@@ -114,8 +121,8 @@ verified during the job.
 
 Successful build artifacts include:
 
-- `Wyrm-0.17.0-build-56-unsigned.ipa` for user-side signing and installation.
-- `Wyrm-0.17.0-build-56-simulator.app.zip` for Simulator/Appetize testing.
+- `Wyrm-0.17.1-build-57-unsigned.ipa` for user-side signing and installation.
+- `Wyrm-0.17.1-build-57-simulator.app.zip` for Simulator/Appetize testing.
 - SHA-256 checksums, simulator screenshots and runtime smoke-test logs.
 
 The IPA is intentionally unsigned. App Store, TestFlight and distribution

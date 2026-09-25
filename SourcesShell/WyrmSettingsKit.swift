@@ -29,6 +29,7 @@ struct WSScaffold<Content: View>: View {
     var sectionTabs: AnyView? = nil
     let onBack: () -> Void
     let content: Content
+    @ObservedObject private var focus = WyrmSettingsFocus.shared
 
     init(title: String, parent: String = "Settings", trailing: String? = nil, trailingEnabled: Bool = true,
          onTrailing: (() -> Void)? = nil, sectionTabs: AnyView? = nil,
@@ -61,15 +62,30 @@ struct WSScaffold<Content: View>: View {
             .background(ATheme.paper.opacity(0.94))
             if let sectionTabs { sectionTabs }
             Rectangle().fill(ATheme.rule).frame(height: 1)
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 0) {
-                    content
-                    Spacer().frame(height: 40)
+            ScrollViewReader { proxy in
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        content
+                        Spacer().frame(height: 40)
+                    }
                 }
+                .onAppear { reveal(proxy) }
+                .onChange(of: focus.pulse) { _ in reveal(proxy) }
             }
         }
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
+    }
+
+    /// Settings search opened this page for one setting: once the page has
+    /// slid in and any fold holding it has opened, bring it to the middle.
+    private func reveal(_ proxy: ScrollViewProxy) {
+        guard let target = focus.target else { return }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
+            withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo(target, anchor: .center) }
+        }
+        // A row that never showed up (say, a hidden fold) must not stay targeted.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { focus.finish(target) }
     }
 }
 
@@ -506,7 +522,9 @@ struct WSTypedRow: View {
     let setting: EngineSetting
     var first = false
     @ObservedObject var engine: WyrmShellStore
-    var body: some View {
+    var body: some View { row.wyrmSettingAnchor(setting.id) }
+
+    @ViewBuilder private var row: some View {
         switch setting.type {
         case "bool":
             WSBoolRow(title: setting.label, detail: setting.hint, on: setting.enabled, first: first) {

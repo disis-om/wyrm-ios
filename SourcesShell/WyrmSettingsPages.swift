@@ -20,8 +20,10 @@ struct WyrmSettingsHub: View {
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
     @AppStorage(WyrmBackup.lastKey) var lastBackup = ""
     @State var confirming = false
+    @ObservedObject var search = WyrmSettingsFocus.shared
 
     var body: some View {
+        ScrollViewReader { proxy in
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -29,6 +31,14 @@ struct WyrmSettingsHub: View {
                     Text("Settings").font(.androidWyrm(30, .bold)).tracking(-0.5).foregroundColor(ATheme.ink)
                 }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
 
+                WyrmSettingsSearchField(query: $search.query)
+
+                if !search.query.trimmingCharacters(in: .whitespaces).isEmpty {
+                    WyrmSettingsSearchResults(query: search.query.trimmingCharacters(in: .whitespaces), engine: engine) { route in
+                        if let route { open(route) } else { withAnimation(.easeOut(duration: 0.2)) { search.query = "" } }
+                    }
+                    Spacer().frame(height: 102)
+                } else {
                 Group {
                 group("Arena", [
                     ("Display", "Scores, names, minimap, text sizes", "", .display),
@@ -57,6 +67,7 @@ struct WyrmSettingsHub: View {
                 WSSectionLabel("Developer", top: 0)
                 WSCard {
                     WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) { developerMode = $0 }
+                        .wyrmSettingAnchor("app.developer")
                     if developerMode { WSValueRow(title: "Wyrm logs", value: "7 days", onOpen: { open(.developer) }) }
                 }
                 Spacer().frame(height: 22)
@@ -70,7 +81,16 @@ struct WyrmSettingsHub: View {
                     .font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
                     .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 12)
                 Spacer().frame(height: 102)
+                }
             }
+        }
+        .onChange(of: search.pulse) { _ in
+            // Hub settings: the search just cleared, so scroll the row into view.
+            guard search.target == "app.developer" else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("app.developer", anchor: .center) }
+            }
+        }
         }
         .onAppear { notifications.refreshSystem() }
     }
@@ -127,6 +147,7 @@ struct WyrmDisplayPage: View {
         }
         WSScaffold(title: "Display", onBack: close) {
             WSSectionLabel("Basic", top: 18)
+                .onAppear { if rest.contains(where: { WyrmSettingsFocus.shared.wants($0.id) }) { advanced = true } }
             WSCard { WSRows(rows: basic, engine: engine) }
             if basic.isEmpty { WSCaption("These controls appear as soon as the engine has started.") }
             if !rest.isEmpty {
@@ -210,6 +231,7 @@ struct WyrmControlsContent: View {
                     guard let setting = steeringSetting else { return }
                     engine.write(setting, values: [pick == 1 ? 2 : Double((0...1).contains(steering) ? steering : 0)])
                 }
+                .wyrmSettingAnchor("controls.joystick_mode")
                 if !arrow, let setting = steeringSetting, setting.options.count >= 2 {
                     let behaviour = Array(setting.options.prefix(2))
                     WSValueRow(title: "Joystick behaviour", value: behaviour[min(max(steering, 0), 1)]) {
@@ -223,10 +245,12 @@ struct WyrmControlsContent: View {
                 if let handedness {
                     WSEnumBlock(title: handedness.label, detail: handedness.hint, options: ["Left", "Right"],
                                 selected: min(max(handedness.index, 0), 1)) { engine.write(handedness, values: [Double($0)]) }
+                        .wyrmSettingAnchor(handedness.id)
                 }
                 if let boostMode {
                     WSEnumBlock(title: "Boost", detail: boostMode.hint, options: boostMode.options,
                                 selected: min(max(boostMode.index, 0), max(boostMode.options.count - 1, 0))) { engine.write(boostMode, values: [Double($0)]) }
+                        .wyrmSettingAnchor(boostMode.id)
                 }
             }
 
@@ -238,7 +262,7 @@ struct WyrmControlsContent: View {
 
             if arrow {
                 WSSectionLabel("Basic · arrow")
-                WyrmArrowSettingsCard(engine: engine)
+                WyrmArrowSettingsCard(engine: engine).wyrmSettingAnchor("app.arrow-style", card: true)
             }
 
             if !zoomRows.isEmpty {
@@ -252,6 +276,7 @@ struct WyrmControlsContent: View {
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Opens sideways, the way you hold the phone in a match.")
         }
+        .onAppear { if zoomRows.contains(where: { WyrmSettingsFocus.shared.wants($0.id) }) { zoomOpen = true } }
     }
 }
 
@@ -437,20 +462,7 @@ struct WyrmButtonsContent: View {
             WSCard {
                 ForEach(Array(allowed.enumerated()), id: \.element.id) { index, key in
                     if index > 0 { WSHairline() }
-                    HStack(spacing: 9) {
-                        Text(key.name).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
-                        if key.fixedMode {
-                            Text("Tap").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.quiet)
-                                .frame(width: 116, height: 38).background(ATheme.track)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                        } else {
-                            WSSegmented(options: ["Toggle", "Hold"], selected: min(max(key.mode, 0), 1), fontSize: 13) { mode in
-                                var next = key; next.mode = mode; engine.writeHotkey(next)
-                            }.frame(width: 116)
-                        }
-                        WSInkSwitch(on: key.visible) { engine.setHotkey(key, visible: $0) }
-                    }.padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 58)
+                    WyrmHotkeyRow(key: key, engine: engine).wyrmSettingAnchor("hotkey.\(key.id)")
                 }
             }
 
@@ -465,6 +477,28 @@ struct WyrmButtonsContent: View {
                       ? "Turn on at least one button above before arranging the layout."
                       : "The preview uses each button's real position, size and opacity. Toggle and Hold choose how a press behaves; the switch controls whether it appears.")
         }
+    }
+}
+
+/// One on-screen button: its name, Toggle/Hold (or a fixed Tap) and whether it shows.
+struct WyrmHotkeyRow: View {
+    let key: EngineHotkey
+    @ObservedObject var engine: WyrmShellStore
+    var body: some View {
+        HStack(spacing: 9) {
+            Text(key.name).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
+            if key.fixedMode {
+                Text("Tap").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.quiet)
+                    .frame(width: 116, height: 38).background(ATheme.track)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            } else {
+                WSSegmented(options: ["Toggle", "Hold"], selected: min(max(key.mode, 0), 1), fontSize: 13) { mode in
+                    var next = key; next.mode = mode; engine.writeHotkey(next)
+                }.frame(width: 116)
+            }
+            WSInkSwitch(on: key.visible) { engine.setHotkey(key, visible: $0) }
+        }.padding(.horizontal, 14).padding(.vertical, 10).frame(minHeight: 58)
     }
 }
 
@@ -520,6 +554,11 @@ struct WyrmModesPage: View {
             modeContent(mode).id(mode)
                 .transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: mode == 1 ? -40 : 40)), removal: .opacity))
         }
+        .onAppear {
+            let target = WyrmSettingsFocus.shared.target ?? ""
+            if target.hasPrefix("normal.") { mode = 0 } else if target.hasPrefix("assist.") { mode = 1 }
+            if target.hasPrefix("general.laser") { advanced = true }
+        }
     }
 
     static func local(_ s: EngineSetting) -> String { s.id.components(separatedBy: ".").dropFirst().joined(separator: ".") }
@@ -544,7 +583,7 @@ struct WyrmModesPage: View {
                 WyrmHeadDotPreview(size: dotSize?.number ?? 10, colour: dotColour?.channels ?? [1, 1, 1, 1])
                 if let dot { WSTypedRow(setting: dot, engine: engine) }
                 if let dotSize { WSTypedRow(setting: dotSize, engine: engine) }
-                if let dotColour { WSColourRow(setting: dotColour, engine: engine) }
+                if let dotColour { WSColourRow(setting: dotColour, engine: engine).wyrmSettingAnchor(dotColour.id) }
             }
 
             WSAdvancedFold(label: "Advanced · helper lines", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
@@ -631,6 +670,12 @@ struct WyrmFoodPage: View {
                 }.padding(14)
             }
             WSSectionLabel("Shape")
+                .onAppear {
+                    let target = WyrmSettingsFocus.shared.target ?? ""
+                    guard target.hasPrefix("normal.") || target.hasPrefix("assist.") else { return }
+                    mode = target.hasPrefix("assist.") ? 1 : 0
+                    if !target.hasSuffix(".food_type") { advanced = true }
+                }
             WSCard {
                 if let style {
                     ForEach(style.options.indices, id: \.self) { index in
@@ -648,6 +693,7 @@ struct WyrmFoodPage: View {
                     }
                 }
             }
+            .wyrmSettingAnchor("\(group).food_type", card: true)
             Text("Mixed uses every shape and keeps each morsel stable for its whole life.")
                 .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
                 .padding(.horizontal, 20).padding(.top, 10)
@@ -772,7 +818,7 @@ final class WyrmNotificationPrefs: ObservableObject {
 struct WyrmNotificationSettingsPage: View {
     let close: () -> Void
     @ObservedObject var prefs = WyrmNotificationPrefs.shared
-    private let groups: [(String, [(String, String, String)])] = [
+    static let groups: [(String, [(String, String, String)])] = [
         ("People", [("invite", "Arena invites", "Someone sends you a server and key."),
                     ("dm", "Direct messages", "New thread or reply."),
                     ("voice_invite", "Voice invitations", "Private invitations to verified voice rooms."),
@@ -797,9 +843,10 @@ struct WyrmNotificationSettingsPage: View {
                               : prefs.status == .notDetermined ? "Not asked yet. Tap to allow Wyrm notifications."
                               : "Off in iOS. Tap here, then allow Wyrm notifications.",
                           on: master, first: true) { _ in prefs.openSystem() }
+                    .wyrmSettingAnchor("app.notify.all")
             }
-            ForEach(groups.indices, id: \.self) { groupIndex in
-                let group = groups[groupIndex]
+            ForEach(Self.groups.indices, id: \.self) { groupIndex in
+                let group = Self.groups[groupIndex]
                 WSSectionLabel(group.0)
                 WSCard {
                     ForEach(Array(group.1.enumerated()), id: \.offset) { index, row in
@@ -808,6 +855,7 @@ struct WyrmNotificationSettingsPage: View {
                             prefs.set(row.0, !prefs.isEnabled(row.0))
                         }
                         .disabled(!master).opacity(master ? 1 : 0.46)
+                        .wyrmSettingAnchor("app.notify.\(row.0)")
                     }
                 }
             }
@@ -953,6 +1001,10 @@ struct WyrmAccessibilityPage: View {
                     }.buttonStyle(WSPressStyle())
                 }
             }
+            .wyrmSettingAnchor("app.theme", card: true)
+            .onAppear {
+                if WyrmSettingsFocus.shared.wants("app.theme-intensity") { advancedOpen = true; Self.rememberedOpen = true }
+            }
             Text("Themes colour the app and arena interface only. Skins, arena background and gameplay stay untouched.")
                 .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
                 .padding(.horizontal, 16).padding(.top, 12)
@@ -965,10 +1017,14 @@ struct WyrmAccessibilityPage: View {
                     WSSliderRow(title: "Theme intensity", valueText: "\(Int((store.intensity * 100).rounded()))%",
                                 detail: "50% is the original theme look. Lower moves towards Paper; higher is richer.",
                                 value: store.intensity, range: 0...1, first: true) { store.setIntensity($0) }
+                        .wyrmSettingAnchor("app.theme-intensity")
                     WSHairline()
                     WSOutlineButton(label: "Reset", enabled: abs(store.intensity - 0.5) >= 0.001) { store.setIntensity(0.5) }.padding(14)
                 }
             }
+            WSSectionLabel("Keyboard")
+            WSCard { WyrmKeyboardLookRows() }.wyrmSettingAnchor("app.keyboard", card: true)
+            WSCaption("The Wyrm keyboard follows your theme. Its gear key holds the same two controls, and in the lobby the knob under it drags it anywhere.")
         }
     }
 }

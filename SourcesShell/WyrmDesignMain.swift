@@ -6,6 +6,7 @@ struct WyrmDesignMain: View {
     @ObservedObject var services: WyrmServiceStore
     @ObservedObject private var theme = WyrmThemeStore.shared
     @ObservedObject private var notificationPrefs = WyrmNotificationPrefs.shared
+    @ObservedObject private var keyboard = WyrmKeyboardController.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
 
@@ -40,6 +41,10 @@ struct WyrmDesignMain: View {
                 WyrmRootTabBar(selection: $tab, unread: services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count)
                     .frame(width: proxy.size.width)
                     .padding(.bottom, tabBarBottomInset)
+                    // Typing hides the bar, as system tab bars sit under the keyboard.
+                    .opacity(keyboard.focused ? 0 : 1)
+                    .allowsHitTesting(!keyboard.focused)
+                    .animation(.easeOut(duration: 0.18), value: keyboard.focused)
                     .zIndex(10)
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
@@ -50,7 +55,9 @@ struct WyrmDesignMain: View {
                     }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .background(ATheme.paper.ignoresSafeArea())
-                        .ignoresSafeArea()
+                        // Only the container edges: the keyboard's safe area must
+                        // still lift composers and input boxes above the keys.
+                        .ignoresSafeArea(.container)
                         .zIndex(Double(30 + index))
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
@@ -62,7 +69,7 @@ struct WyrmDesignMain: View {
                         .padding(.horizontal, 20).padding(.bottom, routes.isEmpty ? 84 : 18).zIndex(50)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-            }.ignoresSafeArea()
+            }.ignoresSafeArea(.container)
             // A theme change redraws every screen with the new palette. Tab and
             // route state live on this view, so the page the player is on stays open.
             .id(theme.identity)
