@@ -9,6 +9,10 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     @Published private(set) var failure: String?
 
     private(set) var beads: [Int: CGImage] = [:]
+    /// AIR Build-a-Slither cells: nsk 0 / nsk 1 beads and `ksmc_t`.
+    private(set) var airBeads: [Int: CGImage] = [:]
+    private(set) var airShadow: CGImage?
+    private(set) var airWheel: CGImage?
     private(set) var accessories: [Int: CGImage] = [:]
     private(set) var tags: [Int: CGImage] = [:]
     private(set) var accessoryThumbnails: [Int: CGImage] = [:]
@@ -36,6 +40,15 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                         x: Double(column) / 7, y: Double(row) / 9,
                         width: 1.0 / 7, height: 1.0 / 9)
                 }
+                var airImages: [Int: CGImage] = [:]
+                for kind in 0..<2 {
+                    airImages[kind] = Self.crop(atlas, x: Double(2 + kind) / 7, y: 6.0 / 9,
+                                                width: 1.0 / 7, height: 1.0 / 9)
+                }
+                let airShadowImage = Self.crop(atlas, x: 4.0 / 7, y: 6.0 / 9,
+                                               width: 102.0 / 64 / 7, height: 102.0 / 64 / 9)
+                let airWheelImage = Bundle.main.url(forResource: "air_colour_wheel", withExtension: "png")
+                    .flatMap { Self.downsample($0, maxPixel: 768) }
                 var accessoryImages: [Int: CGImage] = [:]
                 var accessoryThumbs: [Int: CGImage] = [:]
                 for id in 0..<32 {
@@ -69,6 +82,9 @@ final class WyrmSkinTextureLibrary: ObservableObject {
 
                 DispatchQueue.main.async {
                     self.beads = beadImages
+                    self.airBeads = airImages
+                    self.airShadow = airShadowImage
+                    self.airWheel = airWheelImage
                     self.accessories = accessoryImages
                     self.tags = tagImages
                     self.accessoryThumbnails = accessoryThumbs
@@ -76,8 +92,9 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                     self.backgrounds = backgroundImages
                     self.ready = true
                     self.loading = false
-                    NSLog("Wyrm native skin textures ready beads=%d accessories=%d tags=%d backgrounds=%d",
-                          beadImages.count, accessoryImages.count, tagImages.count, backgroundImages.count)
+                    NSLog("Wyrm native skin textures ready beads=%d accessories=%d tags=%d backgrounds=%d air=%d wheel=%d",
+                          beadImages.count, accessoryImages.count, tagImages.count, backgroundImages.count,
+                          airImages.count + (airShadowImage == nil ? 0 : 1), airWheelImage == nil ? 0 : 1)
                 }
             } catch {
                 DispatchQueue.main.async {
@@ -181,6 +198,14 @@ struct WyrmSkinRoot: View {
     @StateObject private var textures = WyrmSkinTextureLibrary()
     @State private var section: WyrmSkinStudioSection
     @State private var editingPattern = false
+    @State private var showingWheel: Bool
+
+    // The AIR colour wheel's state, in AIR wheel units (see WyrmAirSkin).
+    // Defaults are AIR's: pointer at the grey centre, bezel knob at `br = 0`.
+    @AppStorage("wyrm.ios.skin.air-pointer-x") private var airPointerX = 0.0
+    @AppStorage("wyrm.ios.skin.air-pointer-y") private var airPointerY = 0.0
+    @AppStorage("wyrm.ios.skin.air-bezel") private var airBezel = 0.0
+    @AppStorage("wyrm.ios.skin.air-rgb") private var airRGB = 0x808080
 
     @AppStorage("wyrm.ios.skin.preset") private var preset = 2
     @AppStorage("wyrm.ios.skin.custom-enabled") private var customEnabled = false
@@ -200,9 +225,10 @@ struct WyrmSkinRoot: View {
         let initial: WyrmSkinStudioSection = arguments.contains("--smoke-skin-tags") ? .tags
             : arguments.contains("--smoke-skin-accessories") ? .accessories
             : arguments.contains("--smoke-skin-presets") ? .presets
-            : arguments.contains("--smoke-skin-pattern") ? .pattern
+            : arguments.contains("--smoke-skin-pattern") || arguments.contains("--smoke-skin-wheel") ? .pattern
             : .overview
         _section = State(initialValue: initial)
+        _showingWheel = State(initialValue: arguments.contains("--smoke-skin-wheel"))
     }
 
     private var customGroups: [Int] {
@@ -354,6 +380,9 @@ struct WyrmSkinRoot: View {
                 }.font(.androidWyrm(9.5, .bold)).buttonStyle(.plain)
                 Button("CLEAR") { savePattern([], colors: []) }
                     .font(.androidWyrm(9.5, .bold)).foregroundColor(.red).buttonStyle(.plain)
+                WyrmAirWheelToggle(showingWheel: showingWheel) {
+                    withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.84)) { showingWheel.toggle() }
+                }
             }.padding(.horizontal, 20).padding(.bottom, 10)
             TextField("Type or paste a skin code", text: Binding(
                 get: { WyrmSkinCatalog.code(for: customGroups) },
@@ -368,19 +397,56 @@ struct WyrmSkinRoot: View {
                 .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
                 .padding(.horizontal, 20)
             WyrmSectionLabel("Build a Wyrm")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                ForEach(WyrmSkinCatalog.validGroups, id: \.self) { group in
-                    Button {
-                        var groups = customGroups
-                        if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
-                    } label: {
-                        WyrmAtlasImage(image: textures.beads[group]).padding(5)
-                            .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                            .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                    }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
-                }
-            }.padding(.horizontal, 16)
+            if showingWheel {
+                airWheelPanel.transition(.opacity.combined(with: .scale(scale: 0.96)))
+            } else {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+                    ForEach(WyrmSkinCatalog.validGroups, id: \.self) { group in
+                        Button {
+                            var groups = customGroups
+                            if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
+                        } label: {
+                            WyrmAtlasImage(image: textures.beads[group]).padding(5)
+                                .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+                                .background(ATheme.card.opacity(0.72)).clipShape(Circle())
+                        }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
+                    }
+                }.padding(.horizontal, 16)
+                .transition(.opacity)
+            }
         }
+    }
+
+    /// The Android Build-a-Slither wheel: bezel knob for brightness, pointer
+    /// for hue and saturation, and AIR's first two bead buttons.
+    private var airWheelPanel: some View {
+        VStack(spacing: 18) {
+            WyrmAirColourWheel(wheel: textures.airWheel,
+                               pointerX: $airPointerX, pointerY: $airPointerY,
+                               bezelAngle: $airBezel, rgb: $airRGB)
+                .frame(maxWidth: 300)
+                .padding(.horizontal, 20)
+            HStack(spacing: 22) {
+                ForEach(0..<2, id: \.self) { kind in
+                    WyrmAirBeadButton(image: textures.airBeads[kind],
+                                      rgb: UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF,
+                                      label: kind == 0 ? "Add plain bead" : "Add rim bead") {
+                        addAirBead(kind: kind)
+                    }
+                }
+            }
+        }
+        .onAppear { NSLog("Wyrm AIR colour wheel presented rgb=%06X", UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF) }
+    }
+
+    /// A wheel bead: the arena gets the nearest colour group, Wyrm keeps the
+    /// exact picked RGB with the AIR texture named in its alpha byte.
+    private func addAirBead(kind: Int) {
+        var groups = customGroups
+        guard groups.count < 256 else { return }
+        let rgb = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
+        groups.append(WyrmAirSkin.nearestGroup(rgb))
+        savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
     }
 
     private var accessoriesPanel: some View {
@@ -586,21 +652,53 @@ private struct WyrmSkinPreview: View {
                                   segmentsPerRow: Int) -> some View {
         Canvas(opaque: false, colorMode: .nonLinear, rendersAsynchronously: true) { context, _ in
             let totalSegments = segmentsPerRow * 2
+            let base = context
+            func airKind(_ codeIndex: Int) -> Int? {
+                guard codeIndex >= 0, codeIndex < totalSegments, codeIndex < colors.count else { return nil }
+                let group = groups.isEmpty ? 7 : groups[codeIndex % groups.count]
+                return group < 0 ? nil : WyrmAirSkin.kind(of: colors[codeIndex])
+            }
+            // AIR's `ksmc_t` under each Build-a-Slither bead: unrotated, 102/64
+            // of the bead, drawn in AIR's order — the head's first nine fading
+            // out, the tail's last four, then four points behind each bead.
+            let shadowSize = scale * 102 / 64
+            func airShadow(_ codeIndex: Int, alpha: Double) {
+                guard let shadow = textures.airShadow, airKind(codeIndex) != nil else { return }
+                let point = segmentPoint(totalSegments - 1 - codeIndex, x: x, headY: headY, tailY: tailY,
+                                         scale: scale, step: step, segmentsPerRow: segmentsPerRow)
+                var faded = base
+                faded.opacity = alpha
+                faded.draw(Image(decorative: shadow, scale: 1),
+                           in: CGRect(x: point.x - shadowSize / 2, y: point.y - shadowSize / 2,
+                                      width: shadowSize, height: shadowSize))
+            }
+            func shadowAlpha(_ codeIndex: Int) -> Double { codeIndex < 9 ? Double(codeIndex) / 9 : 1 }
+            for codeIndex in stride(from: 8, through: 0, by: -1) {
+                airShadow(codeIndex, alpha: 1 - Double(codeIndex) / 9)
+            }
+            for n in 1...4 { airShadow(totalSegments - n, alpha: shadowAlpha(totalSegments - n)) }
             for row in 0..<2 {
                 let firstSegment = row * segmentsPerRow
                 for local in 0..<segmentsPerRow {
                     let segment = firstSegment + local
                     let codeIndex = totalSegments - 1 - segment
+                    if codeIndex >= 4 { airShadow(codeIndex - 4, alpha: shadowAlpha(codeIndex - 4)) }
                     let group = groups.isEmpty ? 7 : groups[codeIndex % groups.count]
                     if group < 0 { continue }
                     let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
-                    guard let bead = textures.beads[rgba == 0 ? group : 40] else { continue }
+                    let air = WyrmAirSkin.kind(of: rgba)
+                    guard let bead = air.flatMap({ textures.airBeads[$0] })
+                            ?? textures.beads[rgba == 0 ? group : 40] else { continue }
                     let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
                                              scale: scale, step: step,
                                              segmentsPerRow: segmentsPerRow)
                     let image = Image(decorative: bead, scale: 1)
                     var inked = context
-                    if rgba != 0 { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
+                    if air != nil {
+                        inked.addFilter(.colorMultiply(Color(rgb: WyrmAirSkin.bodyTint(rgba))))
+                    } else if rgba != 0 {
+                        inked.addFilter(.colorMultiply(Color(rgb: rgba)))
+                    }
                     if row == 1 {
                         var rotated = inked
                         rotated.translateBy(x: point.x, y: point.y)

@@ -1,6 +1,58 @@
 # Wyrm iOS — developer handoff
 
-Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.16.9 (55)** · Minimum iOS: **15.0**
+Last verified device baseline: **2026-09-24**, build **0.16.3 (49)** · Current source candidate: **0.17.0 (56, not yet committed or built)** · Minimum iOS: **15.0**
+
+**Source changes after Build 55, not yet built by this session:**
+
+- *Image arrow skins.* `Scripts/generate-arrow-skins.py` packs the 20 NTL VANCED
+  arrows (`../NTL VANCED/sc/*.webp`, everything except the code-drawn "Vanced
+  arrow") into `Resources/ArrowSkins.png` (5 x 4 cells of 256 px, all facing +x;
+  append-only order). `SourcesOriginal/AppleArrowSkins.c` uploads it once next to
+  the tag atlas and `draw_arrow` draws the chosen cell as one rotated ImGui quad
+  (hooks are the last block of `prepare-original-engine.py`). SwiftUI keeps the
+  choice (`wyrm.ios.arrow.skin`, -1 = the engine's own `arrow.style`) and a
+  0.2-1.0 brightness (`wyrm.ios.arrow.brightness`) and passes both through
+  `WyrmIOSSetArrowSkin`. Controls › Basic · arrow opens a picker with the five
+  drawn styles and the twenty images; size and brightness apply to all, colour
+  only to the drawn styles. The SlitherControl+ art (3D, Wing, Arrow I-III, Red
+  arrow) is third-party — confirm permission before a public release.
+- *In-game name.* The engine's saved nickname is the single name: Play and the
+  Ready Room write it with `WyrmShellStore.setNickname` (optimistic, protected
+  from stale snapshots for 3 s), the arena join and NTL Team presence read it,
+  and the account IGN follows through `WyrmGameSync.syncIngameName`. The account
+  name only seeds an engine that has never had one, so a restart never swaps it.
+
+**Build 56 source — Android Build-a-Slither wheel (not yet committed, built or device-tested):**
+
+- *Picker.* Skin › Pattern has a Liquid Glass toggle beside UNDO/CLEAR. It swaps
+  the 42-bead palette for the slither.io Android (AIR) client's colour wheel:
+  the exact AIR hue/saturation disc (`Resources/AirSkin/air_colour_wheel.png`),
+  a glass bezel tinted with the unshaded colour whose knob sets AIR's
+  `bsk_br` (top half lightens to white, bottom darkens by up to half), a glass
+  hue pointer that moves by the drag and stays inside radius 107, and AIR's
+  first two bead buttons (nsk 0 plain, nsk 1 dark core with light rim). Colour
+  maths, rounding and limits are transcribed in `SourcesShell/WyrmAirSkinPicker.swift`;
+  wheel state persists in `wyrm.ios.skin.air-*`.
+- *Data.* A wheel bead stores the arena's nearest colour group (Android Wyrm's
+  weighted `nearestGroup`) and an ARGB whose low 24 bits are the exact picked
+  RGB and whose alpha byte names the AIR texture: `0xFE` nsk 0, `0xFD` nsk 1.
+  No arena packet changes: non-Wyrm players see the nearest palette colour,
+  Wyrm iOS players see the exact bead through the existing `/v1/arena/skin(s)`
+  sync, Android/Desktop Wyrm currently draw it as a flat tinted bead.
+- *Engine.* `prepare-original-engine.py` swaps in `Resources/AirSkin/tex_atlas_8k.png`
+  (original atlas plus three cells, both hashes pinned) and patches render
+  mode 0 of `redraw.c`: AIR beads use their cell, AIR's `setSkin` tint (the
+  `nsk_min2c` lift) and AIR's `ksmc_t` outline shadow in AIR's order (head nine,
+  tail four, then four points behind), in place of Wyrm's shadow for those beads.
+  Other render modes keep the flat exact-colour bead. `Main.m` re-copies
+  `app/res` once per asset revision (`56-air-skin`) so installed phones get
+  the new atlas; `user.dat` is outside that folder and is kept.
+- *Verification so far.* The texture port matches the baked AIR sheet pixels
+  (RGB exact; edge alpha mean < 1/255), `gcc -fsyntax-only` on the prepared
+  `redraw.c` is clean apart from the warnings the original already has,
+  `Tests/air_skin_contract_test.py` 30/30 and every existing contract test
+  pass locally. Swift compilation, Simulator (`--smoke-skin-wheel`) and iPhone
+  checks have **not** run yet. Details: `AIR-BUILD-A-SLITHER.md`.
 
 Build 54 closes the backend audit gaps: finished runs now reach
 `POST /v1/me/stats` (engine `record_finished_run` → `WyrmIOSRecordFinishedRun`

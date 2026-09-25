@@ -16,6 +16,7 @@ targets:
           - platform/tassets.c
       - path: SourcesOriginal/AppleVulkan.c
       - path: SourcesOriginal/WyrmShell.c
+      - path: SourcesOriginal/AppleArrowSkins.c
       - path: SourcesOriginal/AppleSkinMailbox.c
     dependencies:
       - framework: Vendor/SDL3.xcframework
@@ -31,7 +32,7 @@ targets:
           - WYRM_IOS=1
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
-          - APP_VERSION=\"0.16.9\"
+          - APP_VERSION=\"0.17.0\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -52,10 +53,15 @@ targets:
       - path: Resources/Assets.xcassets
       - path: Resources/manrope.ttf
       - path: Resources/bodoni_moda.ttf
+      - path: Resources/ArrowSkins.png
+        buildPhase: resources
       - path: Resources/privacy.md
         buildPhase: resources
-      - path: SharedEngine/app/res
+      # Prepared copy: the original res tree, with the AIR bead atlas cells.
+      - path: build-original-source/app/res
         type: folder
+        buildPhase: resources
+      - path: Resources/AirSkin/air_colour_wheel.png
         buildPhase: resources
     dependencies:
       - target: OriginalEngine
@@ -83,8 +89,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "0.16.9"
-        CURRENT_PROJECT_VERSION: "55"
+        MARKETING_VERSION: "0.17.0"
+        CURRENT_PROJECT_VERSION: "56"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

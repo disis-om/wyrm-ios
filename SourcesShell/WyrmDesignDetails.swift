@@ -465,7 +465,7 @@ private struct WyrmLobbyDetail: View {
                     }.padding(16)
                     Text("The button hands your name and endpoint to the original C engine. Its own landscape lobby opens inside the portrait iOS container.").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(.horizontal, 20)
                 }
-            }.onAppear { name = account.player?.arenaName ?? engine.nickname; arena = engine.arena.isEmpty ? (services.arenas.first?.endpoint ?? "") : engine.arena }
+            }.onAppear { name = engine.nickname.isEmpty ? (account.player?.arenaName ?? "") : engine.nickname; arena = engine.arena.isEmpty ? (services.arenas.first?.endpoint ?? "") : engine.arena }
         }
     }
     private var cleanName: String { let value = name.trimmingCharacters(in: .whitespacesAndNewlines); return value.isEmpty ? "Wyrm Player" : String(value.prefix(24)) }
@@ -534,7 +534,7 @@ private struct WyrmTeamDetail: View {
                                 ForEach(team.members) { member in
                                     Button {
                                         guard member.arena != "_GAME_MENU_" else { return }
-                                        engine.enterLobby(name: engine.nickname, address: member.arena)
+                                        engine.enterLobby(name: engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname, address: member.arena)
                                     } label: {
                                         HStack(spacing: 12) {
                                             Circle().fill(member.arena == engine.arena ? ATheme.live : ATheme.quiet.opacity(0.3)).frame(width: 8, height: 8)

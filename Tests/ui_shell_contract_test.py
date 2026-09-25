@@ -19,6 +19,9 @@ ENTRY = (ROOT / "SourcesShell" / "WyrmDesignEntry.swift").read_text(encoding="ut
 MAIN_M = (ROOT / "SourcesOriginal" / "Main.m").read_text(encoding="utf-8")
 MAILBOX = (ROOT / "SourcesOriginal" / "HomeMailbox.inc").read_text(encoding="utf-8")
 SYNC = (ROOT / "SourcesShell" / "WyrmGameSync.swift").read_text(encoding="utf-8")
+ARROWS = (ROOT / "SourcesShell" / "WyrmArrowSkins.swift").read_text(encoding="utf-8")
+ARROWS_C = (ROOT / "SourcesOriginal" / "AppleArrowSkins.c").read_text(encoding="utf-8")
+SPEC = (ROOT / "original-engine.yml").read_text(encoding="utf-8")
 PREPARE = (ROOT / "Scripts" / "prepare-original-engine.py").read_text(encoding="utf-8")
 ACCOUNT = (ROOT / "SourcesShell" / "WyrmAccount.swift").read_text(encoding="utf-8")
 SERVICES = (ROOT / "SourcesShell" / "WyrmServices.swift").read_text(encoding="utf-8")
@@ -72,6 +75,14 @@ checks = {
     "avatar upload and renames use the Android routes": "/v1/me/avatar" in ACCOUNT and "/v1/me/renames" in ACCOUNT,
     "global chat and fresh profiles": "/v1/chat/messages" in SERVICES and '"/v1/players/' in SERVICES,
     "in-game name follows the account": "syncIngameName" in SYNC and "^[A-Za-z0-9_]{3,20}$" in SYNC,
+    "twenty image arrows plus the five drawn styles in one picker": ARROWS.count('", "') >= 15 and "Vanced arrow" not in ARROWS
+        and "WyrmArrowShapes.points.count" in ARROWS and (ROOT / "Resources" / "ArrowSkins.png").exists(),
+    "image arrows are one atlas drawn as a rotated quad": "ImDrawList_AddImageQuad" in ARROWS_C and "WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length, alpha)" in PREPARE
+        and "SourcesOriginal/AppleArrowSkins.c" in SPEC and "Resources/ArrowSkins.png" in SPEC,
+    "brightness reaches drawn and image arrows; colour only the drawn": "wyrm_brightness" in PREPARE and "if store.skin < 0, let colour" in ARROWS,
+    "one in-game name: Play and the Ready Room both write the engine's": "func setNickname(_ raw: String)" in LEGACY
+        and "nicknameOverride" in LEGACY and "engine.setNickname(clean)" in MAIN and "engine.setNickname(clean)" in LOBBY,
+    "a restart keeps the engine's saved name": "account.player?.arenaName ?? engine.nickname" not in MAIN and "adoptEngineName" in MAIN,
     "no GitHub in player-visible settings copy": "GitHub" not in PAGES and "GitHub" not in KIT,
     "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
     "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,
