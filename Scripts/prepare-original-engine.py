@@ -280,10 +280,11 @@ for path in sorted(OUTPUT.rglob("*")):
         for name, body in {
             # The run receipt goes to SwiftUI's durable outbox, which posts it
             # to /v1/me/stats exactly as Android's Kotlin outbox does.
-            'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills);
+             'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills);
   WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills);''',
-            'android_home_set_screen': '(void)screen;',
-            'android_home_publish_state': '(void)env_ptr;',
+             'android_home_set_screen': '(void)screen;',
+             'android_home_set_arena_port_available': '(void)available;',
+             'android_home_publish_state': '(void)env_ptr;',
             'android_home_arena_refused': '''WyrmIOSPublishArenaRefusal(endpoint, seconds);
   SDL_Log("Wyrm arena refused: %s (%d seconds)", endpoint, seconds);''',
         }.items():
