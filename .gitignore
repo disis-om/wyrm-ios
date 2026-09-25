@@ -25,3 +25,7 @@
 /phase3/
 /SharedEngine/README.md
 /Scripts/__pycache__/
+
+# Only README.md is published; every other Markdown file is a local note.
+*.md
+!/README.md
