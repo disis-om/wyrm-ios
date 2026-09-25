@@ -18,6 +18,10 @@ LOBBY = (ROOT / "SourcesShell" / "WyrmLobby.swift").read_text(encoding="utf-8")
 ENTRY = (ROOT / "SourcesShell" / "WyrmDesignEntry.swift").read_text(encoding="utf-8")
 MAIN_M = (ROOT / "SourcesOriginal" / "Main.m").read_text(encoding="utf-8")
 MAILBOX = (ROOT / "SourcesOriginal" / "HomeMailbox.inc").read_text(encoding="utf-8")
+SYNC = (ROOT / "SourcesShell" / "WyrmGameSync.swift").read_text(encoding="utf-8")
+PREPARE = (ROOT / "Scripts" / "prepare-original-engine.py").read_text(encoding="utf-8")
+ACCOUNT = (ROOT / "SourcesShell" / "WyrmAccount.swift").read_text(encoding="utf-8")
+SERVICES = (ROOT / "SourcesShell" / "WyrmServices.swift").read_text(encoding="utf-8")
 
 
 checks = {
@@ -58,6 +62,16 @@ checks = {
     "segmented pills and switches are system Liquid Glass controls": ".pickerStyle(.segmented)" in KIT and "Toggle(\"\", isOn:" in KIT,
     "cold start syncs behind the launch mark": "launchSyncing" in ENTRY and "WyrmDesignLaunch()" in ENTRY,
     "tab pill rests plain and lifts into clear glass": "Glass.clear.interactive()" in COMPONENTS and ".opacity(lifted ? 0 : 1)" in COMPONENTS,
+    "finished runs reach /v1/me/stats through a durable outbox": "WyrmIOSRecordFinishedRun(env->usr->usrs.score" in PREPARE
+        and "/v1/me/stats" in SYNC and "eventId" in SYNC and "wyrm.ios.runs.pending" in SYNC,
+    "local totals reconcile every five hours": "/v1/me/stats/reconcile" in SYNC and "5 * 3600" in SYNC,
+    "custom skins publish, heartbeat, clear and look up": all(s in SYNC for s in ('"/v1/arena/skin", method: "POST"',
+        '"/v1/arena/skin", method: "DELETE"', '"/v1/arena/skins"', "60_000_000_000")) and "WyrmIOSArenaSyncPoll(env);" in PREPARE,
+    "arena skin mailbox stays off the network and online-only": "!gdata->ai_mode && gdata->curr_screen == PLAYING" in MAILBOX,
+    "own avatar path is made absolute": 'rawAvatar.hasPrefix("/")' in ACCOUNT,
+    "avatar upload and renames use the Android routes": "/v1/me/avatar" in ACCOUNT and "/v1/me/renames" in ACCOUNT,
+    "global chat and fresh profiles": "/v1/chat/messages" in SERVICES and '"/v1/players/' in SERVICES,
+    "in-game name follows the account": "syncIngameName" in SYNC and "^[A-Za-z0-9_]{3,20}$" in SYNC,
     "no GitHub in player-visible settings copy": "GitHub" not in PAGES and "GitHub" not in KIT,
     "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
     "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,

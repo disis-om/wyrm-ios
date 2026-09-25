@@ -27,7 +27,9 @@ struct WyrmPlayer: Decodable, Identifiable {
         username = try box.decodeIfPresent(String.self, forKey: .username)
         displayName = try box.decodeIfPresent(String.self, forKey: .displayName) ?? "Unnamed"
         avatarKey = try box.decodeIfPresent(String.self, forKey: .avatarKey) ?? "mono-ink"
-        avatarURL = try box.decodeIfPresent(String.self, forKey: .avatarUrl) ?? ""
+        // The backend stores uploaded photos as a path on itself.
+        let rawAvatar = try box.decodeIfPresent(String.self, forKey: .avatarUrl) ?? ""
+        avatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.77-245-76-86.sslip.io\(rawAvatar)" : rawAvatar
         bio = try box.decodeIfPresent(String.self, forKey: .bio) ?? ""
         highestScore = try box.decodeIfPresent(Int64.self, forKey: .highestScore) ?? 0
         kills = try box.decodeIfPresent(Int64.self, forKey: .kills) ?? 0
@@ -47,6 +49,8 @@ struct WyrmPlayer: Decodable, Identifiable {
 private struct WyrmAuthEnvelope: Decodable { let token: String; let player: WyrmPlayer }
 private struct WyrmErrorEnvelope: Decodable { let error: String? }
 private struct WyrmUsernameAvailabilityEnvelope: Decodable { let available: Bool }
+/// GET /v1/me/renames: changes left this month for each name.
+struct WyrmRenameAllowance: Decodable, Equatable { let displayName: Int; let username: Int }
 
 enum WyrmUsernameAvailabilityResult {
     case available
@@ -153,6 +157,19 @@ private actor WyrmAPI {
         return try await request("/v1/me", method: "PATCH", body: body, token: token)
     }
 
+    func renames(token: String) async throws -> WyrmRenameAllowance {
+        try await request("/v1/me/renames", token: token)
+    }
+
+    /// The photograph goes up as itself, the way Android sends it, not as JSON.
+    func uploadAvatar(token: String, jpeg: Data) async throws -> WyrmPlayer {
+        try await request("/v1/me/avatar", method: "PUT", raw: jpeg, contentType: "image/jpeg", token: token)
+    }
+
+    func removeAvatar(token: String) async throws -> WyrmPlayer {
+        try await request("/v1/me/avatar", method: "DELETE", token: token)
+    }
+
     func deleteAccount(token: String) async throws {
         let _: EmptyResponse = try await request("/v1/me", method: "DELETE", token: token)
     }
@@ -161,6 +178,8 @@ private actor WyrmAPI {
         _ path: String,
         method: String = "GET",
         body: [String: Any]? = nil,
+        raw: Data? = nil,
+        contentType: String = "application/json",
         queryItems: [URLQueryItem] = [],
         token: String?
     ) async throws -> T {
@@ -176,6 +195,9 @@ private actor WyrmAPI {
         if let body {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
+        } else if let raw {
+            request.setValue(contentType, forHTTPHeaderField: "Content-Type")
+            request.httpBody = raw
         }
         do {
             let (data, response) = try await session.data(for: request)
@@ -202,6 +224,8 @@ private actor WyrmAPI {
         case "NAME_CHANGE_LIMIT", "USERNAME_CHANGE_LIMIT": return "The monthly name-change limit has been reached."
         case "IGN_TAKEN": return "That arena name is already in use."
         case "INVALID_PROFILE", "INVALID_BODY": return "Please check the fields and try again."
+        case "IMAGE_TOO_LARGE": return "That photo is too large. Choose one under 3 MB."
+        case "UNSUPPORTED_IMAGE", "EMPTY_IMAGE": return "That photo could not be read. Try a JPEG or PNG."
         default: return "Wyrm could not complete that request (\(code))."
         }
     }
@@ -222,7 +246,12 @@ final class WyrmAccountStore: ObservableObject {
     /// the bearer remains owned by this account object and the device Keychain.
     var sessionToken: String { token ?? "" }
 
-    init() { Task { await restore() } }
+    init() {
+        Task { await restore() }
+        NotificationCenter.default.addObserver(forName: WyrmGameSync.profileChanged, object: nil, queue: .main) { [weak self] _ in
+            Task { @MainActor in await self?.refreshProfile() }
+        }
+    }
 
     func restore() async {
         guard let saved = WyrmKeychain.read() else { phase = .signedOut; return }
@@ -301,6 +330,29 @@ final class WyrmAccountStore: ObservableObject {
         do { try await WyrmAPI.shared.deleteAccount(token: token); signOut() }
         catch { errorMessage = error.localizedDescription }
         busy = false
+    }
+
+    @Published private(set) var renames: WyrmRenameAllowance?
+
+    func loadRenames() async {
+        guard let token else { return }
+        renames = try? await WyrmAPI.shared.renames(token: token)
+    }
+
+    func uploadAvatar(_ jpeg: Data) async {
+        guard let token else { return }
+        busy = true; errorMessage = ""
+        defer { busy = false }
+        do { player = try await WyrmAPI.shared.uploadAvatar(token: token, jpeg: jpeg) }
+        catch { errorMessage = error.localizedDescription }
+    }
+
+    func removeAvatar() async {
+        guard let token else { return }
+        busy = true; errorMessage = ""
+        defer { busy = false }
+        do { player = try await WyrmAPI.shared.removeAvatar(token: token) }
+        catch { errorMessage = error.localizedDescription }
     }
 
     func refreshProfile() async {

@@ -67,14 +67,27 @@ struct WyrmDesignRoot: View {
         }
         .environmentObject(team)
         .onChange(of: account.phase) { phase in if phase == .signedOut || phase == .signingOut { coldStart = false } }
-        .onChange(of: services.isPrepared(for: account.player?.id)) { prepared in if prepared { coldStart = false } }
-        .task { team.start() }
+        .onChange(of: services.isPrepared(for: account.player?.id)) { prepared in
+            if prepared {
+                coldStart = false
+                WyrmGameSync.shared.activate(token: account.sessionToken, playerID: account.player?.id ?? "")
+            }
+        }
+        .task {
+            team.start()
+            WyrmGameSync.shared.start()
+            services.observeGameSync()
+        }
         .task(id: sessionLifecycleID) {
             switch account.phase {
             case .signedIn:
-                guard !services.isPrepared(for: account.player?.id) else { return }
+                guard !services.isPrepared(for: account.player?.id) else {
+                    WyrmGameSync.shared.activate(token: account.sessionToken, playerID: account.player?.id ?? "")
+                    return
+                }
                 await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
             case .signingOut:
+                WyrmGameSync.shared.deactivate()
                 services.resetSession()
                 try? await Task.sleep(nanoseconds: 920_000_000)
                 guard !Task.isCancelled else { return }

@@ -206,6 +206,7 @@ private struct WyrmPlayRoot: View {
         recent.insert(selected.endpoint, at: 0)
         recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
         let playerName = nickname.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? "Wyrm Player" : nickname
+        if playerName != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(playerName) }
         engine.enterLobby(name: playerName, address: selected.endpoint)
     }
 }
@@ -408,6 +409,7 @@ private struct WyrmSocialRoot: View {
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link) { open(.messages) }
+                    WyrmListRow(title: "Global chat", detail: "Everyone in Wyrm · last 24 hours", icon: "bubble.left.and.bubble.right.fill", tint: ATheme.link) { open(.globalChat) }
                     WyrmListRow(title: "Voice rooms", detail: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
                     WyrmListRow(title: "Connections", detail: "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following", icon: "person.2") { open(.people("connections")) }
                     WyrmListRow(title: "Your profile", detail: account.player?.handle ?? "", icon: "person.crop.circle.fill") { open(.profile("")) }

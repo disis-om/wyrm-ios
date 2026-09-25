@@ -70,7 +70,7 @@ for path in sorted(OUTPUT.rglob("*")):
         text = text.replace('TDEF_ENTRY();', '')
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('  android_skin_poll(env);',
-                            '  android_skin_poll(env);\n  WyrmIOSApplySkinSelection(env);')
+                            '  android_skin_poll(env);\n  WyrmIOSApplySkinSelection(env);\n  WyrmIOSArenaSyncPoll(env);')
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
     if relative == "app/src/imgui_setup.c":
@@ -108,7 +108,10 @@ for path in sorted(OUTPUT.rglob("*")):
             start = text.rfind('\n', 0, text.rfind('static ', 0, start)) + 1
             text = text[:start] + text[end:]
         for name, body in {
-            'record_finished_run': '(void)env; /* Local score is retained by the original engine. */',
+            # The run receipt goes to SwiftUI's durable outbox, which posts it
+            # to /v1/me/stats exactly as Android's Kotlin outbox does.
+            'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills);
+  WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills);''',
             'android_home_set_screen': '(void)screen;',
             'android_home_publish_state': '(void)env_ptr;',
             'android_home_arena_refused': '''WyrmIOSPublishArenaRefusal(endpoint, seconds);
