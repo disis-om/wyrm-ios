@@ -930,7 +930,7 @@ enum WyrmPolicyBlock {
     case title(String), heading(String, Int), paragraph(String), bullet(String), pair(String, String), rule
 
     static func load() -> String {
-        guard let url = Bundle.main.url(forResource: "privacy", withExtension: "md"),
+        guard let url = Bundle.main.url(forResource: "privacy", withExtension: "txt"),
               let text = try? String(contentsOf: url, encoding: .utf8) else {
             return "The privacy policy could not be opened on this device."
         }
