@@ -125,6 +125,23 @@ void android_home_set_screen(int screen) {
   (*env)->DeleteLocalRef(env, activity_class);
 }
 
+void android_home_set_arena_port_available(bool available) {
+  JNIEnv* env = NULL;
+  jclass activity_class = NULL;
+  if (!get_activity(&env, &activity_class)) return;
+  jmethodID method = (*env)->GetStaticMethodID(
+      env, activity_class, "setArenaPortAvailableFromNative", "(Z)V");
+  if (method) {
+    (*env)->CallStaticVoidMethod(env, activity_class, method,
+                                 available ? JNI_TRUE : JNI_FALSE);
+    clear_exception(env);
+  } else {
+    (*env)->ExceptionClear(env);
+    SDL_Log("Wyrm home: setArenaPortAvailableFromNative unavailable");
+  }
+  (*env)->DeleteLocalRef(env, activity_class);
+}
+
 void android_home_publish_state(tenv* env_ptr) {
   if (!env_ptr) return;
   user_settings* settings = &env_ptr->usr->usrs;
@@ -439,42 +456,9 @@ void android_home_poll(tenv* env) {
 
   if (enter) {
     game_data* gdata = &user->gdata;
-    /*
-     * A join that is still running owns the button — but only while it is
-     * actually getting somewhere.
-     *
-     * This used to refuse a press outright whenever a socket existed. An arena
-     * that accepts a TCP connection and then says nothing leaves one existing
-     * for the whole timeout, and every press inside that window was swallowed
-     * with nothing on screen to explain it: measured on device as a press that
-     * blinked, a second that blinked, and a third that sat on "ENTERING" while
-     * the socket it was waiting behind had already been dead for seconds.
-     *
-     * So a stalled attempt is stood down rather than obeyed. The player asked
-     * twice; the second ask is the more recent information.
-     */
-    /*
-     * Measured off when the player asked, not off when a socket last dialled.
-     *
-     * `attempt_started_ms` is only stamped by a dial that actually went out, so
-     * while a join was held — waiting out the pacing window, or waiting for the
-     * previous socket to finish — it still held the last attempt's value, which
-     * was already older than the timeout. Every press then read as "the running
-     * join has stalled", dropped it, and dialled again. That is the burst of
-     * connections the arena was rate-limiting: the guard meant to stop it was
-     * the thing producing it.
-     */
-    bool busy = gdata->connection || gdata->conn != DISCONNECTED;
-    if (busy && gdata->conn == CONNECTING && !gdata->join_spawned &&
-        SDL_GetTicks() - gdata->join_started_ms > TIMEOUT * 1000) {
-      SDL_Log("Wyrm home: the running join had stalled — dropping it for "
-              "attempt %llu",
-              (unsigned long long)enter_id);
-      game_close_connection(gdata, "the player asked again");
-      gdata->conn = DISCONNECTED;
-      gdata->closed = false;
-      busy = false;
-    }
+    /* The reference hides Play while joining. A second queued press cannot
+     * close that socket and manufacture another dial; the active attempt owns
+     * its timeout and reports its terminal result before another Play. */
     if (enter_id <= last_enter_id) {
       SDL_Log("Wyrm home: stale arena attempt %llu ignored",
               (unsigned long long)enter_id);
@@ -486,7 +470,7 @@ void android_home_poll(tenv* env) {
               (unsigned long long)enter_id, enter_arena);
       return;
     }
-    if (busy) {
+    if (gdata->connection || gdata->conn != DISCONNECTED) {
       SDL_Log("Wyrm home: arena attempt %llu ignored; a join is already active",
               (unsigned long long)enter_id);
       return;
@@ -661,6 +645,7 @@ void android_home_poll(tenv* env) { (void)env; }
 void android_home_begin_life(void) {}
 void android_home_reset_death(void) {}
 void android_home_set_screen(int screen) { (void)screen; }
+void android_home_set_arena_port_available(bool available) { (void)available; }
 void android_home_publish_state(tenv* env) { (void)env; }
 void android_home_notify_death(tenv* env) { (void)env; }
 bool android_home_death_active(void) { return false; }

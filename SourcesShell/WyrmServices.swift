@@ -374,9 +374,51 @@ private actor WyrmServiceClient {
     }
 }
 
-private final class WyrmArenaProbeSession {
+/// A TCP latency probe and the arena WebSocket must never own the game port at
+/// the same time. Closing the picker cancels its task, but an NWConnection
+/// already in flight can outlive that task until its 1.5-second deadline.
+final class WyrmArenaProbeGate {
+    static let shared = WyrmArenaProbeGate()
+
+    private let lock = NSLock()
+    private var playActive = false
+    private var sessions: [ObjectIdentifier: WyrmArenaProbeSession] = [:]
+
+    private init() {}
+
+    fileprivate func register(_ session: WyrmArenaProbeSession) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard !playActive else { return false }
+        sessions[ObjectIdentifier(session)] = session
+        return true
+    }
+
+    fileprivate func unregister(_ session: WyrmArenaProbeSession) {
+        lock.lock()
+        sessions.removeValue(forKey: ObjectIdentifier(session))
+        lock.unlock()
+    }
+
+    func beginPlay() {
+        lock.lock()
+        playActive = true
+        let pending = Array(sessions.values)
+        lock.unlock()
+        pending.forEach { $0.cancel() }
+    }
+
+    func endPlay() {
+        lock.lock()
+        playActive = false
+        lock.unlock()
+    }
+}
+
+fileprivate final class WyrmArenaProbeSession {
     private let arena: WyrmArena
     private let queue: DispatchQueue
+    private let stateLock = NSLock()
     private var connection: NWConnection?
     private var completion: ((Int?) -> Void)?
     private var probeStarted: UInt64 = 0
@@ -390,7 +432,14 @@ private final class WyrmArenaProbeSession {
 
     func start() {
         guard let port = NWEndpoint.Port(rawValue: UInt16(arena.port)) else { finish(nil); return }
+        guard WyrmArenaProbeGate.shared.register(self) else { finish(nil); return }
         let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
+        stateLock.lock()
+        guard !finished else {
+            stateLock.unlock()
+            WyrmArenaProbeGate.shared.unregister(self)
+            return
+        }
         self.connection = connection
         probeStarted = DispatchTime.now().uptimeNanoseconds
         connection.stateUpdateHandler = { [self] state in
@@ -403,17 +452,24 @@ private final class WyrmArenaProbeSession {
             }
         }
         connection.start(queue: queue)
+        stateLock.unlock()
         queue.asyncAfter(deadline: .now() + 1.5) { [self] in finish(nil) }
     }
 
+    func cancel() { finish(nil) }
+
     private func finish(_ result: Int?) {
-        guard !finished else { return }
+        stateLock.lock()
+        guard !finished else { stateLock.unlock(); return }
         finished = true
-        connection?.stateUpdateHandler = nil
-        connection?.cancel()
+        let active = connection
         connection = nil
         let callback = completion
         completion = nil
+        stateLock.unlock()
+        active?.stateUpdateHandler = nil
+        active?.cancel()
+        WyrmArenaProbeGate.shared.unregister(self)
         callback?(result)
     }
 }

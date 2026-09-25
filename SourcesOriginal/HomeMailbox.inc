@@ -59,15 +59,17 @@ void WyrmIOSToggleEditorLeaderboard(void) {
 
 /* Engine-thread refusal publication for the Apple product shell. The native
  * engine remains the authority for deciding that an attempt failed and for
- * applying the 120-second taint. Swift receives only an immutable event copy
- * and chooses another directory endpoint; it never touches live game state.
+ * applying any taint. Swift receives an immutable event copy and clears the
+ * pending Play state; it never selects another endpoint for this attempt.
  */
 static uint64_t apple_refusal_sequence = 0;
 static char apple_refused_endpoint[MAX_IPV4_LEN + 1] = {0};
 static int apple_refused_seconds = 0;
 
 void WyrmIOSPublishArenaRefusal(const char* endpoint, int seconds) {
-  if (!home_mutex || !endpoint || !endpoint[0] || seconds <= 0) return;
+  /* Zero means a terminal refusal without a taint interval. It still has to
+   * advance the sequence so Swift clears its Entering state. */
+  if (!home_mutex || !endpoint || !endpoint[0] || seconds < 0) return;
   SDL_LockMutex(home_mutex);
   snprintf(apple_refused_endpoint, sizeof(apple_refused_endpoint), "%s", endpoint);
   apple_refused_seconds = seconds;

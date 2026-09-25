@@ -267,13 +267,33 @@ static void log_engine_geometry(void) {
   });
 }
 
+static void publish_arena_port_availability(void) {
+  static int reported_arena_port_available = -1;
+  game_data* gdata = &engine.usr->gdata;
+  int arena_port_available = gdata->curr_screen != PLAYING &&
+      gdata->conn == DISCONNECTED && !gdata->connection;
+  if (reported_arena_port_available != arena_port_available) {
+    reported_arena_port_available = arena_port_available;
+    BOOL available = arena_port_available != 0;
+    dispatch_async(dispatch_get_main_queue(), ^{
+      [NSNotificationCenter.defaultCenter postNotificationName:@"WyrmEngineArenaPortAvailable"
+                                                    object:nil
+                                                  userInfo:@{@"available": @(available)}];
+    });
+  }
+}
+
 static void frame(void* unused) {
   (void)unused;
   if (!ready) return;
   twindow_poll_input(engine.wnd);
   tinput(&engine);
+  /* A failed join can enter and leave PLAYING in one render call. Publish
+   * both edges so the Swift gate still observes this attempt's busy state. */
+  publish_arena_port_availability();
   if (engine.ctx->swapchain_ok) trender(&engine);
   else if (engine.usr->gdata.connection) server_poll(&engine);
+  publish_arena_port_availability();
   if (reported_screen != (int)engine.usr->gdata.curr_screen) {
     reported_screen = (int)engine.usr->gdata.curr_screen;
     WyrmIOSSetEnginePresentation(reported_screen != TITLE_SCREEN &&
