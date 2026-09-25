@@ -272,18 +272,18 @@ struct WyrmRootTabBar: View {
             let draggedOrigin = dragLocationX.map {
                 min(max($0 - itemWidth * 0.5, inset), inset + width - itemWidth)
             }
+            // As large as the app's other segmented thumbs: nearly the bar's
+            // full height and a touch wider than one slot.
+            let pillWidth = itemWidth + 2
+            let pillOrigin = (draggedOrigin ?? selectedOrigin) - 1
             ZStack(alignment: .leading) {
                 WyrmTabGlassSurface().zIndex(0)
-                WyrmTabSelectionGlass(lifted: lifted)
-                    .frame(width: itemWidth - 4, height: 46)
-                    // Lifted: larger, clearer and floating a point above the bar;
-                    // fast sideways travel stretches it along the direction of motion.
-                    .scaleEffect(x: lifted ? 1.17 + stretch : 1, y: lifted ? 1.26 - stretch * 0.5 : 1)
-                    .shadow(color: ATheme.ink.opacity(lifted ? 0.2 : 0), radius: lifted ? 14 : 0, y: lifted ? 6 : 0)
-                    .offset(x: draggedOrigin ?? selectedOrigin, y: lifted ? -1.5 : 0)
-                    .animation(.interactiveSpring(response: 0.3, dampingFraction: 0.76, blendDuration: 0.1), value: selection)
-                    .animation(.interactiveSpring(response: 0.16, dampingFraction: 0.86, blendDuration: 0.04), value: dragLocationX)
-                    .animation(.interactiveSpring(response: 0.18, dampingFraction: 0.7), value: stretch)
+                // At rest: a plain thumb beneath the icons.
+                Capsule(style: .continuous)
+                    .fill(ATheme.ink.opacity(ATheme.dark ? 0.16 : 0.085))
+                    .modifier(WyrmTabPillMotion(width: pillWidth, origin: pillOrigin, lifted: lifted,
+                                                stretch: stretch, selection: selection, dragLocationX: dragLocationX))
+                    .opacity(lifted ? 0 : 1)
                     .zIndex(1)
                 HStack(spacing: 0) {
                     ForEach(WyrmDesignTab.allCases, id: \.self) { tab in
@@ -295,6 +295,16 @@ struct WyrmRootTabBar: View {
                 .padding(.horizontal, inset)
                 .compositingGroup()
                 .zIndex(3)
+                // Held, dragged or tapped: the lens rises above the icons so the
+                // glass has something to bend — the icons swell and warp through
+                // its edge exactly as they do under the system tab bar's lens.
+                WyrmTabSelectionGlass(lifted: true)
+                    .modifier(WyrmTabPillMotion(width: pillWidth, origin: pillOrigin, lifted: lifted,
+                                                stretch: stretch, selection: selection, dragLocationX: dragLocationX))
+                    .shadow(color: ATheme.ink.opacity(lifted ? 0.22 : 0), radius: lifted ? 16 : 0, y: lifted ? 7 : 0)
+                    .opacity(lifted ? 1 : 0)
+                    .allowsHitTesting(false)
+                    .zIndex(4)
             }
             .contentShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
             .highPriorityGesture(DragGesture(minimumDistance: 2, coordinateSpace: .local)
@@ -353,7 +363,8 @@ struct WyrmRootTabBar: View {
 
     private func lift() {
         dropWork?.cancel()
-        withAnimation(.spring(response: 0.24, dampingFraction: 0.62)) { lifted = true }
+        // Under-damped: the lens overshoots as it rises, like a drop pulled up.
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.48)) { lifted = true }
     }
 
     /// Low damping gives the settle its bubble: a small overshoot below rest
@@ -361,7 +372,7 @@ struct WyrmRootTabBar: View {
     private func drop(after delay: Double) {
         dropWork?.cancel()
         let work = DispatchWorkItem {
-            withAnimation(.interpolatingSpring(stiffness: 320, damping: 14)) {
+            withAnimation(.interpolatingSpring(stiffness: 240, damping: 10)) {
                 lifted = false
                 stretch = 0
             }
@@ -376,7 +387,7 @@ struct WyrmRootTabBar: View {
         guard let last = lastSample else { return }
         let dt = max(now.timeIntervalSince(last.time), 1.0 / 240)
         let speed = abs(x - last.x) / CGFloat(dt)
-        stretch = min(speed / 5200, 0.14)
+        stretch = min(speed / 3600, 0.2)
     }
 
     private func preview(at x: CGFloat, itemWidth: CGFloat) {
@@ -389,6 +400,28 @@ struct WyrmRootTabBar: View {
 
     private func nearestIndex(at x: CGFloat, itemWidth: CGFloat) -> Int {
         min(max(Int((x / itemWidth).rounded(.down)), 0), WyrmDesignTab.allCases.count - 1)
+    }
+}
+
+/// Shared geometry for the resting thumb and the lens, so they travel as one:
+/// a springy trail behind the finger that wobbles when it stops, and a lift
+/// that swells the lens out of the bar and squashes it along fast drags.
+private struct WyrmTabPillMotion: ViewModifier {
+    let width: CGFloat
+    let origin: CGFloat
+    let lifted: Bool
+    let stretch: CGFloat
+    let selection: WyrmDesignTab
+    let dragLocationX: CGFloat?
+
+    func body(content: Content) -> some View {
+        content
+            .frame(width: width, height: 50)
+            .scaleEffect(x: lifted ? 1.14 + stretch : 1, y: lifted ? 1.24 - stretch * 0.6 : 1)
+            .offset(x: origin, y: lifted ? -2 : 0)
+            .animation(.interactiveSpring(response: 0.36, dampingFraction: 0.6, blendDuration: 0.1), value: selection)
+            .animation(.interactiveSpring(response: 0.22, dampingFraction: 0.62, blendDuration: 0.04), value: dragLocationX)
+            .animation(.interactiveSpring(response: 0.2, dampingFraction: 0.5), value: stretch)
     }
 }
 

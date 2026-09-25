@@ -50,7 +50,7 @@ checks = {
     "backups never carry account or Team secrets": "Keychain" in PAGES and "wyrm.ios.skin." in PAGES and "token" not in PAGES.split("struct WyrmBackup: Codable")[1].split("struct WyrmBackupDocument")[0],
     "eight Android themes with intensity": THEME.count("case .") >= 16 and "func withIntensity(_ intensity: Double) -> WyrmPalette" in THEME,
     "theme reaches the engine atomically": "arena_theme_set(next, dark)" in SHELL_C and "WyrmIOSSetArenaTheme" in THEME,
-    "tab lens lifts and settles with a spring": "lifted" in COMPONENTS and ".interpolatingSpring(stiffness: 320, damping: 14)" in COMPONENTS,
+    "tab lens lifts and settles with a spring": "lifted" in COMPONENTS and ".interpolatingSpring(stiffness: 240, damping: 10)" in COMPONENTS and "WyrmTabPillMotion" in COMPONENTS and ".zIndex(4)" in COMPONENTS,
     "Ready Room follows Android placement and theme": all(s in LOBBY for s in (
         "Ready room", "Enter the arena", "Selected arena", "Playing as", "Quick settings", "Play with AI", "WyrmBrandStroke()"))
         and "ATheme.paper" in LOBBY,
