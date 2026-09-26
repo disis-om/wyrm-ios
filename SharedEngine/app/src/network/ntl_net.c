@@ -124,6 +124,11 @@ void ntl_net_close(tenv* env) {
 }
 
 void ntl_net_tick(tenv* env) {
+  /* NTL tags are off: announcing on this socket got snakes dropped from the
+     arena. The socket is never opened. Remove these two lines to restore it. */
+  (void)env;
+  return;
+
   tuser_data* usr = env->usr;
   game_data* gdata = &usr->gdata;
   user_settings* usrs = &usr->usrs;

@@ -202,7 +202,8 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "an", value: "false"),
             URLQueryItem(name: "dt", value: "Wyrm iOS"),
             URLQueryItem(name: "cs", value: "\(presence.cosmetic)"),
-            URLQueryItem(name: "tg", value: "\(presence.tag)"),
+            // NTL tags are off (they got snakes dropped); -1 is "no tag".
+            URLQueryItem(name: "tg", value: "-1"),
             URLQueryItem(name: "ver", value: "9.68"),
             URLQueryItem(name: "tlm", value: ""),
             URLQueryItem(name: "di", value: "0"),
