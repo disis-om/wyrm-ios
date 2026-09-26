@@ -47,8 +47,11 @@ final class WyrmUpdateStore: ObservableObject {
         var best: WyrmUpdateInfo?
         var anyRead = false
         for (file, beta) in [("latest.json", false)] + (betaEnabled ? [("beta.json", true)] : []) {
-            guard let info = await Self.fetch(file, beta: beta) else { continue }
-            anyRead = true
+            let (info, reached) = await Self.fetch(file, beta: beta)
+            // A missing manifest (404) only means nothing is published on that
+            // channel yet: that is "up to date", not a failed check.
+            if reached { anyRead = true }
+            guard let info else { continue }
             if info.build > installed, info.build > (best?.build ?? 0) { best = info }
         }
         failed = !anyRead && best == nil
@@ -56,13 +59,20 @@ final class WyrmUpdateStore: ObservableObject {
         WyrmDiagnostics.record("update check beta=\(betaEnabled) newer=\(best.map { "\($0.version)(\($0.build))" } ?? "none")", category: "NETWORK")
     }
 
-    private static func fetch(_ file: String, beta: Bool) async -> WyrmUpdateInfo? {
+    /// The build on offer, if any, and whether the server answered at all.
+    private static func fetch(_ file: String, beta: Bool) async -> (WyrmUpdateInfo?, Bool) {
         // A changing query makes every check a fresh read past any cache.
-        guard let url = URL(string: base + file + "?t=\(Int(Date().timeIntervalSince1970))") else { return nil }
+        guard let url = URL(string: base + file + "?t=\(Int(Date().timeIntervalSince1970))") else { return (nil, false) }
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         guard let (data, response) = try? await URLSession.shared.data(for: request),
-              (response as? HTTPURLResponse)?.statusCode == 200,
+              let status = (response as? HTTPURLResponse)?.statusCode else { return (nil, false) }
+        if status == 404 { return (nil, true) }
+        return (parse(data, status: status, beta: beta), status == 200)
+    }
+
+    private static func parse(_ data: Data, status: Int, beta: Bool) -> WyrmUpdateInfo? {
+        guard status == 200,
               data.count < 64 * 1024,
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let version = object["version"] as? String,

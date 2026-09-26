@@ -93,7 +93,7 @@ struct WyrmDesignMain: View {
     ]
 
     @ViewBuilder
-    private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy) -> some View {
+    private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy, padTop: Bool = true) -> some View {
         Group {
             switch value {
             case .alerts: WyrmAlertsRoot(services: services)
@@ -104,7 +104,9 @@ struct WyrmDesignMain: View {
             }
         }
         .frame(width: proxy.size.width)
-        .padding(.top, proxy.safeAreaInsets.top)
+        // The system TabView already keeps its pages clear of the camera
+        // cut-out; adding the inset again pushed every tab page down.
+        .padding(.top, padTop ? proxy.safeAreaInsets.top : 0)
     }
 
     @ViewBuilder
@@ -118,7 +120,7 @@ struct WyrmDesignMain: View {
             TabView(selection: $tab) {
                 ForEach(WyrmDesignTab.allCases, id: \.self) { value in
                     Tab(value.rawValue, systemImage: Self.tabIcons[value] ?? "circle", value: value) {
-                        tabPage(value, proxy)
+                        tabPage(value, proxy, padTop: false)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .background(WyrmPaperBackground())
                     }

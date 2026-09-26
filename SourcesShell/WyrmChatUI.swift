@@ -66,6 +66,12 @@ struct WyrmChatComposer: View {
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 10)
         .background(bar)
         .animation(.easeOut(duration: 0.15), value: text.count > limit - 40)
+        .onAppear {
+            // CI screenshot of the composer seated on the keyboard.
+            if ProcessInfo.processInfo.arguments.contains("--smoke-chat-keyboard") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1) { focused = true }
+            }
+        }
     }
 
     @ViewBuilder

@@ -231,7 +231,7 @@ final class WyrmKeyboardHostView: UIInputView, UIInputViewAudioFeedback {
     init() {
         host = UIHostingController(rootView: WyrmKeyboardView(compact: false))
         let controller = WyrmKeyboardController.shared
-        let bottom = WyrmLandscapeStage<EmptyView>.windowInsets.bottom
+        let bottom = WyrmKeyboardHostView.homeIndicatorPad
         let initial = controller.keysHeight(compact: false) + bottom
         super.init(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: initial),
                    inputViewStyle: .default)
@@ -257,6 +257,17 @@ final class WyrmKeyboardHostView: UIInputView, UIInputViewAudioFeedback {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Room kept under the keys for the home indicator. iOS 26 already seats an
+    /// input view above it inside its own keyboard container, so adding the
+    /// window's bottom inset again lifted the keys off the bottom of the screen
+    /// and left the page's composer tucked under them.
+    static var homeIndicatorPad: CGFloat {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) { return 0 }
+#endif
+        return WyrmLandscapeStage<EmptyView>.windowInsets.bottom
+    }
 }
 
 // MARK: - Drawing
@@ -293,7 +304,7 @@ struct WyrmKeyboardView: View {
             .frame(height: controller.keysHeight(compact: compact))
             if compact { knob }
         }
-        .padding(.bottom, compact ? 2 : WyrmLandscapeStage<EmptyView>.windowInsets.bottom)
+        .padding(.bottom, compact ? 2 : WyrmKeyboardHostView.homeIndicatorPad)
         .background(keyboardBackground.opacity(controller.opacity).ignoresSafeArea())
         .clipShape(RoundedRectangle(cornerRadius: compact ? 18 : 0, style: .continuous))
         .opacity(0.35 + 0.65 * controller.opacity)

@@ -22,7 +22,7 @@ struct WyrmDesignRoot: View {
     }
 
     private var socialSmoke: Bool {
-        arguments.contains("--smoke-social") || arguments.contains("--smoke-leaderboard")
+        arguments.contains("--smoke-social") || arguments.contains("--smoke-leaderboard") || arguments.contains("--smoke-chat-keyboard")
     }
 
     private var skinSmoke: Bool {
@@ -128,7 +128,8 @@ struct WyrmDesignRoot: View {
                     account: account,
                     services: services,
                     initialTab: .social,
-                    initialRoute: arguments.contains("--smoke-leaderboard") ? .leaderboard : nil
+                    initialRoute: arguments.contains("--smoke-leaderboard") ? .leaderboard
+                        : arguments.contains("--smoke-chat-keyboard") ? .globalChat : nil
                 )
             } else if launchSyncing {
                 WyrmDesignLaunch()

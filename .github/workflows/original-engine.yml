@@ -33,8 +33,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-0.18.1-build-67-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.18.1-build-67-simulator.app.zip
+          zip -qry Wyrm-0.18.2-build-68-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-0.18.2-build-68-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -126,6 +126,13 @@ jobs:
           xcrun simctl launch --stdout="$PWD/original-artifacts/leaderboard-stdout.log" --stderr="$PWD/original-artifacts/leaderboard-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-leaderboard
           sleep 3
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-leaderboard.png
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
+          xcrun simctl launch --stdout="$PWD/original-artifacts/chat-keyboard-stdout.log" --stderr="$PWD/original-artifacts/chat-keyboard-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-chat-keyboard
+          sleep 5
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-chat-keyboard.png
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
+          xcrun simctl launch --stdout="$PWD/original-artifacts/leaderboard-stdout.log" --stderr="$PWD/original-artifacts/leaderboard-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-leaderboard
+          sleep 3
           LEADERBOARD_WIDTH=$(sips -g pixelWidth original-artifacts/swiftui-leaderboard.png | awk '/pixelWidth/{print $2}')
           LEADERBOARD_HEIGHT=$(sips -g pixelHeight original-artifacts/swiftui-leaderboard.png | awk '/pixelHeight/{print $2}')
           test "$LEADERBOARD_HEIGHT" -gt "$LEADERBOARD_WIDTH"
