@@ -505,11 +505,16 @@ static void draw_tag(tenv* env, tag_slot* slot, const tag_entry* tag,
       igColorConvertFloat4ToU32((ImVec4){1, 1, 1, alpha}));
 }
 
+/* Tags are switched off until Wyrm's own backend serves them: announcing NTL
+   tags got snakes dropped from the arena. Set to 0 to draw tags again. */
+#define WYRM_TAGS_DISABLED 1
+
 void tags_draw(tenv* env, snake* o, bool mine, bool teammate) {
   tuser_data* usr = env->usr;
   user_settings* usrs = &usr->usrs;
   game_data* gdata = &usr->gdata;
 
+  if (WYRM_TAGS_DISABLED) return;
   if (usrs->tags_hidden) return;
   if (usrs->tags_team_only && !mine && !teammate) return;
   if (!usr->r || !usr->r->tags_descriptor) return;

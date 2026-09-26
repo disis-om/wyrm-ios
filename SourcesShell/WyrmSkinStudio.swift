@@ -193,6 +193,10 @@ private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
     }
 }
 
+/// Tags are off until Wyrm's own backend serves them: announcing NTL tags got
+/// snakes dropped from the arena. Flip to false to bring them back.
+private let wyrmTagsDisabled = true
+
 struct WyrmSkinRoot: View {
     @ObservedObject var engine: WyrmShellStore
     @StateObject private var textures = WyrmSkinTextureLibrary()
@@ -322,7 +326,8 @@ struct WyrmSkinRoot: View {
                 studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)")
                 studioRow(.pattern, value: customEnabled ? "Custom" : "Preset")
                 studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
-                studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { "#\($0.ntlID)" } ?? "None")
+                // Tags are off until Wyrm's own backend serves them.
+                WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
             if let failure = textures.failure {
@@ -620,7 +625,8 @@ private struct WyrmSkinPreview: View {
                     WyrmAtlasImage(image: image).frame(width: size, height: size)
                         .position(x: head.x + CGFloat(item.offset) * 6 * unit, y: head.y)
                 }
-                if let item = WyrmSkinCatalog.tags[safe: tagID],
+                if !wyrmTagsDisabled,
+                   let item = WyrmSkinCatalog.tags[safe: tagID],
                    let image = textures.tags[tagID] {
                     WyrmSwingTag(item: item, image: image, head: head,
                                    headSize: scale, bounds: proxy.size,
