@@ -15,7 +15,9 @@ for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
               "ver", "tlm", "di", "tar"):
     assert f'URLQueryItem(name: "{field}"' in swift, field
 assert "4_000_000_000" in swift
-assert 'URLQueryItem(name: "ver", value: "9.68")' in swift
+assert 'URLQueryItem(name: "ver", value: "1.5.1")' in swift
+assert 'URLQueryItem(name: "cs", value: "-1")' in swift
+assert 'URLQueryItem(name: "tg", value: "-1")' in swift
 presence = swift.split("private struct WyrmTeamPresence", 1)[1].split("@MainActor", 1)[0]
 member = swift.split("struct WyrmTeamMember", 1)[1].split("struct WyrmTeamChatLine", 1)[0]
 assert "let cosmetic: Int" in presence

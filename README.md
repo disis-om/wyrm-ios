@@ -11,7 +11,7 @@
 
 ## Status
 
-- Version **0.17.8 (build 64)**, iOS **15 or newer**, iPhone first.
+- Version **0.17.9 (build 65)**, iOS **15 or newer**, iPhone first.
 - Every build is compiled and smoke-tested by the Apple CI workflow and
   published as a workflow artifact. There are no GitHub Releases.
 - The IPA is unsigned. Players sign and install it themselves (for example

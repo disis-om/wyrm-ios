@@ -201,10 +201,13 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "rank", value: "\(presence.rank)"),
             URLQueryItem(name: "an", value: "false"),
             URLQueryItem(name: "dt", value: "Wyrm iOS"),
-            URLQueryItem(name: "cs", value: "\(presence.cosmetic)"),
+            // Accessories reach the arena in the join packet only, never NTL.
+            // -1 is "no cosmetic". Was: presence.cosmetic
+            URLQueryItem(name: "cs", value: "-1"),
             // NTL tags are off (they got snakes dropped); -1 is "no tag".
             URLQueryItem(name: "tg", value: "-1"),
-            URLQueryItem(name: "ver", value: "9.68"),
+            // Wyrm's own version, the same one Android reports. Was: 9.68
+            URLQueryItem(name: "ver", value: "1.5.1"),
             URLQueryItem(name: "tlm", value: ""),
             URLQueryItem(name: "di", value: "0"),
             URLQueryItem(name: "tar", value: ""),
