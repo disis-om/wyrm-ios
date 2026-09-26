@@ -399,7 +399,7 @@ struct WyrmRootTabBar: View {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
                 if tab == .alerts && unread > 0 {
-                    Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(.white)
+                    Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
                         .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
                 }
             }

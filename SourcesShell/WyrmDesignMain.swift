@@ -111,6 +111,10 @@ struct WyrmDesignMain: View {
     private func nativeTabs(_ proxy: GeometryProxy) -> some View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
+            // The chosen tab takes the theme's ink (`.tint` below); the rest
+            // take its faded tab colour instead of the system grey. Set before
+            // the bar is built, and rebuilt with it on every theme change.
+            let _ = { UITabBar.appearance().unselectedItemTintColor = UIColor(ATheme.tabIdle) }()
             TabView(selection: $tab) {
                 ForEach(WyrmDesignTab.allCases, id: \.self) { value in
                     Tab(value.rawValue, systemImage: Self.tabIcons[value] ?? "circle", value: value) {

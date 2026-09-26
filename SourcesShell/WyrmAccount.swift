@@ -501,12 +501,12 @@ private struct WyrmOnboardingView: View {
                 Text(notes[page]).font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(4).padding(.top, 12)
                 if page == 1, let player = account.player {
                     VStack(alignment: .leading, spacing: 5) { Text(player.displayName).font(.androidWyrm(22, .bold)); Text(player.handle).font(.androidWyrm(14)).foregroundColor(ATheme.quiet) }
-                        .padding(18).frame(maxWidth: .infinity, alignment: .leading).background(Color.white).cornerRadius(18).padding(.top, 24)
+                        .padding(18).frame(maxWidth: .infinity, alignment: .leading).background(ATheme.card).cornerRadius(18).padding(.top, 24)
                 }
                 if page == 2 {
                     HStack(spacing: 8) {
                         ForEach(Array(["Dynamic", "Fixed", "Arrow"].enumerated()), id: \.offset) { index, title in
-                            Button { steering = index } label: { Text(title).font(.androidWyrm(12, .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14).background(steering == index ? ATheme.ink : Color.white).foregroundColor(steering == index ? .white : ATheme.ink).cornerRadius(13) }.buttonStyle(.plain)
+                            Button { steering = index } label: { Text(title).font(.androidWyrm(12, .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14).background(steering == index ? ATheme.ink : ATheme.card).foregroundColor(steering == index ? ATheme.onInk : ATheme.ink).cornerRadius(13) }.buttonStyle(.plain)
                         }
                     }.padding(.top, 24)
                 }
@@ -541,7 +541,7 @@ struct WyrmProfileView: View {
                         WyrmProfileStat(value: "\(player.highestScore)", label: "BEST")
                         WyrmProfileStat(value: "\(player.kills)", label: "KILLS")
                         WyrmProfileStat(value: "\(player.followerCount)", label: "FOLLOWERS")
-                    }.background(Color.white).cornerRadius(16)
+                    }.background(ATheme.card).cornerRadius(16)
                     WyrmPrimaryButton("EDIT PROFILE", busy: false) { editing = true }
                     WyrmOutlineButton("SIGN OUT") { account.signOut(); presentation.wrappedValue.dismiss() }
                     Button("Delete account") { confirmDelete = true }.font(.androidWyrm(13, .semibold)).foregroundColor(.red).padding(.top, 6)
@@ -598,17 +598,17 @@ private struct WyrmProfileEditor: View {
 
 private struct WyrmField: View {
     let title: String; @Binding var text: String; let placeholder: String
-    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(placeholder, text: $text).font(.androidWyrm(15)).textInputAutocapitalization(.never).disableAutocorrection(true).padding(14).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(placeholder, text: $text).font(.androidWyrm(15)).textInputAutocapitalization(.never).disableAutocorrection(true).padding(14).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
 }
 
 private struct WyrmSecureField: View {
     let title: String; @Binding var text: String; let placeholder: String
-    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); SecureField(placeholder, text: $text).font(.androidWyrm(15)).textContentType(.password).padding(14).background(Color.white).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); SecureField(placeholder, text: $text).font(.androidWyrm(15)).textContentType(.password).padding(14).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
 }
 
 private struct WyrmAccountMark: View {
     let text: String
-    var body: some View { Text(text).font(.androidWyrm(22, .bold)).foregroundColor(.white).frame(width: 58, height: 58).background(ATheme.ink).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
+    var body: some View { Text(text).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.onInk).frame(width: 58, height: 58).background(ATheme.ink).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
 }
 
 private struct WyrmProfileStat: View {
@@ -619,11 +619,11 @@ private struct WyrmProfileStat: View {
 private struct WyrmPrimaryButton: View {
     let title: String; let busy: Bool; let action: () -> Void
     init(_ title: String, busy: Bool, action: @escaping () -> Void) { self.title = title; self.busy = busy; self.action = action }
-    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.right") } }.foregroundColor(.white).padding(.horizontal, 18).frame(height: 54).background(WyrmGlass.native ? Color.clear : ATheme.ink).cornerRadius(15) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WyrmPlainPressStyle())).disabled(busy) }
+    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(ATheme.onInk) } else { Image(systemName: "arrow.right") } }.foregroundColor(ATheme.onInk).padding(.horizontal, 18).frame(height: 54).background(WyrmGlass.native ? Color.clear : ATheme.ink).cornerRadius(15) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WyrmPlainPressStyle())).disabled(busy) }
 }
 
 private struct WyrmOutlineButton: View {
     let title: String; let action: () -> Void
     init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
-    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(WyrmGlass.native ? Color.clear : Color.white).foregroundColor(ATheme.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 15, fallback: WyrmPlainPressStyle())) }
+    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(WyrmGlass.native ? Color.clear : ATheme.card).foregroundColor(ATheme.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 15, fallback: WyrmPlainPressStyle())) }
 }

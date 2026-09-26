@@ -354,7 +354,7 @@ struct WyrmCinematicAuth: View {
         case .available:
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .black))
-                .foregroundColor(.white)
+                .foregroundColor(ATheme.onInk)
                 .frame(width: 25, height: 25)
                 .background(ATheme.live)
                 .clipShape(Circle())
@@ -833,7 +833,7 @@ private struct WyrmAuthKeyboardAction: View {
             .padding(.horizontal, 18)
             .frame(height: 54)
             .background(enabled ? ATheme.ink : ATheme.ink.opacity(0.34))
-            .foregroundColor(.white)
+            .foregroundColor(ATheme.onInk)
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
             .shadow(color: ATheme.ink.opacity(enabled ? 0.18 : 0), radius: 18, y: 8)
         }
