@@ -1154,6 +1154,14 @@ struct WyrmBackupPage: View {
     @State var working = ""
     @State var failed = false
     @State var confirmingReset = false
+    @ObservedObject var updates = WyrmUpdateStore.shared
+    @Environment(.openURL) var openURL
+
+    private var updateLabel: String {
+        if updates.checking { return "Checking…" }
+        if let next = updates.available { return next.beta ? "Beta (next.version) available" : "(next.version) available" }
+        return updates.failed ? "Check failed" : "Up to date"
+    }
 
     var body: some View {
         WSScaffold(title: "Backup", onBack: close) {
@@ -1177,7 +1185,12 @@ struct WyrmBackupPage: View {
             WSSectionLabel("Version")
             WSCard {
                 WSValueRow(title: "Wyrm", value: "\(WyrmBuild.version) (\(WyrmBuild.build))", first: true)
-                WSValueRow(title: "Updates", value: "New builds install through AltStore")
+                // Opens the new build's download; it installs through AltStore.
+                WSValueRow(title: "Updates", value: updateLabel) {
+                    if let next = updates.available { openURL(next.url) } else { Task { await updates.check() } }
+                }
+                WSBoolRow(title: "Beta updates", detail: "Try new builds before everyone else. They can have rough edges.",
+                          on: updates.betaEnabled) { updates.betaEnabled = $0 }
                 if !engine.settingsVersion.isEmpty { WSValueRow(title: "Settings format", value: "v\(engine.settingsVersion)") }
                 WSLinkRow(title: "What's in this build") { open(.buildNotes) }
             }
@@ -1190,6 +1203,7 @@ struct WyrmBackupPage: View {
             }
             WSCaption("A backup is one file you keep in Files, iCloud Drive or anywhere else. Account and Team credentials stay in this iPhone's Keychain and are never written into it.")
         }
+        .task { await updates.check() }
         // Two file sheets on one view can shadow each other on iOS 15-16, so
         // each lives on its own invisible anchor.
         .background(Color.clear.frame(width: 0, height: 0).fileExporter(isPresented: $exporting, document: document, contentType: .json,

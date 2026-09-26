@@ -11,7 +11,7 @@
 
 ## Status
 
-- Version **0.18.0 (build 66)**, iOS **15 or newer**, iPhone first.
+- Version **0.18.1 (build 67)**, iOS **15 or newer**, iPhone first.
 - Every build is compiled and smoke-tested by the Apple CI workflow and
   published as a workflow artifact. There are no GitHub Releases.
 - The IPA is unsigned. Players sign and install it themselves (for example
@@ -46,6 +46,9 @@
 - Wyrm's own keyboard, global chat and direct messages.
 - Leaderboards, profiles, avatars, follows, notifications and voice-room
   control through the Wyrm backend.
+- Stable and beta update channels: Settings › Backup shows when a newer build
+  is out and opens its download (installed with AltStore). Beta builds are
+  offered only with "Beta updates" on.
 - Opt-in Developer Mode with bounded local diagnostics and share-sheet export.
 
 ## Architecture
