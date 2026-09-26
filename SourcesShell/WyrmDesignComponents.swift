@@ -83,6 +83,59 @@ struct WyrmPaperBackground: View {
     }
 }
 
+/// Whether this device draws the system's own Liquid Glass (iOS 26 and later).
+enum WyrmGlass {
+    static var native: Bool {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) { return true }
+#endif
+        return false
+    }
+}
+
+/// Real Liquid Glass for Wyrm's buttons: on iOS 26 the system `.glass` and
+/// `.glassProminent` styles, which bring the press swell, bounce, shimmer and
+/// touch light. Earlier systems keep the paper style the caller passes. On iOS
+/// 26 the label must not paint its own fill or border; `WyrmGlass.native` tells
+/// it so.
+struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
+    var prominent = false
+    /// nil draws a capsule.
+    var radius: CGFloat? = nil
+    let fallback: Fallback
+
+    func body(content: Content) -> some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            glass(content)
+        } else {
+            content.buttonStyle(fallback)
+        }
+#else
+        content.buttonStyle(fallback)
+#endif
+    }
+
+#if compiler(>=6.2)
+    @available(iOS 26.0, *)
+    @ViewBuilder
+    private func glass(_ content: Content) -> some View {
+        let shaped = Group {
+            if let radius {
+                content.buttonBorderShape(.roundedRectangle(radius: radius))
+            } else {
+                content.buttonBorderShape(.capsule)
+            }
+        }
+        if prominent {
+            shaped.buttonStyle(.glassProminent).tint(ATheme.ink)
+        } else {
+            shaped.buttonStyle(.glass)
+        }
+    }
+#endif
+}
+
 struct WyrmScreenHeader: View {
     let kicker: String
     let title: String

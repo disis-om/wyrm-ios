@@ -24,28 +24,26 @@ struct WyrmDesignMain: View {
             let tabBarBottomInset = max(14, min(18, proxy.safeAreaInsets.bottom * 0.48))
             ZStack(alignment: .bottom) {
                 WyrmPaperBackground()
-                Group {
-                    switch tab {
-                    case .alerts: WyrmAlertsRoot(services: services)
-                    case .social: WyrmSocialRoot(account: account, services: services, open: open)
-                    case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
-                    case .skin: WyrmSkinRoot(engine: engine)
-                    case .settings: WyrmSettingsHub(engine: engine, account: account, open: open)
-                    }
-                }
-                .id(tab)
-                .transition(.opacity.combined(with: .scale(scale: 0.985)))
-                .frame(width: proxy.size.width)
-                .padding(.top, proxy.safeAreaInsets.top)
+                if WyrmGlass.native {
+                    // iOS 26: the system tab bar itself, so its Liquid Glass is
+                    // Apple's — the pill that morphs between tabs, the lens that
+                    // magnifies under a dragging finger, the bounce, and the bar
+                    // that shrinks while a page scrolls down.
+                    nativeTabs(proxy)
+                } else {
+                    tabPage(tab, proxy)
+                        .id(tab)
+                        .transition(.opacity.combined(with: .scale(scale: 0.985)))
 
-                WyrmRootTabBar(selection: $tab, unread: services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count)
-                    .frame(width: proxy.size.width)
-                    .padding(.bottom, tabBarBottomInset)
-                    // Typing hides the bar, as system tab bars sit under the keyboard.
-                    .opacity(keyboard.focused ? 0 : 1)
-                    .allowsHitTesting(!keyboard.focused)
-                    .animation(.easeOut(duration: 0.18), value: keyboard.focused)
-                    .zIndex(10)
+                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts)
+                        .frame(width: proxy.size.width)
+                        .padding(.bottom, tabBarBottomInset)
+                        // Typing hides the bar, as system tab bars sit under the keyboard.
+                        .opacity(keyboard.focused ? 0 : 1)
+                        .allowsHitTesting(!keyboard.focused)
+                        .animation(.easeOut(duration: 0.18), value: keyboard.focused)
+                        .zIndex(10)
+                }
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
                     ZStack {
@@ -83,6 +81,50 @@ struct WyrmDesignMain: View {
                 withAnimation(.easeOut(duration: 0.2)) { if engine.toast == value { engine.toast = "" } }
             }
         }
+    }
+
+    private var unreadAlerts: Int {
+        services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count
+    }
+
+    private static let tabIcons: [WyrmDesignTab: String] = [
+        .alerts: "bell.badge", .social: "person.2", .play: "play.circle",
+        .skin: "circle.hexagongrid", .settings: "slider.horizontal.3",
+    ]
+
+    @ViewBuilder
+    private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy) -> some View {
+        Group {
+            switch value {
+            case .alerts: WyrmAlertsRoot(services: services)
+            case .social: WyrmSocialRoot(account: account, services: services, open: open)
+            case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
+            case .skin: WyrmSkinRoot(engine: engine)
+            case .settings: WyrmSettingsHub(engine: engine, account: account, open: open)
+            }
+        }
+        .frame(width: proxy.size.width)
+        .padding(.top, proxy.safeAreaInsets.top)
+    }
+
+    @ViewBuilder
+    private func nativeTabs(_ proxy: GeometryProxy) -> some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            TabView(selection: $tab) {
+                ForEach(WyrmDesignTab.allCases, id: \.self) { value in
+                    Tab(value.rawValue, systemImage: Self.tabIcons[value] ?? "circle", value: value) {
+                        tabPage(value, proxy)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                            .background(WyrmPaperBackground())
+                    }
+                    .badge(value == .alerts ? unreadAlerts : 0)
+                }
+            }
+            .tint(ATheme.ink)
+            .tabBarMinimizeBehavior(.onScrollDown)
+        }
+#endif
     }
 
     private func open(_ value: WyrmDesignRoute) {

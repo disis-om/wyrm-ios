@@ -11,7 +11,7 @@
 
 ## Status
 
-- Version **0.17.9 (build 65)**, iOS **15 or newer**, iPhone first.
+- Version **0.18.0 (build 66)**, iOS **15 or newer**, iPhone first.
 - Every build is compiled and smoke-tested by the Apple CI workflow and
   published as a workflow artifact. There are no GitHub Releases.
 - The IPA is unsigned. Players sign and install it themselves (for example
@@ -21,7 +21,9 @@
 
 - Username/password sign-up and login with live username availability.
   Signing out clears every account-scoped cache.
-- Play, Alerts, Social, Skin and Settings tabs with a draggable Liquid Glass
+- Play, Alerts, Social, Skin and Settings tabs. On iOS 26 the tab bar, switches,
+  sliders, segmented controls and buttons are the system's own Liquid Glass; earlier
+  iOS versions get a draggable glass-style
   tab bar.
 - The original Wyrm C gameplay and network engine, not a Swift rewrite.
   The lobby and arena run in landscape inside a portrait app.
