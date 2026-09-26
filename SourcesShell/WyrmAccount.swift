@@ -619,11 +619,11 @@ private struct WyrmProfileStat: View {
 private struct WyrmPrimaryButton: View {
     let title: String; let busy: Bool; let action: () -> Void
     init(_ title: String, busy: Bool, action: @escaping () -> Void) { self.title = title; self.busy = busy; self.action = action }
-    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.right") } }.foregroundColor(.white).padding(.horizontal, 18).frame(height: 54).background(ATheme.ink).cornerRadius(15) }.buttonStyle(.plain).disabled(busy) }
+    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(.white) } else { Image(systemName: "arrow.right") } }.foregroundColor(.white).padding(.horizontal, 18).frame(height: 54).background(WyrmGlass.native ? Color.clear : ATheme.ink).cornerRadius(15) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: .plain)).disabled(busy) }
 }
 
 private struct WyrmOutlineButton: View {
     let title: String; let action: () -> Void
     init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
-    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(Color.white).foregroundColor(ATheme.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)) }.buttonStyle(.plain) }
+    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(WyrmGlass.native ? Color.clear : Color.white).foregroundColor(ATheme.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 15, fallback: .plain)) }
 }

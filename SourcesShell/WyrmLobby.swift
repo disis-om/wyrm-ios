@@ -215,10 +215,11 @@ struct WyrmReadyRoom: View {
             }
             .foregroundColor(enabled ? ATheme.onInk : ATheme.quiet)
             .frame(width: 180, height: 62)
-            .background(Capsule().fill(enabled ? ATheme.ink : ATheme.track))
+            .background(Capsule().fill(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.track)))
             .contentShape(Capsule())
         }
-        .buttonStyle(WSPressStyle()).disabled(!enabled)
+        .modifier(WyrmGlassButtonModifier(prominent: true, fallback: WSPressStyle()))
+        .disabled(!enabled)
     }
 
     private func play() {
@@ -257,11 +258,12 @@ struct WyrmReadyRoom: View {
             .foregroundColor(enabled ? ATheme.ink : ATheme.quiet)
             .opacity(enabled ? 1 : 0.6)
             .frame(width: width, height: 49)
-            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(WyrmGlass.native ? Color.clear : ATheme.card))
+            .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))
         }
-        .buttonStyle(WyrmLobbyPressStyle()).disabled(!enabled)
+        .modifier(WyrmGlassButtonModifier(radius: 11, fallback: WyrmLobbyPressStyle()))
+        .disabled(!enabled)
     }
 
     private func quickSettingsPage(_ safe: EdgeInsets) -> some View {

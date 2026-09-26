@@ -357,9 +357,11 @@ struct WSPrimaryButton: View {
         Button(action: onClick) {
             Text(label).font(.androidWyrm(15.5, .semibold)).foregroundColor(ATheme.onInk)
                 .frame(maxWidth: .infinity).frame(height: 46)
-                .background(enabled ? ATheme.ink : ATheme.ink.opacity(0.35))
+                .background(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.ink.opacity(0.35)))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        }.buttonStyle(WSPressStyle()).disabled(!enabled)
+        }
+        .modifier(WyrmGlassButtonModifier(prominent: true, radius: 12, fallback: WSPressStyle()))
+        .disabled(!enabled)
     }
 }
 
@@ -371,9 +373,12 @@ struct WSOutlineButton: View {
         Button(action: onClick) {
             Text(label).font(.androidWyrm(15)).foregroundColor(enabled ? ATheme.mute : ATheme.tabIdle)
                 .frame(maxWidth: .infinity).frame(height: 46)
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
                 .contentShape(Rectangle())
-        }.buttonStyle(WSPressStyle()).disabled(!enabled)
+        }
+        .modifier(WyrmGlassButtonModifier(radius: 12, fallback: WSPressStyle()))
+        .disabled(!enabled)
     }
 }
 
