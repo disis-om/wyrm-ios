@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "version": "0.18.3",
+  "build": 69,
+  "channel": "beta",
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v0.18.3-build-69/Wyrm-0.18.3-build-69-unsigned.ipa",
+  "ipaSize": 33317315,
+  "sha256": "c0f62d6c1214248af9e998cbc88e234e09b624f04093362304aae985f9f66a54",
+  "publishedAt": "2026-09-26T20:33:25Z",
+  "notes": "First iOS beta. Real Liquid Glass on iOS 26, beta update channel, install updates with AltStore, SideStore, KSign or ESign, arena drops fixed (tags off for now)."
+}
