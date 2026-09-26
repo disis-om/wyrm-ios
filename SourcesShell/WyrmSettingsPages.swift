@@ -1155,11 +1155,11 @@ struct WyrmBackupPage: View {
     @State var failed = false
     @State var confirmingReset = false
     @ObservedObject var updates = WyrmUpdateStore.shared
-    @Environment(.openURL) var openURL
+    @Environment(\.openURL) var openURL
 
     private var updateLabel: String {
         if updates.checking { return "Checking…" }
-        if let next = updates.available { return next.beta ? "Beta (next.version) available" : "(next.version) available" }
+        if let next = updates.available { return next.beta ? "Beta \(next.version) available" : "\(next.version) available" }
         return updates.failed ? "Check failed" : "Up to date"
     }
 
