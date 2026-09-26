@@ -83,6 +83,12 @@ struct WyrmPaperBackground: View {
     }
 }
 
+/// The label exactly as drawn, with no press effect: the paper fallback for
+/// buttons that were `.plain` before they could be glass.
+struct WyrmPlainPressStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { configuration.label }
+}
+
 /// Whether this device draws the system's own Liquid Glass (iOS 26 and later).
 enum WyrmGlass {
     static var native: Bool {
