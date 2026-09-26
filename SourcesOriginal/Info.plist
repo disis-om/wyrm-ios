@@ -57,5 +57,12 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <key>LSApplicationQueriesSchemes</key>
+    <array>
+        <string>altstore</string>
+        <string>sidestore</string>
+        <string>ksign</string>
+        <string>esign</string>
+    </array>
 </dict>
 </plist>

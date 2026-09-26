@@ -539,6 +539,9 @@ struct WyrmModesPage: View {
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
+            // A page that opens on a card keeps the same gap below the header as one
+            // that opens on a section label.
+            Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Arena modes").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
@@ -622,6 +625,9 @@ struct WyrmBotPage: View {
     let close: () -> Void
     var body: some View {
         WSScaffold(title: "Bot", onBack: close) {
+            // A page that opens on a card keeps the same gap below the header as one
+            // that opens on a section label.
+            Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Let the bot play").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
@@ -660,6 +666,9 @@ struct WyrmFoodPage: View {
         let style = food.first { $0.id.hasSuffix(".food_type") }
         let details = food.filter { $0.id != style?.id }
         WSScaffold(title: "Food", parent: parent, onBack: close) {
+            // A page that opens on a card keeps the same gap below the header as one
+            // that opens on a section label.
+            Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("Arena food").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
@@ -1165,6 +1174,9 @@ struct WyrmBackupPage: View {
 
     var body: some View {
         WSScaffold(title: "Backup", onBack: close) {
+            // A page that opens on a card keeps the same gap below the header as one
+            // that opens on a section label.
+            Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 0) {
                     HStack(spacing: 7) {
@@ -1194,6 +1206,8 @@ struct WyrmBackupPage: View {
                 if !engine.settingsVersion.isEmpty { WSValueRow(title: "Settings format", value: "v\(engine.settingsVersion)") }
                 WSLinkRow(title: "What's in this build") { open(.buildNotes) }
             }
+
+            WyrmInstallersSection(update: updates.available)
 
             Spacer().frame(height: 22)
             WSCard {

@@ -18,7 +18,7 @@ struct WyrmDesignRoot: View {
     }
 
     private var settingsSmoke: Bool {
-        arguments.contains("--smoke-settings") || arguments.contains("--smoke-developer")
+        arguments.contains("--smoke-settings") || arguments.contains("--smoke-developer") || arguments.contains("--smoke-backup")
     }
 
     private var socialSmoke: Bool {
@@ -110,7 +110,8 @@ struct WyrmDesignRoot: View {
                     account: account,
                     services: services,
                     initialTab: .settings,
-                    initialRoute: arguments.contains("--smoke-developer") ? .developer : nil
+                    initialRoute: arguments.contains("--smoke-developer") ? .developer
+                        : arguments.contains("--smoke-backup") ? .backup : nil
                 )
             } else if teamSmoke {
                 WyrmDesignMain(engine: engine, account: account, services: services,
