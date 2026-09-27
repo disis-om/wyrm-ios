@@ -637,7 +637,7 @@ private struct WyrmTeamDetail: View {
         open(.teamConnect)
     }
 
-    private func teamsMenu<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+    private func teamsMenu<MenuLabel: View>(@ViewBuilder label: () -> MenuLabel) -> some View {
         Menu(content: {
             Section("Saved teams") {
                 ForEach(team.saved) { saved in
