@@ -67,6 +67,7 @@ final class WyrmAdjustPreview: ObservableObject {
     }
 
     /// Which popup a setting's slider drives, if any.
+    @MainActor
     static func subject(for id: String, engine: WyrmShellStore) -> Subject? {
         switch id {
         case "arrow.size", "arrow.separation", "arrow.smoothness", "arrow.color", "app.arrow-brightness": return .arrow
