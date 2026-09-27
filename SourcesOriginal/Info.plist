@@ -26,6 +26,12 @@
     </array>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <!-- A game, so iOS turns Game Mode on while Wyrm is in front: background
+         work is held back and controller/AirPods latency drops, as on Android. -->
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.games</string>
+    <key>GCSupportsGameMode</key>
+    <true/>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

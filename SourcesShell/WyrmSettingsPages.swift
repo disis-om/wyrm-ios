@@ -1220,10 +1220,13 @@ struct WyrmBackupPage: View {
                 WSValueRow(title: "Updates", value: updateLabel) {
                     if let next = updates.available { openURL(next.url) } else { Task { await updates.check() } }
                 }
-                WSBoolRow(title: "Beta updates", detail: "Try new builds before everyone else. They can have rough edges.",
+                WSBoolRow(title: "Beta updates", detail: "Get early builds before everyone else. They can have rough edges or bugs; turn this off to get stable updates only.",
                           on: updates.betaEnabled) { updates.betaEnabled = $0 }
+                    // Also where the beta prompt's "turn them off" shortcut lands.
+                    .wyrmSettingAnchor("app.beta-updates")
                 WSBoolRow(title: "Back up before updating", detail: "Saves skins, controls and settings to a file first.",
                           on: backupFirst) { backupFirst = $0 }
+                    .wyrmSettingAnchor("app.backup-first")
                 if !engine.settingsVersion.isEmpty { WSValueRow(title: "Settings format", value: "v\(engine.settingsVersion)") }
                 WSLinkRow(title: "What's in this build") { open(.buildNotes) }
             }
@@ -1331,6 +1334,13 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "Update prompts: a new build raises a card that opens Settings > Backup. Beta builds say they are betas, explain what that means, and link straight to the Beta updates switch. Beta updates are now on by default.",
+        "Team mode is paused: NTL services are switched off while arena drops are fixed. Saved teams stay on this iPhone.",
+        "Image arrows show their true colours in the arena (a red arrow no longer draws blue).",
+        "Dark themes: sign-in fields and the back button follow the theme, so their text never disappears.",
+        "The tab bar: the open tab is solid, the others fade with the theme.",
+        "Wyrm is listed as a game, so iOS Game Mode turns on while you play.",
+        "Settings search finds Beta updates and Back up before updating.",
         "Update now: when a new build is ready, Settings > Backup shows it with a button. Back up before updating is a switch and on by default.",
         "Team mode: settings sit behind the gear, several teams can be saved, the roster shows FPS, ping and leaderboard place, names no longer carry a code, and chat reads like Global chat with the same glass composer.",
         "The keyboard sits on the bottom edge and composers stay above it.",

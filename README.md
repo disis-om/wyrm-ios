@@ -11,7 +11,7 @@
 
 ## Status
 
-- Version **0.18.4 (build 71)**, iOS **15 or newer**, iPhone first.
+- Version **0.18.5 (build 72)**, iOS **15 or newer**, iPhone first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
   "beta" and announced only through `update/beta.json`; stable builds use

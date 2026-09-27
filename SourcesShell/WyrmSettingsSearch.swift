@@ -154,6 +154,16 @@ enum WyrmSettingsIndex {
             WyrmSettingsEntry(id: "app.developer", title: "Developer Mode", detail: "Local diagnostics and export tools", page: "Settings",
                               route: nil, keywords: "logs diagnostics debug") { AnyView(WyrmDeveloperToggle()) },
         ]
+        result += [
+            WyrmSettingsEntry(id: "app.beta-updates", title: "Beta updates", detail: "Early builds before everyone else; they can have rough edges",
+                              page: "Backup & version", route: .backup, keywords: "update beta test early stable channel version") {
+                AnyView(WyrmBetaUpdatesRow())
+            },
+            WyrmSettingsEntry(id: "app.backup-first", title: "Back up before updating", detail: "Saves skins, controls and settings to a file first",
+                              page: "Backup & version", route: .backup, keywords: "update backup save restore") {
+                AnyView(WyrmBackupFirstRow())
+            },
+        ]
         result.append(WyrmSettingsEntry(id: "app.notify.all", title: "All notifications", detail: "The iOS permission for Wyrm",
                                         page: "Notifications", route: .notificationSettings, keywords: "alerts push permission") {
             AnyView(WyrmNotifyRow(kind: nil, title: "All notifications", detail: "Tap to manage the iOS permission."))
@@ -220,6 +230,22 @@ private struct WyrmDeveloperToggle: View {
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
     var body: some View {
         WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) { developerMode = $0 }
+    }
+}
+
+private struct WyrmBetaUpdatesRow: View {
+    @ObservedObject var updates = WyrmUpdateStore.shared
+    var body: some View {
+        WSBoolRow(title: "Beta updates", detail: "Get early builds before everyone else. Turn this off to get stable updates only.",
+                  on: updates.betaEnabled, first: true) { updates.betaEnabled = $0 }
+    }
+}
+
+private struct WyrmBackupFirstRow: View {
+    @AppStorage("wyrm.ios.update.backup-first") var backupFirst = true
+    var body: some View {
+        WSBoolRow(title: "Back up before updating", detail: "Saves skins, controls and settings to a file first.",
+                  on: backupFirst, first: true) { backupFirst = $0 }
     }
 }
 

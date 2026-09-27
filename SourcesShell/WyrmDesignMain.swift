@@ -7,6 +7,7 @@ struct WyrmDesignMain: View {
     @ObservedObject private var theme = WyrmThemeStore.shared
     @ObservedObject private var notificationPrefs = WyrmNotificationPrefs.shared
     @ObservedObject private var keyboard = WyrmKeyboardController.shared
+    @ObservedObject private var updates = WyrmUpdateStore.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
 
@@ -60,6 +61,14 @@ struct WyrmDesignMain: View {
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
                 }
+                if let next = updates.promptable {
+                    WyrmUpdatePrompt(info: next,
+                                     onLater: { withAnimation(.easeOut(duration: 0.2)) { updates.answerPrompt() } },
+                                     onUpdate: { openUpdateSettings(highlightBeta: false) },
+                                     onBetaSettings: { openUpdateSettings(highlightBeta: true) })
+                        .zIndex(60)
+                        .transition(.opacity)
+                }
                 if !engine.toast.isEmpty {
                     Text(engine.toast)
                         .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.onInk).lineLimit(2)
@@ -75,6 +84,8 @@ struct WyrmDesignMain: View {
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
         .preferredColorScheme(theme.palette.dark ? .dark : .light)
+        // Checked once a launch; a newer build raises the prompt above.
+        .task { await updates.check() }
         .onChange(of: engine.toast) { value in
             guard !value.isEmpty else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -114,9 +125,11 @@ struct WyrmDesignMain: View {
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
             // The chosen tab takes the theme's ink (`.tint` below); the rest
-            // take its faded tab colour instead of the system grey. Set before
-            // the bar is built, and rebuilt with it on every theme change.
-            let _ = { UITabBar.appearance().unselectedItemTintColor = UIColor(ATheme.tabIdle) }()
+            // take its faded tab colour instead of the system grey. iOS 26
+            // ignores `unselectedItemTintColor` on the glass bar, so the item
+            // colours go through UITabBarAppearance, set before the bar is
+            // built and rebuilt with it on every theme change.
+            let _ = Self.styleTabBar()
             TabView(selection: $tab) {
                 ForEach(WyrmDesignTab.allCases, id: \.self) { value in
                     Tab(value.rawValue, systemImage: Self.tabIcons[value] ?? "circle", value: value) {
@@ -131,6 +144,35 @@ struct WyrmDesignMain: View {
             .tabBarMinimizeBehavior(.onScrollDown)
         }
 #endif
+    }
+
+    /// The update prompt's buttons: Settings › Backup, where the update starts.
+    private func openUpdateSettings(highlightBeta: Bool) {
+        withAnimation(.easeOut(duration: 0.2)) { updates.answerPrompt() }
+        tab = .settings
+        routes.removeAll { $0 == .backup }
+        // The shortcut lands on the Beta updates switch the way a search result does.
+        if highlightBeta { WyrmSettingsFocus.shared.reveal("app.beta-updates") }
+        open(.backup)
+    }
+
+    /// Active tab: the theme's ink. The rest: its faded tab colour.
+    private static func styleTabBar() {
+        let active = UIColor(ATheme.ink)
+        let idle = UIColor(ATheme.tabIdle)
+        let bar = UITabBar.appearance()
+        bar.tintColor = active
+        bar.unselectedItemTintColor = idle
+        let appearance = UITabBarAppearance()
+        for item in [appearance.stackedLayoutAppearance, appearance.inlineLayoutAppearance,
+                     appearance.compactInlineLayoutAppearance] {
+            item.normal.iconColor = idle
+            item.normal.titleTextAttributes = [.foregroundColor: idle]
+            item.selected.iconColor = active
+            item.selected.titleTextAttributes = [.foregroundColor: active]
+        }
+        bar.standardAppearance = appearance
+        bar.scrollEdgeAppearance = appearance
     }
 
     private func open(_ value: WyrmDesignRoute) {

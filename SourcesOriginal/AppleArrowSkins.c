@@ -48,7 +48,17 @@ void WyrmIOSArrowSkinsCreate(renderer* r, tcontext* ctx) {
   bool ok = CFURLGetFileSystemRepresentation(url, true, (UInt8*)path, sizeof(path));
   CFRelease(url);
   if (!ok) return;
+  /* A PNG bundled as a loose resource may have been rewritten by Xcode as an
+     Apple CgBI PNG (BGR order, premultiplied alpha). stb reads those as-is —
+     red came out blue — unless told to convert. Only this load is affected:
+     both flags do nothing for an ordinary PNG, and they are reset after. */
+  extern void stbi_convert_iphone_png_to_rgb(int flag);
+  extern void stbi_set_unpremultiply_on_load(int flag);
+  stbi_convert_iphone_png_to_rgb(1);
+  stbi_set_unpremultiply_on_load(1);
   arrow_texture = create_mipmap_texture(ctx, path);
+  stbi_convert_iphone_png_to_rgb(0);
+  stbi_set_unpremultiply_on_load(0);
   /* A failed decode comes back as the engine's 2 x 2 fallback. */
   if (!arrow_texture || arrow_texture->size[0] < 64) {
     SDL_Log("Wyrm arrows: atlas unreadable; image arrows off");

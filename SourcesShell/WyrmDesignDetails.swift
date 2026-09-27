@@ -568,6 +568,14 @@ private struct WyrmTeamDetail: View {
 
     private var overviewPage: some View {
         VStack(spacing: 0) {
+            if WyrmTeamStore.ntlServicesDisabled {
+                WyrmSectionLabel("Paused")
+                WyrmPaperCard {
+                    WyrmListRow(title: "Team mode is paused",
+                                detail: "NTL services are switched off in this build: nothing is sent to or received from NTL while arena drops are being fixed. Your saved teams stay on this iPhone.",
+                                showsChevron: false)
+                }
+            }
             WyrmSectionLabel("Team mode")
             WyrmPaperCard {
                 WyrmListRow(title: team.selected?.name ?? "No team connected",
@@ -591,7 +599,7 @@ private struct WyrmTeamDetail: View {
                                 .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.ink))
                         }
                     }
-                } else {
+                } else if !WyrmTeamStore.ntlServicesDisabled {
                     WyrmPrimaryAction(title: "Open team chat", icon: "bubble.left.and.bubble.right.fill") { open(.teamChat) }
                 }
             }.padding(16)

@@ -297,7 +297,8 @@ struct WyrmCinematicAuth: View {
             }
             .padding(.horizontal, 18)
             .frame(height: 60)
-            .background(Color.white.opacity(0.94))
+            .foregroundColor(ATheme.ink)
+            .background(ATheme.card.opacity(0.94))
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
             .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
@@ -311,7 +312,8 @@ struct WyrmCinematicAuth: View {
                 .onSubmit { if actionEnabled { advance() } }
                 .padding(.horizontal, 18)
                 .frame(height: 60)
-                .background(Color.white.opacity(0.94))
+                .foregroundColor(ATheme.ink)
+                .background(ATheme.card.opacity(0.94))
                 .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
                 .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
@@ -327,7 +329,8 @@ struct WyrmCinematicAuth: View {
                     .onSubmit { if actionEnabled { advance() } }
                     .padding(.horizontal, 18)
                     .frame(height: 60)
-                    .background(Color.white.opacity(0.94))
+                    .foregroundColor(ATheme.ink)
+                    .background(ATheme.card.opacity(0.94))
                     .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
                     .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
@@ -412,7 +415,7 @@ struct WyrmCinematicAuth: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(ATheme.ink)
                 .frame(width: 46, height: 46)
-                .background(WyrmGlass.native ? Color.clear : Color.white.opacity(0.88))
+                .background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.88))
                 .clipShape(Circle())
                 .overlay(Circle().stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
         }

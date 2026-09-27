@@ -226,10 +226,17 @@ final class WyrmTeamStore: ObservableObject {
         try? WyrmTeamKeychain.writeAll(WyrmSavedTeams(selected: selectedTeam, teams: saved))
     }
 
+    /// Every NTL service is switched off (OM, 2026-09-27): arena drops kept
+    /// following NTL traffic, so nothing is sent to or received from
+    /// ntl-slither.com. Teams can still be saved; none of them runs. Set to
+    /// false to bring Team mode back.
+    static let ntlServicesDisabled = true
+
     private func run(_ team: WyrmSavedTeam) {
         stop()
         credentials = WyrmTeamCredentials(auth: team.auth, teamID: team.teamID)
         teamID = team.teamID
+        guard !Self.ntlServicesDisabled else { state = .disconnected; return }
         state = .connecting
         beginLoop()
     }
@@ -247,6 +254,7 @@ final class WyrmTeamStore: ObservableObject {
     }
 
     func send(_ text: String) {
+        guard !Self.ntlServicesDisabled else { return }
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !value.isEmpty, value.count <= 280 else { return }
         queuedMessage = value
@@ -264,6 +272,7 @@ final class WyrmTeamStore: ObservableObject {
     }
 
     private func poll() async {
+        guard !Self.ntlServicesDisabled else { return }
         guard let credentials, let presence = WyrmTeamPresence.current() else { return }
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         components.queryItems = [
