@@ -104,6 +104,14 @@ enum WyrmGlass {
 /// touch light. Earlier systems keep the paper style the caller passes. On iOS
 /// 26 the label must not paint its own fill or border; `WyrmGlass.native` tells
 /// it so.
+/// `.plain` as a concrete ButtonStyle, for glass buttons whose pre-iOS 26 look
+/// was a bare label.
+struct PlainButtonStyleShim: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(configuration.isPressed ? 0.6 : 1)
+    }
+}
+
 struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
     var prominent = false
     /// nil draws a capsule.
@@ -247,9 +255,9 @@ struct WyrmPrimaryAction: View {
                 Text(title).font(.androidWyrm(15, .bold))
                 Spacer()
                 if let icon { Image(systemName: icon).font(.system(size: 14, weight: .bold)) }
-            }.padding(.horizontal, 17).frame(height: 52).background(disabled ? ATheme.ink.opacity(0.35) : ATheme.ink).foregroundColor(ATheme.onInk)
+            }.padding(.horizontal, 17).frame(height: 52).background(WyrmGlass.native ? Color.clear : (disabled ? ATheme.ink.opacity(0.35) : ATheme.ink)).foregroundColor(ATheme.onInk)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-        }.buttonStyle(.plain).disabled(disabled)
+        }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 13, fallback: WSPressStyle())).disabled(disabled)
     }
 }
 
@@ -261,8 +269,8 @@ struct WyrmOutlineAction: View {
         Button(action: action) {
             Text(title).font(.androidWyrm(14, .semibold)).foregroundColor(destructive ? .red : ATheme.ink)
                 .frame(maxWidth: .infinity).frame(height: 48)
-                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(destructive ? Color.red.opacity(0.3) : ATheme.rule))
-        }.buttonStyle(.plain)
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(destructive ? Color.red.opacity(0.3) : ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
+        }.modifier(WyrmGlassButtonModifier(radius: 13, fallback: WSPressStyle()))
     }
 }
 

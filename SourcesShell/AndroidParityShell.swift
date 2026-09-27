@@ -128,13 +128,13 @@ private struct AndroidPlayPage: View {
                         }.frame(height: 4).padding(.top, 12)
                         HStack(spacing: 9) {
                             Button { store.enterLobby(name: cleanName, address: arena) } label: {
-                                Text("Enter lobby").font(.androidWyrm(15.5, .bold)).foregroundColor(.white)
-                                    .frame(maxWidth: .infinity).frame(height: 46).background(ATheme.ink).cornerRadius(11)
-                            }
+                                Text("Enter lobby").font(.androidWyrm(15.5, .bold)).foregroundColor(ATheme.onInk)
+                                    .frame(maxWidth: .infinity).frame(height: 46).background(WyrmGlass.native ? Color.clear : ATheme.ink).cornerRadius(11)
+                            }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 11, fallback: WSPressStyle()))
                             Button { store.toast = "Edit the server below" } label: {
                                 Image(systemName: "globe").font(.system(size: 18)).foregroundColor(ATheme.mute)
-                                    .frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule))
-                            }
+                                    .frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
+                            }.modifier(WyrmGlassButtonModifier(radius: 11, fallback: WSPressStyle()))
                         }.padding(.top, 16)
                     }.padding(.horizontal, 18).padding(.top, 18).padding(.bottom, 16)
                     Rectangle().fill(ATheme.rule).frame(height: 1)

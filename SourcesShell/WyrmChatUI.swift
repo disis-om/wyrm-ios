@@ -38,6 +38,7 @@ struct WyrmChatComposer: View {
     let onSend: () -> Void
     @FocusState private var focused: Bool
     @State private var launched = false
+    @ObservedObject private var keyboard = WyrmKeyboardController.shared
 
     private var trimmed: String { text.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var canSend: Bool { !trimmed.isEmpty && !sending && text.count <= limit }
@@ -64,6 +65,10 @@ struct WyrmChatComposer: View {
             .animation(.spring(response: 0.38, dampingFraction: 0.62), value: canSend || sending)
         }
         .padding(.horizontal, 12).padding(.top, 8).padding(.bottom, 10)
+        // Sits on the keys, not under them: iOS 26 keeps a strip below the
+        // input view that the page does not rise for.
+        .padding(.bottom, keyboard.focused && !keyboard.embedded ? keyboard.bottomGap : 0)
+        .animation(.easeOut(duration: 0.2), value: keyboard.bottomGap)
         .background(bar)
         .animation(.easeOut(duration: 0.15), value: text.count > limit - 40)
         .onAppear {

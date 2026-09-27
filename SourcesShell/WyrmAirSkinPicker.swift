@@ -268,11 +268,10 @@ struct WyrmAirWheelPanel: View {
     private var brightness: Double { WyrmAirSkin.brightness(angle: bezelAngle) }
 
     var body: some View {
-        VStack(spacing: 18) {
-            wheelView
-                .frame(maxWidth: 300)
-                .padding(.horizontal, 20)
-            HStack(spacing: 22) {
+        // The two beads stand on the left and the wheel sits to their right,
+        // so the whole builder fits without scrolling the page.
+        HStack(alignment: .center, spacing: 16) {
+            VStack(spacing: 22) {
                 ForEach(0..<2, id: \.self) { kind in
                     WyrmAirBeadButton(image: beads[kind], rgb: rgb,
                                       label: kind == 0 ? "Add plain bead" : "Add rim bead") {
@@ -280,7 +279,10 @@ struct WyrmAirWheelPanel: View {
                     }
                 }
             }
+            wheelView
+                .frame(maxWidth: 300)
         }
+        .padding(.horizontal, 18)
     }
 
     private var wheelView: some View {
@@ -309,19 +311,29 @@ struct WyrmAirWheelPanel: View {
                     .opacity(abs(brightness))
                     .frame(width: 2 * 128 * 1.005 * unit, height: 2 * 128 * 1.005 * unit)
                     .position(centre)
+                // The colour disc: a touch here picks the hue, as in AIR.
+                Circle().fill(Color.white.opacity(0.001))
+                    .frame(width: 2 * WyrmAirSkin.wheelRadius * unit, height: 2 * WyrmAirSkin.wheelRadius * unit)
+                    .position(centre)
+                    .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("wyrm-wheel"))
+                        .onChanged { value in dragChanged(value, centre: centre, unit: unit, bezel: false) }
+                        .onEnded { _ in dragEnded() })
                 knob(diameter: 46 * unit)
                     .position(x: centre.x + pointerX * unit, y: centre.y + pointerY * unit)
+                    .allowsHitTesting(false)
+                // The brightness knob turns only when it is the thing held: a
+                // scroll that crosses the ring no longer spins it.
                 knob(diameter: 42 * unit)
+                    .frame(width: 64 * unit, height: 64 * unit)
+                    .contentShape(Circle())
+                    .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("wyrm-wheel"))
+                        .onChanged { value in dragChanged(value, centre: centre, unit: unit, bezel: true) }
+                        .onEnded { _ in dragEnded() })
                     .position(x: centre.x + cos(bezelAngle) * WyrmAirSkin.bezelPointerRadius * unit,
                               y: centre.y + sin(bezelAngle) * WyrmAirSkin.bezelPointerRadius * unit)
             }
             .frame(width: proxy.size.width, height: proxy.size.height)
-            // One gesture for the whole control, so a finger never has to
-            // land exactly on a small knob, and it wins over the scroll view.
-            .contentShape(Rectangle())
-            .highPriorityGesture(DragGesture(minimumDistance: 0)
-                .onChanged { value in dragChanged(value, centre: centre, unit: unit) }
-                .onEnded { _ in dragEnded() })
+            .coordinateSpace(name: "wyrm-wheel")
             .accessibilityElement()
             .accessibilityLabel("Colour wheel")
             .accessibilityValue(String(format: "#%06X", rgb))
@@ -367,16 +379,16 @@ struct WyrmAirWheelPanel: View {
     /// moves the pointer by the drag, as AIR does; elsewhere on the wheel the
     /// pointer starts under the finger. On the bezel the knob follows the
     /// finger's angle. Colour follows AIR's `touchMove` maths.
-    private func dragChanged(_ value: DragGesture.Value, centre: CGPoint, unit: CGFloat) {
+    private func dragChanged(_ value: DragGesture.Value, centre: CGPoint, unit: CGFloat, bezel: Bool) {
         if drag == nil {
             let sx = Double((value.startLocation.x - centre.x) / unit)
             let sy = Double((value.startLocation.y - centre.y) / unit)
-            if hypot(sx - pointerX, sy - pointerY) <= 30 {
-                drag = .pointer(x: pointerX, y: pointerY)
-            } else if (sx * sx + sy * sy).squareRoot() <= WyrmAirSkin.wheelRadius {
-                drag = .pointer(x: sx, y: sy)
-            } else {
+            if bezel {
                 drag = .bezel
+            } else if hypot(sx - pointerX, sy - pointerY) <= 30 {
+                drag = .pointer(x: pointerX, y: pointerY)
+            } else {
+                drag = .pointer(x: sx, y: sy)
             }
         }
         switch drag {

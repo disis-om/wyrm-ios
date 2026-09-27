@@ -77,6 +77,12 @@ struct WyrmChatItem: Identifiable, Equatable {
     let authorName: String
     let authorUsername: String
 
+    /// For lines that do not come from the Wyrm API, such as NTL Team chat.
+    init(id: String, body: String, createdAt: String, authorID: String, authorName: String, authorUsername: String) {
+        self.id = id; self.body = body; self.createdAt = createdAt
+        self.authorID = authorID; self.authorName = authorName; self.authorUsername = authorUsername
+    }
+
     init(_ json: [String: Any], direct: Bool = false) {
         id = json.string("id")
         body = json.string("body")

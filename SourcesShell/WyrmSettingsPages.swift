@@ -1165,6 +1165,10 @@ struct WyrmBackupPage: View {
     @State var confirmingReset = false
     @ObservedObject var updates = WyrmUpdateStore.shared
     @Environment(\.openURL) var openURL
+    // "Back up before updating": on by default; the update waits for the backup file.
+    @AppStorage("wyrm.ios.update.backup-first") var backupFirst = true
+    @State var updateAfterBackup = false
+    @State var updateNote = ""
 
     private var updateLabel: String {
         if updates.checking { return "Checking…" }
@@ -1194,6 +1198,21 @@ struct WyrmBackupPage: View {
                 }.padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 14))
             }
 
+            if let next = updates.available {
+                WSSectionLabel("Update")
+                WSCard {
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text("Wyrm \(next.version) is ready").font(.androidWyrm(18, .semibold)).foregroundColor(ATheme.ink)
+                        Text(updateNote.isEmpty ? (next.beta ? "Beta build \(next.build)" : "Build \(next.build)") : updateNote)
+                            .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).padding(.top, 3)
+                            .fixedSize(horizontal: false, vertical: true)
+                        WSPrimaryButton(label: updateAfterBackup ? "Backing up…" : "Update now", enabled: !updateAfterBackup) {
+                            startUpdate(next)
+                        }.padding(.top, 14)
+                    }.padding(16)
+                }
+            }
+
             WSSectionLabel("Version")
             WSCard {
                 WSValueRow(title: "Wyrm", value: "\(WyrmBuild.version) (\(WyrmBuild.build))", first: true)
@@ -1203,6 +1222,8 @@ struct WyrmBackupPage: View {
                 }
                 WSBoolRow(title: "Beta updates", detail: "Try new builds before everyone else. They can have rough edges.",
                           on: updates.betaEnabled) { updates.betaEnabled = $0 }
+                WSBoolRow(title: "Back up before updating", detail: "Saves skins, controls and settings to a file first.",
+                          on: backupFirst) { backupFirst = $0 }
                 if !engine.settingsVersion.isEmpty { WSValueRow(title: "Settings format", value: "v\(engine.settingsVersion)") }
                 WSLinkRow(title: "What's in this build") { open(.buildNotes) }
             }
@@ -1228,10 +1249,12 @@ struct WyrmBackupPage: View {
                 lastBackup = Self.readable()
                 lastDetail = "\(engine.settings.count) settings, \(engine.hotkeys.count) buttons, skin and theme."
                 engine.toast = "Backup saved"
+                if updateAfterBackup, let next = updates.available { handOff(next) }
             case .failure(let error):
                 failed = true
                 engine.toast = "Backup not saved: \(error.localizedDescription)"
             }
+            updateAfterBackup = false
         })
         .background(Color.clear.frame(width: 0, height: 0).fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
             guard case .success(let url) = result else { return }
@@ -1253,6 +1276,26 @@ struct WyrmBackupPage: View {
                 engine.toast = "Backup restored"
             }
         })
+    }
+
+    /// Update now: a backup first when the player keeps that on, then the IPA
+    /// goes to the sideloader on this iPhone, or downloads if there is none.
+    private func startUpdate(_ next: WyrmUpdateInfo) {
+        if backupFirst {
+            updateAfterBackup = true
+            backUp()
+        } else {
+            handOff(next)
+        }
+    }
+
+    private func handOff(_ next: WyrmUpdateInfo) {
+        if let installer = WyrmInstaller.preferred {
+            updateNote = installer.hand(next) { openURL($0) }
+        } else {
+            openURL(next.url)
+            updateNote = "Downloading the new build. Install it with AltStore, SideStore, KSign or ESign."
+        }
     }
 
     private func backUp() {
@@ -1288,6 +1331,13 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "Update now: when a new build is ready, Settings > Backup shows it with a button. Back up before updating is a switch and on by default.",
+        "Team mode: settings sit behind the gear, several teams can be saved, the roster shows FPS, ping and leaderboard place, names no longer carry a code, and chat reads like Global chat with the same glass composer.",
+        "The keyboard sits on the bottom edge and composers stay above it.",
+        "Liquid Glass on every button. Image arrows keep their real colours in the arena.",
+        "The Ready Room is smaller and runs edge to edge; Home replaces Quick settings.",
+        "Colour wheel: the brightness knob turns only when held, and the two beads stand beside the wheel.",
+        "Developer logs show again, folded, with a jump to the newest line.",
         "The tab bar lens now rises over the icons and bends them like the system glass, with a springier lift and a larger resting pill.",
         "Build a Wyrm uses the 42 original beads only. While you build, only the beads you place show on an empty body; the repeat appears in a match.",
         "Scores and kills from every online life are now sent to Wyrm, so the leaderboard and your profile move after each run. Runs made offline are kept and sent later.",
@@ -1501,8 +1551,8 @@ struct WyrmLayoutEditor: View {
         Button(action: action) {
             Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? ATheme.onInk : ATheme.quiet)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Capsule().fill(filled ? ATheme.ink : Color.clear))
-        }.buttonStyle(.plain)
+                .background(Capsule().fill(filled && !WyrmGlass.native ? ATheme.ink : Color.clear))
+        }.modifier(WyrmGlassButtonModifier(prominent: filled, fallback: PlainButtonStyleShim()))
     }
 
     private func optionsPopup(_ options: Options) -> some View {

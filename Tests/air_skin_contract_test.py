@@ -38,7 +38,10 @@ checks = {
     "bezel is tinted with the unshaded colour": "bezel(tint: Color(airRGB: pure)" in PICKER,
     # Build 56 device report: live glass on moving parts flickered.
     "moving knobs and bezel carry no live glass": "airGlass" not in PICKER[PICKER.index("private func bezel("):PICKER.index("private func dragChanged(")],
-    "one wheel-wide drag that beats the scroll view": PICKER.count(".highPriorityGesture(DragGesture(minimumDistance: 0)") == 1 and ".contentShape(Rectangle())" in PICKER,
+    # OM, build 70: a scroll crossing the ring spun the brightness knob. The disc
+    # and the knob each own a drag; the rest of the ring is left to the page.
+    "disc and brightness knob own their drags, the ring scrolls": PICKER.count('.highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("wyrm-wheel"))') == 2
+        and ".contentShape(Rectangle())" not in PICKER[PICKER.index("private var wheelView"):PICKER.index("private func bezel(")],
     "pointer grabbed on the knob moves by the drag": "drag = .pointer(x: pointerX, y: pointerY)" in PICKER and "originX + Double(value.translation.width / unit)" in PICKER,
     "drag stays local; storage is written on lift": "private func dragEnded()" in PICKER and "storedRGB = Int(rgb)" in PICKER and "@AppStorage(" not in PICKER,
     "toggle button is glass": "struct WyrmAirWheelToggle" in PICKER and ".airGlass(Circle())" in PICKER,

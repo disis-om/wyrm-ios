@@ -442,7 +442,7 @@ private struct WyrmCallDetail: View {
             }
         }
     }
-    private func callButton(icon: String, title: String, on: Bool, action: @escaping () -> Void) -> some View { Button(action: action) { VStack(spacing: 8) { Image(systemName: icon).font(.system(size: 22)).frame(width: 58, height: 58).background(on ? ATheme.live.opacity(0.14) : ATheme.ink.opacity(0.08)).clipShape(Circle()); Text(title).font(.androidWyrm(11.5)) }.foregroundColor(on ? ATheme.live : ATheme.ink) }.buttonStyle(.plain) }
+    private func callButton(icon: String, title: String, on: Bool, action: @escaping () -> Void) -> some View { Button(action: action) { VStack(spacing: 8) { Image(systemName: icon).font(.system(size: 22)).frame(width: 58, height: 58).background(WyrmGlass.native ? Color.clear : (on ? ATheme.live.opacity(0.14) : ATheme.ink.opacity(0.08))).clipShape(Circle()); Text(title).font(.androidWyrm(11.5)) }.foregroundColor(on ? ATheme.live : ATheme.ink) }.modifier(WyrmGlassButtonModifier(radius: 22, fallback: WSPressStyle())) }
 }
 
 private struct WyrmLobbyDetail: View {
@@ -481,107 +481,222 @@ private struct WyrmTeamDetail: View {
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @EnvironmentObject private var team: WyrmTeamStore
+    @State private var teamName = ""
     @State private var teamID = ""
     @State private var auth = ""
     @State private var message = ""
     @State private var error = ""
+    @State private var confirmRemove = false
+
     var body: some View {
         WyrmDetailChrome(title: title, onBack: close) {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    if route.id == "team-connect" {
-                        WyrmSectionLabel("NTL Team")
-                        VStack(spacing: 12) {
-                            WyrmDesignEditField(label: "Team ID", value: $teamID)
-                            SecureField("Auth key", text: $auth)
-                                .font(.androidWyrm(14)).textInputAutocapitalization(.never)
-                                .autocorrectionDisabled(true).padding(14)
-                                .background(ATheme.card).cornerRadius(14)
-                                .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
-                            if !error.isEmpty { Text(error).font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
-                            WyrmPrimaryAction(title: "Connect Team", icon: "lock.shield.fill",
-                                              disabled: teamID.count < 16 || auth.count < 16) {
-                                do { try team.connect(auth: auth, teamID: teamID); auth = ""; close() }
-                                catch { self.error = error.localizedDescription }
-                            }
-                        }.padding(16)
-                        Text("Auth and Team ID remain in this iPhone's Keychain. Diagnostics never include either value. Presence follows NTL 9.68 every four seconds.")
-                            .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(.horizontal, 20)
-                    } else if route.id == "team-chat" {
-                        if team.chat.isEmpty {
-                            WyrmPaperCard { WyrmEmptyPanel(title: "No Team messages yet", note: "Messages from your connected NTL Team appear here.") }.padding(.top, 18)
-                        } else {
-                            LazyVStack(spacing: 10) {
-                                ForEach(team.chat) { line in
-                                    VStack(alignment: .leading, spacing: 4) {
-                                        Text(line.author.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live)
-                                        Text(line.body).font(.androidWyrm(13)).frame(maxWidth: .infinity, alignment: .leading)
-                                    }.padding(14).background(ATheme.card).cornerRadius(14)
-                                        .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
-                                }
-                            }.padding(16)
-                        }
-                        HStack(spacing: 10) {
-                            TextField("Message the team", text: $message).font(.androidWyrm(13)).padding(12).background(ATheme.card).cornerRadius(12)
-                            Button("Send") { team.send(message); message = "" }
-                                .font(.androidWyrm(12, .bold)).disabled(message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                        }.padding(16)
+            if route.id == "team-chat" {
+                chatPage
+            } else if route.id == "team-connect" {
+                ScrollView(showsIndicators: false) { connectPage }
+            } else {
+                ScrollView(showsIndicators: false) { overviewPage }
+            }
+        }
+        // Team settings live behind the gear, top right, as on the other pages.
+        .overlay(alignment: .topTrailing) {
+            if route.id == "team" { settingsMenu.padding(.trailing, 14).frame(height: 52) }
+        }
+        .onAppear {
+            let editing = team.connectEditing.flatMap { id in team.saved.first { $0.id == id } }
+            teamName = editing?.name ?? ""
+            teamID = editing?.teamID ?? ""
+            NSLog("Wyrm SwiftUI NTL Team presented state=%@", statusValue)
+        }
+    }
+
+    // MARK: Chat
+
+    /// The transcript scrolls; the composer stays on the bottom edge, on the
+    /// keys when typing, exactly like Global chat.
+    private var chatPage: some View {
+        VStack(spacing: 0) {
+            WyrmChatTranscript(messages: chatItems, myID: engine.nickname, showsAuthors: true,
+                               emptyTitle: "No Team messages yet",
+                               emptyNote: "Messages from your connected NTL Team appear here.")
+            WyrmChatComposer(text: $message, placeholder: "Message the team", limit: 280, sending: false) {
+                team.send(message)
+                message = ""
+            }
+        }
+    }
+
+    private var chatItems: [WyrmChatItem] {
+        let stamp = ISO8601DateFormatter()
+        return team.chat.map {
+            WyrmChatItem(id: $0.id, body: $0.body, createdAt: stamp.string(from: $0.at),
+                         authorID: $0.author, authorName: $0.author, authorUsername: "")
+        }
+    }
+
+    // MARK: Connect
+
+    private var editingTeam: WyrmSavedTeam? { team.connectEditing.flatMap { id in team.saved.first { $0.id == id } } }
+
+    private var connectPage: some View {
+        VStack(spacing: 0) {
+            WyrmSectionLabel(editingTeam == nil ? "Add an NTL Team" : "Edit \(editingTeam?.name ?? "team")")
+            VStack(spacing: 12) {
+                WyrmDesignEditField(label: "Name (optional)", value: $teamName)
+                WyrmDesignEditField(label: "Team ID", value: $teamID)
+                SecureField(editingTeam == nil ? "Auth key" : "Auth key (enter it again)", text: $auth)
+                    .font(.androidWyrm(14)).textInputAutocapitalization(.never)
+                    .autocorrectionDisabled(true).padding(14)
+                    .background(ATheme.card).cornerRadius(14)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(ATheme.rule))
+                if !error.isEmpty { Text(error).font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
+                WyrmPrimaryAction(title: editingTeam == nil ? "Save and connect" : "Save changes", icon: "lock.shield.fill",
+                                  disabled: teamID.count < 16 || auth.count < 16) {
+                    do {
+                        try team.connect(auth: auth, teamID: teamID, name: teamName, editing: team.connectEditing)
+                        auth = ""
+                        close()
+                    } catch { self.error = error.localizedDescription }
+                }
+            }.padding(16)
+            Text("Auth and Team ID remain in this iPhone's Keychain. Diagnostics never include either value. You can keep several teams; only the one you pick runs.")
+                .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(.horizontal, 20)
+        }
+    }
+
+    // MARK: Overview
+
+    private var overviewPage: some View {
+        VStack(spacing: 0) {
+            WyrmSectionLabel("Team mode")
+            WyrmPaperCard {
+                WyrmListRow(title: team.selected?.name ?? "No team connected",
+                            detail: statusDetail, value: statusValue, showsChevron: false)
+            }
+            if !team.members.isEmpty {
+                WyrmSectionLabel("Live roster")
+                WyrmPaperCard {
+                    ForEach(team.members) { member in rosterRow(member) }
+                }
+            }
+            VStack(spacing: 10) {
+                if team.selected == nil {
+                    if team.saved.isEmpty {
+                        WyrmPrimaryAction(title: "Add a team", icon: "person.3.fill") { addTeam() }
                     } else {
-                        WyrmSectionLabel("Team mode")
-                        WyrmPaperCard {
-                            WyrmListRow(title: team.teamID.isEmpty ? "No team connected" : maskedTeamID,
-                                        detail: statusDetail, value: statusValue, showsChevron: false)
+                        teamsMenu {
+                            Label("Pick a saved team", systemImage: "person.3.fill")
+                                .font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.onInk)
+                                .frame(maxWidth: .infinity).frame(height: 50)
+                                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.ink))
                         }
-                        if !team.members.isEmpty {
-                            WyrmSectionLabel("Live roster")
-                            WyrmPaperCard {
-                                ForEach(team.members) { member in
-                                    Button {
-                                        guard member.arena != "_GAME_MENU_" else { return }
-                                        engine.enterLobby(name: engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname, address: member.arena)
-                                    } label: {
-                                        HStack(spacing: 12) {
-                                            Circle().fill(member.arena == engine.arena ? ATheme.live : ATheme.quiet.opacity(0.3)).frame(width: 8, height: 8)
-                                            VStack(alignment: .leading, spacing: 2) {
-                                                Text(member.name).font(.androidWyrm(14.5, .semibold))
-                                                Text(member.arena == "_GAME_MENU_" ? "In menu" : member.arena)
-                                                    .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
-                                            }
-                                            Spacer()
-                                            VStack(alignment: .trailing, spacing: 2) {
-                                                Text("#\(member.rank)").font(.androidWyrm(11, .bold))
-                                                Text("tag \(member.tag)").font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet)
-                                            }
-                                            if member.arena != "_GAME_MENU_" { Image(systemName: "arrow.up.right").foregroundColor(ATheme.quiet) }
-                                        }.padding(.horizontal, 15).frame(minHeight: 62).contentShape(Rectangle())
-                                    }.buttonStyle(.plain)
-                                }
-                            }
-                        }
-                        VStack(spacing: 10) {
-                            WyrmPrimaryAction(title: team.teamID.isEmpty ? "Add a team" : "Edit connection", icon: "person.3.fill") { open(.teamConnect) }
-                            if !team.teamID.isEmpty {
-                                WyrmOutlineAction(title: "Open team chat") { open(.teamChat) }
-                                Button("Disconnect Team") { team.disconnect() }.font(.androidWyrm(11.5, .semibold)).foregroundColor(.red).padding(.top, 4)
-                            }
-                        }.padding(16)
+                    }
+                } else {
+                    WyrmPrimaryAction(title: "Open team chat", icon: "bubble.left.and.bubble.right.fill") { open(.teamChat) }
+                }
+            }.padding(16)
+        }
+    }
+
+    /// Name, key owner and arena on the left; FPS, ping and leaderboard place on the right.
+    private func rosterRow(_ member: WyrmTeamMember) -> some View {
+        Button {
+            guard member.arena != "_GAME_MENU_" else { return }
+            engine.enterLobby(name: engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname, address: member.arena)
+        } label: {
+            HStack(spacing: 12) {
+                Circle().fill(member.arena == engine.arena ? ATheme.live : ATheme.quiet.opacity(0.3)).frame(width: 8, height: 8)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(member.name).font(.androidWyrm(14.5, .semibold)).lineLimit(1)
+                    Text([member.owner.isEmpty ? nil : "Key \(member.owner)",
+                          member.arena == "_GAME_MENU_" ? "In menu" : member.arena].compactMap { $0 }.joined(separator: " · "))
+                        .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                HStack(spacing: 5) {
+                    if let fps = member.fps { stat("\(fps) fps") }
+                    if let ping = member.ping { stat("\(ping) ms") }
+                    if member.rank > 0 { stat("LB #\(member.rank)", strong: true) }
+                }
+                if member.arena != "_GAME_MENU_" { Image(systemName: "arrow.up.right").font(.system(size: 12, weight: .semibold)).foregroundColor(ATheme.quiet) }
+            }.padding(.horizontal, 15).frame(minHeight: 62).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    private func stat(_ text: String, strong: Bool = false) -> some View {
+        Text(text).font(.androidWyrm(10, .bold)).monospacedDigit()
+            .foregroundColor(strong ? ATheme.onInk : ATheme.ink)
+            .padding(.horizontal, 7).padding(.vertical, 4)
+            .background(Capsule().fill(strong ? ATheme.ink : ATheme.well))
+    }
+
+    // MARK: Settings menu
+
+    private func addTeam() {
+        team.connectEditing = nil
+        open(.teamConnect)
+    }
+
+    private func teamsMenu<Label: View>(@ViewBuilder label: () -> Label) -> some View {
+        Menu(content: {
+            Section("Saved teams") {
+                ForEach(team.saved) { saved in
+                    Button { team.select(saved.id) } label: {
+                        if saved.id == team.selectedTeam { Label(saved.name, systemImage: "checkmark") } else { Text(saved.name) }
                     }
                 }
             }
-        }
-        .onAppear { teamID = team.teamID; NSLog("Wyrm SwiftUI NTL Team presented state=%@", statusValue) }
+        }, label: label)
     }
+
+    private var settingsMenu: some View {
+        Menu {
+            if !team.saved.isEmpty {
+                Section("Saved teams") {
+                    ForEach(team.saved) { saved in
+                        Button { team.select(saved.id) } label: {
+                            if saved.id == team.selectedTeam { Label(saved.name, systemImage: "checkmark") } else { Text(saved.name) }
+                        }
+                    }
+                }
+            }
+            Section {
+                Button { addTeam() } label: { Label("Add another team", systemImage: "plus") }
+                if let current = team.selected {
+                    Button {
+                        team.connectEditing = current.id
+                        open(.teamConnect)
+                    } label: { Label("Edit connection", systemImage: "pencil") }
+                }
+            }
+            if let current = team.selected {
+                Section {
+                    Button(role: .destructive) { team.disconnect() } label: { Label("Disconnect team", systemImage: "wifi.slash") }
+                    Button(role: .destructive) { team.remove(current.id) } label: { Label("Remove this team", systemImage: "trash") }
+                }
+            }
+        } label: {
+            Image(systemName: "gearshape")
+                .font(.system(size: 16, weight: .semibold))
+                .foregroundColor(ATheme.ink)
+                .frame(width: 36, height: 36)
+                .background(Circle().fill(WyrmGlass.native ? Color.clear : ATheme.card))
+                .contentShape(Circle())
+        }
+        .modifier(WyrmGlassButtonModifier(radius: nil, fallback: WSPressStyle()))
+        .accessibilityLabel("Team settings")
+    }
+
     private var title: String { route.id == "team-chat" ? "Team chat" : route.id == "team-connect" ? "Connect" : "Team mode" }
-    private var maskedTeamID: String { "•••• \(team.teamID.suffix(4))" }
     private var statusValue: String {
         switch team.state { case .connected: return "Live"; case .connecting: return "Joining"; case .failed: return "Offline"; case .disconnected: return "" }
     }
     private var statusDetail: String {
         switch team.state {
         case .connected: return "\(team.members.count) members · NTL 9.68 compatible"
-        case .connecting: return "Publishing selected tag and arena presence"
+        case .connecting: return "Joining your team"
         case .failed(let text): return text
-        case .disconnected: return "Use the Auth and Team ID from your NTL Team."
+        case .disconnected: return team.saved.isEmpty ? "Use the Auth and Team ID from your NTL Team." : "Pick a saved team from the gear."
         }
     }
 }
@@ -592,6 +707,17 @@ private struct WyrmDeveloperDetail: View {
     @State private var shareURL: URL?
     @State private var showingShare = false
     @State private var confirmClear = false
+    // The log opens folded: it is thousands of lines. Drawn as separate lazy
+    // lines, because one 2 MB Text is more than SwiftUI will lay out and the
+    // block came up empty white.
+    @State private var logOpen = false
+    @State private var lines: [String] = []
+    private static let shownLines = 2000
+
+    private func reloadLines() {
+        let all = diagnostics.text.split(separator: "\n", omittingEmptySubsequences: true)
+        lines = all.suffix(Self.shownLines).map(String.init)
+    }
 
     var body: some View {
         WyrmDetailChrome(title: "Developer Mode", onBack: close) {
@@ -617,24 +743,76 @@ private struct WyrmDeveloperDetail: View {
                     }.padding(.horizontal, 16).padding(.top, 10)
 
                     WyrmSectionLabel("App + engine log")
-                    ScrollView(.horizontal, showsIndicators: true) {
-                        Text(diagnostics.text)
-                            .font(.system(size: 10.5, weight: .regular, design: .monospaced))
-                            .foregroundColor(ATheme.ink)
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(14)
+                    Button {
+                        withAnimation(.spring(response: 0.34, dampingFraction: 0.86)) { logOpen.toggle() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "text.alignleft").font(.system(size: 14, weight: .semibold))
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(logOpen ? "Hide log" : "Show log").font(.androidWyrm(15, .semibold))
+                                Text(lines.count >= Self.shownLines ? "Latest \(lines.count) lines" : "\(lines.count) lines")
+                                    .font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                            }
+                            Spacer()
+                            Image(systemName: "chevron.down").font(.system(size: 13, weight: .bold))
+                                .rotationEffect(.degrees(logOpen ? 180 : 0))
+                        }
+                        .foregroundColor(ATheme.ink)
+                        .padding(.horizontal, 16).padding(.vertical, 12)
+                        .background(RoundedRectangle(cornerRadius: 15, style: .continuous).fill(ATheme.card))
+                        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(ATheme.rule))
+                        .contentShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
                     }
-                    .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
-                    .background(ATheme.card.opacity(0.94))
-                    .cornerRadius(15)
-                    .overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule))
+                    .buttonStyle(WSPressStyle())
                     .padding(.horizontal, 16)
+                    .accessibilityLabel(logOpen ? "Hide log" : "Show log")
+
+                    if logOpen {
+                        ScrollViewReader { proxy in
+                            ZStack(alignment: .bottomTrailing) {
+                                ScrollView(.vertical, showsIndicators: true) {
+                                    LazyVStack(alignment: .leading, spacing: 2) {
+                                        ForEach(lines.indices, id: \.self) { index in
+                                            Text(lines[index])
+                                                .font(.system(size: 10.5, weight: .regular, design: .monospaced))
+                                                .foregroundColor(ATheme.ink)
+                                                .textSelection(.enabled)
+                                                .frame(maxWidth: .infinity, alignment: .leading)
+                                        }
+                                        Color.clear.frame(height: 44).id("log-end")
+                                    }
+                                    .padding(12)
+                                }
+                                .frame(height: 440)
+                                // To the newest line as the log opens.
+                                .onAppear { DispatchQueue.main.async { proxy.scrollTo("log-end", anchor: .bottom) } }
+
+                                Button {
+                                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo("log-end", anchor: .bottom) }
+                                } label: {
+                                    Image(systemName: "arrow.down").font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(ATheme.onInk)
+                                        .frame(width: 44, height: 44)
+                                        .background(Circle().fill(WyrmGlass.native ? Color.clear : ATheme.ink))
+                                        .contentShape(Circle())
+                                }
+                                .modifier(WyrmGlassButtonModifier(prominent: true, radius: 22, fallback: WSPressStyle()))
+                                .padding(12)
+                                .accessibilityLabel("Scroll to the latest log line")
+                            }
+                        }
+                        .background(ATheme.card)
+                        .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+                        .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(ATheme.rule))
+                        .padding(.horizontal, 16).padding(.top, 10)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                     Text("Exports include app lifecycle, safe network status and SDL3/original-engine events. Tokens, passwords and private message bodies are never written.")
                         .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(3).padding(20)
                 }
             }
-            .onAppear { diagnostics.refresh(); WyrmDiagnostics.record("developer console opened", category: "DIAGNOSTICS") }
+            .onAppear { diagnostics.refresh(); reloadLines(); WyrmDiagnostics.record("developer console opened", category: "DIAGNOSTICS") }
+            .onReceive(diagnostics.$text) { _ in reloadLines() }
             .sheet(isPresented: $showingShare) {
                 if let shareURL = shareURL { WyrmShareSheet(items: [shareURL]) }
             }

@@ -54,7 +54,9 @@ void WyrmIOSArrowSkinsCreate(renderer* r, tcontext* ctx) {
     SDL_Log("Wyrm arrows: atlas unreadable; image arrows off");
     return;
   }
-  arrow_descriptor = igImplVulkan_AddTexture(r->linear_sampler, arrow_texture->view,
+  /* LOD 0 only: the atlas has no gutters, so a mip level blends neighbouring
+     arrows into this one and the arena showed a soft, off-colour arrow. */
+  arrow_descriptor = igImplVulkan_AddTexture(r->atlas_sampler, arrow_texture->view,
                                              VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   SDL_Log("Wyrm arrows: %d image skins ready (%dx%d)", ARROW_SKIN_COUNT,
           arrow_texture->size[0], arrow_texture->size[1]);

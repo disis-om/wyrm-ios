@@ -209,8 +209,8 @@ private struct WyrmPlayRoot: View {
                         Text(nearest?.endpoint ?? "Choose a live arena or enter an address.").font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).padding(.top, 3)
                         GeometryReader { geometry in ZStack(alignment: .leading) { Capsule().fill(ATheme.track); Capsule().fill(ATheme.ink).frame(width: geometry.size.width * min(1, CGFloat(nearest?.players ?? 0) / 2000)) } }.frame(height: 4).padding(.top, 13)
                         HStack(spacing: 9) {
-                            Button { enterOriginalLobby() } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.onInk).frame(maxWidth: .infinity).frame(height: 46).background(nearest == nil ? ATheme.ink.opacity(0.35) : ATheme.ink).cornerRadius(11) }.buttonStyle(.plain).disabled(nearest == nil)
-                            Button { showArenas = true } label: { Image(systemName: "globe.asia.australia.fill").foregroundColor(ATheme.mute).frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule)) }.buttonStyle(.plain)
+                            Button { enterOriginalLobby() } label: { Text("Enter lobby").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.onInk).frame(maxWidth: .infinity).frame(height: 46).background(WyrmGlass.native ? Color.clear : (nearest == nil ? ATheme.ink.opacity(0.35) : ATheme.ink)).cornerRadius(11) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 11, fallback: WSPressStyle())).disabled(nearest == nil)
+                            Button { showArenas = true } label: { Image(systemName: "globe.asia.australia.fill").foregroundColor(ATheme.mute).frame(width: 46, height: 46).overlay(RoundedRectangle(cornerRadius: 11).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 11, fallback: WSPressStyle()))
                         }.padding(.top, 16)
                     }.padding(18)
                     Rectangle().fill(ATheme.rule).frame(height: 1)
@@ -375,9 +375,12 @@ private struct WyrmArenaPicker: View {
                 HStack(alignment: .bottom) {
                     VStack(alignment: .leading, spacing: 2) { Text("LIVE DIRECTORY").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.live); Text("Pick a server").font(.androidWyrm(27, .bold)) }
                     Spacer()
-                    Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).frame(width: 36, height: 36).background(ATheme.card).clipShape(Circle()) }
-                        .buttonStyle(.plain).accessibilityLabel("Add custom arena IP")
-                    Button("Close") { presentation.wrappedValue.dismiss() }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                    Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundColor(ATheme.ink).frame(width: 36, height: 36).background(WyrmGlass.native ? Color.clear : ATheme.card).clipShape(Circle()) }
+                        .modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Add custom arena IP")
+                    Button { presentation.wrappedValue.dismiss() } label: {
+                        Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.ink)
+                            .frame(width: 36, height: 36).background(WyrmGlass.native ? Color.clear : ATheme.card).clipShape(Circle())
+                    }.modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Close")
                 }.padding(20)
                 HStack { Image(systemName: "magnifyingglass"); TextField("Arena code or IP", text: $search).textInputAutocapitalization(.never).disableAutocorrection(true) }
                     .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(ATheme.card.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)

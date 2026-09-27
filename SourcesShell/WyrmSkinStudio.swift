@@ -343,9 +343,9 @@ struct WyrmSkinRoot: View {
     private var inlineHeader: some View {
         HStack(spacing: 10) {
             Button { enter(.overview) } label: {
-                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold))
-                    .frame(width: 34, height: 34).background(ATheme.card.opacity(0.92)).clipShape(Circle())
-            }.buttonStyle(.plain).accessibilityLabel("Back to skin wardrobe")
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundColor(ATheme.ink)
+                    .frame(width: 34, height: 34).background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.92)).clipShape(Circle())
+            }.modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Back to skin wardrobe")
             Text(section.title).font(.androidWyrm(18, .bold))
             Spacer()
             Text("AUTO-SAVED").font(.androidWyrm(8.5, .bold)).tracking(1).foregroundColor(ATheme.live)
@@ -382,9 +382,11 @@ struct WyrmSkinRoot: View {
                 Button("UNDO") {
                     var groups = customGroups; if !groups.isEmpty { groups.removeLast() }
                     savePattern(groups, colors: Array(customColors.prefix(groups.count)))
-                }.font(.androidWyrm(9.5, .bold)).buttonStyle(.plain)
+                }.font(.androidWyrm(9.5, .bold)).foregroundColor(ATheme.ink)
+                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
                 Button("CLEAR") { savePattern([], colors: []) }
-                    .font(.androidWyrm(9.5, .bold)).foregroundColor(.red).buttonStyle(.plain)
+                    .font(.androidWyrm(9.5, .bold)).foregroundColor(.red)
+                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
                 WyrmAirWheelToggle(showingWheel: showingWheel) {
                     withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.84)) { showingWheel.toggle() }
                 }
@@ -446,7 +448,7 @@ struct WyrmSkinRoot: View {
     private var accessoriesPanel: some View {
         VStack(spacing: 0) {
             inlineHeader
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 70), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
                 selectionTile(selected: accessory < 0, label: "None") {
                     accessory = -1; apply(accessory: -1)
                 }
@@ -456,7 +458,7 @@ struct WyrmSkinRoot: View {
                     } label: {
                         ZStack {
                             RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
-                            WyrmAtlasImage(image: textures.accessoryThumbnails[item.id]).padding(8)
+                            WyrmAtlasImage(image: textures.accessoryThumbnails[item.id]).padding(4)
                             if accessory == item.id { selectionCheck }
                         }.aspectRatio(1, contentMode: .fit)
                             .overlay(RoundedRectangle(cornerRadius: 15).stroke(accessory == item.id ? ATheme.ink : ATheme.rule, lineWidth: accessory == item.id ? 2 : 1))
@@ -497,7 +499,7 @@ struct WyrmSkinRoot: View {
     private var backgroundsPanel: some View {
         VStack(spacing: 0) {
             inlineHeader
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 10)], spacing: 10) {
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                 ForEach(WyrmSkinCatalog.backgrounds) { item in
                     Button {
                         background = item.id; apply(background: item.id)
@@ -607,7 +609,8 @@ private struct WyrmSkinPreview: View {
             let head = CGPoint(x: x + scale * 0.5 + step * CGFloat(segmentsPerRow - 1), y: headY)
             ZStack {
                 ATheme.paper
-                if let image = textures.backgrounds[backgroundID] {
+                // No arena background behind the snake: the preview is the skin alone (OM).
+                if false, let image = textures.backgrounds[backgroundID] {
                     Image(decorative: image, scale: 1).resizable().scaledToFill()
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .opacity(0.13)

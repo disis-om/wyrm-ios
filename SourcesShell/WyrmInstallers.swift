@@ -42,6 +42,21 @@ struct WyrmInstaller: Identifiable, Equatable {
         }
     }
 
+    /// The first sideloader on this iPhone, in the order the cards show them.
+    static var preferred: WyrmInstaller? { all.first { $0.installed } }
+
+    /// Hands [update] to this app and says what happened, for the page's note.
+    func hand(_ update: WyrmUpdateInfo, open: (URL) -> Void) -> String {
+        WyrmDiagnostics.record("update handed to \(id) build=\(update.build)", category: "NETWORK")
+        if let link = installURL(for: update.url) {
+            open(link)
+            return "Opening \(name) to install Wyrm \(update.version)."
+        }
+        UIPasteboard.general.string = update.url.absoluteString
+        if let url = URL(string: "\(scheme)://") { open(url) }
+        return "Download link copied. Paste it into \(name)'s downloader."
+    }
+
     static let all: [WyrmInstaller] = [
         WyrmInstaller(
             id: "altstore", name: "AltStore", scheme: "altstore",
@@ -149,15 +164,7 @@ struct WyrmInstallersSection: View {
             note = "Wyrm is up to date."
             return
         }
-        if let link = installer.installURL(for: update.url) {
-            openURL(link)
-            note = "Opening \(installer.name) to install Wyrm \(update.version)."
-        } else {
-            UIPasteboard.general.string = update.url.absoluteString
-            if let url = URL(string: "\(installer.scheme)://") { openURL(url) }
-            note = "Download link copied. Paste it into \(installer.name)'s downloader."
-        }
-        WyrmDiagnostics.record("update handed to \(installer.id) build=\(update.build)", category: "NETWORK")
+        note = installer.hand(update) { openURL($0) }
     }
 }
 

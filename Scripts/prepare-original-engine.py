@@ -517,7 +517,11 @@ _arrow_patch("app/src/mobile/mobile_controls.c", [
   extern bool WyrmIOSDrawArrowImage(ImDrawList* dl, float ax, float ay, float dx,
                                     float dy, float length, float alpha);
   extern float WyrmIOSArrowBrightness(void);
-  if (WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length, alpha)) return;
+  /* An image arrow keeps its own colours: only its fade applies, not the
+     controls opacity, which washed it into the arena behind it. */
+  if (WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length,
+                            env->usr->mobile_controls.arrow_opacity / 0.85f))
+    return;
   float wyrm_brightness = WyrmIOSArrowBrightness();
   mobile_arrow_shape shape = arrow_shape(env->usr->usrs.arrow_style);"""),
     ("""  ImU32 fill =

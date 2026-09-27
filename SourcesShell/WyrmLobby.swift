@@ -121,39 +121,41 @@ struct WyrmReadyRoom: View {
     }
 
     private func readyRoom(_ size: CGSize, _ safe: EdgeInsets) -> some View {
-        // Android splits the row by weight, 1.25 : 0.92, with 34 between.
-        let inner = max(size.width - safe.leading - safe.trailing - 80, 200)
-        let cardWidth = (inner - 34) * 1.25 / 2.17
-        let nameWidth = inner - 34 - cardWidth
+        // Android splits the row by weight, 1.25 : 0.92, with 28 between. The
+        // room runs edge to edge: only the island/home-indicator insets and a
+        // slim 18 pt margin, not the old 40 pt on top of them.
+        let inner = max(size.width - safe.leading - safe.trailing - 36, 200)
+        let cardWidth = (inner - 28) * 1.25 / 2.17
+        let nameWidth = inner - 28 - cardWidth
         return ZStack(alignment: .topTrailing) {
             WyrmBrandStroke()
                 .stroke(ATheme.ink.opacity(0.045), style: StrokeStyle(lineWidth: 110 * 0.16, lineCap: .round, lineJoin: .round))
-                .frame(width: 110, height: 110)
-                .padding(.trailing, 38 + safe.trailing).padding(.top, 5 + safe.top)
+                .frame(width: 90, height: 90)
+                .padding(.trailing, 24 + safe.trailing).padding(.top, 5 + safe.top)
 
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 2) {
                     WyrmCapsLabel("Ready room")
-                    Text("Enter the arena").font(.androidWyrm(29, .bold)).tracking(-0.6).foregroundColor(ATheme.ink)
+                    Text("Enter the arena").font(.androidWyrm(24, .bold)).tracking(-0.5).foregroundColor(ATheme.ink)
                 }
-                Spacer().frame(height: 18)
+                Spacer().frame(height: 12)
                 Rectangle().fill(ATheme.rule).frame(height: 1)
                 Spacer(minLength: 8)
 
-                HStack(alignment: .bottom, spacing: 34) {
+                HStack(alignment: .bottom, spacing: 28) {
                     VStack(alignment: .leading, spacing: 0) {
                         WyrmCapsLabel("Selected arena")
                         Spacer().frame(height: 7)
                         Text(engine.arena.isEmpty ? "No arena selected" : engine.arena)
-                            .font(.wyrmDisplay(34)).lineLimit(1).minimumScaleFactor(0.6)
+                            .font(.wyrmDisplay(28)).lineLimit(1).minimumScaleFactor(0.6)
                             .foregroundColor(engine.arena.isEmpty ? ATheme.quiet : ATheme.ink)
-                        Spacer().frame(height: 14)
+                        Spacer().frame(height: 11)
                         HStack(spacing: 9) {
                             identity("Server code", serverCode)
                             if let arena, arena.number > 0 { identity("Cluster", "\(arena.cluster)") }
                         }
                     }
-                    .padding(.horizontal, 22).padding(.vertical, 18)
+                    .padding(.horizontal, 18).padding(.vertical, 14)
                     .frame(width: cardWidth, alignment: .leading)
                     .background(ATheme.card)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -163,11 +165,11 @@ struct WyrmReadyRoom: View {
                         WyrmCapsLabel("Playing as")
                         Spacer().frame(height: 7)
                         TextField("", text: $nickname)
-                            .font(.wyrmDisplay(48)).foregroundColor(entering ? ATheme.quiet : ATheme.ink)
+                            .font(.wyrmDisplay(38)).foregroundColor(entering ? ATheme.quiet : ATheme.ink)
                             .textInputAutocapitalization(.never).disableAutocorrection(true)
                             .submitLabel(.done).focused($nameFocused).disabled(entering)
                             .overlay(alignment: .leading) {
-                                if nickname.isEmpty { Text("Wyrm Player").font(.wyrmDisplay(48)).foregroundColor(ATheme.quiet).allowsHitTesting(false) }
+                                if nickname.isEmpty { Text("Wyrm Player").font(.wyrmDisplay(38)).foregroundColor(ATheme.quiet).allowsHitTesting(false) }
                             }
                             .onChange(of: nickname) { value in
                                 let clean = String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }.prefix(24))
@@ -185,12 +187,10 @@ struct WyrmReadyRoom: View {
                 Spacer(minLength: 8)
 
                 HStack(spacing: 10) {
-                    paperButton("Quick settings", "slider.horizontal.3", width: 176, enabled: !entering) {
-                        withAnimation(.easeInOut(duration: 0.28)) { quickSettings = true }
-                    }
-                    Spacer(minLength: 0)
+                    // Quick settings is gone from the lobby (OM); Home takes its place.
                     paperButton("Home", "house", width: 112, enabled: !entering) { saveName(); engine.leaveLobby() }
-                    paperButton("Play with AI", "sparkles", width: 142, enabled: !nickname.isEmpty && !entering && !engine.arenaPlayPending) {
+                    Spacer(minLength: 0)
+                    paperButton("Play with AI", "sparkles", width: 128, enabled: !nickname.isEmpty && !entering && !engine.arenaPlayPending) {
                         saveName(); engine.playOffline(name: nickname)
                     }
                     playButton
@@ -198,7 +198,7 @@ struct WyrmReadyRoom: View {
             }
             .padding(.top, safe.top).padding(.bottom, safe.bottom)
             .padding(.leading, safe.leading).padding(.trailing, safe.trailing)
-            .padding(.horizontal, 40).padding(.vertical, 24)
+            .padding(.horizontal, 18).padding(.vertical, 14)
         }
         .frame(width: size.width, height: size.height)
         .contentShape(Rectangle())
@@ -214,7 +214,7 @@ struct WyrmReadyRoom: View {
                 Text(entering ? "ENTERING" : "PLAY").font(.androidWyrm(13, .bold)).tracking(2.5)
             }
             .foregroundColor(enabled ? ATheme.onInk : ATheme.quiet)
-            .frame(width: 180, height: 62)
+            .frame(width: 160, height: 52)
             .background(Capsule().fill(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.track)))
             .contentShape(Capsule())
         }
@@ -257,7 +257,7 @@ struct WyrmReadyRoom: View {
             }
             .foregroundColor(enabled ? ATheme.ink : ATheme.quiet)
             .opacity(enabled ? 1 : 0.6)
-            .frame(width: width, height: 49)
+            .frame(width: width, height: 44)
             .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(WyrmGlass.native ? Color.clear : ATheme.card))
             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 11, style: .continuous))

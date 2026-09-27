@@ -81,7 +81,8 @@ checks = {
     "in-game name follows the account": "syncIngameName" in SYNC and "^[A-Za-z0-9_]{3,20}$" in SYNC,
     "twenty image arrows plus the five drawn styles in one picker": ARROWS.count('", "') >= 15 and "Vanced arrow" not in ARROWS
         and "WyrmArrowShapes.points.count" in ARROWS and (ROOT / "Resources" / "ArrowSkins.png").exists(),
-    "image arrows are one atlas drawn as a rotated quad": "ImDrawList_AddImageQuad" in ARROWS_C and "WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length, alpha)" in PREPARE
+    "image arrows are one atlas drawn as a rotated quad": "ImDrawList_AddImageQuad" in ARROWS_C and "WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length," in PREPARE
+        and "atlas_sampler" in ARROWS_C
         and "SourcesOriginal/AppleArrowSkins.c" in SPEC and "Resources/ArrowSkins.png" in SPEC,
     "brightness reaches drawn and image arrows; colour only the drawn": "wyrm_brightness" in PREPARE and "if store.skin < 0, let colour" in ARROWS,
     "one in-game name: Play and the Ready Room both write the engine's": "func setNickname(_ raw: String)" in LEGACY

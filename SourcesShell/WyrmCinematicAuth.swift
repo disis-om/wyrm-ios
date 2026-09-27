@@ -219,7 +219,7 @@ struct WyrmCinematicAuth: View {
                     .frame(maxWidth: .infinity)
                     .frame(height: 48)
             }
-            .buttonStyle(.plain)
+            .modifier(WyrmGlassButtonModifier(radius: 15, fallback: PlainButtonStyleShim()))
             .accessibilityHint("Sign in with an existing Wyrm username and password")
 
             Text("Privacy")
@@ -412,11 +412,11 @@ struct WyrmCinematicAuth: View {
                 .font(.system(size: 15, weight: .bold))
                 .foregroundColor(ATheme.ink)
                 .frame(width: 46, height: 46)
-                .background(Color.white.opacity(0.88))
+                .background(WyrmGlass.native ? Color.clear : Color.white.opacity(0.88))
                 .clipShape(Circle())
-                .overlay(Circle().stroke(ATheme.rule))
+                .overlay(Circle().stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
         }
-        .buttonStyle(.plain)
+        .modifier(WyrmGlassButtonModifier(fallback: WSPressStyle()))
         .accessibilityLabel("Back")
     }
 
@@ -832,12 +832,12 @@ private struct WyrmAuthKeyboardAction: View {
             }
             .padding(.horizontal, 18)
             .frame(height: 54)
-            .background(enabled ? ATheme.ink : ATheme.ink.opacity(0.34))
+            .background(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.ink.opacity(0.34)))
             .foregroundColor(ATheme.onInk)
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .shadow(color: ATheme.ink.opacity(enabled ? 0.18 : 0), radius: 18, y: 8)
+            .shadow(color: ATheme.ink.opacity(enabled && !WyrmGlass.native ? 0.18 : 0), radius: 18, y: 8)
         }
-        .buttonStyle(.plain)
+        .modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WSPressStyle()))
         .disabled(!enabled)
     }
 }

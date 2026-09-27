@@ -43,6 +43,10 @@ final class WyrmKeyboardController: ObservableObject {
     @Published private(set) var opacity: Double
     /// Where the landscape keyboard was dragged to, from its resting spot.
     @Published private(set) var landscapeOffset: CGSize
+    /// The strip iOS 26 adds under the input view. Pages only rise by the input
+    /// view's own height, so a composer sat this far under the keys; composers
+    /// add it back. Measured on screen, kept once known (it is per device).
+    @Published var bottomGap: CGFloat = 0
 
     init() {
         let defaults = UserDefaults.standard
@@ -257,6 +261,37 @@ final class WyrmKeyboardHostView: UIInputView, UIInputViewAudioFeedback {
     }
 
     required init?(coder: NSCoder) { nil }
+
+    /// Fills the strip under the input view with the keyboard's own paper, so
+    /// the keys no longer float above a grey margin.
+    private lazy var filler: UIView = {
+        let view = UIView()
+        view.isUserInteractionEnabled = false
+        insertSubview(view, at: 0)
+        return view
+    }()
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        clipsToBounds = false
+        filler.backgroundColor = UIColor(ATheme.well).withAlphaComponent(CGFloat(WyrmKeyboardController.shared.opacity))
+        filler.frame = CGRect(x: 0, y: bounds.height, width: bounds.width, height: 120)
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        guard window != nil else { return }
+        // Measured once the keyboard has landed, not mid-slide.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.measureGap() }
+    }
+
+    private func measureGap() {
+        guard let window else { return }
+        let bottom = convert(bounds, to: window).maxY
+        let gap = max(0, min(60, window.bounds.height - bottom))
+        let controller = WyrmKeyboardController.shared
+        if abs(controller.bottomGap - gap) > 0.5 { controller.bottomGap = gap }
+    }
 
     /// Room kept under the keys for the home indicator. iOS 26 already seats an
     /// input view above it inside its own keyboard container, so adding the
