@@ -683,7 +683,7 @@ private struct WyrmTeamDetail: View {
                 .background(Circle().fill(WyrmGlass.native ? Color.clear : ATheme.card))
                 .contentShape(Circle())
         }
-        .modifier(WyrmGlassButtonModifier(radius: nil, fallback: WSPressStyle()))
+        .modifier(WyrmGlassCircleButton())
         .accessibilityLabel("Team settings")
     }
 
@@ -796,7 +796,7 @@ private struct WyrmDeveloperDetail: View {
                                         .background(Circle().fill(WyrmGlass.native ? Color.clear : ATheme.ink))
                                         .contentShape(Circle())
                                 }
-                                .modifier(WyrmGlassButtonModifier(prominent: true, radius: 22, fallback: WSPressStyle()))
+                                .modifier(WyrmGlassCircleButton(tint: ATheme.ink))
                                 .padding(12)
                                 .accessibilityLabel("Scroll to the latest log line")
                             }

@@ -262,35 +262,34 @@ final class WyrmKeyboardHostView: UIInputView, UIInputViewAudioFeedback {
 
     required init?(coder: NSCoder) { nil }
 
-    /// Fills the strip under the input view with the keyboard's own paper, so
-    /// the keys no longer float above a grey margin.
-    private lazy var filler: UIView = {
-        let view = UIView()
-        view.isUserInteractionEnabled = false
-        insertSubview(view, at: 0)
-        return view
-    }()
-
+    /// iOS 26 grows a self-sizing input view by its own bottom safe area but
+    /// reports only the height asked for, so a page rose that much too little
+    /// and its composer sat under the keys. The difference is published for
+    /// composers to add back.
     override func layoutSubviews() {
         super.layoutSubviews()
-        clipsToBounds = false
-        filler.backgroundColor = UIColor(ATheme.well).withAlphaComponent(CGFloat(WyrmKeyboardController.shared.opacity))
-        filler.frame = CGRect(x: 0, y: bounds.height, width: bounds.width, height: 120)
+        measureGap()
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
         guard window != nil else { return }
-        // Measured once the keyboard has landed, not mid-slide.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.measureGap() }
+        // Again once the keyboard has landed, not mid-slide.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.measureGap() }
     }
 
+    /// Whichever is larger: the growth of this view past the height it asked
+    /// for, or any strip the system keeps below it on screen.
     private func measureGap() {
-        guard let window else { return }
-        let bottom = convert(bounds, to: window).maxY
-        let gap = max(0, min(60, window.bounds.height - bottom))
+        var extra = bounds.height - height.constant
+        if let window {
+            extra = max(extra, window.bounds.height - convert(bounds, to: window).maxY)
+        }
+        extra = max(0, min(60, extra))
         let controller = WyrmKeyboardController.shared
-        if abs(controller.bottomGap - gap) > 0.5 { controller.bottomGap = gap }
+        if abs(controller.bottomGap - extra) > 0.5 {
+            DispatchQueue.main.async { controller.bottomGap = extra }
+        }
     }
 
     /// Room kept under the keys for the home indicator. iOS 26 already seats an
@@ -340,8 +339,10 @@ struct WyrmKeyboardView: View {
             if compact { knob }
         }
         .padding(.bottom, compact ? 2 : WyrmKeyboardHostView.homeIndicatorPad)
+        // Clipping only the floating landscape keys: a clip here also cut the
+        // paper off at the safe area and left a grey strip under the keys.
         .background(keyboardBackground.opacity(controller.opacity).ignoresSafeArea())
-        .clipShape(RoundedRectangle(cornerRadius: compact ? 18 : 0, style: .continuous))
+        .modifier(WyrmKeyboardClip(compact: compact))
         .opacity(0.35 + 0.65 * controller.opacity)
         .animation(.easeInOut(duration: 0.2), value: controller.showingSettings)
         .id(theme.identity)
@@ -621,5 +622,12 @@ struct WyrmKeyboardSettings: View {
                 .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
         }
         .buttonStyle(WSPressStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.4)
+    }
+}
+
+private struct WyrmKeyboardClip: ViewModifier {
+    let compact: Bool
+    func body(content: Content) -> some View {
+        if compact { content.clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) } else { content }
     }
 }

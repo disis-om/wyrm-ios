@@ -345,7 +345,7 @@ struct WyrmSkinRoot: View {
             Button { enter(.overview) } label: {
                 Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundColor(ATheme.ink)
                     .frame(width: 34, height: 34).background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.92)).clipShape(Circle())
-            }.modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Back to skin wardrobe")
+            }.modifier(WyrmGlassCircleButton()).accessibilityLabel("Back to skin wardrobe")
             Text(section.title).font(.androidWyrm(18, .bold))
             Spacer()
             Text("AUTO-SAVED").font(.androidWyrm(8.5, .bold)).tracking(1).foregroundColor(ATheme.live)

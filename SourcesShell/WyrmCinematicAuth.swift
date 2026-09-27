@@ -416,7 +416,7 @@ struct WyrmCinematicAuth: View {
                 .clipShape(Circle())
                 .overlay(Circle().stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
         }
-        .modifier(WyrmGlassButtonModifier(fallback: WSPressStyle()))
+        .modifier(WyrmGlassCircleButton())
         .accessibilityLabel("Back")
     }
 

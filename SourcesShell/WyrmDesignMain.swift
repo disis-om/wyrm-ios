@@ -376,11 +376,11 @@ private struct WyrmArenaPicker: View {
                     VStack(alignment: .leading, spacing: 2) { Text("LIVE DIRECTORY").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.live); Text("Pick a server").font(.androidWyrm(27, .bold)) }
                     Spacer()
                     Button { showAdd.toggle() } label: { Image(systemName: "plus").font(.system(size: 17, weight: .semibold)).foregroundColor(ATheme.ink).frame(width: 36, height: 36).background(WyrmGlass.native ? Color.clear : ATheme.card).clipShape(Circle()) }
-                        .modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Add custom arena IP")
+                        .modifier(WyrmGlassCircleButton()).accessibilityLabel("Add custom arena IP")
                     Button { presentation.wrappedValue.dismiss() } label: {
                         Image(systemName: "xmark").font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.ink)
                             .frame(width: 36, height: 36).background(WyrmGlass.native ? Color.clear : ATheme.card).clipShape(Circle())
-                    }.modifier(WyrmGlassButtonModifier(fallback: WSPressStyle())).accessibilityLabel("Close")
+                    }.modifier(WyrmGlassCircleButton()).accessibilityLabel("Close")
                 }.padding(20)
                 HStack { Image(systemName: "magnifyingglass"); TextField("Arena code or IP", text: $search).textInputAutocapitalization(.never).disableAutocorrection(true) }
                     .font(.androidWyrm(13)).padding(.horizontal, 14).frame(height: 44).background(ATheme.card.opacity(0.82)).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16)

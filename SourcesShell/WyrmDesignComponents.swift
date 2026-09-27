@@ -112,6 +112,25 @@ struct PlainButtonStyleShim: ButtonStyle {
     }
 }
 
+/// A round icon button in Liquid Glass at exactly its own size. The system
+/// glass button styles pad their label, which blew a 36 pt icon up into a
+/// large pill; this puts the glass on the button's own circle instead.
+struct WyrmGlassCircleButton: ViewModifier {
+    var tint: Color? = nil
+    func body(content: Content) -> some View {
+#if compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            content.buttonStyle(WSPressStyle())
+                .glassEffect(tint.map { Glass.regular.tint($0).interactive() } ?? Glass.regular.interactive(), in: Circle())
+        } else {
+            content.buttonStyle(WSPressStyle())
+        }
+#else
+        content.buttonStyle(WSPressStyle())
+#endif
+    }
+}
+
 struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
     var prominent = false
     /// nil draws a capsule.
