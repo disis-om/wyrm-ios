@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "version": "0.18.3",
-  "build": 69,
+  "version": "0.18.4",
+  "build": 71,
   "channel": "beta",
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v0.18.3-build-69/Wyrm-0.18.3-build-69-unsigned.ipa",
-  "ipaSize": 33317315,
-  "sha256": "c0f62d6c1214248af9e998cbc88e234e09b624f04093362304aae985f9f66a54",
-  "publishedAt": "2026-09-26T20:33:25Z",
-  "notes": "First iOS beta. Real Liquid Glass on iOS 26, beta update channel, install updates with AltStore, SideStore, KSign or ESign, arena drops fixed (tags off for now)."
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v0.18.4-build-71/Wyrm-0.18.4-build-71-unsigned.ipa",
+  "ipaSize": 33382834,
+  "sha256": "cb2f0bd8fa16e0961953ff6cfb3c5544c1dcf4812e03813694e26be32d5a2812",
+  "publishedAt": "2026-09-27T08:49:47Z",
+  "notes": "Team mode redesigned: saved teams behind the gear, FPS, ping and leaderboard in the roster, clean names, chat like Global chat. Update now button with Back up before updating. Liquid Glass on every button. Image arrows keep their real colours. Smaller edge-to-edge lobby with Home. Colour wheel knob turns only when held. Developer logs fixed."
 }
