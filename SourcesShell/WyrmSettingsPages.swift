@@ -62,6 +62,7 @@ struct WyrmSettingsHub: View {
                         + " · Wyrm \(WyrmBuild.version)"
                         + (engine.settingsVersion.isEmpty ? "" : " · format v\(engine.settingsVersion)"),
                     "", .backup)])
+                group("About", [("About Wyrm", "The story, the maker, and how to support", "", .about)])
                 }
 
                 WSSectionLabel("Developer", top: 0)
@@ -190,6 +191,7 @@ struct WyrmControlsWorkspace: View {
                 }
             }
         }
+        .wyrmAdjustPreviewCard(engine: engine)
     }
 
     private var slide: AnyTransition {
@@ -202,7 +204,10 @@ struct WyrmControlsPage: View {
     @ObservedObject var engine: WyrmShellStore
     var parent = "Settings"
     let close: () -> Void
-    var body: some View { WSScaffold(title: "Controls", parent: parent, onBack: close) { WyrmControlsContent(engine: engine) } }
+    var body: some View {
+        WSScaffold(title: "Controls", parent: parent, onBack: close) { WyrmControlsContent(engine: engine) }
+            .wyrmAdjustPreviewCard(engine: engine)
+    }
 }
 
 struct WyrmControlsContent: View {
@@ -319,6 +324,7 @@ struct WyrmControlsPreview: View {
                 Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(ATheme.quiet).padding(12)
                 if steering != 2 {
                     WyrmPaperJoystick(diameter: 60 * engine.value("controls.joystick_size", 1), opacity: opacity)
+                        .wyrmAdjustPlace(.joystick)
                         .position(previewCentre("layout.joystick", proxy.size, child: 60 * engine.value("controls.joystick_size", 1)))
                 } else {
                     // The arena's arrow as chosen: a drawn style or an image skin.
@@ -326,16 +332,18 @@ struct WyrmControlsPreview: View {
                                    brightness: arrowSkins.brightness)
                         .frame(width: 104 * arrowSize, height: 74 * arrowSize)
                         .opacity(min(max(opacity, 0), 1))
+                        .wyrmAdjustPlace(.arrow)
                         .position(x: proxy.size.width / 2, y: proxy.size.height / 2)
                 }
                 if engine.setting("controls.boost_mode")?.index == 1 {
                     let d = 46 * engine.value("controls.boost_size", 1)
-                    WyrmPaperBoost(diameter: d, opacity: opacity).position(previewCentre("layout.boost", proxy.size, child: d))
+                    WyrmPaperBoost(diameter: d, opacity: opacity).wyrmAdjustPlace(.boost).position(previewCentre("layout.boost", proxy.size, child: d))
                 }
                 if engine.setting("controls.zoom_enabled")?.enabled ?? true {
                     let vertical = engine.setting("controls.zoom_orientation")?.index == 1
                     let length = 102 * engine.value("controls.zoom_length", 1)
                     WyrmPaperZoomBar(length: length, vertical: vertical, opacity: opacity, value: 0.45)
+                        .wyrmAdjustPlace(.zoom)
                         .position(previewCentre("layout.zoom", proxy.size, child: vertical ? 26 : length, childHeight: vertical ? length : 26))
                 }
             }

@@ -195,7 +195,7 @@ struct WyrmArrowSettingsCard: View {
             }.buttonStyle(WSPressStyle())
             if let size { WSTypedRow(setting: size, engine: engine) }
             WSSliderRow(title: "Brightness", valueText: "\(Int((store.brightness * 100).rounded()))%",
-                        value: store.brightness, range: 0.2...1) { store.setBrightness($0) }
+                        value: store.brightness, range: 0.2...1, adjusting: .arrow) { store.setBrightness($0) }
             if store.skin < 0, let colour { WSColourRow(setting: colour, engine: engine) }
             WSRows(rows: others, engine: engine)
         }

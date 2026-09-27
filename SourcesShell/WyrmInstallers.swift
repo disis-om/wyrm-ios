@@ -15,13 +15,16 @@ import UIKit
  *              opened, where it is pasted into ESign's downloader.
  *
  * A missing app opens a sheet with that app's own setup steps. Icons load from
- * each project's official source feed (ESign publishes none, so it gets a mark).
+ * each project's official source feed; ESign publishes none, so its logo ships
+ * in the asset catalogue (`ESignIcon`).
  */
 struct WyrmInstaller: Identifiable, Equatable {
     let id: String
     let name: String
     let scheme: String
     let icon: URL?
+    /// A bundled logo, for an app whose feed has none.
+    var asset: String? = nil
     let tagline: String
     let steps: [String]
     let website: URL?
@@ -84,7 +87,7 @@ struct WyrmInstaller: Identifiable, Equatable {
                     "Come back and tap KSign: the update downloads inside KSign, then sign and install it."],
             website: URL(string: "https://github.com/Nyasami/Ksign/releases")),
         WyrmInstaller(
-            id: "esign", name: "ESign", scheme: "esign", icon: nil,
+            id: "esign", name: "ESign", scheme: "esign", icon: nil, asset: "ESignIcon",
             tagline: "On-device signer",
             steps: ["Install ESign from its official source.",
                     "In ESign, import a signing certificate.",
@@ -172,7 +175,9 @@ struct WyrmInstallerIcon: View {
     let installer: WyrmInstaller
     var body: some View {
         Group {
-            if let icon = installer.icon {
+            if let asset = installer.asset {
+                Image(asset).resizable().scaledToFill()
+            } else if let icon = installer.icon {
                 AsyncImage(url: icon) { phase in
                     if let image = phase.image { image.resizable().scaledToFill() } else { monogram }
                 }

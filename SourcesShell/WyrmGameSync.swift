@@ -182,6 +182,11 @@ final class WyrmGameSync {
 
     // MARK: - Arena skins
 
+    /// The arena-skin side channel is switched off (OM, 2026-09-28): nothing
+    /// sends this player's skin code to the backend in the background, and no
+    /// other snakes' skins are asked for. Set to false to bring it back.
+    static let arenaSkinSyncDisabled = true
+
     private var identitySequence = ""
     private var skinArena = ""
     private var skinGeneration: String?
@@ -200,6 +205,7 @@ final class WyrmGameSync {
     }
 
     private func pollArenaIdentity() {
+        guard !Self.arenaSkinSyncDisabled else { return }
         let fields = copiedString(WyrmIOSArenaIdentitySnapshot()).split(separator: "\t", omittingEmptySubsequences: false).map(String.init)
         guard fields.count >= 4, fields[0] != identitySequence else { return }
         identitySequence = fields[0]
@@ -254,6 +260,7 @@ final class WyrmGameSync {
     }
 
     private func pollVisibleSkins() {
+        guard !Self.arenaSkinSyncDisabled else { return }
         let fields = copiedString(WyrmIOSArenaVisibleSnapshot()).split(separator: "\t").map(String.init)
         guard fields.count == 2, fields[0] != visibleSequence else { return }
         visibleSequence = fields[0]

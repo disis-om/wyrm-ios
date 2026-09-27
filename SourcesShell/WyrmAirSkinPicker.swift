@@ -12,6 +12,10 @@ enum WyrmAirSkin {
 
     static func marker(kind: Int) -> UInt32 { kind == 0 ? plainMarker : rimMarker }
 
+    /// AIR's `ksmc_t` under each wheel bead. Off, like the engine's
+    /// `WYRM_AIR_BEAD_SHADOW`: wheel skins now look like grid skins.
+    static let beadShadow = false
+
     static func kind(of rgba: UInt32) -> Int? {
         switch rgba >> 24 {
         case 0xFE: return 0
@@ -268,9 +272,11 @@ struct WyrmAirWheelPanel: View {
     private var brightness: Double { WyrmAirSkin.brightness(angle: bezelAngle) }
 
     var body: some View {
-        // The two beads stand on the left and the wheel sits to their right,
-        // so the whole builder fits without scrolling the page.
+        // The wheel sits on the left and the two beads stand to its right
+        // (OM, 2026-09-28), so the whole builder fits without scrolling.
         HStack(alignment: .center, spacing: 16) {
+            wheelView
+                .frame(maxWidth: 300)
             VStack(spacing: 22) {
                 ForEach(0..<2, id: \.self) { kind in
                     WyrmAirBeadButton(image: beads[kind], rgb: rgb,
@@ -279,8 +285,6 @@ struct WyrmAirWheelPanel: View {
                     }
                 }
             }
-            wheelView
-                .frame(maxWidth: 300)
         }
         .padding(.horizontal, 18)
     }
@@ -311,6 +315,9 @@ struct WyrmAirWheelPanel: View {
                     .opacity(abs(brightness))
                     .frame(width: 2 * 128 * 1.005 * unit, height: 2 * 128 * 1.005 * unit)
                     .position(centre)
+                WyrmAirWheelGuides(unit: unit)
+                    .frame(width: proxy.size.width, height: proxy.size.height)
+                    .allowsHitTesting(false)
                 // The colour disc: a touch here picks the hue, as in AIR.
                 Circle().fill(Color.white.opacity(0.001))
                     .frame(width: 2 * WyrmAirSkin.wheelRadius * unit, height: 2 * WyrmAirSkin.wheelRadius * unit)
@@ -420,6 +427,53 @@ struct WyrmAirWheelPanel: View {
         storedY = pointerY
         storedAngle = bezelAngle
         storedRGB = Int(rgb)
+    }
+}
+
+/// Accessibility marks on the wheel (OM, 2026-09-28), so a colour can be found
+/// again: a faint 12 × 12 grid over the colour disc, and a clock face round
+/// the bezel — a dash every 6°, a longer one every 30° with its hour, 1 to 12.
+/// The numbers keep one size whatever the wheel's size.
+struct WyrmAirWheelGuides: View {
+    let unit: CGFloat
+
+    var body: some View {
+        Canvas { context, size in
+            let c = CGPoint(x: size.width / 2, y: size.height / 2)
+            let r = WyrmAirSkin.wheelRadius * unit
+            // Grid: drawn twice, dark then light, so it shows on every hue.
+            var grid = Path()
+            let cell = 2 * r / 12
+            for i in 1..<12 {
+                let o = -r + CGFloat(i) * cell
+                grid.move(to: CGPoint(x: c.x + o, y: c.y - r)); grid.addLine(to: CGPoint(x: c.x + o, y: c.y + r))
+                grid.move(to: CGPoint(x: c.x - r, y: c.y + o)); grid.addLine(to: CGPoint(x: c.x + r, y: c.y + o))
+            }
+            var disc = context
+            disc.clip(to: Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)))
+            disc.stroke(grid, with: .color(.black.opacity(0.10)), lineWidth: 0.5)
+            disc.stroke(grid.offsetBy(dx: 0.5, dy: 0.5), with: .color(.white.opacity(0.12)), lineWidth: 0.5)
+
+            // Clock ticks just outside the bezel.
+            let inner = (WyrmAirSkin.wheelRadius + WyrmAirSkin.bezelWidth + 2) * unit
+            var minor = Path(), major = Path()
+            for step in 0..<60 {
+                let a = CGFloat(step) / 60 * 2 * .pi - .pi / 2
+                let long = step % 5 == 0
+                let from = CGPoint(x: c.x + cos(a) * inner, y: c.y + sin(a) * inner)
+                let reach = inner + (long ? 6 : 3)
+                let to = CGPoint(x: c.x + cos(a) * reach, y: c.y + sin(a) * reach)
+                if long { major.move(to: from); major.addLine(to: to) } else { minor.move(to: from); minor.addLine(to: to) }
+            }
+            context.stroke(minor, with: .color(ATheme.quiet.opacity(0.55)), lineWidth: 0.8)
+            context.stroke(major, with: .color(ATheme.mute), lineWidth: 1.3)
+            let labelRadius = inner + 14
+            for hour in 1...12 {
+                let a = CGFloat(hour) / 12 * 2 * .pi - .pi / 2
+                let text = Text("\(hour)").font(.androidWyrm(9, .semibold)).foregroundColor(ATheme.mute)
+                context.draw(text, at: CGPoint(x: c.x + cos(a) * labelRadius, y: c.y + sin(a) * labelRadius))
+            }
+        }
     }
 }
 

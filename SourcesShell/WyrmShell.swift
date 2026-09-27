@@ -724,6 +724,7 @@ final class WyrmShellHost: NSObject {
         WyrmThemeStore.shared.publishArenaTheme()
         WyrmThemeStore.shared.applyControlAppearance()
         WyrmArrowSkinStore.shared.publish()
+        WyrmLookStore.shared.publish()
         WyrmKeyboardController.shared.install()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())

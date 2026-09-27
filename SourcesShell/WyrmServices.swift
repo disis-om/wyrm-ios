@@ -706,7 +706,13 @@ final class WyrmServiceStore: ObservableObject {
         async let b = WyrmServiceClient.shared.connections(playerID: playerID, kind: "following", token: self.token)
         let rows = try await (a, b); self.followers = rows.0; self.following = rows.1
     } }
-    func follow(_ player: WyrmServicePlayer) async { await perform { _ = try await WyrmServiceClient.shared.setFollow(playerID: player.id, following: !player.isFollowing, token: self.token) } }
+    /// Follows or unfollows, and keeps the player the server answers with, so
+    /// the profile's button flips (the answer used to be thrown away).
+    func follow(_ player: WyrmServicePlayer) async {
+        await perform {
+            self.profiles[player.id] = try await WyrmServiceClient.shared.setFollow(playerID: player.id, following: !player.isFollowing, token: self.token)
+        }
+    }
 
     func refreshConversations() async { await perform { self.conversations = try await WyrmServiceClient.shared.conversations(token: self.token) } }
     func loadThread(playerID: String) async { await perform { self.messages = try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token) } }

@@ -38,6 +38,7 @@ struct WyrmDetailHost: View {
         case .buildNotes: WyrmBuildNotesPage(close: close)
         case .globalChat: WyrmGlobalChatDetail(account: account, services: services, close: close, open: open)
         case .developer: WyrmDeveloperDetail(close: close)
+        case .about: WyrmAboutPage(close: close)
         }
     }
 }
@@ -214,6 +215,7 @@ private struct WyrmProfileDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
+    @State private var followBusy = false
     private var own: Bool { playerID.isEmpty || playerID == account.player?.id }
     private var servicePlayer: WyrmServicePlayer? { services.profiles[playerID] ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
     var body: some View {
@@ -224,18 +226,43 @@ private struct WyrmProfileDetail: View {
                     Text(own ? (account.player?.displayName ?? "Wyrm") : (servicePlayer?.displayName ?? "Player")).font(.androidWyrm(27, .bold)).padding(.top, 14)
                     Text(own ? (account.player?.handle ?? "") : (servicePlayer?.handle ?? "")).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
                     Text(profileBio).font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center).padding(.horizontal, 34).padding(.top, 10)
+                    if !own { followBar.padding(.top, 16).padding(.horizontal, 16) }
                     HStack(spacing: 0) { WyrmMetric(label: "BEST", value: score.wyrmFormatted); Rectangle().fill(ATheme.rule).frame(width: 1, height: 48); WyrmMetric(label: "KILLS", value: kills.wyrmFormatted) }.background(ATheme.card).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(16)
                     WyrmPaperCard {
                         WyrmListRow(title: "Followers", value: "\(followers)") { open(.people("followers")) }
                         WyrmListRow(title: "Following", value: "\(following)") { open(.people("following")) }
                         if own { WyrmListRow(title: "Sign out", destructive: true, showsChevron: false) { account.signOut() } }
-                        else { WyrmListRow(title: servicePlayer?.isFollowing == true ? "Unfollow" : "Follow", value: servicePlayer?.followsYou == true ? "Follows you" : "", showsChevron: false) { if let person = servicePlayer { Task { await services.follow(person) } } } }
                     }
                     Spacer().frame(height: 24)
                 }
             }
         }
         .task(id: playerID) { if !own { await services.loadPlayer(playerID) } }
+    }
+    /// Follow, Follow back or Following, as a real button under the name. It
+    /// was a plain third row in the list card, which read as no button at all.
+    @ViewBuilder private var followBar: some View {
+        let following = servicePlayer?.isFollowing == true
+        let followsYou = servicePlayer?.followsYou == true
+        let ready = servicePlayer != nil && !followBusy
+        VStack(spacing: 8) {
+            if followsYou {
+                Text(following ? "You follow each other" : "Follows you")
+                    .font(.androidWyrm(11, .semibold)).tracking(0.4).foregroundColor(ATheme.live)
+                    .padding(.horizontal, 10).padding(.vertical, 4)
+                    .background(Capsule().fill(ATheme.live.opacity(0.14)))
+            }
+            if following {
+                WSOutlineButton(label: followBusy ? "…" : "Following", enabled: ready, onClick: toggleFollow)
+            } else {
+                WSPrimaryButton(label: followBusy ? "…" : followsYou ? "Follow back" : "Follow", enabled: ready, onClick: toggleFollow)
+            }
+        }
+    }
+    private func toggleFollow() {
+        guard let person = servicePlayer, !followBusy else { return }
+        followBusy = true
+        Task { await services.follow(person); followBusy = false }
     }
     private var profileBio: String { own ? ((account.player?.bio.isEmpty == false ? account.player?.bio : "Nothing yet. Add a line about how you play.") ?? "") : (servicePlayer?.bio.isEmpty == false ? servicePlayer!.bio : "Nothing here yet.") }
     private var score: Int64 { own ? (account.player?.highestScore ?? 0) : (servicePlayer?.highestScore ?? 0) }

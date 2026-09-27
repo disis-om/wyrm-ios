@@ -17,6 +17,7 @@ targets:
       - path: SourcesOriginal/AppleVulkan.c
       - path: SourcesOriginal/WyrmShell.c
       - path: SourcesOriginal/AppleArrowSkins.c
+      - path: SourcesOriginal/AppleWyrmLook.c
       - path: SourcesOriginal/AppleSkinMailbox.c
     dependencies:
       - framework: Vendor/SDL3.xcframework
@@ -32,7 +33,7 @@ targets:
           - WYRM_IOS=1
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
-          - APP_VERSION=\"0.18.5\"
+          - APP_VERSION=\"0.18.6\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -54,6 +55,8 @@ targets:
       - path: Resources/manrope.ttf
       - path: Resources/bodoni_moda.ttf
       - path: Resources/ArrowSkins.png
+        buildPhase: resources
+      - path: Resources/WyrmAccessories.png
         buildPhase: resources
       - path: Resources/privacy.txt
         buildPhase: resources
@@ -93,8 +96,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "0.18.5"
-        CURRENT_PROJECT_VERSION: "72"
+        MARKETING_VERSION: "0.18.6"
+        CURRENT_PROJECT_VERSION: "73"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

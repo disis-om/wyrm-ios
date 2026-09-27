@@ -3,6 +3,8 @@
 
 Writes, deterministically:
   Resources/AirSkin/tex_atlas_8k.png   original engine atlas + three AIR cells
+    (run Scripts/generate-wyrm-beads.py afterwards: it adds Wyrm's own beads
+    and copies the atlas to Wyrm Android)
   Resources/AirSkin/air_colour_wheel.png  the AIR hue/saturation disc, 768 px
 
 Atlas cells (448 px = one bead cell, the AIR 64 px bitmaps at 7x):

@@ -43,10 +43,12 @@ final class WyrmKeyboardController: ObservableObject {
     @Published private(set) var opacity: Double
     /// Where the landscape keyboard was dragged to, from its resting spot.
     @Published private(set) var landscapeOffset: CGSize
-    /// The strip iOS 26 adds under the input view. Pages only rise by the input
-    /// view's own height, so a composer sat this far under the keys; composers
-    /// add it back. Measured on screen, kept once known (it is per device).
-    @Published var bottomGap: CGFloat = 0
+    /// Where the docked keys start, in screen points (nil while hidden). iOS 26
+    /// grows the input view past the height it reports, so a page rises too
+    /// little and its composer sat about 17 pt under the keys. Guessing that
+    /// growth never matched the device; composers now compare their own bottom
+    /// edge with this and lift by the overlap (`wyrmAboveKeys`).
+    @Published var keysTop: CGFloat? = nil
 
     init() {
         let defaults = UserDefaults.standard
@@ -262,33 +264,33 @@ final class WyrmKeyboardHostView: UIInputView, UIInputViewAudioFeedback {
 
     required init?(coder: NSCoder) { nil }
 
-    /// iOS 26 grows a self-sizing input view by its own bottom safe area but
-    /// reports only the height asked for, so a page rose that much too little
-    /// and its composer sat under the keys. The difference is published for
-    /// composers to add back.
     override func layoutSubviews() {
         super.layoutSubviews()
-        measureGap()
+        measureTop()
     }
 
     override func didMoveToWindow() {
         super.didMoveToWindow()
-        guard window != nil else { return }
+        guard window != nil else {
+            DispatchQueue.main.async { WyrmKeyboardController.shared.keysTop = nil }
+            return
+        }
         // Again once the keyboard has landed, not mid-slide.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.measureGap() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.45) { [weak self] in self?.measureTop() }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) { [weak self] in self?.measureTop() }
     }
 
-    /// Whichever is larger: the growth of this view past the height it asked
-    /// for, or any strip the system keeps below it on screen.
-    private func measureGap() {
-        var extra = bounds.height - height.constant
-        if let window {
-            extra = max(extra, window.bounds.height - convert(bounds, to: window).maxY)
-        }
-        extra = max(0, min(60, extra))
+    /// The top of the keys as the screen shows them: the hosted keys' own top,
+    /// converted out of the keyboard window into screen space.
+    private func measureTop() {
+        guard let window, window.bounds.height > 0 else { return }
+        let local = host.view.convert(host.view.bounds, to: window)
+        let top = window.convert(local, to: window.screen.coordinateSpace).minY
+        // Mid-slide frames start below the screen; only a seated keyboard counts.
+        guard top < window.screen.bounds.height - 40 else { return }
         let controller = WyrmKeyboardController.shared
-        if abs(controller.bottomGap - extra) > 0.5 {
-            DispatchQueue.main.async { controller.bottomGap = extra }
+        if abs((controller.keysTop ?? -1) - top) > 0.5 {
+            DispatchQueue.main.async { controller.keysTop = top }
         }
     }
 
@@ -622,6 +624,28 @@ struct WyrmKeyboardSettings: View {
                 .overlay(RoundedRectangle(cornerRadius: 9, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
         }
         .buttonStyle(WSPressStyle()).disabled(!enabled).opacity(enabled ? 1 : 0.4)
+    }
+}
+
+/// Lifts a bottom composer so its lower edge sits on the keys: the overlap of
+/// its measured bottom (screen points) with the keys' real top.
+struct WyrmAboveKeys: ViewModifier {
+    @ObservedObject private var keyboard = WyrmKeyboardController.shared
+    @State private var bottom: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        let lift = keyboard.focused && !keyboard.embedded
+            ? max(0, min(80, bottom - (keyboard.keysTop ?? .greatestFiniteMagnitude))) : 0
+        content
+            .padding(.bottom, lift)
+            .animation(.easeOut(duration: 0.2), value: lift)
+            // Measured outside the lift, so lifting never moves what is measured.
+            .background(GeometryReader { proxy in
+                let edge = proxy.frame(in: .global).maxY
+                Color.clear
+                    .onAppear { bottom = edge }
+                    .onChange(of: edge) { bottom = $0 }
+            })
     }
 }
 

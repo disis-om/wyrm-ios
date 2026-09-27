@@ -69,6 +69,7 @@ struct WSScaffold<Content: View>: View {
                         Spacer().frame(height: 40)
                     }
                 }
+                .wyrmAdjustViewport()
                 .onAppear { reveal(proxy) }
                 .onChange(of: focus.pulse) { _ in reveal(proxy) }
             }
@@ -236,6 +237,8 @@ struct WSSliderRow: View {
     let range: ClosedRange<Double>
     var step: Double? = nil
     var first = false
+    /// A control this slider changes: holding it raises the adjust preview.
+    var adjusting: WyrmAdjustPreview.Subject? = nil
     let onChange: (Double) -> Void
     var body: some View {
         VStack(spacing: 0) {
@@ -257,12 +260,15 @@ struct WSSliderRow: View {
     @ViewBuilder private var slider: some View {
         let binding = Binding(get: { min(max(value, range.lowerBound), range.upperBound) }, set: onChange)
         if let step, step > 0, range.upperBound > range.lowerBound {
-            Slider(value: binding, in: range, step: step)
+            Slider(value: binding, in: range, step: step, onEditingChanged: editing)
         } else if range.upperBound > range.lowerBound {
-            Slider(value: binding, in: range)
+            Slider(value: binding, in: range, onEditingChanged: editing)
         } else {
             Slider(value: .constant(range.lowerBound), in: 0...1).disabled(true)
         }
+    }
+    private func editing(_ active: Bool) {
+        if let adjusting { WyrmAdjustPreview.shared.editing(adjusting, active) }
     }
 }
 
@@ -439,6 +445,11 @@ struct WSColourRow: View {
         }
         .onAppear(perform: sync)
         .onChange(of: setting.values) { _ in if !dragging { sync() } }
+        .onChange(of: dragging) { active in
+            if let subject = WyrmAdjustPreview.subject(for: setting.id, engine: engine) {
+                WyrmAdjustPreview.shared.editing(subject, active)
+            }
+        }
     }
 
     private func shade(_ label: String, _ value: Double, _ colors: [Color], _ pick: @escaping (Double) -> Void) -> some View {
@@ -546,7 +557,8 @@ struct WSTypedRow: View {
             let whole = setting.type == "int"
             WSSliderRow(title: setting.label, valueText: wsFormat(setting), detail: setting.hint,
                         value: setting.number, range: setting.minimum...max(setting.minimum, setting.maximum),
-                        step: whole ? 1 : nil, first: first) { raw in
+                        step: whole ? 1 : nil, first: first,
+                        adjusting: WyrmAdjustPreview.subject(for: setting.id, engine: engine)) { raw in
                 engine.write(setting, values: [whole ? raw.rounded() : raw])
             }
         }

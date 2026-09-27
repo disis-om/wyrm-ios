@@ -271,7 +271,14 @@ final class WyrmThemeStore: ObservableObject {
         }
         let control = UISegmentedControl.appearance()
         control.setTitleTextAttributes([.font: manrope(.medium, 13), .foregroundColor: UIColor(palette.mute.color)], for: .normal)
-        control.setTitleTextAttributes([.font: manrope(.bold, 13), .foregroundColor: UIColor(palette.ink.color)], for: .selected)
+        control.setTitleTextAttributes([.font: manrope(.bold, 13), .foregroundColor: UIColor(selectedPillInk.color)], for: .selected)
+    }
+
+    /// Ink on a selected pill. In Graphite and Midnight the system thumb is a
+    /// light lens, so the theme's light ink vanished on it: there the label is
+    /// the theme's dark paper mixed towards black instead.
+    var selectedPillInk: WyrmRGBA {
+        palette.dark ? palette.paper.mix(towards: .nearBlack, 0.55) : palette.ink
     }
 
     /// The engine's twelve arena roles, in `arena_theme_role` order.

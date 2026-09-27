@@ -40,6 +40,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case playFood
     case buildNotes
     case globalChat
+    case about
 
     var id: String {
         switch self {
@@ -73,6 +74,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .playFood: return "play-food"
         case .buildNotes: return "build-notes"
         case .globalChat: return "global-chat"
+        case .about: return "about"
         }
     }
 }

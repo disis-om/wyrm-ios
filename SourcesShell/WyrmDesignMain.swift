@@ -48,12 +48,13 @@ struct WyrmDesignMain: View {
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
                     ZStack {
-                        ATheme.paper.ignoresSafeArea()
+                        // About is drawn at night whatever the theme, up under the status bar.
+                        (route == .about ? WyrmNight.sky : ATheme.paper).ignoresSafeArea()
                         WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
                             .padding(.top, proxy.safeAreaInsets.top)
                     }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(ATheme.paper.ignoresSafeArea())
+                        .background((route == .about ? WyrmNight.sky : ATheme.paper).ignoresSafeArea())
                         // Only the container edges: the keyboard's safe area must
                         // still lift composers and input boxes above the keys.
                         .ignoresSafeArea(.container)
@@ -83,7 +84,8 @@ struct WyrmDesignMain: View {
         }
         .foregroundColor(ATheme.ink)
         .background(ATheme.paper.ignoresSafeArea())
-        .preferredColorScheme(theme.palette.dark ? .dark : .light)
+        // The About page is a night page: light status bar over it.
+        .preferredColorScheme(theme.palette.dark || routes.last == .about ? .dark : .light)
         // Checked once a launch; a newer build raises the prompt above.
         .task { await updates.check() }
         .onChange(of: engine.toast) { value in
@@ -140,7 +142,7 @@ struct WyrmDesignMain: View {
                     .badge(value == .alerts ? unreadAlerts : 0)
                 }
             }
-            .tint(ATheme.ink)
+            .tint(ATheme.dark ? theme.selectedPillInk.color : ATheme.ink)
             .tabBarMinimizeBehavior(.onScrollDown)
         }
 #endif
@@ -156,10 +158,13 @@ struct WyrmDesignMain: View {
         open(.backup)
     }
 
-    /// Active tab: the theme's ink. The rest: its faded tab colour.
+    /// Active tab: the theme's ink. The rest: its faded tab colour. Graphite and
+    /// Midnight flip it (OM): the selected tab sits on a light lens, so it takes
+    /// the dark ink, and the idle tabs take the light one.
     private static func styleTabBar() {
-        let active = UIColor(ATheme.ink)
-        let idle = UIColor(ATheme.tabIdle)
+        let dark = ATheme.dark
+        let active = UIColor(dark ? WyrmThemeStore.shared.selectedPillInk.color : ATheme.ink)
+        let idle = UIColor(dark ? ATheme.ink : ATheme.tabIdle)
         let bar = UITabBar.appearance()
         bar.tintColor = active
         bar.unselectedItemTintColor = idle

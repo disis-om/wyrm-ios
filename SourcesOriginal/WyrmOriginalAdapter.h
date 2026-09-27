@@ -41,6 +41,9 @@ void WyrmIOSArenaSkinsClear(void);
 /* Image arrow skin (-1 = the engine's polygon style) and a 0.2-1.0 brightness
    applied to image and polygon arrows alike; AppleArrowSkins.c. */
 void WyrmIOSSetArrowSkin(int skin, float brightness);
+/* Wyrm looks (-1 = none): hair style 0-11 with a 0xRRGGBB tint, ears 0-11 and
+   glasses 0-11; drawn on the player's snake only. AppleWyrmLook.c. */
+void WyrmIOSSetLook(int hair, int hair_rgb, int ears, int glasses);
 /* Twelve ARGB roles in arena_theme_role order; stored atomically. */
 void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);

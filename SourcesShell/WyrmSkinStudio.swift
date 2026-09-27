@@ -13,6 +13,10 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     private(set) var airBeads: [Int: CGImage] = [:]
     private(set) var airShadow: CGImage?
     private(set) var airWheel: CGImage?
+    /// Wyrm's own beads (`WyrmBead`), cropped from their atlas quarters.
+    private(set) var wyrmBeads: [Int: CGImage] = [:]
+    /// Wyrm looks (`WyrmLook`): the 8 x 8 cells of WyrmAccessories.png.
+    private(set) var looks: [Int: CGImage] = [:]
     private(set) var accessories: [Int: CGImage] = [:]
     private(set) var tags: [Int: CGImage] = [:]
     private(set) var accessoryThumbnails: [Int: CGImage] = [:]
@@ -47,6 +51,19 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                 }
                 let airShadowImage = Self.crop(atlas, x: 4.0 / 7, y: 6.0 / 9,
                                                width: 102.0 / 64 / 7, height: 102.0 / 64 / 9)
+                var wyrmImages: [Int: CGImage] = [:]
+                for kind in 0..<WyrmBead.count {
+                    let r = WyrmBead.uv(kind)
+                    wyrmImages[kind] = Self.crop(atlas, x: r.0, y: r.1, width: r.2, height: r.3)
+                }
+                var lookImages: [Int: CGImage] = [:]
+                if let url = Bundle.main.url(forResource: "WyrmAccessories", withExtension: "png"),
+                   let sheet = Self.downsample(url, maxPixel: 2048) {
+                    for cell in 0..<40 {
+                        lookImages[cell] = Self.crop(sheet, x: Double(cell % 8) / 8, y: Double(cell / 8) / 8,
+                                                     width: 1.0 / 8, height: 1.0 / 8)
+                    }
+                }
                 let airWheelImage = Bundle.main.url(forResource: "air_colour_wheel", withExtension: "png")
                     .flatMap { Self.downsample($0, maxPixel: 768) }
                 var accessoryImages: [Int: CGImage] = [:]
@@ -84,6 +101,8 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                     self.beads = beadImages
                     self.airBeads = airImages
                     self.airShadow = airShadowImage
+                    self.wyrmBeads = wyrmImages
+                    self.looks = lookImages
                     self.airWheel = airWheelImage
                     self.accessories = accessoryImages
                     self.tags = tagImages
@@ -179,7 +198,7 @@ final class WyrmSkinTextureLibrary: ObservableObject {
 }
 
 private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
-    case overview, presets, pattern, accessories, tags, background
+    case overview, presets, pattern, accessories, tags, background, hair, ears, glasses
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -189,6 +208,9 @@ private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
         case .accessories: return "Accessory"
         case .tags: return "Tag"
         case .background: return "Arena background"
+        case .hair: return "Hair"
+        case .ears: return "Ears"
+        case .glasses: return "Glasses"
         }
     }
 }
@@ -221,6 +243,7 @@ struct WyrmSkinRoot: View {
     @AppStorage("wyrm.ios.skin.tag-chain") private var chain = 1.0
     @AppStorage("wyrm.ios.skin.tag-swing") private var swing = 1.0
     @AppStorage("wyrm.ios.skin.tag-scale") private var tagScale = 1.0
+    @ObservedObject private var look = WyrmLookStore.shared
 
 
     init(engine: WyrmShellStore) {
@@ -297,6 +320,9 @@ struct WyrmSkinRoot: View {
                     case .accessories: accessoriesPanel
                     case .tags: tagsPanel
                     case .background: backgroundsPanel
+                    case .hair: hairPanel
+                    case .ears: lookPanel(ears: true)
+                    case .glasses: lookPanel(ears: false)
                     }
                 }
                 .id(section)
@@ -330,6 +356,17 @@ struct WyrmSkinRoot: View {
                 WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
+            // Wyrm's own looks: only this phone sees them.
+            WyrmSectionLabel("Wyrm looks")
+            WyrmPaperCard {
+                studioRow(.hair, value: WyrmLook.hairNames[safe: look.hair] ?? "None")
+                studioRow(.ears, value: WyrmLook.earNames[safe: look.ears] ?? "None")
+                studioRow(.glasses, value: WyrmLook.glassesNames[safe: look.glasses] ?? "None")
+            }
+            Text("Hair, ears and glasses are Wyrm's own: you see them on your snake, other players don't.")
+                .font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 20).padding(.top, 8)
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
             }
@@ -421,7 +458,40 @@ struct WyrmSkinRoot: View {
                 }.padding(.horizontal, 16)
                 .transition(.opacity)
             }
+            wyrmBeadsGrid
         }
+    }
+
+    /// Wyrm's own beads. Patterned ones take the wheel's current colour; the
+    /// arena only ever gets each bead's nearest slither colour group.
+    private var wyrmBeadsGrid: some View {
+        let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
+        return VStack(alignment: .leading, spacing: 0) {
+            WyrmSectionLabel("Wyrm beads")
+            Text("Patterned beads take the colour wheel's colour. In a match, other players see the nearest slither colour.")
+                .font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 20).padding(.bottom, 10)
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
+                ForEach(0..<WyrmBead.count, id: \.self) { kind in
+                    Button { addWyrmBead(kind: kind, tint: tint) } label: {
+                        WyrmAtlasImage(image: textures.wyrmBeads[kind])
+                            .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white)
+                            .padding(4)
+                            .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+                            .background(ATheme.card.opacity(0.72)).clipShape(Circle())
+                    }.buttonStyle(.plain).accessibilityLabel("\(WyrmBead.names[kind]) bead")
+                }
+            }.padding(.horizontal, 16)
+        }
+    }
+
+    private func addWyrmBead(kind: Int, tint: UInt32) {
+        var groups = customGroups
+        guard groups.count < 256 else { return }
+        let rgba = WyrmBead.rgba(kind, tint: tint)
+        groups.append(WyrmAirSkin.nearestGroup(rgba & 0xFF_FFFF))
+        savePattern(groups, colors: customColors + [rgba])
     }
 
     /// The Android Build-a-Slither wheel: bezel knob for brightness, pointer
@@ -443,6 +513,63 @@ struct WyrmSkinRoot: View {
         guard groups.count < 256 else { return }
         groups.append(WyrmAirSkin.nearestGroup(rgb))
         savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
+    }
+
+    // MARK: Wyrm looks (hair, ears, glasses): only this phone sees them.
+
+    private var hairPanel: some View {
+        VStack(spacing: 0) {
+            inlineHeader
+            WyrmSectionLabel("Colour")
+            HStack(spacing: 10) {
+                ForEach(WyrmLook.hairColours.indices, id: \.self) { index in
+                    let chosen = look.hairColour == index
+                    Button { look.pickHairColour(index) } label: {
+                        Circle().fill(WyrmLook.color(WyrmLook.hairColours[index].rgb))
+                            .overlay(Circle().stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 3 : 1))
+                            .aspectRatio(1, contentMode: .fit)
+                    }.buttonStyle(.plain).accessibilityLabel("\(WyrmLook.hairColours[index].name) hair")
+                }
+            }.padding(.horizontal, 18)
+            WyrmSectionLabel("Style")
+            lookGrid(names: WyrmLook.hairNames, current: look.hair, pick: look.pickHair) { style in
+                (style, -1, -1)
+            }
+        }
+    }
+
+    private func lookPanel(ears: Bool) -> some View {
+        VStack(spacing: 0) {
+            inlineHeader
+            lookGrid(names: ears ? WyrmLook.earNames : WyrmLook.glassesNames,
+                     current: ears ? look.ears : look.glasses,
+                     pick: ears ? look.pickEars : look.pickGlasses) { style in
+                ears ? (-1, style, -1) : (-1, -1, style)
+            }
+        }
+    }
+
+    private func lookGrid(names: [String], current: Int, pick: @escaping (Int) -> Void,
+                          look item: @escaping (Int) -> (Int, Int, Int)) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+            selectionTile(selected: current < 0, label: "None") { pick(-1) }
+            ForEach(names.indices, id: \.self) { style in
+                let parts = item(style)
+                Button { pick(style) } label: {
+                    ZStack(alignment: .bottom) {
+                        RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
+                        WyrmLookThumb(cells: textures.looks, hair: parts.0, hairRGB: look.hairRGB,
+                                      ears: parts.1, glasses: parts.2)
+                            .padding(.bottom, 14)
+                        Text(names[style]).font(.androidWyrm(9.5, .semibold)).foregroundColor(ATheme.quiet)
+                            .lineLimit(1).padding(.bottom, 5)
+                        if current == style { selectionCheck }
+                    }.aspectRatio(1, contentMode: .fit)
+                        .overlay(RoundedRectangle(cornerRadius: 15).stroke(current == style ? ATheme.ink : ATheme.rule,
+                                                                            lineWidth: current == style ? 2 : 1))
+                }.buttonStyle(.plain).accessibilityLabel(names[style])
+            }
+        }.padding(.horizontal, 16)
     }
 
     private var accessoriesPanel: some View {
@@ -579,6 +706,33 @@ struct WyrmSkinRoot: View {
     }
 }
 
+/// A look on a small Wyrm head, the way the arena wears it, with room behind
+/// the head for a ponytail.
+private struct WyrmLookThumb: View {
+    let cells: [Int: CGImage]
+    let hair: Int
+    let hairRGB: UInt32
+    let ears: Int
+    let glasses: Int
+    var body: some View {
+        Canvas { context, size in
+            let r = min(size.width / 7.2, size.height / 4.8)
+            let head = CGPoint(x: size.width - r * 2.0, y: size.height / 2)
+            func dot(_ c: CGPoint, _ radius: CGFloat, _ colour: Color) {
+                context.fill(Path(ellipseIn: CGRect(x: c.x - radius, y: c.y - radius, width: radius * 2, height: radius * 2)),
+                             with: .color(colour))
+            }
+            dot(head, r, Color(red: 0.95, green: 0.72, blue: 0.29))
+            for s in [-1.0, 1.0] {
+                dot(CGPoint(x: head.x + 0.41 * r, y: head.y + 0.45 * r * s), 0.41 * r, .white)
+                dot(CGPoint(x: head.x + 0.51 * r, y: head.y + 0.45 * r * s), 0.24 * r, Color(white: 0.08))
+            }
+            WyrmLook.draw(in: context, cells: cells, head: head, r: r, hair: hair, hairRGB: hairRGB,
+                          ears: ears, glasses: glasses)
+        }
+    }
+}
+
 private struct WyrmSkinPreview: View {
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
@@ -591,6 +745,7 @@ private struct WyrmSkinPreview: View {
     let chain: Double
     let swing: Double
     let tagScale: Double
+    @ObservedObject var look = WyrmLookStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
@@ -628,6 +783,12 @@ private struct WyrmSkinPreview: View {
                     WyrmAtlasImage(image: image).frame(width: size, height: size)
                         .position(x: head.x + CGFloat(item.offset) * 6 * unit, y: head.y)
                 }
+                // Wyrm looks, placed as AppleWyrmLook.c places them (hair at rest).
+                Canvas { context, _ in
+                    WyrmLook.draw(in: context, cells: textures.looks, head: head, r: scale / 2, hair: look.hair,
+                                  hairRGB: look.hairRGB, ears: look.ears, glasses: look.glasses)
+                }
+                .allowsHitTesting(false)
                 if !wyrmTagsDisabled,
                    let item = WyrmSkinCatalog.tags[safe: tagID],
                    let image = textures.tags[tagID] {
@@ -659,8 +820,11 @@ private struct WyrmSkinPreview: View {
             // AIR's `ksmc_t` under each Build-a-Slither bead: unrotated, 102/64
             // of the bead, drawn in AIR's order — the head's first nine fading
             // out, the tail's last four, then four points behind each bead.
+            // Off, as in the engine (`WYRM_AIR_BEAD_SHADOW`): it read as a
+            // black shadow round the whole snake that grid beads never had.
             let shadowSize = scale * 102 / 64
             func airShadow(_ codeIndex: Int, alpha: Double) {
+                guard WyrmAirSkin.beadShadow else { return }
                 guard let shadow = textures.airShadow, airKind(codeIndex) != nil else { return }
                 let point = segmentPoint(totalSegments - 1 - codeIndex, x: x, headY: headY, tailY: tailY,
                                          scale: scale, step: step, segmentsPerRow: segmentsPerRow)
@@ -685,14 +849,18 @@ private struct WyrmSkinPreview: View {
                     if group < 0 { continue }
                     let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
                     let air = WyrmAirSkin.kind(of: rgba)
-                    guard let bead = air.flatMap({ textures.airBeads[$0] })
+                    let wyrm = WyrmBead.kind(of: rgba)
+                    guard let bead = wyrm.flatMap({ textures.wyrmBeads[$0] })
+                            ?? air.flatMap({ textures.airBeads[$0] })
                             ?? textures.beads[rgba == 0 ? group : 40] else { continue }
                     let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
                                              scale: scale, step: step,
                                              segmentsPerRow: segmentsPerRow)
                     let image = Image(decorative: bead, scale: 1)
                     var inked = context
-                    if air != nil {
+                    if let wyrm {
+                        if WyrmBead.tinted[wyrm] { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
+                    } else if air != nil {
                         inked.addFilter(.colorMultiply(Color(rgb: WyrmAirSkin.bodyTint(rgba))))
                     } else if rgba != 0 {
                         inked.addFilter(.colorMultiply(Color(rgb: rgba)))
