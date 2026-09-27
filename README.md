@@ -12,10 +12,13 @@
 ## Status
 
 - Version **0.18.4 (build 71)**, iOS **15 or newer**, iPhone first.
-- Every build is compiled and smoke-tested by the Apple CI workflow and
-  published as a workflow artifact. There are no GitHub Releases.
-- The IPA is unsigned. Players sign and install it themselves (for example
-  with AltStore). TestFlight and App Store distribution are not set up.
+- Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
+  builds are published as releases of this repository. Betas are titled
+  "beta" and announced only through `update/beta.json`; stable builds use
+  `update/latest.json`.
+- The IPA is unsigned. Players sign and install it themselves with AltStore,
+  SideStore, KSign or ESign. TestFlight and App Store distribution are not set
+  up.
 
 ## Features
 
@@ -36,8 +39,10 @@
 - Skin Studio: 66 presets, the 42 atlas beads, the slither.io Android colour
   wheel, 32 accessories, 164 tags and 22 arena floors, with a 256-bead preview
   drawn from the engine's own atlas.
-- NTL 9.68-compatible Team mode (presence, roster, chat, tags). Team
-  credentials stay in the iOS Keychain.
+- NTL 9.68-compatible Team mode: presence, a roster with FPS, ping and
+  leaderboard place, and team chat. Several teams can be saved; only the
+  selected one runs. Team credentials stay in the iOS Keychain. NTL tags are
+  switched off for now.
 - Settings rebuilt from the Android app: display, controls, on-screen
   buttons, arena UI, modes, bot, food, notifications, privacy, themes and
   backup. Changes go straight into the engine. Settings search included.
@@ -46,9 +51,10 @@
 - Wyrm's own keyboard, global chat and direct messages.
 - Leaderboards, profiles, avatars, follows, notifications and voice-room
   control through the Wyrm backend.
-- Stable and beta update channels: Settings › Backup shows when a newer build
-  is out and opens its download (installed with AltStore). Beta builds are
-  offered only with "Beta updates" on.
+- Stable and beta update channels. Settings › Backup shows an "Update now"
+  card when a newer build is out, can back up first (on by default), and hands
+  the IPA to AltStore, SideStore, KSign or ESign. Beta builds are offered only
+  with "Beta updates" on.
 - Opt-in Developer Mode with bounded local diagnostics and share-sheet export.
 
 ## Architecture
