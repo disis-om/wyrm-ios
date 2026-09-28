@@ -1342,6 +1342,7 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "Trails studio: camera and gallery, crop (with Free), text, drawing with the Beads brush, text-only and canvas trails. Deleting a trail scatters it like food.",
         "Trails: share a photo with a caption in Social. Others can like it with a bead and reply.",
         "Wyrm beads show in the arena again: the game now refreshes its textures with every new build.",
         "Wyrm beads: 54 now, 30 new (gems, metals, animal prints, neon, aurora, pixel and more), each in its own colours.",

@@ -50,9 +50,11 @@ struct WyrmTrailPhoto: Decodable, Equatable {
 
 struct WyrmTrail: Decodable, Identifiable, Equatable {
     let id: String
+    /// "photo" or "text" (a caption with no photo).
+    let kind: String?
     let caption: String
-    let photo: WyrmTrailPhoto
-    let thumbUrl: String
+    let photo: WyrmTrailPhoto?
+    let thumbUrl: String?
     var likeCount: Int
     var commentCount: Int
     var liked: Bool
@@ -63,7 +65,7 @@ struct WyrmTrail: Decodable, Identifiable, Equatable {
     /// Width over height, held between a tall 4:5 and a wide 1.91:1 so no
     /// photo takes over the feed or shrinks to a strip.
     var aspect: CGFloat {
-        guard photo.width > 0, photo.height > 0 else { return 1 }
+        guard let photo, photo.width > 0, photo.height > 0 else { return 1 }
         return min(max(CGFloat(photo.width) / CGFloat(photo.height), 0.8), 1.91)
     }
 }
@@ -151,6 +153,9 @@ final class WyrmTrailsClient {
                 (data, response) = try await session.data(for: request)
             }
         } catch {
+            // A pull-to-refresh that ends, or a page that closes, cancels its
+            // request: that is not a connection problem and says nothing.
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { throw CancellationError() }
             WyrmDiagnostics.record("\(method) \(path) transport failure", category: "NETWORK")
             throw WyrmServiceError.message("Could not reach Wyrm. Check your connection.")
         }
@@ -192,9 +197,10 @@ final class WyrmTrailsClient {
         return media.id
     }
 
-    fileprivate func create(caption: String, photoId: String, thumbId: String, token: String) async throws -> WyrmTrail {
-        let envelope: WyrmTrailEnvelope = try await send("/v1/trails", method: "POST",
-            json: ["caption": caption, "photoId": photoId, "thumbId": thumbId], token: token)
+    fileprivate func create(caption: String, photoId: String?, thumbId: String?, token: String) async throws -> WyrmTrail {
+        var body: [String: Any] = ["caption": caption]
+        if let photoId, let thumbId { body["photoId"] = photoId; body["thumbId"] = thumbId }
+        let envelope: WyrmTrailEnvelope = try await send("/v1/trails", method: "POST", json: body, token: token)
         return envelope.trail
     }
 
@@ -271,16 +277,19 @@ struct WyrmTrailImage: View {
     @State private var preview: UIImage?
 
     var body: some View {
-        ZStack {
-            Rectangle().fill(ATheme.well)
-            if let shown = image ?? preview {
-                Image(uiImage: shown).resizable().scaledToFill()
-                    .transition(.opacity)
-            }
-        }
-        .aspectRatio(aspect, contentMode: .fit)
-        .frame(maxWidth: .infinity)
-        .clipped()
+        // The frame takes its shape from `aspect` alone; the photo fits
+        // inside it, so a very wide or tall photo shrinks instead of
+        // stretching the card.
+        Color.clear
+            .aspectRatio(aspect, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(ATheme.well)
+            .overlay(Group {
+                if let shown = image ?? preview {
+                    Image(uiImage: shown).resizable().scaledToFit().transition(.opacity)
+                }
+            })
+            .clipped()
         .task(id: full) {
             let fullURL = URL(string: WyrmTrailsClient.absolute(full))
             let thumbURL = URL(string: WyrmTrailsClient.absolute(thumb))
@@ -346,6 +355,7 @@ final class WyrmTrailsStore: ObservableObject {
     /// the player is back in the feed the moment they tap Post.
     @Published private(set) var pendingImage: UIImage?
     @Published private(set) var pendingCaption = ""
+    @Published private(set) var pendingActive = false
     @Published private(set) var comments: [String: [WyrmTrailComment]] = [:]
     @Published var toast = ""
 
@@ -358,12 +368,16 @@ final class WyrmTrailsStore: ObservableObject {
         loading = true
         defer { loading = false }
         do {
-            let page = try await WyrmTrailsClient.shared.feed(cursor: nil, author: nil, token: token())
-            trails = page.trails
+            // Its own task: pull-to-refresh cancels the gesture's task when it
+            // ends, and the feed must still arrive.
+            let token = token()
+            let page = try await Task { try await WyrmTrailsClient.shared.feed(cursor: nil, author: nil, token: token) }.value
+            withAnimation(.easeOut(duration: 0.2)) { trails = page.trails }
             cursor = page.nextCursor
             reachedEnd = page.nextCursor == nil
             error = ""
             prefetch(page.trails)
+        } catch is CancellationError {
         } catch { self.error = message(error) }
         loaded = true
     }
@@ -379,6 +393,7 @@ final class WyrmTrailsStore: ObservableObject {
             self.cursor = page.nextCursor
             reachedEnd = page.nextCursor == nil
             prefetch(page.trails)
+        } catch is CancellationError {
         } catch { self.error = message(error) }
     }
 
@@ -413,11 +428,29 @@ final class WyrmTrailsStore: ObservableObject {
         }
     }
 
-    func post(image: UIImage, caption: String) async -> Bool {
+    /// A photo trail, or a text trail when `image` is nil.
+    func post(image: UIImage?, caption: String) async -> Bool {
         guard !posting.busy else { return false }
-        pendingImage = image
-        pendingCaption = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let words = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            pendingImage = image
+            pendingCaption = words
+            pendingActive = true
+        }
         posting = .preparing
+        guard let image else {
+            posting = .uploading(0.5)
+            do {
+                let trail = try await Task {
+                    try await WyrmTrailsClient.shared.create(caption: words, photoId: nil, thumbId: nil, token: token())
+                }.value
+                landed(trail)
+                return true
+            } catch {
+                posting = .failed(message(error))
+                return false
+            }
+        }
         guard let files = await WyrmTrailEncoder.prepare(image) else {
             posting = .failed("That photo could not be read.")
             return false
@@ -432,16 +465,8 @@ final class WyrmTrailsStore: ObservableObject {
             let photoId = try await WyrmTrailsClient.shared.upload(files.full, token: token()) { value in
                 Task { @MainActor in self.posting = .uploading((thumbShare + value * (1 - thumbShare)) * 0.97) }
             }
-            let trail = try await WyrmTrailsClient.shared.create(
-                caption: caption.trimmingCharacters(in: .whitespacesAndNewlines),
-                photoId: photoId, thumbId: thumbId, token: token())
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
-                trails.insert(trail, at: 0)
-                pendingImage = nil
-                posting = .posted
-            }
-            UINotificationFeedbackGenerator().notificationOccurred(.success)
-            toast = "Trail posted"
+            let trail = try await WyrmTrailsClient.shared.create(caption: words, photoId: photoId, thumbId: thumbId, token: token())
+            landed(trail)
             return true
         } catch {
             posting = .failed(message(error))
@@ -449,25 +474,42 @@ final class WyrmTrailsStore: ObservableObject {
         }
     }
 
-    func resetPosting() { if !posting.busy && pendingImage == nil { posting = .idle } }
+    private func landed(_ trail: WyrmTrail) {
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+            trails.insert(trail, at: 0)
+            pendingImage = nil
+            pendingActive = false
+            posting = .posted
+        }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        toast = "Trail posted"
+    }
+
+    func resetPosting() { if !posting.busy && !pendingActive { posting = .idle } }
 
     func retryPending() {
-        guard let image = pendingImage, !posting.busy else { return }
-        let caption = pendingCaption
+        guard pendingActive, !posting.busy else { return }
+        let image = pendingImage, caption = pendingCaption
         Task { _ = await post(image: image, caption: caption) }
     }
 
     func discardPending() {
         guard !posting.busy else { return }
-        withAnimation(.easeOut(duration: 0.2)) { pendingImage = nil; posting = .idle }
+        withAnimation(.easeOut(duration: 0.2)) { pendingImage = nil; pendingActive = false; posting = .idle }
     }
 
-    func delete(_ id: String) async {
+    /// Removes it from the server; the card has already scattered, so the
+    /// trails around it close the gap with a spring.
+    func delete(_ id: String) async -> Bool {
         do {
-            try await WyrmTrailsClient.shared.delete(id, token: token())
-            trails.removeAll { $0.id == id }
+            try await Task { try await WyrmTrailsClient.shared.delete(id, token: token()) }.value
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { trails.removeAll { $0.id == id } }
             toast = "Trail deleted"
-        } catch { toast = message(error) }
+            return true
+        } catch {
+            toast = message(error)
+            return false
+        }
     }
 
     func report(_ id: String, reason: String) async {
@@ -503,8 +545,8 @@ final class WyrmTrailsStore: ObservableObject {
     }
 
     private func prefetch(_ page: [WyrmTrail]) {
-        WyrmTrailImages.shared.prefetch(page.compactMap { URL(string: WyrmTrailsClient.absolute($0.thumbUrl)) })
-        WyrmTrailImages.shared.prefetch(page.prefix(4).compactMap { URL(string: WyrmTrailsClient.absolute($0.photo.url)) })
+        WyrmTrailImages.shared.prefetch(page.compactMap { $0.thumbUrl.flatMap { URL(string: WyrmTrailsClient.absolute($0)) } })
+        WyrmTrailImages.shared.prefetch(page.prefix(4).compactMap { $0.photo.flatMap { URL(string: WyrmTrailsClient.absolute($0.url)) } })
     }
 
     private func message(_ error: Error) -> String {
@@ -607,6 +649,9 @@ struct WyrmTrailCard: View {
     @State private var burst = false
     @State private var confirmDelete = false
     @State private var reporting = false
+    @State private var dying = false
+    @State private var food: [Color] = []
+    @State private var cardSize: CGSize = .zero
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -636,8 +681,12 @@ struct WyrmTrailCard: View {
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
 
             ZStack {
-                WyrmTrailImage(full: trail.photo.url, thumb: trail.thumbUrl, aspect: trail.aspect)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                if let photo = trail.photo {
+                    WyrmTrailImage(full: photo.url, thumb: trail.thumbUrl ?? photo.url, aspect: trail.aspect)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else {
+                    WyrmTrailTextBody(text: trail.caption)
+                }
                 Circle()
                     .fill(RadialGradient(colors: [Color.white.opacity(0.9), ATheme.live], center: UnitPoint(x: 0.35, y: 0.3),
                                          startRadius: 0, endRadius: 46))
@@ -657,7 +706,7 @@ struct WyrmTrailCard: View {
             }
             .onTapGesture(count: 1) { if !expanded { onOpen() } }
 
-            if !trail.caption.isEmpty {
+            if !trail.caption.isEmpty && trail.photo != nil {
                 Text(trail.caption)
                     .font(.androidWyrm(14.5)).foregroundColor(ATheme.ink).lineSpacing(3)
                     .lineLimit(expanded ? nil : 4)
@@ -675,15 +724,160 @@ struct WyrmTrailCard: View {
         .background(ATheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .background(GeometryReader { proxy in Color.clear.onAppear { cardSize = proxy.size }.onChange(of: proxy.size) { cardSize = $0 } })
+        .opacity(dying ? 0 : 1)
+        .scaleEffect(dying ? 0.92 : 1)
+        .overlay(Group { if dying { WyrmTrailFoodBurst(colours: food, size: cardSize).frame(width: cardSize.width, height: cardSize.height) } })
         .padding(.horizontal, 14)
         .confirmationDialog("Delete this trail?", isPresented: $confirmDelete, titleVisibility: .visible) {
-            Button("Delete", role: .destructive) { Task { await store.delete(trail.id) } }
+            Button("Delete", role: .destructive) { scatter() }
         }
         .confirmationDialog("Report trail", isPresented: $reporting) {
             ForEach(["Spam", "Harassment or abuse", "Nudity or sexual content", "Hate or violence", "Something else"], id: \.self) { reason in
                 Button(reason) { Task { await store.report(trail.id, reason: reason) } }
             }
         }
+    }
+}
+
+extension WyrmTrailCard {
+    /// The card breaks into food, then the trail is removed and the feed closes up.
+    fileprivate func scatter() {
+        let url = (trail.thumbUrl ?? trail.photo?.url).flatMap { URL(string: WyrmTrailsClient.absolute($0)) }
+        food = WyrmTrailFoodBurst.colours(from: url.flatMap { WyrmTrailImages.shared.cached($0) })
+        if food.isEmpty { food = [ATheme.live, ATheme.link, ATheme.badge, ATheme.ink] }
+        UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        withAnimation(.easeIn(duration: 0.22)) { dying = true }
+        Task {
+            try? await Task.sleep(nanoseconds: 850_000_000)
+            if !(await store.delete(trail.id)) { withAnimation(.easeOut(duration: 0.25)) { dying = false } }
+        }
+    }
+}
+
+/// Deleting a trail: it breaks into glowing food, the way a snake's body
+/// scatters into food when it dies in the arena, each piece coloured from the
+/// photo where it lay. The food drifts out, glows and fades.
+struct WyrmTrailFoodBurst: View {
+    let colours: [Color]
+    let size: CGSize
+    private struct Piece { let start: CGPoint; let velocity: CGVector; let radius: CGFloat; let colour: Color; let delay: Double }
+    @State private var pieces: [Piece] = []
+    @State private var began = Date()
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, _ in
+                let t = timeline.date.timeIntervalSince(began)
+                for piece in pieces {
+                    let local = max(0, t - piece.delay)
+                    let ease = 1 - exp(-local * 3.2)
+                    let x = piece.start.x + piece.velocity.dx * ease
+                    let y = piece.start.y + piece.velocity.dy * ease
+                    let life = max(0, 1 - local / 0.95)
+                    guard life > 0 else { continue }
+                    let pulse = 1 + 0.18 * sin(local * 18 + Double(piece.radius))
+                    let r = piece.radius * pulse * (0.6 + 0.4 * life)
+                    // The glow, then the bright core.
+                    context.opacity = life * 0.55
+                    context.fill(Path(ellipseIn: CGRect(x: x - r * 2.4, y: y - r * 2.4, width: r * 4.8, height: r * 4.8)),
+                                 with: .radialGradient(Gradient(colors: [piece.colour, piece.colour.opacity(0)]),
+                                                       center: CGPoint(x: x, y: y), startRadius: 0, endRadius: r * 2.4))
+                    context.opacity = life
+                    context.fill(Path(ellipseIn: CGRect(x: x - r, y: y - r, width: r * 2, height: r * 2)),
+                                 with: .radialGradient(Gradient(colors: [Color.white, piece.colour]),
+                                                       center: CGPoint(x: x - r * 0.3, y: y - r * 0.3), startRadius: 0, endRadius: r))
+                }
+            }
+        }
+        .allowsHitTesting(false)
+        .onAppear {
+            began = Date()
+            let columns = 7, rows = max(4, Int((size.height / max(size.width, 1)) * 7))
+            var made: [Piece] = []
+            for row in 0..<rows {
+                for column in 0..<columns {
+                    let x = (CGFloat(column) + 0.5) / CGFloat(columns) * size.width
+                    let y = (CGFloat(row) + 0.5) / CGFloat(rows) * size.height
+                    let dx = x - size.width / 2, dy = y - size.height / 2
+                    let spread = CGFloat.random(in: 40...120)
+                    let length = max(hypot(dx, dy), 1)
+                    let colour = colours.isEmpty ? ATheme.live : colours[(row * columns + column) % colours.count]
+                    made.append(Piece(start: CGPoint(x: x, y: y),
+                                      velocity: CGVector(dx: dx / length * spread + .random(in: -20...20),
+                                                         dy: dy / length * spread + .random(in: -30...20)),
+                                      radius: .random(in: 4...9), colour: colour, delay: .random(in: 0...0.12)))
+                }
+            }
+            pieces = made
+        }
+    }
+
+    /// Colours sampled on a grid across the photo, one per piece of food.
+    static func colours(from image: UIImage?, columns: Int = 7, rows: Int = 9) -> [Color] {
+        guard let cg = image?.cgImage else { return [] }
+        var pixels = [UInt8](repeating: 0, count: columns * rows * 4)
+        guard let context = CGContext(data: &pixels, width: columns, height: rows, bitsPerComponent: 8, bytesPerRow: columns * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return [] }
+        context.interpolationQuality = .medium
+        context.draw(cg, in: CGRect(x: 0, y: 0, width: columns, height: rows))
+        var out: [Color] = []
+        for row in (0..<rows).reversed() {
+            for column in 0..<columns {
+                let i = (row * columns + column) * 4
+                // Pushed brighter so the food glows like the arena's.
+                func lift(_ v: UInt8) -> Double { min(1, Double(v) / 255 * 1.25 + 0.08) }
+                out.append(Color(red: lift(pixels[i]), green: lift(pixels[i + 1]), blue: lift(pixels[i + 2])))
+            }
+        }
+        return out
+    }
+}
+
+/// Upload progress as a snake of beads that fills with the live colour.
+struct WyrmTrailBeadProgress: View {
+    let progress: Double?
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            GeometryReader { proxy in
+                let count = 18
+                let gap = proxy.size.width / CGFloat(count)
+                ZStack(alignment: .leading) {
+                    ForEach(0..<count, id: \.self) { index in
+                        let lit = progress.map { Double(index) < $0 * Double(count) } ?? (Int(t * 12) % count == index)
+                        let wave = sin(t * 7 - Double(index) * 0.55) * 3
+                        Circle()
+                            .fill(lit ? ATheme.live : ATheme.well)
+                            .frame(width: gap * 0.78, height: gap * 0.78)
+                            .overlay(Circle().fill(Color.white.opacity(lit ? 0.35 : 0)).scaleEffect(0.4).offset(x: -gap * 0.12, y: -gap * 0.12))
+                            .offset(x: CGFloat(index) * gap, y: CGFloat(wave))
+                    }
+                }
+                .frame(height: proxy.size.height)
+            }
+        }
+        .frame(height: 20)
+    }
+}
+
+/// A text trail: the words themselves, set large, with the live colour's
+/// trail mark beside them.
+struct WyrmTrailTextBody: View {
+    let text: String
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Capsule().fill(ATheme.live).frame(width: 4)
+            Text(text)
+                .font(.wyrmDisplay(text.count < 90 ? 26 : 20))
+                .foregroundColor(ATheme.ink).lineSpacing(4)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 18).padding(.vertical, 16)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.well))
+        .padding(.horizontal, 8)
     }
 }
 
@@ -715,7 +909,7 @@ private struct WyrmTrailPlaceholder: View {
 /// The trail being posted: its photo dimmed under the upload's progress,
 /// or, if it failed, a way to try again.
 struct WyrmTrailPendingCard: View {
-    let image: UIImage
+    let image: UIImage?
     let caption: String
     let phase: WyrmTrailPostPhase
     let retry: () -> Void
@@ -730,13 +924,21 @@ struct WyrmTrailPendingCard: View {
         }
     }
 
+    @State private var lastTick = -1
+
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 12) {
-                Image(uiImage: image).resizable().scaledToFill()
-                    .frame(width: 58, height: 58)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .opacity(0.8)
+                Group {
+                    if let image {
+                        Image(uiImage: image).resizable().scaledToFill()
+                    } else {
+                        ZStack { ATheme.well; Image(systemName: "text.quote").font(.system(size: 20, weight: .semibold)).foregroundColor(ATheme.live) }
+                    }
+                }
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .opacity(0.85)
                 VStack(alignment: .leading, spacing: 4) {
                     Text(title).font(.androidWyrm(14.5, .semibold)).monospacedDigit().foregroundColor(ATheme.ink)
                     Text(caption.isEmpty ? "Photo" : caption).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(1)
@@ -749,22 +951,21 @@ struct WyrmTrailPendingCard: View {
                     WSPrimaryButton(label: "Try again", onClick: retry)
                 }
             } else {
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule().fill(ATheme.well)
-                        Capsule().fill(ATheme.live)
-                            .frame(width: proxy.size.width * CGFloat(progress ?? 0.1))
-                            .animation(.easeOut(duration: 0.25), value: progress)
-                    }
-                }
-                .frame(height: 5)
+                WyrmTrailBeadProgress(progress: progress)
             }
         }
         .padding(14)
         .background(ATheme.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .modifier(WyrmTrailWobble(active: phase.busy))
         .padding(.horizontal, 14)
+        .onChange(of: progress) { value in
+            // A tick of the Taptic Engine at every quarter uploaded.
+            guard let value else { return }
+            let tick = Int(value * 4)
+            if tick != lastTick { lastTick = tick; UIImpactFeedbackGenerator(style: .soft).impactOccurred(intensity: 0.7) }
+        }
     }
 
     private var title: String {
@@ -778,6 +979,19 @@ struct WyrmTrailPendingCard: View {
     }
 }
 
+/// While a trail uploads its card breathes and sways, like a snake at rest.
+private struct WyrmTrailWobble: ViewModifier {
+    let active: Bool
+    func body(content: Content) -> some View {
+        TimelineView(.animation(minimumInterval: nil, paused: !active)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            content
+                .rotationEffect(.degrees(active ? sin(t * 5.2) * 0.9 : 0))
+                .scaleEffect(active ? 1 + sin(t * 2.6) * 0.012 : 1)
+        }
+    }
+}
+
 // MARK: - Feed
 
 struct WyrmTrailsFeed: View {
@@ -787,18 +1001,19 @@ struct WyrmTrailsFeed: View {
     @ObservedObject private var store = WyrmTrailsStore.shared
 
     var body: some View {
-        WyrmDetailChrome(title: "Trails", actionTitle: "New", onBack: close, action: { open(.trailCompose) }) {
+        VStack(spacing: 0) {
+            topBar
             ZStack(alignment: .bottom) {
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 14) {
                         header
                         if !store.loaded && store.trails.isEmpty {
                             ForEach(0..<3, id: \.self) { _ in WyrmTrailPlaceholder() }
-                        } else if store.trails.isEmpty && store.pendingImage == nil {
+                        } else if store.trails.isEmpty && !store.pendingActive {
                             empty
                         } else {
-                            if let image = store.pendingImage {
-                                WyrmTrailPendingCard(image: image, caption: store.pendingCaption, phase: store.posting,
+                            if store.pendingActive {
+                                WyrmTrailPendingCard(image: store.pendingImage, caption: store.pendingCaption, phase: store.posting,
                                                      retry: store.retryPending, discard: store.discardPending)
                                     .transition(.move(edge: .top).combined(with: .opacity))
                             }
@@ -821,10 +1036,10 @@ struct WyrmTrailsFeed: View {
                     .padding(.top, 6)
                 }
                 .refreshable { await store.refresh() }
-
-                composeButton
             }
         }
+        .background(WyrmPaperBackground().ignoresSafeArea())
+        .foregroundColor(ATheme.ink)
         .onAppear { store.token = { [weak account] in account?.sessionToken ?? "" } }
         .task { if !store.loaded { await store.refresh() } }
         .overlay(alignment: .top) { WyrmTrailToast(store: store) }
@@ -847,7 +1062,7 @@ struct WyrmTrailsFeed: View {
             Text("No trails yet").font(.wyrmDisplay(22)).foregroundColor(ATheme.ink)
             Text("Be the first to leave one. Share a skin, a big run or a moment from the arena.")
                 .font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
-            WyrmPrimaryAction(title: "Leave a trail", icon: "plus") { open(.trailCompose) }.padding(.top, 8)
+            newButton(large: true).padding(.top, 10)
         }
         .padding(22)
         .background(ATheme.card)
@@ -856,19 +1071,40 @@ struct WyrmTrailsFeed: View {
         .padding(.horizontal, 14)
     }
 
-    private var composeButton: some View {
+    /// Back, the title, and the one way to post: top right once there are
+    /// trails, in the middle of the page while there are none.
+    private var topBar: some View {
+        ZStack {
+            HStack {
+                Button(action: close) {
+                    HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
+                        .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                }
+                Spacer()
+                if !store.trails.isEmpty || store.pendingActive {
+                    newButton(large: false).transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
+            }
+            Text("Trails").font(.androidWyrm(16, .semibold))
+        }
+        .padding(.horizontal, 16).frame(height: 52)
+        .background(ATheme.paper)
+        .overlay(Rectangle().fill(ATheme.rule).frame(height: 1), alignment: .bottom)
+        .animation(.spring(response: 0.4, dampingFraction: 0.8), value: store.trails.isEmpty)
+    }
+
+    private func newButton(large: Bool) -> some View {
         Button { open(.trailCompose) } label: {
-            HStack(spacing: 8) {
-                Image(systemName: "plus").font(.system(size: 15, weight: .bold))
-                Text("Leave a trail").font(.androidWyrm(15, .bold))
+            HStack(spacing: large ? 8 : 6) {
+                Image(systemName: "plus").font(.system(size: large ? 15 : 12, weight: .bold))
+                Text(large ? "Leave a trail" : "New").font(.androidWyrm(large ? 15 : 13, .bold))
             }
             .foregroundColor(ATheme.onInk)
-            .padding(.horizontal, 22).frame(height: 50)
+            .padding(.horizontal, large ? 22 : 14).frame(height: large ? 50 : 34)
             .background(Capsule().fill(ATheme.ink))
-            .shadow(color: .black.opacity(0.18), radius: 16, y: 6)
+            .shadow(color: .black.opacity(large ? 0.18 : 0.12), radius: large ? 16 : 8, y: large ? 6 : 3)
         }
         .buttonStyle(WSPressStyle())
-        .padding(.bottom, 28)
     }
 }
 
@@ -921,9 +1157,12 @@ struct WyrmTrailsTeaser: View {
                     ForEach(0..<4, id: \.self) { index in
                         ZStack {
                             RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.well)
-                            if index < store.trails.count {
-                                WyrmTrailImage(full: store.trails[index].thumbUrl, thumb: store.trails[index].thumbUrl, aspect: 1)
+                            if index < store.trails.count, let thumb = store.trails[index].thumbUrl {
+                                WyrmTrailImage(full: thumb, thumb: thumb, aspect: 1)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            } else if index < store.trails.count {
+                                Text(store.trails[index].caption).font(.wyrmDisplay(11)).foregroundColor(ATheme.ink)
+                                    .lineLimit(4).padding(6)
                             } else if index == 0 && store.trails.isEmpty {
                                 Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(ATheme.quiet)
                             }
@@ -1030,121 +1269,5 @@ struct WyrmTrailDetail: View {
             if await store.reply(trailID, body: body) { draft = "" }
             sending = false
         }
-    }
-}
-
-// MARK: - New trail
-
-struct WyrmTrailCompose: View {
-    @ObservedObject var account: WyrmAccountStore
-    let close: () -> Void
-    @ObservedObject private var store = WyrmTrailsStore.shared
-    @State private var image: UIImage?
-    @State private var caption = ""
-    @State private var picking = false
-    private let limit = 500
-
-    var body: some View {
-        WyrmDetailChrome(title: "New trail", onBack: { if !store.posting.busy { close() } }) {
-            ZStack(alignment: .bottom) {
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        photoArea.padding(.horizontal, 14).padding(.top, 14)
-                        WyrmSectionLabel("Caption")
-                        ZStack(alignment: .topLeading) {
-                            if caption.isEmpty {
-                                Text("Say something about it…").font(.androidWyrm(15)).foregroundColor(ATheme.quiet)
-                                    .padding(.horizontal, 5).padding(.vertical, 8)
-                            }
-                            TextEditor(text: $caption)
-                                .font(.androidWyrm(15)).foregroundColor(ATheme.ink)
-                                .frame(minHeight: 110)
-                                .onAppear { UITextView.appearance().backgroundColor = .clear }
-                                .onChange(of: caption) { value in if value.count > limit { caption = String(value.prefix(limit)) } }
-                        }
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.card))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                        .padding(.horizontal, 14)
-                        Text("\(caption.count)/\(limit)").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
-                            .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.top, 6)
-                        Spacer().frame(height: 150)
-                    }
-                }
-                footer
-            }
-        }
-        .onAppear {
-            store.token = { [weak account] in account?.sessionToken ?? "" }
-            store.resetPosting()
-            if image == nil { picking = true }
-        }
-        .sheet(isPresented: $picking) {
-            WyrmPhotoPicker { picked in
-                picking = false
-                if let picked { withAnimation(.easeOut(duration: 0.2)) { image = picked } }
-            }
-            .ignoresSafeArea()
-        }
-
-    }
-
-    @ViewBuilder
-    private var photoArea: some View {
-        if let image {
-            ZStack(alignment: .topTrailing) {
-                Image(uiImage: image).resizable().scaledToFill()
-                    .aspectRatio(min(max(image.size.width / max(image.size.height, 1), 0.8), 1.91), contentMode: .fit)
-                    .frame(maxWidth: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                if !store.posting.busy {
-                    Button { picking = true } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "photo.on.rectangle").font(.system(size: 12, weight: .bold))
-                            Text("Change").font(.androidWyrm(12.5, .bold))
-                        }
-                        .foregroundColor(ATheme.ink)
-                        .padding(.horizontal, 12).frame(height: 32)
-                        .background(Capsule().fill(ATheme.card.opacity(0.92)))
-                    }
-                    .buttonStyle(.plain)
-                    .padding(10)
-                }
-            }
-        } else {
-            Button { picking = true } label: {
-                VStack(spacing: 10) {
-                    Image(systemName: "photo.on.rectangle.angled").font(.system(size: 30, weight: .semibold)).foregroundColor(ATheme.live)
-                    Text("Choose a photo").font(.androidWyrm(16, .bold)).foregroundColor(ATheme.ink)
-                    Text("A skin, a big run, a moment from the arena.").font(.androidWyrm(12.5)).foregroundColor(ATheme.mute)
-                }
-                .frame(maxWidth: .infinity).frame(height: 260)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(ATheme.rule, style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
-            }
-            .buttonStyle(.plain)
-        }
-    }
-
-    private var footer: some View {
-        VStack(spacing: 10) {
-            if store.posting.busy {
-                Text("Your last trail is still uploading.").font(.androidWyrm(12.5)).foregroundColor(ATheme.mute)
-            }
-            WyrmPrimaryAction(title: "Post trail", icon: "arrow.up", disabled: image == nil || store.posting.busy) { post() }
-        }
-        .padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 24)
-        .background(ATheme.paper.opacity(0.96).ignoresSafeArea(edges: .bottom))
-    }
-
-    /// Starts the post and returns to the feed at once: the trail waits at the
-    /// top of the feed, showing Preparing and Uploading, until it lands.
-    private func post() {
-        guard let image, !store.posting.busy else { return }
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
-        let text = caption
-        Task { _ = await store.post(image: image, caption: text) }
-        close()
     }
 }

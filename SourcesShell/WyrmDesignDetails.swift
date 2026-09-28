@@ -41,7 +41,7 @@ struct WyrmDetailHost: View {
         case .about: WyrmAboutPage(close: close)
         case .trails: WyrmTrailsFeed(account: account, close: close, open: open)
         case .trail(let id): WyrmTrailDetail(trailID: id, account: account, close: close, open: open)
-        case .trailCompose: WyrmTrailCompose(account: account, close: close)
+        case .trailCompose: WyrmTrailStudio(account: account, close: close)
         }
     }
 }
