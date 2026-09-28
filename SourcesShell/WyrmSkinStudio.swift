@@ -17,6 +17,8 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     private(set) var wyrmBeads: [Int: CGImage] = [:]
     /// Wyrm looks (`WyrmLook`): the 8 x 8 cells of WyrmAccessories.png.
     private(set) var looks: [Int: CGImage] = [:]
+    /// Each look cell cut to its art and turned to face up, for the picker tiles.
+    private(set) var lookThumbnails: [Int: CGImage] = [:]
     private(set) var accessories: [Int: CGImage] = [:]
     private(set) var tags: [Int: CGImage] = [:]
     private(set) var accessoryThumbnails: [Int: CGImage] = [:]
@@ -57,11 +59,13 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                     wyrmImages[kind] = Self.crop(atlas, x: r.0, y: r.1, width: r.2, height: r.3)
                 }
                 var lookImages: [Int: CGImage] = [:]
+                var lookThumbs: [Int: CGImage] = [:]
                 if let url = Bundle.main.url(forResource: "WyrmAccessories", withExtension: "png"),
                    let sheet = Self.downsample(url, maxPixel: 2048) {
                     for cell in 0..<40 {
                         lookImages[cell] = Self.crop(sheet, x: Double(cell % 8) / 8, y: Double(cell / 8) / 8,
                                                      width: 1.0 / 8, height: 1.0 / 8)
+                        lookThumbs[cell] = lookImages[cell].flatMap(Self.lookThumbnail)
                     }
                 }
                 let airWheelImage = Bundle.main.url(forResource: "air_colour_wheel", withExtension: "png")
@@ -103,6 +107,7 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                     self.airShadow = airShadowImage
                     self.wyrmBeads = wyrmImages
                     self.looks = lookImages
+                    self.lookThumbnails = lookThumbs
                     self.airWheel = airWheelImage
                     self.accessories = accessoryImages
                     self.tags = tagImages
@@ -154,6 +159,36 @@ final class WyrmSkinTextureLibrary: ObservableObject {
         return CGImageSourceCreateThumbnailAtIndex(source, 0, thumbnailOptions)
     }
 
+    /// A look cell cut to its visible art and turned a quarter left, so what
+    /// faces the snake's front faces up: glasses sit level, ears stand on top.
+    private static func lookThumbnail(_ cell: CGImage) -> CGImage? {
+        let w = cell.width, h = cell.height
+        var pixels = [UInt8](repeating: 0, count: w * h * 4)
+        guard let context = CGContext(data: &pixels, width: w, height: h, bitsPerComponent: 8, bytesPerRow: w * 4,
+                                      space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.draw(cell, in: CGRect(x: 0, y: 0, width: w, height: h))
+        var minX = w, minY = h, maxX = -1, maxY = -1
+        for y in 0..<h {
+            for x in 0..<w where pixels[(y * w + x) * 4 + 3] > 16 {
+                minX = min(minX, x); maxX = max(maxX, x); minY = min(minY, y); maxY = max(maxY, y)
+            }
+        }
+        guard maxX >= 0 else { return nil }
+        let pad = 3
+        let rect = CGRect(x: max(0, minX - pad), y: max(0, minY - pad),
+                          width: min(w, maxX + pad + 1) - max(0, minX - pad),
+                          height: min(h, maxY + pad + 1) - max(0, minY - pad))
+        guard let cut = cell.cropping(to: rect) else { return nil }
+        let turned = UIImage(cgImage: cut, scale: 1, orientation: .left)
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 1
+        format.opaque = false
+        return UIGraphicsImageRenderer(size: turned.size, format: format).image { _ in
+            turned.draw(in: CGRect(origin: .zero, size: turned.size))
+        }.cgImage
+    }
+
     private static func crop(_ image: CGImage, x: Double, y: Double,
                              width: Double, height: Double) -> CGImage? {
         let pixelRect = CGRect(
@@ -198,7 +233,7 @@ final class WyrmSkinTextureLibrary: ObservableObject {
 }
 
 private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
-    case overview, presets, pattern, accessories, tags, background, hair, ears, glasses
+    case overview, presets, pattern, accessories, tags, background, wyrmAccessories
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -208,9 +243,7 @@ private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
         case .accessories: return "Accessory"
         case .tags: return "Tag"
         case .background: return "Arena background"
-        case .hair: return "Hair"
-        case .ears: return "Ears"
-        case .glasses: return "Glasses"
+        case .wyrmAccessories: return "Wyrm accessories"
         }
     }
 }
@@ -224,6 +257,8 @@ struct WyrmSkinRoot: View {
     @StateObject private var textures = WyrmSkinTextureLibrary()
     @State private var section: WyrmSkinStudioSection
     @State private var editingPattern = false
+    @State private var lookTab = 0
+    @State private var hairDragging = false
     @State private var showingWheel: Bool
 
     // The AIR colour wheel's state, in AIR wheel units (see WyrmAirSkin).
@@ -320,9 +355,7 @@ struct WyrmSkinRoot: View {
                     case .accessories: accessoriesPanel
                     case .tags: tagsPanel
                     case .background: backgroundsPanel
-                    case .hair: hairPanel
-                    case .ears: lookPanel(ears: true)
-                    case .glasses: lookPanel(ears: false)
+                    case .wyrmAccessories: wyrmAccessoriesPanel
                     }
                 }
                 .id(section)
@@ -356,17 +389,12 @@ struct WyrmSkinRoot: View {
                 WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
-            // Wyrm's own looks: only this phone sees them.
-            WyrmSectionLabel("Wyrm looks")
+            // Wyrm's own looks (hair, ears, glasses): only this phone sees them.
+            WyrmSectionLabel("Wyrm accessories")
             WyrmPaperCard {
-                studioRow(.hair, value: WyrmLook.hairNames[safe: look.hair] ?? "None")
-                studioRow(.ears, value: WyrmLook.earNames[safe: look.ears] ?? "None")
-                studioRow(.glasses, value: WyrmLook.glassesNames[safe: look.glasses] ?? "None")
+                let worn = [look.hair, look.ears, look.glasses].filter { $0 >= 0 }.count
+                studioRow(.wyrmAccessories, value: worn == 0 ? "None" : "\(worn) on")
             }
-            Text("Hair, ears and glasses are Wyrm's own: you see them on your snake, other players don't.")
-                .font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 20).padding(.top, 8)
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
             }
@@ -468,10 +496,6 @@ struct WyrmSkinRoot: View {
         let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
         return VStack(alignment: .leading, spacing: 0) {
             WyrmSectionLabel("Wyrm beads")
-            Text("Patterned beads take the colour wheel's colour. In a match, other players see the nearest slither colour.")
-                .font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 20).padding(.bottom, 10)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
                 ForEach(0..<WyrmBead.count, id: \.self) { kind in
                     Button { addWyrmBead(kind: kind, tint: tint) } label: {
@@ -517,57 +541,47 @@ struct WyrmSkinRoot: View {
 
     // MARK: Wyrm looks (hair, ears, glasses): only this phone sees them.
 
-    private var hairPanel: some View {
+    /// Hair, ears and glasses, one tab each; big pictures like the original
+    /// accessories, no names (OM, 2026-09-28).
+    private var wyrmAccessoriesPanel: some View {
         VStack(spacing: 0) {
             inlineHeader
-            WyrmSectionLabel("Colour")
-            HStack(spacing: 10) {
-                ForEach(WyrmLook.hairColours.indices, id: \.self) { index in
-                    let chosen = look.hairColour == index
-                    Button { look.pickHairColour(index) } label: {
-                        Circle().fill(WyrmLook.color(WyrmLook.hairColours[index].rgb))
-                            .overlay(Circle().stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 3 : 1))
-                            .aspectRatio(1, contentMode: .fit)
-                    }.buttonStyle(.plain).accessibilityLabel("\(WyrmLook.hairColours[index].name) hair")
+            WSSegmented(options: ["Hair", "Ears", "Glasses"], selected: lookTab) { lookTab = $0 }
+                .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 12)
+            switch lookTab {
+            case 0:
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Hair colour").font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.quiet)
+                    WSGradientTrack(fraction: look.hairTone,
+                                    colors: stride(from: 0.0, through: 1.0, by: 0.05).map { WyrmLook.color(WyrmLook.hairTone($0)) },
+                                    dragging: $hairDragging) { look.pickHairTone($0) }
+                        .frame(height: 30)
                 }
-            }.padding(.horizontal, 18)
-            WyrmSectionLabel("Style")
-            lookGrid(names: WyrmLook.hairNames, current: look.hair, pick: look.pickHair) { style in
-                (style, -1, -1)
+                .padding(.horizontal, 20).padding(.bottom, 14)
+                lookGrid(count: WyrmLook.hairNames.count, current: look.hair, pick: look.pickHair,
+                         tint: WyrmLook.color(look.hairRGB)) { $0 }
+            case 1:
+                lookGrid(count: WyrmLook.earNames.count, current: look.ears, pick: look.pickEars) { 16 + $0 }
+            default:
+                lookGrid(count: WyrmLook.glassesNames.count, current: look.glasses, pick: look.pickGlasses) { 28 + $0 }
             }
         }
     }
 
-    private func lookPanel(ears: Bool) -> some View {
-        VStack(spacing: 0) {
-            inlineHeader
-            lookGrid(names: ears ? WyrmLook.earNames : WyrmLook.glassesNames,
-                     current: ears ? look.ears : look.glasses,
-                     pick: ears ? look.pickEars : look.pickGlasses) { style in
-                ears ? (-1, style, -1) : (-1, -1, style)
-            }
-        }
-    }
-
-    private func lookGrid(names: [String], current: Int, pick: @escaping (Int) -> Void,
-                          look item: @escaping (Int) -> (Int, Int, Int)) -> some View {
-        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+    private func lookGrid(count: Int, current: Int, pick: @escaping (Int) -> Void, tint: Color = .white,
+                          cell: @escaping (Int) -> Int) -> some View {
+        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
             selectionTile(selected: current < 0, label: "None") { pick(-1) }
-            ForEach(names.indices, id: \.self) { style in
-                let parts = item(style)
+            ForEach(0..<count, id: \.self) { style in
                 Button { pick(style) } label: {
-                    ZStack(alignment: .bottom) {
+                    ZStack {
                         RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
-                        WyrmLookThumb(cells: textures.looks, hair: parts.0, hairRGB: look.hairRGB,
-                                      ears: parts.1, glasses: parts.2)
-                            .padding(.bottom, 14)
-                        Text(names[style]).font(.androidWyrm(9.5, .semibold)).foregroundColor(ATheme.quiet)
-                            .lineLimit(1).padding(.bottom, 5)
+                        WyrmAtlasImage(image: textures.lookThumbnails[cell(style)]).colorMultiply(tint).padding(6)
                         if current == style { selectionCheck }
                     }.aspectRatio(1, contentMode: .fit)
                         .overlay(RoundedRectangle(cornerRadius: 15).stroke(current == style ? ATheme.ink : ATheme.rule,
                                                                             lineWidth: current == style ? 2 : 1))
-                }.buttonStyle(.plain).accessibilityLabel(names[style])
+                }.buttonStyle(.plain)
             }
         }.padding(.horizontal, 16)
     }
@@ -706,32 +720,6 @@ struct WyrmSkinRoot: View {
     }
 }
 
-/// A look on a small Wyrm head, the way the arena wears it, with room behind
-/// the head for a ponytail.
-private struct WyrmLookThumb: View {
-    let cells: [Int: CGImage]
-    let hair: Int
-    let hairRGB: UInt32
-    let ears: Int
-    let glasses: Int
-    var body: some View {
-        Canvas { context, size in
-            let r = min(size.width / 7.2, size.height / 4.8)
-            let head = CGPoint(x: size.width - r * 2.0, y: size.height / 2)
-            func dot(_ c: CGPoint, _ radius: CGFloat, _ colour: Color) {
-                context.fill(Path(ellipseIn: CGRect(x: c.x - radius, y: c.y - radius, width: radius * 2, height: radius * 2)),
-                             with: .color(colour))
-            }
-            dot(head, r, Color(red: 0.95, green: 0.72, blue: 0.29))
-            for s in [-1.0, 1.0] {
-                dot(CGPoint(x: head.x + 0.41 * r, y: head.y + 0.45 * r * s), 0.41 * r, .white)
-                dot(CGPoint(x: head.x + 0.51 * r, y: head.y + 0.45 * r * s), 0.24 * r, Color(white: 0.08))
-            }
-            WyrmLook.draw(in: context, cells: cells, head: head, r: r, hair: hair, hairRGB: hairRGB,
-                          ears: ears, glasses: glasses)
-        }
-    }
-}
 
 private struct WyrmSkinPreview: View {
     @ObservedObject var textures: WyrmSkinTextureLibrary

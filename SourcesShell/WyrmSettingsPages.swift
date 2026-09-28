@@ -1342,6 +1342,9 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "Wyrm beads: 54 now, 30 new (gems, metals, animal prints, neon, aurora, pixel and more), each in its own colours.",
+        "Wyrm accessories: one page with Hair, Ears and Glasses tabs, big pictures, and a colour slider for hair.",
+        "About follows your theme. The tab bar keeps the chosen tab readable in every theme.",
         "Update prompts: a new build raises a card that opens Settings > Backup. Beta builds say they are betas, explain what that means, and link straight to the Beta updates switch. Beta updates are now on by default.",
         "Team mode is paused: NTL services are switched off while arena drops are fixed. Saved teams stay on this iPhone.",
         "Image arrows show their true colours in the arena (a red arrow no longer draws blue).",

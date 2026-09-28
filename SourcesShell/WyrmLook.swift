@@ -14,11 +14,30 @@ enum WyrmLook {
                            "Koala", "Fox", "Wolf", "Tiger", "Bat", "Dragon"]
     static let glassesNames = ["Heart", "Cat-eye", "Flower", "Pastel", "Nerd", "Sparkle",
                                "Aviator", "Pixel", "Cyber visor", "Evil visor", "Steampunk", "Punk"]
-    /// Hair tints: the hair art is light grey and takes one of these.
-    static let hairColours: [(name: String, rgb: UInt32)] = [
-        ("Brown", 0x96603A), ("Cream", 0xF6E4C4), ("Purple", 0xAA7DF0),
-        ("Pink", 0xFF8FC0), ("White", 0xFFFFFF), ("Black", 0x46464E),
+    /// The hair colour slider (OM, 2026-09-28: one slider, not six beads). The
+    /// hair art is light grey and takes the colour at the slider's position.
+    static let hairStops: [(at: Double, rgb: UInt32)] = [
+        (0.00, 0x2A2A30), (0.12, 0x4A2E1A), (0.22, 0x96603A), (0.32, 0xB0452A),
+        (0.40, 0xE07A30), (0.48, 0xF2D28A), (0.54, 0xF6E4C4), (0.60, 0xFFFFFF),
+        (0.70, 0xFF8FC0), (0.78, 0xAA7DF0), (0.86, 0x5A8CF0), (0.93, 0x3EC6C0),
+        (1.00, 0x4CC05A),
     ]
+
+    /// The colour at `tone` (0...1) along `hairStops`.
+    static func hairTone(_ tone: Double) -> UInt32 {
+        let t = min(max(tone, 0), 1)
+        let next = max(1, hairStops.firstIndex { $0.at >= t } ?? hairStops.count - 1)
+        let a = hairStops[next - 1], b = hairStops[next]
+        let f = b.at > a.at ? min(max((t - a.at) / (b.at - a.at), 0), 1) : 0
+        func mix(_ shift: UInt32) -> UInt32 {
+            let x = Double((a.rgb >> shift) & 0xFF), y = Double((b.rgb >> shift) & 0xFF)
+            return UInt32(min(max((x + (y - x) * f).rounded(), 0), 255)) << shift
+        }
+        return mix(16) | mix(8) | mix(0)
+    }
+
+    /// Where the six old hair colours sit on the slider, for saved looks.
+    static let oldHairTones: [Double] = [0.22, 0.54, 0.78, 0.70, 0.60, 0.0]
 
     static let capSide: CGFloat = 4.4
     static let capBack: CGFloat = 0.6
@@ -82,7 +101,8 @@ final class WyrmLookStore: ObservableObject {
     static let shared = WyrmLookStore()
 
     @Published private(set) var hair: Int
-    @Published private(set) var hairColour: Int
+    /// The hair colour slider's position, 0...1 along `WyrmLook.hairStops`.
+    @Published private(set) var hairTone: Double
     @Published private(set) var ears: Int
     @Published private(set) var glasses: Int
 
@@ -93,26 +113,31 @@ final class WyrmLookStore: ObservableObject {
             return (0..<count).contains(v) ? v : -1
         }
         hair = pick("wyrm.ios.look.hair", WyrmLook.hairNames.count)
-        hairColour = min(max(d.object(forKey: "wyrm.ios.look.hair-colour") as? Int ?? 0, 0), WyrmLook.hairColours.count - 1)
+        if let tone = d.object(forKey: "wyrm.ios.look.hair-tone") as? Double {
+            hairTone = min(max(tone, 0), 1)
+        } else {
+            let old = d.object(forKey: "wyrm.ios.look.hair-colour") as? Int ?? 0
+            hairTone = WyrmLook.oldHairTones.indices.contains(old) ? WyrmLook.oldHairTones[old] : 0.22
+        }
         ears = pick("wyrm.ios.look.ears", WyrmLook.earNames.count)
         glasses = pick("wyrm.ios.look.glasses", WyrmLook.glassesNames.count)
     }
 
-    var hairRGB: UInt32 { WyrmLook.hairColours[hairColour].rgb }
+    var hairRGB: UInt32 { WyrmLook.hairTone(hairTone) }
 
     func publish() {
         WyrmIOSSetLook(Int32(hair), Int32(hairRGB), Int32(ears), Int32(glasses))
     }
 
     func pickHair(_ v: Int) { hair = WyrmLook.hairNames.indices.contains(v) ? v : -1; save() }
-    func pickHairColour(_ v: Int) { hairColour = min(max(v, 0), WyrmLook.hairColours.count - 1); save() }
+    func pickHairTone(_ v: Double) { hairTone = min(max(v, 0), 1); save() }
     func pickEars(_ v: Int) { ears = WyrmLook.earNames.indices.contains(v) ? v : -1; save() }
     func pickGlasses(_ v: Int) { glasses = WyrmLook.glassesNames.indices.contains(v) ? v : -1; save() }
 
     private func save() {
         let d = UserDefaults.standard
         d.set(hair, forKey: "wyrm.ios.look.hair")
-        d.set(hairColour, forKey: "wyrm.ios.look.hair-colour")
+        d.set(hairTone, forKey: "wyrm.ios.look.hair-tone")
         d.set(ears, forKey: "wyrm.ios.look.ears")
         d.set(glasses, forKey: "wyrm.ios.look.glasses")
         publish()

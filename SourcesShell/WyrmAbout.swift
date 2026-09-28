@@ -40,17 +40,23 @@ enum WyrmAboutInfo {
     ]
 }
 
-/// The page's own colours: the same at every theme, on purpose.
+/// The page's colours, from the player's theme (OM, 2026-09-28: the page must
+/// follow the chosen theme). Gold is the page's accent, deeper on light themes
+/// so it reads on paper; text on gold is always dark. `Night` on Android.
 enum WyrmNight {
-    static let sky = Color(red: 0.055, green: 0.063, blue: 0.059)
-    static let deep = Color(red: 0.086, green: 0.098, blue: 0.090)
-    static let card = Color.white.opacity(0.055)
-    static let rule = Color.white.opacity(0.10)
-    static let ink = Color(red: 0.95, green: 0.94, blue: 0.91)
-    static let mute = Color(red: 0.73, green: 0.71, blue: 0.68)
-    static let quiet = Color(red: 0.55, green: 0.54, blue: 0.51)
-    static let gold = Color(red: 0.89, green: 0.73, blue: 0.42)
-    static let green = Color(red: 0.45, green: 0.71, blue: 0.56)
+    static var sky: Color { ATheme.paper }
+    static var deep: Color { ATheme.card }
+    static var card: Color { ATheme.card }
+    static var rule: Color { ATheme.rule }
+    static var ink: Color { ATheme.ink }
+    static var mute: Color { ATheme.mute }
+    static var quiet: Color { ATheme.quiet }
+    static var well: Color { ATheme.well }
+    static var gold: Color {
+        ATheme.dark ? Color(red: 0.89, green: 0.73, blue: 0.42) : Color(red: 0.69, green: 0.48, blue: 0.12)
+    }
+    static let onGold = Color(red: 0.11, green: 0.10, blue: 0.086)
+    static var green: Color { ATheme.live }
     static let discord = Color(red: 0.345, green: 0.396, blue: 0.949)
 }
 
@@ -143,7 +149,7 @@ struct WyrmAboutPage: View {
     private func chapter(_ numeral: String, _ title: String, _ text: String, last: Bool = false) -> some View {
         HStack(alignment: .top, spacing: 16) {
             VStack(spacing: 0) {
-                Text(numeral).font(.wyrmDisplay(15)).foregroundColor(WyrmNight.sky)
+                Text(numeral).font(.wyrmDisplay(15)).foregroundColor(WyrmNight.onGold)
                     .frame(width: 34, height: 34)
                     .background(Circle().fill(WyrmNight.gold))
                     .shadow(color: WyrmNight.gold.opacity(0.5), radius: 10)
@@ -173,7 +179,7 @@ struct WyrmAboutPage: View {
                     Image(systemName: item.symbol).font(.system(size: 18, weight: .semibold))
                         .foregroundColor(index == 0 ? WyrmNight.gold : WyrmNight.ink)
                         .frame(width: 36, height: 36)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.white.opacity(0.07)))
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(WyrmNight.well))
                     VStack(alignment: .leading, spacing: 2) {
                         Text(item.name).font(.androidWyrm(14, .bold)).foregroundColor(WyrmNight.ink)
                         Text(item.detail).font(.androidWyrm(11.5)).foregroundColor(WyrmNight.quiet)
@@ -264,7 +270,7 @@ struct WyrmAboutPage: View {
                         Image(systemName: "doc.on.doc").font(.system(size: 13, weight: .semibold)).foregroundColor(WyrmNight.gold)
                     }
                     .padding(.horizontal, 16).frame(height: 40)
-                    .background(Capsule().fill(Color.white.opacity(0.08)))
+                    .background(Capsule().fill(WyrmNight.well))
                 }
                 .buttonStyle(WSPressStyle())
                 Button {
@@ -275,7 +281,7 @@ struct WyrmAboutPage: View {
                         Image(systemName: "cup.and.saucer.fill").font(.system(size: 15, weight: .semibold))
                         Text("Pay with a UPI app").font(.androidWyrm(15.5, .bold))
                     }
-                    .foregroundColor(WyrmNight.sky)
+                    .foregroundColor(WyrmNight.onGold)
                     .frame(maxWidth: .infinity).frame(height: 52)
                     .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(WyrmNight.gold))
                 }

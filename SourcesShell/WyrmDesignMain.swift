@@ -48,7 +48,7 @@ struct WyrmDesignMain: View {
 
                 ForEach(Array(routes.enumerated()), id: \.element.id) { index, route in
                     ZStack {
-                        // About is drawn at night whatever the theme, up under the status bar.
+                        // About follows the theme too (WyrmNight reads it), up under the status bar.
                         (route == .about ? WyrmNight.sky : ATheme.paper).ignoresSafeArea()
                         WyrmDetailHost(route: route, engine: engine, account: account, services: services, close: { pop(route) }, open: open)
                             .padding(.top, proxy.safeAreaInsets.top)
@@ -142,7 +142,7 @@ struct WyrmDesignMain: View {
                     .badge(value == .alerts ? unreadAlerts : 0)
                 }
             }
-            .tint(ATheme.dark ? theme.selectedPillInk.color : ATheme.ink)
+            .tint(ATheme.ink)
             .tabBarMinimizeBehavior(.onScrollDown)
         }
 #endif
@@ -158,13 +158,12 @@ struct WyrmDesignMain: View {
         open(.backup)
     }
 
-    /// Active tab: the theme's ink. The rest: its faded tab colour. Graphite and
-    /// Midnight flip it (OM): the selected tab sits on a light lens, so it takes
-    /// the dark ink, and the idle tabs take the light one.
+    /// Active tab: the theme's ink. The rest: its faded tab colour, in every
+    /// theme (OM, 2026-09-28: a dark label on the resting pill was lost in the
+    /// dark themes). As `FloatingTabLabel` on Android.
     private static func styleTabBar() {
-        let dark = ATheme.dark
-        let active = UIColor(dark ? WyrmThemeStore.shared.selectedPillInk.color : ATheme.ink)
-        let idle = UIColor(dark ? ATheme.ink : ATheme.tabIdle)
+        let active = UIColor(ATheme.ink)
+        let idle = UIColor(ATheme.tabIdle)
         let bar = UITabBar.appearance()
         bar.tintColor = active
         bar.unselectedItemTintColor = idle

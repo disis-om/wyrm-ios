@@ -58,7 +58,7 @@ def replace_body(text, name, body):
 # against the baked AIR sheets). Both hashes are pinned so neither can drift.
 ORIGINAL_ATLAS_SHA256 = "73805db544b97b51c3ce7d898dbc48d5ea2bc173dcd402e072f0c63642342fed"
 AIR_ATLAS = ROOT / "Resources" / "AirSkin" / "tex_atlas_8k.png"
-AIR_ATLAS_SHA256 = "03a2d9f6617a10b8b5549699e47b8e942b4216b104ed51159e736d3cbd7cc29e"
+AIR_ATLAS_SHA256 = "6a1d2a4491ed17f31dc5585b5a68ede85e48592d5a7ed032e976148886eea753"
 atlas_target = OUTPUT / "app/res/textures/tex_atlas_8k.png"
 if hashlib.sha256(atlas_target.read_bytes()).hexdigest() != ORIGINAL_ATLAS_SHA256:
     raise SystemExit("Original atlas changed; regenerate Resources/AirSkin")
@@ -174,39 +174,41 @@ AIR_PREPASS = r'''            float shadow_strength = 0.25f;
             }'''
 
 WYRM_BEAD_HELPERS = r'''/* Wyrm's own beads (OM, 2026-09-28). A built segment whose alpha byte is
- * 0xE0 + k wears Wyrm bead k: 24 cells painted into free atlas space by Wyrm
- * iOS Scripts/generate-wyrm-beads.py (row 7 cols 3 and 6, row 8 cols 0-3,
- * each split into four quarters). Tinted beads are grey and take the low 24
- * bits as their colour; fixed-colour beads (flags, metals, galaxy...) are
- * drawn as painted, their RGB only picks the arena's nearest colour group.
- * Like every slither bead, the motif sits on the +x side, the side a body
- * drawn tail first leaves showing. */
+ * 0xE0 + k (beads 0-23) or 0xC0 + k - 24 (beads 24-53) wears Wyrm bead k,
+ * painted by Wyrm iOS Scripts/generate-wyrm-beads.py into six atlas cells
+ * nothing else samples (row 7 cols 3 and 6, row 8 cols 0-3), nine to a cell
+ * in a 3 x 3 grid. Every bead is drawn in its own painted colours; the RGB
+ * only picks the arena's nearest colour group. Like every slither bead, the
+ * motif sits on the +x side, the side a body drawn tail first leaves showing. */
 #define WYRM_BEAD_TAG 0xE0u
-#define WYRM_BEAD_COUNT 24
+#define WYRM_BEAD_TAG2 0xC0u
+#define WYRM_BEAD_FIRST_COUNT 24
+#define WYRM_BEAD_COUNT 54
 
-static const unsigned char wyrm_bead_cells[WYRM_BEAD_COUNT / 4][2] = {
+static const unsigned char wyrm_bead_cells[WYRM_BEAD_COUNT / 9][2] = {
     {7, 3}, {7, 6}, {8, 0}, {8, 1}, {8, 2}, {8, 3}};
-static const unsigned char wyrm_bead_tinted[WYRM_BEAD_COUNT] = {
-    0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0};
 
 static int wyrm_bead_kind(uint32_t rgba) {
   uint32_t tag = rgba >> 24;
-  return tag >= WYRM_BEAD_TAG && tag < WYRM_BEAD_TAG + WYRM_BEAD_COUNT
-             ? (int)(tag - WYRM_BEAD_TAG)
-             : -1;
+  if (tag >= WYRM_BEAD_TAG && tag < WYRM_BEAD_TAG + WYRM_BEAD_FIRST_COUNT)
+    return (int)(tag - WYRM_BEAD_TAG);
+  if (tag >= WYRM_BEAD_TAG2 &&
+      tag < WYRM_BEAD_TAG2 + (WYRM_BEAD_COUNT - WYRM_BEAD_FIRST_COUNT))
+    return (int)(tag - WYRM_BEAD_TAG2) + WYRM_BEAD_FIRST_COUNT;
+  return -1;
 }
 
 static vec4s wyrm_bead_uv(int kind) {
-  const unsigned char* cell = wyrm_bead_cells[kind / 4];
-  float qx = (float)(kind % 2) * 0.5f, qy = (float)((kind % 4) / 2) * 0.5f;
-  return (vec4s){{(cell[1] + qx) / 7.0f, (cell[0] + qy) / 9.0f, 0.5f / 7.0f,
-                  0.5f / 9.0f}};
+  const unsigned char* cell = wyrm_bead_cells[kind / 9];
+  float qx = (float)(kind % 3) / 3.0f, qy = (float)((kind % 9) / 3) / 3.0f;
+  return (vec4s){{(cell[1] + qx) / 7.0f, (cell[0] + qy) / 9.0f,
+                  (1.0f / 3.0f) / 7.0f, (1.0f / 3.0f) / 9.0f}};
 }
 
 static vec4s wyrm_bead_color(uint32_t rgba, int kind, float alpha) {
-  if (!wyrm_bead_tinted[kind]) return (vec4s){{1, 1, 1, alpha}};
-  return (vec4s){{((rgba >> 16) & 0xFF) / 255.0f, ((rgba >> 8) & 0xFF) / 255.0f,
-                  (rgba & 0xFF) / 255.0f, alpha}};
+  (void)rgba;
+  (void)kind;
+  return (vec4s){{1, 1, 1, alpha}};
 }
 
 '''
