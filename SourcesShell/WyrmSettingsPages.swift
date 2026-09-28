@@ -1342,6 +1342,7 @@ struct WyrmBuildNotesPage: View {
     }
 
     static let notes = [
+        "Wyrm beads show in the arena again: the game now refreshes its textures with every new build.",
         "Wyrm beads: 54 now, 30 new (gems, metals, animal prints, neon, aurora, pixel and more), each in its own colours.",
         "Wyrm accessories: one page with Hair, Ears and Glasses tabs, big pictures, and a colour slider for hair.",
         "About follows your theme. The tab bar keeps the chosen tab readable in every theme.",

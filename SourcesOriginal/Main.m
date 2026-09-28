@@ -394,10 +394,12 @@ static int engine_main(int argc, char** argv) {
     NSURL* assets = [app URLByAppendingPathComponent:@"res" isDirectory:YES];
     NSURL* bundle = [NSBundle.mainBundle URLForResource:@"res" withExtension:nil];
     if (!bundle) { NSLog(@"Wyrm original assets missing"); return 1; }
-    // The copy is made once per asset revision. Bump the revision whenever a
-    // bundled engine asset changes (56: the Android Build-a-Slither cells in
-    // the atlas); user.dat lives beside app/, not in it, and is kept.
-    NSString* assetRevision = @"56-air-skin";
+    // The copy is made once per build: the revision is the app's build number,
+    // so a changed atlas can never be left stale (it was, from 56 until 74:
+    // the Wyrm bead cells were missing and bead snakes drew blank). user.dat
+    // lives beside app/, not in it, and is kept.
+    NSString* build = [NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"] ?: @"0";
+    NSString* assetRevision = [NSString stringWithFormat:@"build-%@", build];
     NSURL* stamp = [assets URLByAppendingPathComponent:@".wyrm-assets"];
     NSString* installed = [NSString stringWithContentsOfURL:stamp encoding:NSUTF8StringEncoding error:nil];
     if ([files fileExistsAtPath:assets.path] && ![installed isEqualToString:assetRevision] &&

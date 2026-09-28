@@ -59,7 +59,7 @@ checks = {
     "AIR atlas is committed and matches its pin": AIR_ATLAS.is_file() and pinned is not None and hashlib.sha256(AIR_ATLAS.read_bytes()).hexdigest() == pinned.group(1),
     "colour wheel image is committed and bundled": WHEEL.is_file() and "Resources/AirSkin/air_colour_wheel.png" in SPEC,
     "app bundles the prepared res tree": "- path: build-original-source/app/res" in SPEC and "- path: SharedEngine/app/res" not in SPEC,
-    "installed assets refresh on a new revision": 'assetRevision = @"56-air-skin"' in MAIN and "removeItemAtURL:assets" in MAIN and "user.dat" in MAIN,
+    "installed assets refresh on a new revision": 'objectForInfoDictionaryKey:@"CFBundleVersion"' in MAIN and 'assetRevision = [NSString stringWithFormat:@"build-%@", build]' in MAIN and "removeItemAtURL:assets" in MAIN and "user.dat" in MAIN,
 }
 
 if PREPARED_ATLAS.is_file():
