@@ -237,7 +237,10 @@ private actor WyrmAPI {
 final class WyrmAccountStore: ObservableObject {
     enum Phase: Equatable { case restoring, signedOut, onboarding, signedIn, signingOut }
     @Published private(set) var phase: Phase = .restoring
-    @Published private(set) var player: WyrmPlayer?
+    @Published private(set) var player: WyrmPlayer? {
+        // Screens cache per account (WyrmCache); the signed-in player names the folder.
+        didSet { if let id = player?.id { WyrmCache.owner = id } }
+    }
     @Published var busy = false
     @Published var errorMessage = ""
     private var token: String?
@@ -317,6 +320,7 @@ final class WyrmAccountStore: ObservableObject {
     /// cleared and the cinematic sign-out transition has finished.
     func completeSignOut() {
         WyrmKeychain.clear()
+        WyrmCache.clearAll()
         token = nil
         player = nil
         busy = false

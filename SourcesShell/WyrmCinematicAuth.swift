@@ -67,6 +67,7 @@ struct WyrmCinematicAuth: View {
     @StateObject private var keyboard = WyrmKeyboardMonitor()
     @FocusState private var focus: WyrmAuthFocus?
     @State private var stage: WyrmAuthStage
+    @State private var showingPrivacy = false
     @State private var username = ""
     @State private var password = ""
     @State private var confirmation = ""
@@ -122,7 +123,7 @@ struct WyrmCinematicAuth: View {
                     WyrmAuthKeyboardAction(title: actionTitle, enabled: actionEnabled, action: advance)
                         .padding(.horizontal, 16)
                         .padding(.bottom, keyboard.height > 0 ? keyboard.height + 9 : safeBottom + 10)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         .transition(.wyrmBlurFade)
                         .zIndex(8)
                 }
@@ -132,6 +133,10 @@ struct WyrmCinematicAuth: View {
         .ignoresSafeArea(.container, edges: .all)
         .ignoresSafeArea(.keyboard, edges: .bottom)
         .foregroundColor(ATheme.ink)
+        .sheet(isPresented: $showingPrivacy) {
+            WyrmPrivacyPage(parent: "Back") { showingPrivacy = false }
+                .background(ATheme.paper.ignoresSafeArea())
+        }
         .animation(motion, value: stage)
         .animation(motion, value: showsKeyboardAction)
         .animation(motion, value: keyboard.height > 0)
@@ -206,27 +211,46 @@ struct WyrmCinematicAuth: View {
 
             Spacer(minLength: 18)
 
-            WyrmPrimaryAction(title: "Create Wyrm account", icon: "arrow.right") {
+            // The welcome pair (OM, 2026-09-29), as the best sign-up screens
+            // do it: one solid capsule for the new player, a ghost capsule for
+            // the returning one, both no Liquid Glass; then the privacy line,
+            // with its link, where consent is given.
+            Button {
                 enter(.createUsername, focus: .username)
+            } label: {
+                Text("Create account")
+                    .font(.androidWyrm(16, .bold))
+                    .foregroundColor(ATheme.onInk)
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .background(Capsule().fill(ATheme.ink))
+                    .shadow(color: ATheme.ink.opacity(0.16), radius: 14, y: 6)
             }
+            .buttonStyle(WSPressStyle())
+            .accessibilityHint("Make a new Wyrm account")
 
             Button {
                 enter(.loginUsername, focus: .username)
             } label: {
-                Text("Login")
-                    .font(.androidWyrm(14.5, .semibold))
-                    .foregroundColor(ATheme.link)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                Text("Log in")
+                    .font(.androidWyrm(16, .semibold))
+                    .foregroundColor(ATheme.ink)
+                    .frame(maxWidth: .infinity).frame(height: 52)
+                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.22), lineWidth: 1.5))
+                    .contentShape(Capsule())
             }
-            .modifier(WyrmGlassButtonModifier(radius: 15, fallback: PlainButtonStyleShim()))
+            .buttonStyle(WSPressStyle())
+            .padding(.top, 10)
             .accessibilityHint("Sign in with an existing Wyrm username and password")
 
-            Text("Privacy")
-                .font(.androidWyrm(12.5))
-                .foregroundColor(ATheme.quiet.opacity(0.7))
-                .frame(maxWidth: .infinity)
-                .padding(.top, 2)
+            Button { showingPrivacy = true } label: {
+                (Text("By continuing, you agree to Wyrm's ").foregroundColor(ATheme.quiet)
+                    + Text("Privacy Policy").foregroundColor(ATheme.link).underline())
+                    .font(.androidWyrm(12))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 14)
         }
         .padding(.horizontal, 24)
         .padding(.bottom, safeBottom + 12)
@@ -486,7 +510,7 @@ struct WyrmCinematicAuth: View {
         switch stage {
         case .createUsername, .loginUsername: return "Continue"
         case .createPassword: return "Next"
-        case .loginPassword: return "Login"
+        case .loginPassword: return "Log in"
         case .createConfirmation: return "Create account"
         default: return "Continue"
         }
@@ -826,21 +850,23 @@ private struct WyrmAuthKeyboardAction: View {
     let enabled: Bool
     let action: () -> Void
 
+    // A compact pill riding the keyboard at the right, where the thumb
+    // already is (OM, 2026-09-29: the full-width block felt aggressive). Ink
+    // when it can go, a quiet well while it cannot.
     var body: some View {
         Button(action: action) {
-            HStack {
-                Text(title).font(.androidWyrm(15, .bold))
-                Spacer()
-                Image(systemName: "arrow.right").font(.system(size: 14, weight: .bold))
+            HStack(spacing: 8) {
+                Text(title).font(.androidWyrm(15, .semibold))
+                Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold))
             }
-            .padding(.horizontal, 18)
-            .frame(height: 54)
-            .background(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.ink.opacity(0.34)))
-            .foregroundColor(ATheme.onInk)
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .shadow(color: ATheme.ink.opacity(enabled && !WyrmGlass.native ? 0.18 : 0), radius: 18, y: 8)
+            .padding(.leading, 20).padding(.trailing, 16)
+            .frame(height: 46)
+            .foregroundColor(enabled ? ATheme.onInk : ATheme.quiet)
+            .background(Capsule().fill(enabled ? ATheme.ink : ATheme.well))
+            .shadow(color: ATheme.ink.opacity(enabled ? 0.14 : 0), radius: 12, y: 5)
+            .animation(.easeOut(duration: 0.18), value: enabled)
         }
-        .modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WSPressStyle()))
+        .buttonStyle(WSPressStyle())
         .disabled(!enabled)
     }
 }

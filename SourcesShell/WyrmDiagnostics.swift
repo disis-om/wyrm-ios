@@ -67,6 +67,23 @@ final class WyrmDiagnostics: ObservableObject {
         }
     }
 
+    /// The last lines of the app and engine logs, newest last, for a support
+    /// report. Already free of tokens, passwords and message bodies; the
+    /// report redacts again before it leaves the phone.
+    func recentLog(maxBytes: Int = 60_000) -> String {
+        let half = maxBytes / 2
+        func tail(_ url: URL) -> String {
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else { return "" }
+            var slice = data.suffix(half)
+            if data.count > half, let newline = slice.firstIndex(of: 0x0A), newline < slice.endIndex {
+                slice = slice.suffix(from: slice.index(after: newline))
+            }
+            return String(decoding: slice, as: UTF8.self)
+        }
+        let app = tail(appURL), engine = tail(engineURL)
+        return "--- APP / NETWORK ---\n\(app.isEmpty ? "(empty)" : app)\n--- ENGINE ---\n\(engine.isEmpty ? "(empty)" : engine)"
+    }
+
     /// Builds a fresh, self-contained text file for UIActivityViewController.
     /// The Keychain session and private chat bodies are intentionally absent.
     func exportFile() -> URL? {

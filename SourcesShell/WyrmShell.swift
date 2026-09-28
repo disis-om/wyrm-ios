@@ -720,6 +720,7 @@ private struct ShellTabBar: View {
 @objc(WyrmShellHost)
 final class WyrmShellHost: NSObject {
     @objc static func makeViewController() -> UIViewController {
+        WyrmCrashWatch.shared.install()
         WyrmFontLoader.register()
         WyrmThemeStore.shared.publishArenaTheme()
         WyrmThemeStore.shared.applyControlAppearance()

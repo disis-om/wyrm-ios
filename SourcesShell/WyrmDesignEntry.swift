@@ -64,6 +64,11 @@ struct WyrmDesignRoot: View {
             } else if engine.engineScreen == WyrmShellStore.lobbyScreen {
                 WyrmReadyRoom(engine: engine, services: services)
             }
+            // After a crash: asked once the first real screen is up, never over
+            // the launch mark or a match.
+            if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0 {
+                WyrmCrashPromptHost().zIndex(100)
+            }
         }
         .environmentObject(team)
         .onChange(of: account.phase) { phase in if phase == .signedOut || phase == .signingOut { coldStart = false } }
@@ -77,6 +82,7 @@ struct WyrmDesignRoot: View {
             team.start()
             WyrmGameSync.shared.start()
             services.observeGameSync()
+            WyrmCrashWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
         }
         .task(id: sessionLifecycleID) {
             switch account.phase {
@@ -89,6 +95,9 @@ struct WyrmDesignRoot: View {
             case .signingOut:
                 WyrmGameSync.shared.deactivate()
                 services.resetSession()
+                WyrmTrailsStore.shared.reset()
+                WyrmBadgeStore.shared.reset()
+                WyrmSupportStore.shared.reset()
                 try? await Task.sleep(nanoseconds: 920_000_000)
                 guard !Task.isCancelled else { return }
                 account.completeSignOut()

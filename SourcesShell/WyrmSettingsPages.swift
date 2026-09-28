@@ -16,6 +16,7 @@ struct WyrmSettingsHub: View {
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var theme = WyrmThemeStore.shared
     @ObservedObject var notifications = WyrmNotificationPrefs.shared
+    @ObservedObject var support = WyrmSupportStore.shared
     let open: (WyrmDesignRoute) -> Void
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
     @AppStorage(WyrmBackup.lastKey) var lastBackup = ""
@@ -62,6 +63,7 @@ struct WyrmSettingsHub: View {
                         + " · Wyrm \(WyrmBuild.version)"
                         + (engine.settingsVersion.isEmpty ? "" : " · format v\(engine.settingsVersion)"),
                     "", .backup)])
+                group("Help & feedback", [("Help & feedback", "Report a problem, suggest an idea, crash reports", support.unseenReplies > 0 ? "\(support.unseenReplies) new" : "", .help)])
                 group("About", [("About Wyrm", "The story, the maker, and how to support", "", .about)])
                 }
 
@@ -795,7 +797,7 @@ struct WyrmFoodWell: View {
 /// erase a carefully chosen set. Mirrors Android's NotificationPreferences.
 final class WyrmNotificationPrefs: ObservableObject {
     static let shared = WyrmNotificationPrefs()
-    static let knownKinds = ["dm", "invite", "voice_invite", "notice", "broadcast", "event", "update", "feature", "follow", "achievement", "rank", "backup"]
+    static let knownKinds = ["dm", "invite", "voice_invite", "notice", "broadcast", "event", "update", "feature", "follow", "achievement", "rank", "backup", "trail_like", "trail_reply", "support"]
     @Published private(set) var status: UNAuthorizationStatus = .notDetermined
     @Published private(set) var revision = 0
 
@@ -840,11 +842,14 @@ struct WyrmNotificationSettingsPage: View {
                     ("dm", "Direct messages", "New thread or reply."),
                     ("voice_invite", "Voice invitations", "Private invitations to verified voice rooms."),
                     ("follow", "New followers", "When another player starts following you.")]),
+        ("Trails", [("trail_like", "Beads on your trails", "When someone gives a trail you posted a bead."),
+                    ("trail_reply", "Replies to your trails", "When someone replies to a trail you posted.")]),
         ("Wyrm", [("notice", "Notices", "Maintenance, downtime and important alerts."),
                   ("broadcast", "Broadcasts", "General announcements sent to everyone."),
                   ("event", "Battledome events", "Scheduled events, start times and arena addresses."),
                   ("update", "Updates", "New versions and their changelogs."),
-                  ("feature", "New features", "What has been added or changed inside Wyrm.")]),
+                  ("feature", "New features", "What has been added or changed inside Wyrm."),
+                  ("support", "Replies from Wyrm", "Answers to your reports, ideas and questions.")]),
         ("You", [("achievement", "Achievements", "Personal bests and milestones after a run."),
                  ("rank", "Rank changes", "Leaderboard movement after a finished run."),
                  ("backup", "Backup receipts", "Local backup and restore results from this device.")]),

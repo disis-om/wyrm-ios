@@ -21,7 +21,7 @@ import UIKit
 
 // MARK: - Model
 
-struct WyrmTrailAuthor: Decodable, Equatable {
+struct WyrmTrailAuthor: Codable, Equatable {
     let playerId: String
     let ingameName: String?
     let username: String?
@@ -42,13 +42,13 @@ struct WyrmTrailAuthor: Decodable, Equatable {
     var avatarURL: String { WyrmTrailsClient.absolute(avatarUrl ?? "") }
 }
 
-struct WyrmTrailPhoto: Decodable, Equatable {
+struct WyrmTrailPhoto: Codable, Equatable {
     let url: String
     let width: Int
     let height: Int
 }
 
-struct WyrmTrail: Decodable, Identifiable, Equatable {
+struct WyrmTrail: Codable, Identifiable, Equatable {
     let id: String
     /// "photo" or "text" (a caption with no photo).
     let kind: String?
@@ -340,6 +340,16 @@ enum WyrmTrailEncoder {
 
 // MARK: - Store
 
+/// One profile's trail grid: what is loaded, and where the next page starts.
+struct WyrmAuthorTrails: Equatable {
+    var trails: [WyrmTrail] = []
+    var cursor: String?
+    var reachedEnd = false
+    var loaded = false
+    var loading = false
+    var failed = false
+}
+
 @MainActor
 final class WyrmTrailsStore: ObservableObject {
     static let shared = WyrmTrailsStore()
@@ -359,12 +369,28 @@ final class WyrmTrailsStore: ObservableObject {
     @Published private(set) var comments: [String: [WyrmTrailComment]] = [:]
     @Published var toast = ""
 
+    /// Trails opened from somewhere other than the feed (a profile grid, an
+    /// alert): kept aside so an old trail never jumps to the top of the feed.
+    @Published private(set) var loose: [String: WyrmTrail] = [:]
+    /// Each profile's trail grid, by player id.
+    @Published private(set) var authors: [String: WyrmAuthorTrails] = [:]
+
     var token: () -> String = { "" }
     private var cursor: String?
     private var liking: Set<String> = []
+    private static let feedCacheKey = "trails-feed"
+    private static func authorCacheKey(_ id: String) -> String { "trails-author-\(id)" }
 
+    /// Stale-while-revalidate (OM, 2026-09-29): the last first page paints at
+    /// once from disk, the network answer replaces it in place (same ids keep
+    /// their spot, so nothing jumps), and a skeleton is only ever seen on the
+    /// very first open.
     func refresh() async {
         guard !loading else { return }
+        if !loaded, trails.isEmpty, let cached = WyrmCache.load(Self.feedCacheKey, as: [WyrmTrail].self), !cached.isEmpty {
+            trails = cached
+            loaded = true
+        }
         loading = true
         defer { loading = false }
         do {
@@ -377,9 +403,85 @@ final class WyrmTrailsStore: ObservableObject {
             reachedEnd = page.nextCursor == nil
             error = ""
             prefetch(page.trails)
+            persistFeed()
         } catch is CancellationError {
         } catch { self.error = message(error) }
         loaded = true
+    }
+
+    /// A player's trails for their profile grid, cached per player.
+    func loadAuthor(_ id: String) async {
+        guard !id.isEmpty else { return }
+        if authors[id] == nil {
+            var seed = WyrmAuthorTrails()
+            if let cached = WyrmCache.load(Self.authorCacheKey(id), as: [WyrmTrail].self) {
+                seed.trails = cached
+                seed.loaded = true
+            }
+            authors[id] = seed
+        }
+        guard authors[id]?.loading != true else { return }
+        authors[id]?.loading = true
+        do {
+            let token = token()
+            let page = try await Task { try await WyrmTrailsClient.shared.feed(cursor: nil, author: id, token: token) }.value
+            var entry = authors[id] ?? WyrmAuthorTrails()
+            entry.trails = page.trails
+            entry.cursor = page.nextCursor
+            entry.reachedEnd = page.nextCursor == nil
+            entry.loaded = true
+            entry.loading = false
+            entry.failed = false
+            withAnimation(.easeOut(duration: 0.2)) { authors[id] = entry }
+            WyrmCache.save(Self.authorCacheKey(id), Array(page.trails.prefix(30)))
+            WyrmTrailImages.shared.prefetch(page.trails.compactMap { $0.thumbUrl.flatMap { URL(string: WyrmTrailsClient.absolute($0)) } })
+        } catch {
+            authors[id]?.loading = false
+            if error is CancellationError { return }
+            authors[id]?.failed = authors[id]?.trails.isEmpty == true
+            authors[id]?.loaded = true
+        }
+    }
+
+    func loadMoreAuthor(_ id: String, after trail: WyrmTrail) async {
+        guard let entry = authors[id], trail.id == entry.trails.last?.id, !entry.reachedEnd,
+              !entry.loading, let next = entry.cursor else { return }
+        authors[id]?.loading = true
+        do {
+            let page = try await WyrmTrailsClient.shared.feed(cursor: next, author: id, token: token())
+            let known = Set(authors[id]?.trails.map(\.id) ?? [])
+            authors[id]?.trails += page.trails.filter { !known.contains($0.id) }
+            authors[id]?.cursor = page.nextCursor
+            authors[id]?.reachedEnd = page.nextCursor == nil
+        } catch { }
+        authors[id]?.loading = false
+    }
+
+    /// Sign-out: "liked" and "mine" belong to the account that signed out.
+    func reset() {
+        trails = []
+        loose = [:]
+        authors = [:]
+        comments = [:]
+        cursor = nil
+        reachedEnd = false
+        loaded = false
+        error = ""
+        liking = []
+        if !posting.busy { posting = .idle; pendingImage = nil; pendingActive = false }
+    }
+
+    private func persistFeed() {
+        WyrmCache.save(Self.feedCacheKey, Array(trails.prefix(20)))
+    }
+
+    /// One change, applied wherever this trail is shown.
+    private func patch(_ id: String, _ change: (inout WyrmTrail) -> Void) {
+        if let i = trails.firstIndex(where: { $0.id == id }) { change(&trails[i]) }
+        if var single = loose[id] { change(&single); loose[id] = single }
+        for key in Array(authors.keys) {
+            if let i = authors[key]?.trails.firstIndex(where: { $0.id == id }) { change(&authors[key]!.trails[i]) }
+        }
     }
 
     func loadMoreIfNeeded(after trail: WyrmTrail) async {
@@ -397,32 +499,44 @@ final class WyrmTrailsStore: ObservableObject {
         } catch { self.error = message(error) }
     }
 
-    func trail(_ id: String) -> WyrmTrail? { trails.first { $0.id == id } }
+    func trail(_ id: String) -> WyrmTrail? {
+        if let hit = trails.first(where: { $0.id == id }) { return hit }
+        if let hit = loose[id] { return hit }
+        for entry in authors.values { if let hit = entry.trails.first(where: { $0.id == id }) { return hit } }
+        return nil
+    }
 
+    /// The trail fresh from the server, wherever it is shown. One that is not
+    /// in the feed stays out of it.
     func reload(_ id: String) async {
         guard let fresh = try? await WyrmTrailsClient.shared.trail(id, token: token()) else { return }
-        if let index = trails.firstIndex(where: { $0.id == id }) { trails[index] = fresh } else { trails.insert(fresh, at: 0) }
+        let shown = trails.contains { $0.id == id } || authors.values.contains { $0.trails.contains { $0.id == id } }
+        if !shown { loose[id] = fresh }
+        patch(id) { $0 = fresh }
     }
 
     /// On screen at once; the server's count wins when it answers.
     func toggleLike(_ id: String) {
-        guard let index = trails.firstIndex(where: { $0.id == id }), !liking.contains(id) else { return }
-        let next = !trails[index].liked
-        trails[index].liked = next
-        trails[index].likeCount = max(0, trails[index].likeCount + (next ? 1 : -1))
+        guard let current = trail(id), !liking.contains(id) else { return }
+        let next = !current.liked
+        patch(id) {
+            $0.liked = next
+            $0.likeCount = max(0, $0.likeCount + (next ? 1 : -1))
+        }
         liking.insert(id)
         Task {
             defer { liking.remove(id) }
             do {
                 let result = try await WyrmTrailsClient.shared.like(id, next, token: token())
-                if let i = trails.firstIndex(where: { $0.id == id }) {
-                    trails[i].liked = result.liked
-                    trails[i].likeCount = result.likeCount
+                patch(id) {
+                    $0.liked = result.liked
+                    $0.likeCount = result.likeCount
                 }
+                persistFeed()
             } catch {
-                if let i = trails.firstIndex(where: { $0.id == id }) {
-                    trails[i].liked = !next
-                    trails[i].likeCount = max(0, trails[i].likeCount + (next ? -1 : 1))
+                patch(id) {
+                    $0.liked = !next
+                    $0.likeCount = max(0, $0.likeCount + (next ? -1 : 1))
                 }
             }
         }
@@ -477,10 +591,12 @@ final class WyrmTrailsStore: ObservableObject {
     private func landed(_ trail: WyrmTrail) {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
             trails.insert(trail, at: 0)
+            if authors[trail.author.playerId] != nil { authors[trail.author.playerId]?.trails.insert(trail, at: 0) }
             pendingImage = nil
             pendingActive = false
             posting = .posted
         }
+        persistFeed()
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         toast = "Trail posted"
     }
@@ -503,7 +619,12 @@ final class WyrmTrailsStore: ObservableObject {
     func delete(_ id: String) async -> Bool {
         do {
             try await Task { try await WyrmTrailsClient.shared.delete(id, token: token()) }.value
-            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) { trails.removeAll { $0.id == id } }
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.82)) {
+                trails.removeAll { $0.id == id }
+                loose[id] = nil
+                for key in Array(authors.keys) { authors[key]?.trails.removeAll { $0.id == id } }
+            }
+            persistFeed()
             toast = "Trail deleted"
             return true
         } catch {
@@ -528,7 +649,7 @@ final class WyrmTrailsStore: ObservableObject {
         do {
             let posted = try await WyrmTrailsClient.shared.comment(id, body: body, token: token())
             comments[id, default: []].append(posted.comment)
-            if let i = trails.firstIndex(where: { $0.id == id }) { trails[i].commentCount = posted.commentCount }
+            patch(id) { $0.commentCount = posted.commentCount }
             return true
         } catch {
             toast = message(error)
@@ -540,7 +661,7 @@ final class WyrmTrailsStore: ObservableObject {
         do {
             try await WyrmTrailsClient.shared.deleteComment(id, commentId: commentId, token: token())
             comments[id]?.removeAll { $0.id == commentId }
-            if let i = trails.firstIndex(where: { $0.id == id }) { trails[i].commentCount = max(0, trails[i].commentCount - 1) }
+            patch(id) { $0.commentCount = max(0, $0.commentCount - 1) }
         } catch { toast = message(error) }
     }
 

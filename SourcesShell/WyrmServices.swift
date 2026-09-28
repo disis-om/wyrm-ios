@@ -51,7 +51,13 @@ struct WyrmServiceAlert: Identifiable, Equatable {
     let body: String
     let meta: [String: String]
     let createdAt: String
-    let read: Bool
+    private(set) var read: Bool
+
+    func markedRead() -> WyrmServiceAlert {
+        var copy = self
+        copy.read = true
+        return copy
+    }
 
     init(_ json: [String: Any]) {
         id = json.string("id")
@@ -232,6 +238,15 @@ private actor WyrmServiceClient {
 
     func player(_ id: String, token: String) async throws -> WyrmServicePlayer {
         WyrmServicePlayer(try await request("/v1/players/\(id)", token: token))
+    }
+
+    /// The same answer as JSON, so it can be kept for the next open (WyrmCache).
+    func playerObject(_ id: String, token: String) async throws -> [String: Any] {
+        try await request("/v1/players/\(id)", token: token)
+    }
+
+    func setFollowObject(playerID: String, following: Bool, token: String) async throws -> [String: Any] {
+        try await request("/v1/players/\(playerID)/follow", method: following ? "PUT" : "DELETE", token: token)
     }
 
     func leaderboard(sort: String, token: String) async throws -> [WyrmServicePlayer] {
@@ -654,9 +669,38 @@ final class WyrmServiceStore: ObservableObject {
         await perform { try await WyrmServiceClient.shared.report(messageID: message.id, reason: reason, token: self.token) }
     }
 
+    /// Stale-while-revalidate (OM, 2026-09-29): the profile as it was last
+    /// time paints at once, the server's answer replaces it in place.
     func loadPlayer(_ id: String) async {
         guard !id.isEmpty else { return }
-        await perform { self.profiles[id] = try await WyrmServiceClient.shared.player(id, token: self.token) }
+        if profiles[id] == nil, let cached = WyrmCache.loadObject("player-\(id)") {
+            profiles[id] = WyrmServicePlayer(cached)
+        }
+        await perform {
+            let object = try await WyrmServiceClient.shared.playerObject(id, token: self.token)
+            self.profiles[id] = WyrmServicePlayer(object)
+            WyrmCache.saveObject("player-\(id)", object)
+        }
+    }
+
+    /// Alerts that arrived since the last look, for the in-app banner. Quiet:
+    /// a failed poll changes nothing on screen.
+    func pollAlerts() async -> [WyrmServiceAlert] {
+        guard !token.isEmpty else { return [] }
+        let revision = sessionRevision
+        let known = Set(alerts.map(\.id))
+        guard let fresh = try? await WyrmServiceClient.shared.notifications(token: token),
+              revision == sessionRevision else { return [] }
+        alerts = fresh
+        return fresh.filter { !known.contains($0.id) && !$0.read }
+    }
+
+    /// Marks one alert read on screen at once and on the server behind it.
+    func markRead(_ alert: WyrmServiceAlert) {
+        guard !alert.read, let index = alerts.firstIndex(where: { $0.id == alert.id }) else { return }
+        alerts[index] = alert.markedRead()
+        let token = token
+        Task { try? await WyrmServiceClient.shared.setRead(alert.id, read: true, token: token) }
     }
 
     /// A counted run moves the leaderboards and may earn achievement notices.
@@ -710,7 +754,9 @@ final class WyrmServiceStore: ObservableObject {
     /// the profile's button flips (the answer used to be thrown away).
     func follow(_ player: WyrmServicePlayer) async {
         await perform {
-            self.profiles[player.id] = try await WyrmServiceClient.shared.setFollow(playerID: player.id, following: !player.isFollowing, token: self.token)
+            let object = try await WyrmServiceClient.shared.setFollowObject(playerID: player.id, following: !player.isFollowing, token: self.token)
+            self.profiles[player.id] = WyrmServicePlayer(object)
+            WyrmCache.saveObject("player-\(player.id)", object)
         }
     }
 

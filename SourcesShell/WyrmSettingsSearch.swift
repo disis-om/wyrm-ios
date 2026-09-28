@@ -164,6 +164,16 @@ enum WyrmSettingsIndex {
                 AnyView(WyrmBackupFirstRow())
             },
         ]
+        result += [
+            WyrmSettingsEntry(id: "app.crash.auto", title: "Always send crash reports", detail: "If Wyrm closes unexpectedly, the report goes without asking",
+                              page: "Help & feedback", route: .help, keywords: "crash report bug problem feedback support") {
+                AnyView(WyrmCrashAutoRow())
+            },
+            WyrmSettingsEntry(id: "app.help", title: "Help & feedback", detail: "Report a problem, suggest an idea, ask for help",
+                              page: "Settings", route: .help, keywords: "support bug crash problem idea suggestion feedback contact question faq") {
+                AnyView(WSValueRow(title: "Help & feedback", value: "", first: true))
+            },
+        ]
         result.append(WyrmSettingsEntry(id: "app.notify.all", title: "All notifications", detail: "The iOS permission for Wyrm",
                                         page: "Notifications", route: .notificationSettings, keywords: "alerts push permission") {
             AnyView(WyrmNotifyRow(kind: nil, title: "All notifications", detail: "Tap to manage the iOS permission."))
@@ -177,6 +187,15 @@ enum WyrmSettingsIndex {
             }
         }
         return result
+    }
+}
+
+/// The crash auto-send switch, live in search results.
+private struct WyrmCrashAutoRow: View {
+    @ObservedObject var watch = WyrmCrashWatch.shared
+    var body: some View {
+        WSBoolRow(title: "Always send crash reports", detail: "If Wyrm closes unexpectedly, the report goes without asking.",
+                  on: watch.autoSend, first: true) { watch.autoSend = $0 }
     }
 }
 

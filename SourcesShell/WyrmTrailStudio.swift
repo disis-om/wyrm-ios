@@ -460,6 +460,34 @@ private struct WyrmGalleryCell: View {
     }
 }
 
+// MARK: - System camera
+
+/// The phone's own camera, full screen; photos only for now (video is off).
+struct WyrmSystemCamera: UIViewControllerRepresentable {
+    let onShot: (UIImage?) -> Void
+    static var available: Bool { UIImagePickerController.isSourceTypeAvailable(.camera) }
+
+    func makeUIViewController(context: Context) -> UIImagePickerController {
+        let picker = UIImagePickerController()
+        picker.sourceType = .camera
+        picker.mediaTypes = ["public.image"]
+        picker.cameraCaptureMode = .photo
+        picker.delegate = context.coordinator
+        return picker
+    }
+    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
+    func makeCoordinator() -> Coordinator { Coordinator(onShot: onShot) }
+
+    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
+        let onShot: (UIImage?) -> Void
+        init(onShot: @escaping (UIImage?) -> Void) { self.onShot = onShot }
+        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
+            onShot(info[.originalImage] as? UIImage)
+        }
+        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { onShot(nil) }
+    }
+}
+
 // MARK: - Studio
 
 struct WyrmTrailStudio: View {
@@ -471,24 +499,40 @@ struct WyrmTrailStudio: View {
     @ObservedObject private var store = WyrmTrailsStore.shared
     @State private var step: Step = .pick
     @State private var picking = false
+    @State private var systemCamera = false
     @State private var loadingPhoto = false
     @State private var canvasSize: CGSize = .zero
-    /// The finished picture, made once when the caption step opens.
     @State private var rendered: UIImage?
+    @State private var forward = true
 
     enum Step { case pick, edit, caption }
+
+    /// One number per page, so a change slides the right way.
+    private var page: Int {
+        switch step {
+        case .pick: return WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0
+        case .edit: return 3
+        case .caption: return 4
+        }
+    }
 
     var body: some View {
         ZStack {
             ATheme.paper.ignoresSafeArea()
             VStack(spacing: 0) {
                 header
-                switch step {
-                case .pick:
-                    if draft.mode == .text { textComposer } else if draft.mode == .canvas { editor } else { picker }
-                case .edit: editor
-                case .caption: captionStep
+                // The mode pill sits here, in one place, for every mode; only
+                // the page under it moves.
+                if step == .pick { modeBar.padding(.bottom, 12) }
+                ZStack {
+                    content
+                        .id(page)
+                        .transition(.asymmetric(
+                            insertion: .move(edge: forward ? .trailing : .leading).combined(with: .opacity),
+                            removal: .move(edge: forward ? .leading : .trailing).combined(with: .opacity)))
                 }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
             }
         }
         .foregroundColor(ATheme.ink)
@@ -506,6 +550,34 @@ struct WyrmTrailStudio: View {
             }
             .ignoresSafeArea()
         }
+        .fullScreenCover(isPresented: $systemCamera) {
+            WyrmSystemCamera { shot in
+                systemCamera = false
+                if let shot { open(shot) } else { camera.start() }
+            }
+            .ignoresSafeArea()
+        }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch step {
+        case .caption: captionStep
+        case .edit: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize)
+        case .pick:
+            switch draft.mode {
+            case .photo: picker
+            case .text: WyrmTextTrailComposer(draft: draft)
+            case .canvas: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize)
+            }
+        }
+    }
+
+    private func go(_ next: Step) {
+        let before = page
+        let target: Int = next == .pick ? (WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0) : (next == .edit ? 3 : 4)
+        forward = target >= before
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { step = next }
     }
 
     // MARK: Header
@@ -518,19 +590,11 @@ struct WyrmTrailStudio: View {
                     .background(Circle().fill(ATheme.well))
             }.buttonStyle(.plain)
             Spacer()
-            Text(title).font(.androidWyrm(16, .bold))
+            Text(step == .pick ? "New trail" : step == .edit ? "Edit" : "Caption").font(.androidWyrm(16, .bold))
             Spacer()
             actionButton
         }
         .padding(.horizontal, 14).frame(height: 56)
-    }
-
-    private var title: String {
-        switch step {
-        case .pick: return draft.mode == .text ? "Text trail" : draft.mode == .canvas ? "Canvas" : "New trail"
-        case .edit: return "Edit"
-        case .caption: return "Caption"
-        }
     }
 
     @ViewBuilder
@@ -544,7 +608,7 @@ struct WyrmTrailStudio: View {
             }
         }()
         let label = (step == .caption || (step == .pick && draft.mode == .text)) ? "Post" : "Next"
-        Button { forward() } label: {
+        Button { advance() } label: {
             Text(label).font(.androidWyrm(14, .bold)).foregroundColor(ATheme.onInk)
                 .padding(.horizontal, 16).frame(height: 36)
                 .background(Capsule().fill(ATheme.ink.opacity(ready ? 1 : 0.3)))
@@ -553,26 +617,38 @@ struct WyrmTrailStudio: View {
         .disabled(!ready)
     }
 
+    private var modeBar: some View {
+        WSSegmented(options: WyrmStudioMode.allCases.map(\.rawValue),
+                    selected: WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0) { index in
+            let next = WyrmStudioMode.allCases[index]
+            guard next != draft.mode else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            forward = index > (WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0)
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { draft.reset(for: next) }
+            if next == .photo { camera.start() } else { camera.stop() }
+        }
+        .padding(.horizontal, 16)
+    }
+
     private func back() {
         switch step {
         case .pick: close()
-        case .edit: withAnimation(.easeOut(duration: 0.2)) { step = .pick; if draft.mode == .photo { draft.image = nil } }
-        case .caption: withAnimation(.easeOut(duration: 0.2)) { step = draft.mode == .canvas ? .pick : .edit }
+        case .edit:
+            if draft.mode == .photo { draft.image = nil; camera.start() }
+            go(.pick)
+        case .caption: go(draft.mode == .canvas ? .pick : .edit)
         }
     }
 
-    private func forward() {
+    private func advance() {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         switch step {
         case .pick:
             if draft.mode == .text { post(image: nil) }
-            else if draft.mode == .canvas {
-                rendered = draft.render(canvas: canvasSize)
-                withAnimation(.easeOut(duration: 0.2)) { step = .caption }
-            }
+            else if draft.mode == .canvas { rendered = draft.render(canvas: canvasSize); go(.caption) }
         case .edit:
             rendered = draft.render(canvas: canvasSize)
-            withAnimation(.easeOut(duration: 0.2)) { step = .caption }
+            go(.caption)
         case .caption: post(image: rendered ?? draft.render(canvas: canvasSize))
         }
     }
@@ -589,47 +665,56 @@ struct WyrmTrailStudio: View {
         draft.reset(for: .photo)
         draft.image = image
         camera.stop()
-        withAnimation(.easeOut(duration: 0.22)) { step = .edit }
+        go(.edit)
     }
 
     // MARK: Pick (camera and gallery)
 
     private var picker: some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .bottom) {
+            ZStack {
                 Group {
                     switch camera.state {
                     case .running: WyrmCameraPreview(session: camera.session)
-                    case .denied: cameraNote("Camera is off for Wyrm", "Allow it in Settings to take a photo here.")
+                    case .denied: cameraNote("Camera is off for Wyrm", "Allow it in Settings, or use the phone's camera.")
                     case .unavailable: cameraNote("No camera", "Pick a photo from your library below.")
                     case .idle: ATheme.well
                     }
                 }
                 .frame(maxWidth: .infinity).aspectRatio(0.8, contentMode: .fit)
                 .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                if camera.state == .running {
+                VStack {
                     HStack {
-                        Spacer().frame(width: 44)
                         Spacer()
-                        Button {
-                            UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                            camera.capture { shot in if let shot { open(shot) } }
-                        } label: {
-                            Circle().stroke(Color.white, lineWidth: 5).frame(width: 70, height: 70)
-                                .overlay(Circle().fill(Color.white.opacity(0.9)).padding(9))
-                        }.buttonStyle(WSPressStyle())
-                        Spacer()
-                        Button { camera.flip() } label: {
-                            Image(systemName: "arrow.triangle.2.circlepath").font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.white).frame(width: 44, height: 44)
-                                .background(Circle().fill(Color.black.opacity(0.35)))
-                        }.buttonStyle(.plain)
+                        if WyrmSystemCamera.available {
+                            // Full screen: the phone's own camera.
+                            WyrmStudioRoundButton(symbol: "arrow.up.left.and.arrow.down.right") {
+                                camera.stop()
+                                systemCamera = true
+                            }
+                        }
                     }
-                    .padding(.horizontal, 22).padding(.bottom, 18)
+                    Spacer()
+                    if camera.state == .running {
+                        HStack {
+                            Spacer().frame(width: 44)
+                            Spacer()
+                            Button {
+                                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                                camera.capture { shot in if let shot { open(shot) } }
+                            } label: {
+                                Circle().stroke(Color.white, lineWidth: 5).frame(width: 70, height: 70)
+                                    .overlay(Circle().fill(Color.white.opacity(0.9)).padding(9))
+                            }.buttonStyle(WSPressStyle())
+                            Spacer()
+                            WyrmStudioRoundButton(symbol: "arrow.triangle.2.circlepath") { camera.flip() }
+                        }
+                    }
                 }
+                .padding(14)
             }
+            .aspectRatio(0.8, contentMode: .fit)
             .padding(.horizontal, 12)
-            modeBar.padding(.top, 12)
             galleryGrid.padding(.top, 10)
         }
     }
@@ -641,20 +726,6 @@ struct WyrmTrailStudio: View {
             Text(note).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
         }
         .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity).background(ATheme.well)
-    }
-
-    private var modeBar: some View {
-        WSSegmented(options: WyrmStudioMode.allCases.map(\.rawValue),
-                    selected: WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0) { index in
-            let next = WyrmStudioMode.allCases[index]
-            UISelectionFeedbackGenerator().selectionChanged()
-            withAnimation(.easeOut(duration: 0.2)) {
-                draft.reset(for: next)
-                step = .pick
-            }
-            if next == .photo { camera.start() } else { camera.stop() }
-        }
-        .padding(.horizontal, 16)
     }
 
     private var galleryGrid: some View {
@@ -698,11 +769,40 @@ struct WyrmTrailStudio: View {
         .overlay(Group { if loadingPhoto { ProgressView().padding(14).background(Circle().fill(ATheme.card)) } })
     }
 
-    // MARK: Text trail
+    // MARK: Caption
 
-    private var textComposer: some View {
+    private var captionStep: some View {
+        WyrmStudioCaption(draft: draft, rendered: rendered)
+    }
+}
+
+/// A round dark glass button on top of the picture.
+struct WyrmStudioRoundButton: View {
+    var symbol: String? = nil
+    var text: String? = nil
+    var on = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Group {
+                if let symbol { Image(systemName: symbol).font(.system(size: 16, weight: .bold)) }
+                else { Text(text ?? "").font(.androidWyrm(16, .bold)) }
+            }
+            .foregroundColor(on ? .black : .white)
+            .frame(width: 42, height: 42)
+            .background(Circle().fill(on ? Color.white : Color.black.opacity(0.42)))
+            .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1))
+        }
+        .buttonStyle(WSPressStyle())
+    }
+}
+
+/// A text trail: the page opens with the keyboard up.
+private struct WyrmTextTrailComposer: View {
+    @ObservedObject var draft: WyrmStudioDraft
+    @FocusState private var focused: Bool
+    var body: some View {
         VStack(spacing: 0) {
-            modeBar.padding(.top, 6).padding(.bottom, 14)
             ZStack(alignment: .topLeading) {
                 if draft.caption.isEmpty {
                     Text("Leave a thought…").font(.wyrmDisplay(28)).foregroundColor(ATheme.quiet)
@@ -710,6 +810,7 @@ struct WyrmTrailStudio: View {
                 }
                 TextEditor(text: $draft.caption)
                     .font(.wyrmDisplay(28))
+                    .focused($focused)
                     .onAppear { UITextView.appearance().backgroundColor = .clear }
                     .onChange(of: draft.caption) { value in if value.count > 500 { draft.caption = String(value.prefix(500)) } }
             }
@@ -717,26 +818,25 @@ struct WyrmTrailStudio: View {
             .frame(maxHeight: .infinity)
             .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .contentShape(Rectangle())
+            .onTapGesture { focused = true }
             .padding(.horizontal, 14)
             Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
                 .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.vertical, 10)
         }
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true } }
     }
+}
 
-    // MARK: Editor
-
-    private var editor: some View {
-        WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, showModes: step == .pick, modeBar: AnyView(modeBar))
-    }
-
-    // MARK: Caption
-
-    private var captionStep: some View {
+private struct WyrmStudioCaption: View {
+    @ObservedObject var draft: WyrmStudioDraft
+    let rendered: UIImage?
+    @FocusState private var focused: Bool
+    var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .top, spacing: 14) {
-                    Image(uiImage: rendered ?? UIImage())
-                        .resizable().scaledToFit()
+                    Image(uiImage: rendered ?? UIImage()).resizable().scaledToFit()
                         .frame(width: 110)
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     ZStack(alignment: .topLeading) {
@@ -746,6 +846,7 @@ struct WyrmTrailStudio: View {
                         }
                         TextEditor(text: $draft.caption)
                             .font(.androidWyrm(15)).frame(minHeight: 140)
+                            .focused($focused)
                             .onAppear { UITextView.appearance().backgroundColor = .clear }
                             .onChange(of: draft.caption) { value in if value.count > 500 { draft.caption = String(value.prefix(500)) } }
                     }
@@ -758,19 +859,23 @@ struct WyrmTrailStudio: View {
                     .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.top, 6)
             }
         }
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true } }
     }
 }
 
 // MARK: - Editor
 
-private enum WyrmStudioTool { case move, draw }
+/// What the editor is doing: nothing (move and pinch), writing, drawing or cropping.
+private enum WyrmStudioTool { case none, text, draw, crop }
 
+/// The editor, story-style: the picture fills the page, tools stand in a rail
+/// on its right edge (Aa, draw, crop, undo), and each tool takes the whole
+/// screen while it is in use. Text is dragged, pinched and turned in place and
+/// thrown into the bin at the bottom to delete it.
 private struct WyrmStudioEditor: View {
     @ObservedObject var draft: WyrmStudioDraft
     @Binding var canvasSize: CGSize
-    let showModes: Bool
-    let modeBar: AnyView
-    @State private var tool: WyrmStudioTool = .move
+    @State private var tool: WyrmStudioTool = .none
     @State private var brush: WyrmStudioBrush = .beads
     @State private var inkRGB: UInt32 = 0xF2B84B
     @State private var live: WyrmStudioStroke?
@@ -778,30 +883,33 @@ private struct WyrmStudioEditor: View {
     @State private var panStart: CGSize?
     @State private var zoomStart: CGFloat?
     @State private var cropStart: CGSize?
+    @State private var dragStart: [UUID: CGPoint] = [:]
+    @State private var dragging = false
+    @State private var overBin = false
 
     var body: some View {
         GeometryReader { proxy in
+            let bottomBar: CGFloat = (tool == .crop || draft.image == nil) ? 100 : 44
             let width = proxy.size.width - 24
-            let maxHeight = proxy.size.height - (showModes ? 230 : 180)
+            let maxHeight = proxy.size.height - bottomBar - 8
             let height = min(width / draft.ratio, maxHeight)
             let size = CGSize(width: height * draft.ratio, height: height)
-            VStack(spacing: 12) {
-                if showModes { modeBar }
-                canvas(size)
-                    .overlay { if draft.aspect == .free && tool == .move { freeHandles(size, maxWidth: width, maxHeight: maxHeight) } }
+            VStack(spacing: 8) {
+                canvas(size, maxWidth: width, maxHeight: maxHeight)
                     .onAppear { canvasSize = size }
                     .onChange(of: size) { canvasSize = $0 }
-                toolbar
-                Spacer(minLength: 0)
+                bottom.frame(height: bottomBar)
             }
-            .frame(maxWidth: .infinity)
-            .overlay { if editing != nil { textEditorOverlay(size) } }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .overlay { if let current = editing { WyrmStudioTextEditor(item: current, update: { editing = $0 }, done: commit) } }
         }
     }
 
-    // The canvas: photo or colour, then strokes, then text.
-    private func canvas(_ size: CGSize) -> some View {
-        ZStack(alignment: .topLeading) {
+    // MARK: Canvas
+
+    private func canvas(_ size: CGSize, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+        let bin = CGPoint(x: size.width / 2, y: size.height - 46)
+        return ZStack(alignment: .topLeading) {
             if let image = draft.image {
                 let rect = draft.photoRect(in: size)
                 Color.black
@@ -818,24 +926,207 @@ private struct WyrmStudioEditor: View {
                 }
             }
             .allowsHitTesting(false)
+            if tool == .crop {
+                // The rule of thirds while cropping.
+                Path { path in
+                    for i in 1...2 {
+                        let x = size.width * CGFloat(i) / 3, y = size.height * CGFloat(i) / 3
+                        path.move(to: CGPoint(x: x, y: 0)); path.addLine(to: CGPoint(x: x, y: size.height))
+                        path.move(to: CGPoint(x: 0, y: y)); path.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+                }
+                .stroke(Color.white.opacity(0.55), lineWidth: 1)
+                .allowsHitTesting(false)
+            }
             ForEach(draft.texts) { item in
                 let s = item.size
                 Image(uiImage: item.image()).resizable().frame(width: s.width, height: s.height)
                     .scaleEffect(item.scale).rotationEffect(item.rotation)
                     .position(item.center)
-                    .gesture(tool == .move ? textGesture(item.id, size) : nil)
-                    .onTapGesture { if tool == .move { editing = item } }
+                    .gesture(tool == .none ? textGesture(item.id, size, bin: bin) : nil)
+                    .onTapGesture { if tool == .none { editing = item; tool = .text } }
+            }
+            if dragging {
+                Circle().fill(overBin ? Color(red: 0.9, green: 0.28, blue: 0.3) : Color.black.opacity(0.45))
+                    .frame(width: 52, height: 52)
+                    .overlay(Image(systemName: "trash").font(.system(size: 18, weight: .bold)).foregroundColor(.white))
+                    .scaleEffect(overBin ? 1.25 : 1)
+                    .position(bin)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: overBin)
+                    .allowsHitTesting(false)
             }
         }
         .frame(width: size.width, height: size.height)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         .contentShape(Rectangle())
         .gesture(tool == .draw ? drawGesture(size) : nil)
-        .simultaneousGesture(tool == .move && draft.image != nil ? photoGesture(size) : nil)
+        .simultaneousGesture((tool == .none || tool == .crop) && draft.image != nil ? photoGesture(size) : nil)
+        .overlay(alignment: .topTrailing) { rail }
+        .overlay(alignment: .top) { if tool == .draw { drawBar } }
+        .overlay(alignment: .trailing) { if tool == .draw { inkColumn } }
+        .overlay { if tool == .crop && draft.aspect == .free { freeHandles(size, maxWidth: maxWidth, maxHeight: maxHeight) } }
     }
 
-    /// Free crop: drag an edge to reshape the canvas; the photo stays covering it.
+    @ViewBuilder
+    private var rail: some View {
+        if tool == .none && !dragging {
+            VStack(spacing: 10) {
+                WyrmStudioRoundButton(text: "Aa") {
+                    let rgb: UInt32 = draft.image == nil ? WyrmStudioPalette.contrast(draft.background) : 0xFFFFFF
+                    editing = WyrmStudioText(text: "", rgb: rgb, font: .sans, filled: false,
+                                             center: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
+                    tool = .text
+                }
+                WyrmStudioRoundButton(symbol: "scribble") {
+                    UISelectionFeedbackGenerator().selectionChanged()
+                    tool = .draw
+                }
+                if draft.image != nil { WyrmStudioRoundButton(symbol: "crop") { tool = .crop } }
+                if !draft.strokes.isEmpty { WyrmStudioRoundButton(symbol: "arrow.uturn.backward") { draft.strokes.removeLast() } }
+            }
+            .padding(10)
+            .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .topTrailing)))
+        }
+    }
+
+    private var drawBar: some View {
+        HStack(spacing: 6) {
+            ForEach(WyrmStudioBrush.allCases, id: \.self) { kind in
+                WyrmStudioChip(label: kind.rawValue.capitalized, selected: brush == kind, dark: true) { brush = kind }
+            }
+            Spacer()
+            if !draft.strokes.isEmpty { WyrmStudioRoundButton(symbol: "arrow.uturn.backward") { draft.strokes.removeLast() } }
+            WyrmStudioChip(label: "Done", selected: true, dark: true) { tool = .none }
+        }
+        .padding(10)
+    }
+
+    private var inkColumn: some View {
+        VStack(spacing: 8) {
+            ForEach(WyrmStudioPalette.colours, id: \.self) { rgb in
+                Button { UISelectionFeedbackGenerator().selectionChanged(); inkRGB = rgb } label: {
+                    Circle().fill(WyrmStudioPalette.color(rgb))
+                        .frame(width: inkRGB == rgb ? 28 : 22, height: inkRGB == rgb ? 28 : 22)
+                        .overlay(Circle().stroke(Color.white, lineWidth: 2))
+                }.buttonStyle(.plain)
+            }
+        }
+        .padding(.trailing, 10)
+    }
+
+    @ViewBuilder
+    private var bottom: some View {
+        if tool == .crop {
+            VStack(spacing: 8) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 8) {
+                        ForEach(WyrmStudioAspect.allCases) { aspect in
+                            WyrmStudioChip(label: aspect.rawValue, selected: draft.aspect == aspect) {
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    if aspect == .free { draft.freeRatio = draft.ratio }
+                                    draft.aspect = aspect
+                                    draft.photoScale = 1
+                                    draft.photoOffset = .zero
+                                }
+                            }
+                        }
+                    }.padding(.horizontal, 16)
+                }
+                WyrmStudioChip(label: "Done", selected: true) { tool = .none }
+            }
+        } else if draft.image == nil && tool == .none {
+            VStack(spacing: 6) {
+                HStack(spacing: 8) {
+                    ForEach([WyrmStudioAspect.portrait, .square, .wide]) { aspect in
+                        WyrmStudioChip(label: aspect.rawValue, selected: draft.aspect == aspect) {
+                            withAnimation(.easeOut(duration: 0.2)) { draft.aspect = aspect }
+                        }
+                    }
+                    Spacer()
+                }.padding(.horizontal, 16)
+                WyrmStudioSwatches(selected: draft.background) { draft.background = $0 }
+            }
+        } else if tool == .none {
+            Text("Aa to write · draw with the pen · pinch to zoom").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+        }
+    }
+
+    // MARK: Gestures
+
+    private func drawGesture(_ size: CGSize) -> some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .local)
+            .onChanged { value in
+                let point = CGPoint(x: min(max(value.location.x, 0), size.width), y: min(max(value.location.y, 0), size.height))
+                if live == nil {
+                    live = WyrmStudioStroke(points: [point], rgb: inkRGB, width: brush == .beads ? 7 : 5, brush: brush)
+                } else if let last = live?.points.last, hypot(last.x - point.x, last.y - point.y) > 1.5 {
+                    live?.points.append(point)
+                }
+            }
+            .onEnded { _ in
+                if let live { draft.strokes.append(live) }
+                live = nil
+            }
+    }
+
+    private func photoGesture(_ size: CGSize) -> some Gesture {
+        SimultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    guard !dragging else { return }
+                    let start = panStart ?? draft.photoOffset
+                    if panStart == nil { panStart = start }
+                    draft.photoOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                    draft.clampOffset(in: size)
+                }
+                .onEnded { _ in panStart = nil },
+            MagnificationGesture()
+                .onChanged { value in
+                    let start = zoomStart ?? draft.photoScale
+                    if zoomStart == nil { zoomStart = start }
+                    draft.photoScale = min(max(start * value, 1), 5)
+                    draft.clampOffset(in: size)
+                }
+                .onEnded { _ in zoomStart = nil }
+        )
+    }
+
+    private func textGesture(_ id: UUID, _ size: CGSize, bin: CGPoint) -> some Gesture {
+        SimultaneousGesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
+                    let start = dragStart[id] ?? draft.texts[i].center
+                    if dragStart[id] == nil { dragStart[id] = start }
+                    draft.texts[i].center = CGPoint(x: min(max(start.x + value.translation.width, 0), size.width),
+                                                    y: min(max(start.y + value.translation.height, 0), size.height))
+                    if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
+                    let near = hypot(draft.texts[i].center.x - bin.x, draft.texts[i].center.y - bin.y) < 46
+                    if near != overBin {
+                        overBin = near
+                        if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    }
+                }
+                .onEnded { _ in
+                    if overBin { draft.texts.removeAll { $0.id == id } }
+                    dragStart[id] = nil
+                    withAnimation(.easeOut(duration: 0.15)) { dragging = false }
+                    overBin = false
+                },
+            SimultaneousGesture(
+                MagnificationGesture().onChanged { value in
+                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
+                    draft.texts[i].scale = min(max(value, 0.4), 5)
+                },
+                RotationGesture().onChanged { value in
+                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
+                    draft.texts[i].rotation = value
+                }
+            )
+        )
+    }
+
+    /// Free crop: drag an edge to reshape the frame; the photo stays covering it.
     private func freeHandles(_ size: CGSize, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
         ZStack {
             ForEach(0..<4, id: \.self) { edge in
@@ -866,197 +1157,8 @@ private struct WyrmStudioEditor: View {
         .frame(width: size.width, height: size.height)
     }
 
-    private func drawGesture(_ size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { value in
-                let point = CGPoint(x: min(max(value.location.x, 0), size.width), y: min(max(value.location.y, 0), size.height))
-                if live == nil {
-                    live = WyrmStudioStroke(points: [point], rgb: inkRGB, width: brush == .beads ? 7 : 5, brush: brush)
-                } else if let last = live?.points.last, hypot(last.x - point.x, last.y - point.y) > 1.5 {
-                    live?.points.append(point)
-                }
-            }
-            .onEnded { _ in
-                if let live { draft.strokes.append(live) }
-                live = nil
-            }
-    }
-
-    private func photoGesture(_ size: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture()
-                .onChanged { value in
-                    let start = panStart ?? draft.photoOffset
-                    if panStart == nil { panStart = start }
-                    draft.photoOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
-                    draft.clampOffset(in: size)
-                }
-                .onEnded { _ in panStart = nil },
-            MagnificationGesture()
-                .onChanged { value in
-                    let start = zoomStart ?? draft.photoScale
-                    if zoomStart == nil { zoomStart = start }
-                    draft.photoScale = min(max(start * value, 1), 5)
-                    draft.clampOffset(in: size)
-                }
-                .onEnded { _ in zoomStart = nil }
-        )
-    }
-
-    private func textGesture(_ id: UUID, _ size: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture().onChanged { value in
-                guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                draft.texts[i].center = CGPoint(x: min(max(value.location.x, 0), size.width), y: min(max(value.location.y, 0), size.height))
-            },
-            SimultaneousGesture(
-                MagnificationGesture().onChanged { value in
-                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                    draft.texts[i].scale = min(max(value, 0.4), 4)
-                },
-                RotationGesture().onChanged { value in
-                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                    draft.texts[i].rotation = value
-                }
-            )
-        )
-    }
-
-    // MARK: Toolbar
-
-    private var toolbar: some View {
-        VStack(spacing: 10) {
-            if tool == .draw {
-                HStack(spacing: 8) {
-                    ForEach(WyrmStudioBrush.allCases, id: \.self) { kind in
-                        chip(kind.rawValue.capitalized, selected: brush == kind) { brush = kind }
-                    }
-                    Spacer()
-                    iconButton("arrow.uturn.backward") { if !draft.strokes.isEmpty { draft.strokes.removeLast() } }
-                }
-                swatches(selected: inkRGB) { inkRGB = $0 }
-            } else if draft.image != nil {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(WyrmStudioAspect.allCases) { aspect in
-                            chip(aspect.rawValue, selected: draft.aspect == aspect) {
-                                withAnimation(.easeOut(duration: 0.2)) {
-                                    if aspect == .free { draft.freeRatio = draft.ratio }
-                                    draft.aspect = aspect
-                                    draft.photoScale = 1
-                                    draft.photoOffset = .zero
-                                }
-                            }
-                        }
-                    }.padding(.horizontal, 16)
-                }
-            } else {
-                HStack(spacing: 8) {
-                    ForEach([WyrmStudioAspect.portrait, .square, .wide]) { aspect in
-                        chip(aspect.rawValue, selected: draft.aspect == aspect) { withAnimation(.easeOut(duration: 0.2)) { draft.aspect = aspect } }
-                    }
-                    Spacer()
-                }.padding(.horizontal, 16)
-                swatches(selected: draft.background) { draft.background = $0 }
-            }
-            HStack(spacing: 10) {
-                toolButton("Text", icon: "textformat", on: false) {
-                    tool = .move
-                    let rgb: UInt32 = draft.image == nil ? WyrmStudioPalette.contrast(draft.background) : 0xFFFFFF
-                    editing = WyrmStudioText(text: "", rgb: rgb, font: .sans, filled: false,
-                                             center: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
-                }
-                toolButton("Draw", icon: "scribble", on: tool == .draw) {
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    tool = tool == .draw ? .move : .draw
-                }
-            }
-            .padding(.horizontal, 16)
-        }
-    }
-
-    private func chip(_ label: String, selected: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Text(label).font(.androidWyrm(12.5, .bold))
-                .foregroundColor(selected ? ATheme.onInk : ATheme.ink)
-                .padding(.horizontal, 13).frame(height: 32)
-                .background(Capsule().fill(selected ? ATheme.ink : ATheme.well))
-        }.buttonStyle(.plain)
-    }
-
-    private func iconButton(_ icon: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: icon).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.ink)
-                .frame(width: 34, height: 34).background(Circle().fill(ATheme.well))
-        }.buttonStyle(.plain)
-    }
-
-    private func toolButton(_ label: String, icon: String, on: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Image(systemName: icon).font(.system(size: 14, weight: .bold))
-                Text(label).font(.androidWyrm(13.5, .bold))
-            }
-            .foregroundColor(on ? ATheme.onInk : ATheme.ink)
-            .frame(maxWidth: .infinity).frame(height: 42)
-            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(on ? ATheme.ink : ATheme.well))
-        }.buttonStyle(WSPressStyle())
-    }
-
-    private func swatches(selected: UInt32, pick: @escaping (UInt32) -> Void) -> some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 9) {
-                ForEach(WyrmStudioPalette.colours, id: \.self) { rgb in
-                    Button { UISelectionFeedbackGenerator().selectionChanged(); pick(rgb) } label: {
-                        Circle().fill(WyrmStudioPalette.color(rgb)).frame(width: 28, height: 28)
-                            .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
-                            .overlay(Circle().stroke(ATheme.ink, lineWidth: selected == rgb ? 2.5 : 0).padding(-4))
-                    }.buttonStyle(.plain)
-                }
-            }.padding(.horizontal, 20).padding(.vertical, 4)
-        }
-    }
-
-    // MARK: Text editing
-
-    private func textEditorOverlay(_ size: CGSize) -> some View {
-        let binding = Binding<WyrmStudioText>(get: { editing ?? WyrmStudioText(text: "", rgb: 0xFFFFFF, font: .sans, filled: false, center: .zero) },
-                                             set: { editing = $0 })
-        return ZStack {
-            Color.black.opacity(0.55).ignoresSafeArea().onTapGesture { commitText() }
-            VStack(spacing: 16) {
-                HStack {
-                    Button("Delete") {
-                        if let current = editing { draft.texts.removeAll { $0.id == current.id } }
-                        editing = nil
-                    }.font(.androidWyrm(14, .bold)).foregroundColor(.white.opacity(0.85))
-                    Spacer()
-                    Button { binding.wrappedValue.font = binding.wrappedValue.font == .sans ? .serif : .sans } label: {
-                        Text("Aa").font(binding.wrappedValue.font == .sans ? .androidWyrm(16, .bold) : .wyrmDisplay(18))
-                            .foregroundColor(.white).frame(width: 40, height: 36).background(Capsule().fill(Color.white.opacity(0.18)))
-                    }.buttonStyle(.plain)
-                    Button { binding.wrappedValue.filled.toggle() } label: {
-                        Image(systemName: binding.wrappedValue.filled ? "a.square.fill" : "a.square")
-                            .font(.system(size: 18, weight: .semibold)).foregroundColor(.white)
-                            .frame(width: 40, height: 36).background(Capsule().fill(Color.white.opacity(0.18)))
-                    }.buttonStyle(.plain)
-                    Button("Done") { commitText() }.font(.androidWyrm(14, .bold)).foregroundColor(.white)
-                }
-                .padding(.horizontal, 18)
-                TextField("", text: binding.text)
-                    .font(binding.wrappedValue.font == .sans ? .androidWyrm(30, .bold) : .wyrmDisplay(32))
-                    .foregroundColor(WyrmStudioPalette.color(binding.wrappedValue.rgb))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .submitLabel(.done)
-                    .onSubmit { commitText() }
-                swatches(selected: binding.wrappedValue.rgb) { binding.wrappedValue.rgb = $0 }
-            }
-        }
-    }
-
-    private func commitText() {
-        guard var item = editing else { return }
+    private func commit(_ done: WyrmStudioText) {
+        var item = done
         item.text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
         if let i = draft.texts.firstIndex(where: { $0.id == item.id }) {
             if item.text.isEmpty { draft.texts.remove(at: i) } else { draft.texts[i] = item }
@@ -1064,6 +1166,94 @@ private struct WyrmStudioEditor: View {
             draft.texts.append(item)
         }
         editing = nil
+        tool = .none
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+struct WyrmStudioChip: View {
+    let label: String
+    let selected: Bool
+    var dark = false
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(label).font(.androidWyrm(12.5, .bold))
+                .foregroundColor(dark ? (selected ? .black : .white) : (selected ? ATheme.onInk : ATheme.ink))
+                .padding(.horizontal, 13).frame(height: 32)
+                .background(Capsule().fill(dark ? (selected ? Color.white : Color.black.opacity(0.42)) : (selected ? ATheme.ink : ATheme.well)))
+        }.buttonStyle(.plain)
+    }
+}
+
+struct WyrmStudioSwatches: View {
+    let selected: UInt32
+    let pick: (UInt32) -> Void
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 9) {
+                ForEach(WyrmStudioPalette.colours, id: \.self) { rgb in
+                    Button { UISelectionFeedbackGenerator().selectionChanged(); pick(rgb) } label: {
+                        Circle().fill(WyrmStudioPalette.color(rgb)).frame(width: 28, height: 28)
+                            .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 1))
+                            .overlay(Circle().stroke(Color.white, lineWidth: selected == rgb ? 2.5 : 0).padding(-4))
+                    }.buttonStyle(.plain)
+                }
+            }.padding(.horizontal, 20).padding(.vertical, 6)
+        }
+    }
+}
+
+/// Writing, story-style: the screen dims, the keyboard comes straight up and
+/// the words appear large in the middle as they are typed. Font and background
+/// at the top, colours just above the keyboard. Tap anywhere or Done to place it.
+private struct WyrmStudioTextEditor: View {
+    let item: WyrmStudioText
+    let update: (WyrmStudioText) -> Void
+    let done: (WyrmStudioText) -> Void
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        let text = Binding<String>(get: { item.text }, set: { var next = item; next.text = String($0.prefix(160)); update(next) })
+        let shown = WyrmStudioPalette.color(item.filled ? WyrmStudioPalette.contrast(item.rgb) : item.rgb)
+        ZStack {
+            Color.black.opacity(0.62).ignoresSafeArea().onTapGesture { done(item) }
+            VStack {
+                HStack(spacing: 8) {
+                    WyrmStudioChip(label: item.font == .serif ? "Serif" : "Clean", selected: true, dark: true) {
+                        var next = item; next.font = item.font == .serif ? .sans : .serif; update(next)
+                    }
+                    WyrmStudioChip(label: item.filled ? "Fill" : "Plain", selected: item.filled, dark: true) {
+                        var next = item; next.filled.toggle(); update(next)
+                    }
+                    Spacer()
+                    WyrmStudioChip(label: "Done", selected: true, dark: true) { done(item) }
+                }
+                .padding(.horizontal, 14).padding(.top, 10)
+                Spacer()
+                ZStack {
+                    if item.text.isEmpty {
+                        Text("Type something").font(item.font == .serif ? .wyrmDisplay(32) : .androidWyrm(32, .bold))
+                            .foregroundColor(.white.opacity(0.35))
+                    }
+                    TextField("", text: text)
+                        .font(item.font == .serif ? .wyrmDisplay(32) : .androidWyrm(32, .bold))
+                        .foregroundColor(shown)
+                        .multilineTextAlignment(.center)
+                        .focused($focused)
+                        .submitLabel(.done)
+                        .onSubmit { done(item) }
+                        .padding(.horizontal, item.filled ? 14 : 0).padding(.vertical, item.filled ? 8 : 0)
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(item.filled ? WyrmStudioPalette.color(item.rgb) : Color.clear))
+                        .fixedSize(horizontal: !item.text.isEmpty, vertical: false)
+                }
+                .padding(.horizontal, 24)
+                Spacer()
+                WyrmStudioSwatches(selected: item.rgb) { rgb in var next = item; next.rgb = rgb; update(next) }
+                    .padding(.bottom, 8)
+            }
+        }
+        .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.08) { focused = true } }
     }
 }

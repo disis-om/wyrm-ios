@@ -25,7 +25,7 @@ import Combine
 final class WyrmKeyboardController: ObservableObject {
     static let shared = WyrmKeyboardController()
 
-    enum Layout { case letters, numbers, symbols, digits }
+    enum Layout { case letters, numbers, symbols, digits, emoji }
     enum Shift { case off, once, locked }
 
     /// The field being typed into. UITextField and UITextView both conform.
@@ -321,6 +321,7 @@ struct WyrmKeyboardView: View {
         case .numbers: return [Array("1234567890").map(String.init), ["-", "/", ":", ";", "(", ")", "$", "&", "@", "\""], [".", ",", "?", "!", "'"]]
         case .symbols: return [["[", "]", "{", "}", "#", "%", "^", "*", "+", "="], ["_", "\\", "|", "~", "<", ">", "€", "£", "¥", "•"], [".", ",", "?", "!", "'"]]
         case .digits: return [["1", "2", "3"], ["4", "5", "6"], ["7", "8", "9"]]
+        case .emoji: return [[], [], []]
         }
     }
 
@@ -330,6 +331,10 @@ struct WyrmKeyboardView: View {
             GeometryReader { proxy in
                 if controller.showingSettings {
                     WyrmKeyboardSettings(controller: controller)
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                        .transition(.opacity)
+                } else if controller.layout == .emoji {
+                    WyrmEmojiPanel(controller: controller, keyHeight: keyHeight, height: proxy.size.height)
                         .frame(width: proxy.size.width, height: proxy.size.height)
                         .transition(.opacity)
                 } else {
@@ -404,12 +409,14 @@ struct WyrmKeyboardView: View {
                             controller.layout = controller.layout == .letters ? .numbers : .letters
                         }
                         WyrmSpecialKey(symbol: "gearshape", width: unit, height: keyHeight) { controller.showingSettings = true }
+                        // Emoji, as on the system keyboard (OM, 2026-09-29).
+                        WyrmSpecialKey(symbol: "face.smiling", width: unit, height: keyHeight) { controller.layout = .emoji }
                         if controller.wantsEmail {
                             WyrmKey(label: "@", width: unit, height: keyHeight) { controller.insert("@") }
-                            WyrmKey(label: "space", width: unit * 2.9, height: keyHeight, small: true) { controller.insert(" ") }
+                            WyrmKey(label: "space", width: unit * 1.9, height: keyHeight, small: true) { controller.insert(" ") }
                             WyrmKey(label: ".", width: unit, height: keyHeight) { controller.insert(".") }
                         } else {
-                            WyrmKey(label: "space", width: unit * 4.9, height: keyHeight, small: true) { controller.insert(" ") }
+                            WyrmKey(label: "space", width: unit * 3.9, height: keyHeight, small: true) { controller.insert(" ") }
                         }
                         WyrmSpecialKey(text: controller.returnTitle, width: unit * 2.8, height: keyHeight,
                                        highlighted: controller.returnIsAction, accent: controller.returnIsAction) { controller.returnKey() }

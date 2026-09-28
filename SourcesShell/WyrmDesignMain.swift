@@ -10,6 +10,10 @@ struct WyrmDesignMain: View {
     @ObservedObject private var updates = WyrmUpdateStore.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
+    /// iOS has no push for Wyrm yet, so likes, replies and answers arrive as
+    /// an in-app banner while Wyrm is open (OM, 2026-09-29).
+    @State private var banner: WyrmServiceAlert?
+    @State private var bannerWork: DispatchWorkItem?
 
     init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore,
          initialTab: WyrmDesignTab, initialRoute: WyrmDesignRoute? = nil) {
@@ -62,6 +66,14 @@ struct WyrmDesignMain: View {
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
                 }
+                if let alert = banner {
+                    WyrmInAppBanner(alert: alert, onOpen: { openBanner(alert) }, onDismiss: dismissBanner)
+                        .padding(.horizontal, 10)
+                        .padding(.top, proxy.safeAreaInsets.top + 6)
+                        .frame(maxHeight: .infinity, alignment: .top)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .zIndex(70)
+                }
                 if let next = updates.promptable {
                     WyrmUpdatePrompt(info: next,
                                      onLater: { withAnimation(.easeOut(duration: 0.2)) { updates.answerPrompt() } },
@@ -88,6 +100,20 @@ struct WyrmDesignMain: View {
         .preferredColorScheme(theme.palette.dark || routes.last == .about ? .dark : .light)
         // Checked once a launch; a newer build raises the prompt above.
         .task { await updates.check() }
+        // Quiet look for new alerts while Wyrm is open and no match is running.
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 40_000_000_000)
+                if Task.isCancelled { break }
+                await pollAlerts()
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            Task { await pollAlerts() }
+        }
+        // Where the player is, for a crash or problem report.
+        .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
+        .onChange(of: tab) { value in if routes.isEmpty { WyrmCrashWatch.shared.screen = value.rawValue } }
         .onChange(of: engine.toast) { value in
             guard !value.isEmpty else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {
@@ -109,7 +135,7 @@ struct WyrmDesignMain: View {
     private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy, padTop: Bool = true) -> some View {
         Group {
             switch value {
-            case .alerts: WyrmAlertsRoot(services: services)
+            case .alerts: WyrmAlertsRoot(services: services, open: open)
             case .social: WyrmSocialRoot(account: account, services: services, open: open)
             case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
             case .skin: WyrmSkinRoot(engine: engine)
@@ -177,6 +203,29 @@ struct WyrmDesignMain: View {
         }
         bar.standardAppearance = appearance
         bar.scrollEdgeAppearance = appearance
+    }
+
+    private func pollAlerts() async {
+        guard UIApplication.shared.applicationState == .active, engine.engineScreen == 0 else { return }
+        let fresh = await services.pollAlerts()
+        guard let newest = fresh.first(where: { WyrmAlertRouting.banners.contains($0.kind) && notificationPrefs.allows($0.kind) }) else { return }
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.spring(response: 0.44, dampingFraction: 0.82)) { banner = newest }
+        bannerWork?.cancel()
+        let work = DispatchWorkItem { dismissBanner() }
+        bannerWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 4.5, execute: work)
+    }
+
+    private func dismissBanner() {
+        bannerWork?.cancel()
+        withAnimation(.easeOut(duration: 0.25)) { banner = nil }
+    }
+
+    private func openBanner(_ alert: WyrmServiceAlert) {
+        dismissBanner()
+        services.markRead(alert)
+        if let route = WyrmAlertRouting.route(for: alert) { open(route) } else { tab = .alerts }
     }
 
     private func open(_ value: WyrmDesignRoute) {
@@ -559,6 +608,7 @@ private struct WyrmSocialRoot: View {
 
 private struct WyrmAlertsRoot: View {
     @ObservedObject var services: WyrmServiceStore
+    let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var prefs = WyrmNotificationPrefs.shared
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -568,7 +618,7 @@ private struct WyrmAlertsRoot: View {
                     WyrmPaperCard { WyrmEmptyPanel(title: services.loading ? "Checking Wyrm…" : "All caught up", note: services.loading ? "Looking for real invites and notices." : "Nothing new right now.") }
                 } else {
                     LazyVStack(spacing: 12) {
-                        ForEach(services.alerts.filter { prefs.allows($0.kind) }) { alert in WyrmAlertCard(alert: alert, services: services) }
+                        ForEach(services.alerts.filter { prefs.allows($0.kind) }) { alert in WyrmAlertCard(alert: alert, services: services, open: open) }
                     }
                 }
                 Spacer().frame(height: 102)
@@ -580,17 +630,29 @@ private struct WyrmAlertsRoot: View {
 private struct WyrmAlertCard: View {
     let alert: WyrmServiceAlert
     @ObservedObject var services: WyrmServiceStore
+    let open: (WyrmDesignRoute) -> Void
     @State private var showingMenu = false
+    private var shownMeta: [(key: String, value: String)] {
+        alert.meta.filter { !WyrmAlertRouting.hiddenMeta.contains($0.key) && !$0.value.isEmpty }.sorted(by: { $0.key < $1.key })
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
-            HStack { Circle().fill(alert.read ? Color.clear : ATheme.live).frame(width: 7, height: 7); Text(alert.kind.replacingOccurrences(of: "_", with: " ").uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live); Spacer(); Text(relative(alert.createdAt)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet); Button { showingMenu = true } label: { Image(systemName: "ellipsis").foregroundColor(ATheme.quiet).frame(width: 28, height: 28) }.buttonStyle(.plain) }
+            HStack { Circle().fill(alert.read ? Color.clear : ATheme.live).frame(width: 7, height: 7); Text(WyrmAlertRouting.label(alert.kind)).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live); Spacer(); Text(relative(alert.createdAt)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet); Button { showingMenu = true } label: { Image(systemName: "ellipsis").foregroundColor(ATheme.quiet).frame(width: 28, height: 28) }.buttonStyle(.plain) }
             Text(alert.title).font(.androidWyrm(18, .bold))
             Text((try? AttributedString(markdown: alert.body,
                                         options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)))
                 ?? AttributedString(alert.body))
                 .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineSpacing(3)
-            if !alert.meta.isEmpty { ForEach(alert.meta.sorted(by: { $0.key < $1.key }), id: \.key) { pair in HStack { Text(pair.key.capitalized).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) } }
+            if !WyrmAlertRouting.social.contains(alert.kind) && !shownMeta.isEmpty { ForEach(shownMeta, id: \.key) { pair in HStack { Text(pair.key.capitalized).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) } }
+            if let action = WyrmAlertRouting.actionTitle(alert.kind), WyrmAlertRouting.route(for: alert) != nil {
+                Text("\(action) ›").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.link)
+            }
         }.padding(16).background(ATheme.card.opacity(0.92)).cornerRadius(17).overlay(RoundedRectangle(cornerRadius: 17).stroke(ATheme.rule)).padding(.horizontal, 16)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                services.markRead(alert)
+                if let route = WyrmAlertRouting.route(for: alert) { open(route) }
+            }
             .contextMenu {
                 Button(alert.read ? "Mark as unread" : "Mark as read") { Task { await services.setRead(alert, read: !alert.read) } }
                 Button("Delete notification", role: .destructive) { Task { await services.delete(alert) } }

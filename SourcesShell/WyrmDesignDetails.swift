@@ -14,7 +14,7 @@ struct WyrmDetailHost: View {
         case .messages: WyrmMessagesDetail(account: account, services: services, close: close, open: open)
         case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close)
         case .people(let kind): WyrmPeopleDetail(kind: kind, account: account, services: services, close: close, open: open)
-        case .profile(let id): WyrmProfileDetail(playerID: id, account: account, services: services, close: close, open: open)
+        case .profile(let id): WyrmProfilePage(playerID: id, account: account, services: services, close: close, open: open)
         case .editProfile: WyrmEditProfileDetail(account: account, close: close)
         case .voice: WyrmVoiceDetail(services: services, close: close, open: open)
         case .voiceVerification: WyrmVoiceVerificationDetail(services: services, close: close)
@@ -42,6 +42,9 @@ struct WyrmDetailHost: View {
         case .trails: WyrmTrailsFeed(account: account, close: close, open: open)
         case .trail(let id): WyrmTrailDetail(trailID: id, account: account, close: close, open: open)
         case .trailCompose: WyrmTrailStudio(account: account, close: close)
+        case .help: WyrmHelpCenterPage(account: account, close: close, open: open)
+        case .supportCompose(let kind): WyrmSupportComposePage(account: account, initialKind: kind, close: close, open: open)
+        case .supportReports: WyrmSupportReportsPage(account: account, close: close, open: open)
         }
     }
 }
@@ -162,7 +165,10 @@ private struct WyrmPeopleDetail: View {
         if kind == "connections" {
             WyrmConnectionsDetail(account: account, services: services, close: close, open: open)
         } else {
-        WyrmDetailChrome(title: kind == "following" ? "Following" : kind == "search" ? "People" : "Followers", onBack: close) {
+        // "followers" / "following" are yours; "followers:<id>" another player's.
+        let parts = kind.split(separator: ":", maxSplits: 1).map(String.init)
+        let list = parts.first ?? kind
+        WyrmDetailChrome(title: list == "following" ? "Following" : list == "search" ? "People" : "Followers", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     HStack { Image(systemName: "magnifyingglass").foregroundColor(ATheme.quiet); TextField("Search players", text: $query).font(.androidWyrm(14)); if !query.isEmpty { Button { Task { await services.searchPeople(query) } } label: { Image(systemName: "arrow.right.circle.fill").foregroundColor(ATheme.ink) } } }.padding(.horizontal, 14).frame(height: 46).background(ATheme.card).cornerRadius(14).padding(16)
@@ -172,7 +178,10 @@ private struct WyrmPeopleDetail: View {
                     }
                     Spacer().frame(height: 24)
                 }
-            }.task { if kind != "search", let id = account.player?.id { await services.loadConnections(playerID: id, kind: kind) } }
+            }.task {
+                guard list != "search", let id = parts.count > 1 ? parts[1] : account.player?.id else { return }
+                await services.loadConnections(playerID: id, kind: list)
+            }
         }
         }
     }
@@ -210,68 +219,6 @@ private struct WyrmConnectionsDetail: View {
             ForEach(rows) { person in Button { open(.profile(person.id)) } label: { HStack(spacing: 12) { WyrmAvatar(initials: person.initials, size: 36, url: person.avatarURL); VStack(alignment: .leading, spacing: 2) { Text(person.displayName).font(.androidWyrm(14.5, .semibold)); Text(person.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }; Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58) }.buttonStyle(.plain) }
         }; Spacer().frame(height: 24) } }
     }
-}
-
-private struct WyrmProfileDetail: View {
-    let playerID: String
-    @ObservedObject var account: WyrmAccountStore
-    @ObservedObject var services: WyrmServiceStore
-    let close: () -> Void
-    let open: (WyrmDesignRoute) -> Void
-    @State private var followBusy = false
-    private var own: Bool { playerID.isEmpty || playerID == account.player?.id }
-    private var servicePlayer: WyrmServicePlayer? { services.profiles[playerID] ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.scoreLeaders.first(where: { $0.id == playerID }) ?? services.killLeaders.first(where: { $0.id == playerID }) }
-    var body: some View {
-        WyrmDetailChrome(title: "Profile", actionTitle: own ? "Edit" : "", onBack: close, action: { if own { open(.editProfile) } }) {
-            ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    WyrmAvatar(initials: own ? (account.player?.initials ?? "W") : (servicePlayer?.initials ?? "W"), size: 76, url: own ? (account.player?.avatarURL ?? "") : (servicePlayer?.avatarURL ?? "")).padding(.top, 28)
-                    Text(own ? (account.player?.displayName ?? "Wyrm") : (servicePlayer?.displayName ?? "Player")).font(.androidWyrm(27, .bold)).padding(.top, 14)
-                    Text(own ? (account.player?.handle ?? "") : (servicePlayer?.handle ?? "")).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
-                    Text(profileBio).font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center).padding(.horizontal, 34).padding(.top, 10)
-                    if !own { followBar.padding(.top, 16).padding(.horizontal, 16) }
-                    HStack(spacing: 0) { WyrmMetric(label: "BEST", value: score.wyrmFormatted); Rectangle().fill(ATheme.rule).frame(width: 1, height: 48); WyrmMetric(label: "KILLS", value: kills.wyrmFormatted) }.background(ATheme.card).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule)).padding(16)
-                    WyrmPaperCard {
-                        WyrmListRow(title: "Followers", value: "\(followers)") { open(.people("followers")) }
-                        WyrmListRow(title: "Following", value: "\(following)") { open(.people("following")) }
-                        if own { WyrmListRow(title: "Sign out", destructive: true, showsChevron: false) { account.signOut() } }
-                    }
-                    Spacer().frame(height: 24)
-                }
-            }
-        }
-        .task(id: playerID) { if !own { await services.loadPlayer(playerID) } }
-    }
-    /// Follow, Follow back or Following, as a real button under the name. It
-    /// was a plain third row in the list card, which read as no button at all.
-    @ViewBuilder private var followBar: some View {
-        let following = servicePlayer?.isFollowing == true
-        let followsYou = servicePlayer?.followsYou == true
-        let ready = servicePlayer != nil && !followBusy
-        VStack(spacing: 8) {
-            if followsYou {
-                Text(following ? "You follow each other" : "Follows you")
-                    .font(.androidWyrm(11, .semibold)).tracking(0.4).foregroundColor(ATheme.live)
-                    .padding(.horizontal, 10).padding(.vertical, 4)
-                    .background(Capsule().fill(ATheme.live.opacity(0.14)))
-            }
-            if following {
-                WSOutlineButton(label: followBusy ? "…" : "Following", enabled: ready, onClick: toggleFollow)
-            } else {
-                WSPrimaryButton(label: followBusy ? "…" : followsYou ? "Follow back" : "Follow", enabled: ready, onClick: toggleFollow)
-            }
-        }
-    }
-    private func toggleFollow() {
-        guard let person = servicePlayer, !followBusy else { return }
-        followBusy = true
-        Task { await services.follow(person); followBusy = false }
-    }
-    private var profileBio: String { own ? ((account.player?.bio.isEmpty == false ? account.player?.bio : "Nothing yet. Add a line about how you play.") ?? "") : (servicePlayer?.bio.isEmpty == false ? servicePlayer!.bio : "Nothing here yet.") }
-    private var score: Int64 { own ? (account.player?.highestScore ?? 0) : (servicePlayer?.highestScore ?? 0) }
-    private var kills: Int64 { own ? (account.player?.kills ?? 0) : (servicePlayer?.kills ?? 0) }
-    private var followers: Int64 { own ? (account.player?.followerCount ?? 0) : (servicePlayer?.followerCount ?? 0) }
-    private var following: Int64 { own ? (account.player?.followingCount ?? 0) : (servicePlayer?.followingCount ?? 0) }
 }
 
 private struct WyrmEditProfileDetail: View {
