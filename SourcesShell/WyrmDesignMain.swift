@@ -535,6 +535,7 @@ private struct WyrmSocialRoot: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 WyrmScreenHeader(kicker: "Arena", title: "Social")
+                WyrmTrailsTeaser(account: account, open: open)
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link) { open(.messages) }
@@ -547,7 +548,10 @@ private struct WyrmSocialRoot: View {
                 WyrmPaperCard { WyrmEmptyPanel(title: "Your arena circle starts here", note: "Players from real conversations and follows appear here.") }
                 Spacer().frame(height: 102)
             }
-        }.refreshable { await services.refreshSocial() }
+        }.refreshable {
+            await services.refreshSocial()
+            await WyrmTrailsStore.shared.refresh()
+        }
     }
     private var messageDetail: String { let unread = services.conversations.reduce(0) { $0 + $1.unreadCount }; return unread == 0 ? "No unread messages" : "\(unread) unread" }
     private var leaderboardDetail: String { guard let id = account.player?.id, let rank = services.killLeaders.firstIndex(where: { $0.id == id }) else { return "Score and kills" }; return "You are \(rank + 1) by kills" }

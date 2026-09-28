@@ -41,6 +41,9 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case buildNotes
     case globalChat
     case about
+    case trails
+    case trail(String)
+    case trailCompose
 
     var id: String {
         switch self {
@@ -75,6 +78,9 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .buildNotes: return "build-notes"
         case .globalChat: return "global-chat"
         case .about: return "about"
+        case .trails: return "trails"
+        case .trail(let id): return "trail-\(id)"
+        case .trailCompose: return "trail-compose"
         }
     }
 }

@@ -39,6 +39,9 @@ struct WyrmDetailHost: View {
         case .globalChat: WyrmGlobalChatDetail(account: account, services: services, close: close, open: open)
         case .developer: WyrmDeveloperDetail(close: close)
         case .about: WyrmAboutPage(close: close)
+        case .trails: WyrmTrailsFeed(account: account, close: close, open: open)
+        case .trail(let id): WyrmTrailDetail(trailID: id, account: account, close: close, open: open)
+        case .trailCompose: WyrmTrailCompose(account: account, close: close)
         }
     }
 }
