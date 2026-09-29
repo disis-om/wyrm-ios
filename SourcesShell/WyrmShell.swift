@@ -285,8 +285,10 @@ final class WyrmShellStore: ObservableObject {
     /// Writes a new in-game name into the engine (which persists it) and
     /// shows it everywhere immediately.
     func setNickname(_ raw: String) {
-        let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
-        guard !name.isEmpty, name != nickname else { return }
+        // As typed (at most 24), blank included: the arena shows it as is (OM).
+        let name = String(raw.prefix(24))
+        UserDefaults.standard.set(true, forKey: Self.nicknameChosenKey)
+        guard name != nickname else { return }
         name.withCString { WyrmIOSSaveNickname($0) }
         adopt(name)
         WyrmDiagnostics.record("in-game name saved", category: "ENGINE")
@@ -294,11 +296,15 @@ final class WyrmShellStore: ObservableObject {
 
     func saveNickname(_ name: String) { setNickname(name) }
 
+    /// Set once the player types or clears a name: the account's arena name
+    /// then never refills a name they left blank on purpose.
+    static let nicknameChosenKey = "wyrm.nickname.chosen"
+    var nicknameChosen: Bool { UserDefaults.standard.bool(forKey: Self.nicknameChosenKey) }
+
     /// Holds a name the engine is about to apply, so the next snapshot cannot
     /// flash the old one back before the mailbox is drained.
     private func adopt(_ raw: String) {
-        let name = String(raw.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
-        guard !name.isEmpty else { return }
+        let name = String(raw.prefix(24))
         nickname = name
         nicknameOverride = (name, Date().addingTimeInterval(3))
     }

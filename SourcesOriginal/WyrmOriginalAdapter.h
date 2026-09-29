@@ -48,6 +48,12 @@ void WyrmIOSArenaNoteError(const char* text);
 void WyrmIOSArenaDropped(tenv* env);
 /* A 'v' death packet within a moment of spawning is a drop too. */
 void WyrmIOSArenaFastDeath(tenv* env, int death_code);
+/* What the join carried, the configuration timeout, and a socket turned away
+   before spawn (a pre-spawn drop report). */
+void WyrmIOSArenaJoinFacts(int packet_bytes, int skin_bytes, int skin_runs,
+                           int nick_bytes, int custom_skin);
+void WyrmIOSArenaNoteTimeout(void);
+void WyrmIOSArenaPrespawnClosed(tenv* env, const char* phase);
 const char* WyrmIOSArenaDropSnapshot(void);
 /* Image arrow skin (-1 = the engine's polygon style) and a 0.2-1.0 brightness
    applied to image and polygon arrows alike; AppleArrowSkins.c. */

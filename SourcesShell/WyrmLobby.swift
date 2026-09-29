@@ -175,7 +175,7 @@ struct WyrmReadyRoom: View {
                                 let clean = String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }.prefix(24))
                                 if clean != value { nickname = clean }
                             }
-                            .onSubmit { saveName(); if !nickname.isEmpty { play() } }
+                            .onSubmit { saveName(); play() }
                         Spacer().frame(height: 8)
                         LinearGradient(colors: [ATheme.ink.opacity(0.34), ATheme.rule], startPoint: .leading, endPoint: .trailing)
                             .frame(height: 1)
@@ -190,7 +190,8 @@ struct WyrmReadyRoom: View {
                     // Quick settings is gone from the lobby (OM); Home takes its place.
                     paperButton("Home", "house", width: 112, enabled: !entering) { saveName(); engine.leaveLobby() }
                     Spacer(minLength: 0)
-                    paperButton("Play with AI", "sparkles", width: 128, enabled: !nickname.isEmpty && !entering && !engine.arenaPlayPending) {
+                    // A blank name is allowed: the arena shows no name (OM).
+                    paperButton("Play with AI", "sparkles", width: 128, enabled: !entering && !engine.arenaPlayPending) {
                         saveName(); engine.playOffline(name: nickname)
                     }
                     playButton
@@ -206,7 +207,7 @@ struct WyrmReadyRoom: View {
     }
 
     private var playButton: some View {
-        let enabled = !engine.arena.isEmpty && !nickname.isEmpty && !entering && !engine.arenaPlayPending
+        let enabled = !engine.arena.isEmpty && !entering && !engine.arenaPlayPending
         return Button(action: play) {
             HStack(spacing: 10) {
                 if entering { ProgressView().tint(ATheme.quiet).scaleEffect(0.8) }
@@ -223,17 +224,17 @@ struct WyrmReadyRoom: View {
     }
 
     private func play() {
-        guard !engine.arena.isEmpty, !nickname.isEmpty, !entering, !engine.arenaPlayPending else { return }
+        guard !engine.arena.isEmpty, !entering, !engine.arenaPlayPending else { return }
         saveName()
         entering = true
         engine.playOnline(name: nickname, address: engine.arena)
     }
 
     private func saveName() {
-        let clean = nickname.trimmingCharacters(in: .whitespaces)
-        if !clean.isEmpty, clean != engine.nickname {
-            engine.setNickname(clean)
-            WyrmGameSync.shared.syncIngameName(clean)
+        // As typed, blank included: the arena shows it as is (OM).
+        if nickname != engine.nickname {
+            engine.setNickname(nickname)
+            if !nickname.isEmpty { WyrmGameSync.shared.syncIngameName(nickname) }
         }
     }
 

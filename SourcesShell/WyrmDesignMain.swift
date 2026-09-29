@@ -369,15 +369,14 @@ private struct WyrmPlayRoot: View {
         recent.insert(selected.endpoint, at: 0)
         recentArenaEndpoints = recent.prefix(5).joined(separator: ";")
         commitName()
-        let playerName = engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname
-        engine.enterLobby(name: playerName, address: selected.endpoint)
+        engine.enterLobby(name: engine.nickname, address: selected.endpoint)
     }
 
     /// The engine's saved name wins, so a restart never swaps it. Only when
     /// the engine has never had one does the account's arena name seed it.
     private func adoptEngineName() {
         guard engine.nicknameLoaded else { return }
-        if engine.nickname.isEmpty, let seed = account.player?.ingameName, !seed.isEmpty {
+        if engine.nickname.isEmpty, !engine.nicknameChosen, let seed = account.player?.ingameName, !seed.isEmpty {
             engine.setNickname(seed)
             nickname = seed
         } else {
@@ -386,12 +385,12 @@ private struct WyrmPlayRoot: View {
     }
 
     private func commitName() {
-        let clean = String(nickname.trimmingCharacters(in: .whitespacesAndNewlines).prefix(24))
-        guard !clean.isEmpty else { nickname = engine.nickname; return }
+        // As typed (at most 24), blank included: the arena shows it as is (OM).
+        let clean = String(nickname.prefix(24))
         nickname = clean
         guard clean != engine.nickname else { return }
         engine.setNickname(clean)
-        if clean != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(clean) }
+        if !clean.isEmpty, clean != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(clean) }
     }
 }
 

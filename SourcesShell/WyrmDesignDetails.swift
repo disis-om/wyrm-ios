@@ -587,7 +587,7 @@ private struct WyrmTeamDetail: View {
     private func rosterRow(_ member: WyrmTeamMember) -> some View {
         Button {
             guard member.arena != "_GAME_MENU_" else { return }
-            engine.enterLobby(name: engine.nickname.isEmpty ? "Wyrm Player" : engine.nickname, address: member.arena)
+            engine.enterLobby(name: engine.nickname, address: member.arena)
         } label: {
             HStack(spacing: 12) {
                 Circle().fill(member.arena == engine.arena ? ATheme.live : ATheme.quiet.opacity(0.3)).frame(width: 8, height: 8)

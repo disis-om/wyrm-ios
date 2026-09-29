@@ -11,6 +11,78 @@ import re
 
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "SharedEngine"
+
+# The bounded custom-skin encoder for the join (arena drop fix, 2026-09-29);
+# the same C as Wyrm Android's network/callback.c.
+NEW_SKIN_ENCODER = r'''/*
+ * How many (count, colour) runs a join may carry: NTL's limit. NTL cuts its
+ * skin block to 300 bytes (`cb.slice(0,300)` in main-mt.js), which is the
+ * 8-byte header plus 146 pairs, and arenas take that from NTL players every
+ * day. Live, one arena (OM, 2026-09-29/30): skin blocks of 102, 200, 256, 300
+ * and 400 bytes were admitted; 500 bytes (a 533-540-byte join) closed the
+ * socket before configuration. That 500-byte block was the arena drop.
+ */
+#define WYRM_JOIN_SKIN_MAX_RUNS 146
+
+/* The colours the official client lets a custom skin use. */
+static bool skin_colour_allowed(int cg) {
+  return (cg >= 0 && cg <= 35) || cg == 37 || cg == 39 || cg == 41;
+}
+
+/*
+ * The run list for the join: official colours only, one repeat of the
+ * pattern, at most WYRM_JOIN_SKIN_MAX_RUNS runs. The arena repeats a pattern
+ * along the body, so one repeat looks the same to everyone else; iOS hands
+ * over its motif repeated to 256 beads, and this folds that back. Our own
+ * snake still draws the whole design (see the own-snake block in 's').
+ * Empty when nothing valid is left: the join then goes out as a preset one.
+ */
+uint8_t* get_skin_compressed(tuser_data* usr) {
+  user_settings* usrs = &usr->usrs;
+  uint8_t* reduced = tdarray_create(uint8_t);
+
+  uint8_t groups[MAX_SKIN_CODE_LEN];
+  int count = 0;
+  for (int i = 0; i < MAX_SKIN_CODE_LEN && usrs->skin_code[i]; i++) {
+    int cg = get_cg_id(&usr->gdata, usrs->skin_code[i]);
+    if (skin_colour_allowed(cg)) groups[count++] = (uint8_t)cg;
+  }
+  if (!count) return reduced;
+
+  /* The smallest period p with groups[i] == groups[i - p] for every i >= p. */
+  int period = count;
+  for (int p = 1; p < count; p++) {
+    bool repeats = true;
+    for (int i = p; i < count; i++) {
+      if (groups[i] != groups[i - p]) {
+        repeats = false;
+        break;
+      }
+    }
+    if (repeats) {
+      period = p;
+      break;
+    }
+  }
+
+  int runs = 0;
+  int i = 0;
+  while (i < period && runs < WYRM_JOIN_SKIN_MAX_RUNS) {
+    uint8_t cg = groups[i];
+    int n = 1;
+    while (i + n < period && groups[i + n] == cg && n < UINT8_MAX) n++;
+    uint8_t run = (uint8_t)n;
+    tdarray_push(&reduced, &run);
+    tdarray_push(&reduced, &cg);
+    runs++;
+    i += n;
+  }
+  if (i < period)
+    SDL_Log("Wyrm arena: custom skin trimmed for the join — %d of %d beads "
+            "in one repeat, %d stripes", i, period, runs);
+  return reduced;
+}
+'''
 OUTPUT = ROOT / "build-original-source"
 
 sdl_headers = list((ROOT / "Vendor" / "SDL3.xcframework").rglob("SDL.h"))
@@ -379,15 +451,19 @@ for path in sorted(OUTPUT.rglob("*")):
         timeout_clock = 'SDL_GetTicks() - gdata->attempt_started_ms > ARENA_RETRY_MS'
         assert text.count(timeout_clock) == 1
         text = text.replace(timeout_clock, 'SDL_GetTicks() - gdata->attempt_started_ms > 5000')
-        connect_gate = 'if (!gdata->arena_ready && gdata->connection &&'
-        assert text.count(connect_gate) == 1
-        text = text.replace(connect_gate, 'if (gdata->connection &&')
+        # (The `!gdata->arena_ready` guard stays: removing it closed an
+        # admitted socket that was still waiting for its snake at 5 s.)
+        assert text.count('if (!gdata->arena_ready && gdata->connection &&') == 1
         timeout = '''          arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
               usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));
           game_fail_connection(gdata, "configuration timeout");'''
         assert text.count(timeout) == 1
-        text = text.replace(timeout, '          game_fail_connection(gdata, "configuration timeout");')
+        text = text.replace(timeout, '''          {
+            extern void WyrmIOSArenaNoteTimeout(void);
+            WyrmIOSArenaNoteTimeout();
+          }
+          game_fail_connection(gdata, "configuration timeout");''')
         failed = '''          /* Report this attempt's refusal and return to the lobby. A new
              endpoint may be chosen there only by the player; one Play must
              not silently create another arena connection. */
@@ -429,6 +505,57 @@ for path in sorted(OUTPUT.rglob("*")):
   }
 ''')
     if relative == "app/src/network/callback.c":
+        # Arena drop fix (OM, 2026-09-29), the same C as Wyrm Android: the
+        # custom skin block was unbounded (a 246-run, 500-byte block made the
+        # arena close before 'a'). Official colours only, one repeat, at most
+        # 47 runs; the tail only for the web persona and only with runs; our
+        # own snake keeps its whole design locally.
+        old_encoder_start = text.index('uint8_t* get_skin_compressed(tuser_data* usr) {')
+        old_encoder_end = text.index('  return reduced;\n}\n', old_encoder_start) + len('  return reduced;\n}\n')
+        assert 'A run byte cannot spell 256' in text[old_encoder_start:old_encoder_end]
+        text = text[:old_encoder_start] + NEW_SKIN_ENCODER + text[old_encoder_end:]
+        skin_alloc = """    if (usrs->custom_skin) {
+      skin_compressed = get_skin_compressed(usr);
+      skin_compressed_len = tdarray_length(skin_compressed);
+      ba = malloc(8 + 20 + nick_len + 8 + skin_compressed_len);
+    } else {
+      ba = malloc(8 + 20 + nick_len);
+    }
+"""
+        assert text.count(skin_alloc) == 1
+        text = text.replace(skin_alloc, """    /* The skin tail is the web client's format. The AIR client sends typed
+       `custom_skin2` blocks instead, which Wyrm does not encode, so an AIR
+       join goes out as a preset one. A tail with no runs is not sent either:
+       receivers need at least one pair. */
+    bool web_persona = persona == arena_persona_get(ARENA_PERSONA_WEB);
+    if (usrs->custom_skin && web_persona) {
+      skin_compressed = get_skin_compressed(usr);
+      skin_compressed_len = tdarray_length(skin_compressed);
+      if (!skin_compressed_len) {
+        tdarray_destroy(skin_compressed);
+        skin_compressed = NULL;
+      }
+    }
+    ba = malloc(8 + 20 + nick_len + (skin_compressed ? 8 + skin_compressed_len : 0));
+""")
+        skin_tail = '    if (usrs->custom_skin) {\n      ba[m++] = 255;\n'
+        assert text.count(skin_tail) == 1
+        text = text.replace(skin_tail, '    if (skin_compressed) {\n      ba[m++] = 255;\n')
+        own_look = '      o.cusk = skl != 0;\n'
+        assert text.count(own_look) == 1
+        text = text.replace(own_look, own_look + """      /* Our own snake keeps the whole design we chose. The join carries at
+         most one bounded repeat of it, and `cusk_data` above holds the arena's
+         echo of that; drawn from the echo, our snake would show the trimmed
+         wire copy instead of the player's own look. */
+      if (o.local_player && usrs->custom_skin) {
+        o.cusk_len = 0;
+        for (int k = 0; k < MAX_SKIN_CODE_LEN && usrs->skin_code[k]; k++) {
+          int cg = get_cg_id(gdata, usrs->skin_code[k]);
+          if (cg >= 0) o.cusk_data[o.cusk_len++] = (uint8_t)cg;
+        }
+        o.cusk = o.cusk_len > 0;
+      }
+""")
         # Arena drops, the fast kind: the arena ends the snake with a 'v'
         # 0.3-1 s after it spawned (OM, 2026-09-29). Reported first, read-only;
         # the death handling that follows is unchanged.
@@ -499,9 +626,16 @@ for path in sorted(OUTPUT.rglob("*")):
 ''' + skin_skip)
         joined = '    arena_send(c, ba, m);\n    free(ba);'
         assert text.count(joined) == 1
-        text = text.replace(joined, '''    SDL_Log("Wyrm arena: join fields accessory=%u custom_skin=%d nickname_bytes=%d packet_bytes=%d",
+        text = text.replace(joined, '''    SDL_Log("Wyrm arena: join fields accessory=%u custom_skin=%d skin_runs=%d skin_bytes=%d nickname_bytes=%d packet_bytes=%d",
             (unsigned)usrs->accessory, usrs->custom_skin ? 1 : 0,
+            skin_compressed_len / 2, skin_compressed_len ? 8 + skin_compressed_len : 0,
             nick_len, m);
+    {
+      extern void WyrmIOSArenaJoinFacts(int packet_bytes, int skin_bytes, int skin_runs,
+                                        int nick_bytes, int custom_skin);
+      WyrmIOSArenaJoinFacts(m, skin_compressed_len ? 8 + skin_compressed_len : 0,
+                            skin_compressed_len / 2, nick_len, usrs->custom_skin ? 1 : 0);
+    }
     arena_send(c, ba, m);
     free(ba);''')
         closing = '    gdata->last_life = gdata->join_spawned ? glfwGetTime() - gdata->life_started_sec : 0;'
@@ -513,6 +647,14 @@ for path in sorted(OUTPUT.rglob("*")):
         "after spawn";
     SDL_Log("Wyrm arena: socket closed in phase '%s' after %llums",
             phase, (unsigned long long)(SDL_GetTicks() - gdata->attempt_started_ms));
+    /* Turned away before a snake existed (and not by us): a drop report of
+       its own (HomeMailbox.inc). Refusal handling is unchanged; every
+       post-spawn report needs join_spawned, so the two never fire together. */
+    if (c->is_websocket && !gdata->join_spawned && !gdata->ai_mode &&
+        !gdata->closed_by_us && !gdata->leaving && !gdata->restart_req) {
+      extern void WyrmIOSArenaPrespawnClosed(tenv* env, const char* phase);
+      WyrmIOSArenaPrespawnClosed(env, phase);
+    }
 ''' + closing)
         close_block = '''    if (gdata->arena_ready && gdata->curr_screen == PLAYING &&
         !gdata->leaving && !gdata->restart_req) {
@@ -553,6 +695,15 @@ for path in sorted(OUTPUT.rglob("*")):
       gdata->arena_ready = false;
     }
 ''')
+    if relative == "app/src/ui/lobby.c":
+        # A blank name is allowed: the arena shows no name (OM, 2026-09-30).
+        gate = 'bool can_play = usrs->nickname[0] && server_address_is_valid(usrs->ipv4);'
+        assert text.count(gate) == 1
+        text = text.replace(gate, 'bool can_play = server_address_is_valid(usrs->ipv4);')
+    if relative == "app/src/network/arena_persona.c":
+        clamp = 'index = ARENA_PERSONA_AIR;'
+        assert text.count(clamp) == 1
+        text = text.replace(clamp, 'index = ARENA_PERSONA_WEB;')
     if relative == "app/src/platform/android_settings.c":
         # The settings table, validation, persistence and once-per-frame
         # mailbox are engine code, not Android UI code. Compile that exact

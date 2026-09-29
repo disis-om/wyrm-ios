@@ -113,6 +113,15 @@ static unsigned apple_close_code = 0;
 static char apple_close_reason[121] = {0};
 static char apple_error_text[121] = {0};
 static uint64_t apple_drop_sequence = 0;
+/* Per connection: what the join carried, and whether the configuration
+   timeout (ours) closed the socket. For a pre-spawn report. */
+static int apple_join_sent = 0;
+static int apple_join_bytes = 0;
+static int apple_join_skin_bytes = 0;
+static int apple_join_skin_runs = 0;
+static int apple_join_nick_bytes = 0;
+static int apple_join_custom_skin = 0;
+static int apple_timed_out = 0;
 static char apple_drop_snapshot[1024] = {0};
 
 /* Tabs and line breaks would split the snapshot's fields. */
@@ -134,7 +143,24 @@ void WyrmIOSArenaConnectStamp(void) {
   apple_close_code = 0;
   apple_close_reason[0] = '\0';
   apple_error_text[0] = '\0';
+  apple_join_sent = apple_join_bytes = apple_join_skin_bytes = 0;
+  apple_join_skin_runs = apple_join_nick_bytes = apple_join_custom_skin = 0;
+  apple_timed_out = 0;
 }
+
+/* Engine thread, right after the join goes out. */
+void WyrmIOSArenaJoinFacts(int packet_bytes, int skin_bytes, int skin_runs,
+                           int nick_bytes, int custom_skin) {
+  apple_join_sent = 1;
+  apple_join_bytes = packet_bytes;
+  apple_join_skin_bytes = skin_bytes;
+  apple_join_skin_runs = skin_runs;
+  apple_join_nick_bytes = nick_bytes;
+  apple_join_custom_skin = custom_skin;
+}
+
+/* Engine thread: the configuration timeout is closing this socket. */
+void WyrmIOSArenaNoteTimeout(void) { apple_timed_out = 1; }
 
 /* Engine thread: a WebSocket CLOSE frame's payload, code big-endian first. */
 void WyrmIOSArenaCloseFrame(const uint8_t* data, size_t length) {
@@ -234,6 +260,48 @@ static void apple_publish_drop(tenv* env, const char* reason, int death_code, do
   SDL_Log("Wyrm arena drop: '%s' after %.1fs, %s (v %d), close code %u, %s, %d connects in 60s",
           usr->usrs.ipv4, life, reason, death_code, apple_close_code,
           apple_error_text[0] ? apple_error_text : "closed", connects);
+}
+
+/* Engine thread, from the close: turned away after the WebSocket upgrade
+   and before our snake spawned, not by us. One report per connection (the
+   same serial guard as a post-spawn drop, which needs a spawn anyway). */
+void WyrmIOSArenaPrespawnClosed(tenv* env, const char* phase) {
+  if (!env || !home_mutex) return;
+  game_data* gdata = &env->usr->gdata;
+  if (gdata->ai_mode || gdata->join_spawned || gdata->closed_by_us ||
+      gdata->leaving || gdata->restart_req)
+    return;
+  if (apple_connect_serial && apple_drop_published_serial == apple_connect_serial) return;
+  apple_drop_published_serial = apple_connect_serial;
+  tuser_data* usr = env->usr;
+  uint64_t now = (uint64_t)SDL_GetTicks();
+  int connects = 0;
+  for (int i = 0; i < APPLE_CONNECT_RING; ++i)
+    if (apple_connect_ring[i] && now - apple_connect_ring[i] <= 60000) connects++;
+  long long since_dial = gdata->attempt_started_ms && now >= gdata->attempt_started_ms
+      ? (long long)(now - gdata->attempt_started_ms) : -1;
+  const char* reason = apple_timed_out ? "prespawn_timeout"
+                       : apple_error_text[0] ? "prespawn_error" : "prespawn_closed";
+  char phase_text[64];
+  apple_copy_clean(phase_text, sizeof(phase_text), phase ? phase : "",
+                   phase ? strlen(phase) : 0);
+  const arena_persona* persona = arena_persona_get(gdata->persona);
+
+  SDL_LockMutex(home_mutex);
+  apple_drop_sequence++;
+  snprintf(apple_drop_snapshot, sizeof(apple_drop_snapshot),
+           "%llu\tdropReason=%s\tphase=%s\tmsSinceDial=%lld\tjoinSent=%d"
+           "\tjoinBytes=%d\tcustomSkin=%d\tskinBytes=%d\tskinRuns=%d\tnickBytes=%d"
+           "\tcloseCode=%u\tcloseReason=%s\terrorText=%s\tlifeSec=0"
+           "\tconnectsLastMin=%d\tpersona=%s\tarena=%s",
+           (unsigned long long)apple_drop_sequence, reason, phase_text, since_dial,
+           apple_join_sent, apple_join_bytes, apple_join_custom_skin,
+           apple_join_skin_bytes, apple_join_skin_runs, apple_join_nick_bytes,
+           apple_close_code, apple_close_reason, apple_error_text, connects,
+           persona && persona->name ? persona->name : "", usr->usrs.ipv4);
+  SDL_UnlockMutex(home_mutex);
+  SDL_Log("Wyrm arena: turned away %s (%s) — join %d bytes, skin %d runs",
+          phase_text, reason, apple_join_bytes, apple_join_skin_runs);
 }
 
 /* Main thread: "sequence\tkey=value\t…", or "0" before the first drop. */

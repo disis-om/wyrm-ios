@@ -707,7 +707,10 @@ final class WyrmDropWatch: ObservableObject {
     /// The snapshot fields the engine writes, in the report's order.
     private static let engineKeys = ["dropReason", "deathPacket", "dialToSpawnMs", "closeCode", "closeReason", "errorText", "lifeSec", "score",
                                      "length", "kills", "pingMs", "lagging", "fps", "lastPacketAgoMs",
-                                     "connectsLastMin", "persona", "protocol", "arena"]
+                                     "connectsLastMin", "persona", "protocol", "arena",
+                                     // Pre-spawn reports: where the handshake died and what the join carried.
+                                     "phase", "msSinceDial", "joinSent", "joinBytes", "customSkin", "skinBytes",
+                                     "skinRuns", "nickBytes"]
 
     private var lastSequence: UInt64 = 0
     private var lastShownAt: Date?
@@ -754,7 +757,9 @@ final class WyrmDropWatch: ObservableObject {
             let apiMs: Int? = await apiProbe
 
             var context = WyrmSupportContext.current(screen: "Arena")
-            for key in Self.engineKeys { context[key] = engine[key] ?? "" }
+            // Only what the engine sent: a pre-spawn report and an in-match one
+            // carry different keys, and a report may hold at most 40.
+            for key in Self.engineKeys { if let value = engine[key] { context[key] = value } }
             context["arenaId"] = arena.map { $0.number > 0 ? "\($0.number)" : "" } ?? ""
             context["arenaCluster"] = arena.map { "\($0.cluster)" } ?? ""
             context["arenaPlayers"] = arena.map { "\($0.players)" } ?? ""
@@ -765,7 +770,10 @@ final class WyrmDropWatch: ObservableObject {
             context["netChanges"] = "\(network.changes)"
             context["internetMs"] = internetMs.map { "\($0)" } ?? "fail"
             context["apiMs"] = apiMs.map { "\($0)" } ?? "fail"
-            let hint = Self.hint(internetFailed: internetMs == nil, changes: network.changes, connects: connects, life: life)
+            let prespawn = (engine["dropReason"] ?? "").hasPrefix("prespawn")
+            let hint = Self.hint(internetFailed: internetMs == nil, changes: network.changes, connects: connects, life: life,
+                                 prespawn: prespawn, customSkin: engine["customSkin"] == "1",
+                                 skinRuns: Int(engine["skinRuns"] ?? "") ?? 0)
             context["hint"] = hint.code
             context["droppedAt"] = ISO8601DateFormatter().string(from: droppedAt)
             var clipped: [String: String] = [:]
@@ -774,7 +782,9 @@ final class WyrmDropWatch: ObservableObject {
             let arenaName: String
             if let arena, arena.number > 0 { arenaName = "\(arena.number)" } else { arenaName = endpoint }
             let record = WyrmDropRecord(id: UUID().uuidString, context: clipped, logs: logs, hint: hint.code,
-                                        hintText: hint.text, subtitle: "Arena \(arenaName) · \(Int(life.rounded()))s alive")
+                                        hintText: hint.text,
+                                        subtitle: prespawn ? "Arena \(arenaName) · before your snake appeared"
+                                                           : "Arena \(arenaName) · \(Int(life.rounded()))s alive")
             WyrmDiagnostics.record("arena drop hint=\(hint.code) internet=\(clipped["internetMs"] ?? "") api=\(clipped["apiMs"] ?? "")",
                                    category: "NETWORK")
             present(record)
@@ -782,7 +792,8 @@ final class WyrmDropWatch: ObservableObject {
     }
 
     /// First match wins; the same order and words as Android.
-    static func hint(internetFailed: Bool, changes: Int, connects: Int, life: Double) -> (code: String, text: String) {
+    static func hint(internetFailed: Bool, changes: Int, connects: Int, life: Double,
+                     prespawn: Bool = false, customSkin: Bool = false, skinRuns: Int = 0) -> (code: String, text: String) {
         if internetFailed {
             return ("no_internet", "Your internet dropped. Check Wi-Fi or mobile data and pick the arena again.")
         }
@@ -791,6 +802,14 @@ final class WyrmDropWatch: ObservableObject {
         }
         if connects >= 20 {
             return ("ip_penalty", "You joined many times in a minute, so the arena is resting you. Wait a minute and try once.")
+        }
+        // The join itself was turned down: a skin pattern past NTL's 146
+        // stripes (300 bytes) was the cause until build 81 trimmed it.
+        if prespawn && customSkin && skinRuns > 146 {
+            return ("skin_too_long", "Your skin pattern was too long for the arena. Update Wyrm, or pick a simpler pattern.")
+        }
+        if prespawn {
+            return ("join_refused", "The arena turned the join down before your snake appeared. Try another arena; sending the report helps us see why.")
         }
         if life < 15 {
             return ("same_wifi", "Another slither app on the same Wi-Fi (on a PC or another phone) can make the arena drop you. Close it, or switch to mobile data.")
