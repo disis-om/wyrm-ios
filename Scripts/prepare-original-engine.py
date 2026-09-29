@@ -451,9 +451,9 @@ for path in sorted(OUTPUT.rglob("*")):
         timeout_clock = 'SDL_GetTicks() - gdata->attempt_started_ms > ARENA_RETRY_MS'
         assert text.count(timeout_clock) == 1
         text = text.replace(timeout_clock, 'SDL_GetTicks() - gdata->attempt_started_ms > 5000')
-        # (The `!gdata->arena_ready` guard stays: removing it closed an
-        # admitted socket that was still waiting for its snake at 5 s.)
-        assert text.count('if (!gdata->arena_ready && gdata->connection &&') == 1
+        connect_gate = 'if (!gdata->arena_ready && gdata->connection &&'
+        assert text.count(connect_gate) == 1
+        text = text.replace(connect_gate, 'if (gdata->connection &&')
         timeout = '''          arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
               usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));

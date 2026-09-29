@@ -232,9 +232,10 @@ struct WyrmReadyRoom: View {
 
     private func saveName() {
         // As typed, blank included: the arena shows it as is (OM).
-        if nickname != engine.nickname {
-            engine.setNickname(nickname)
-            if !nickname.isEmpty { WyrmGameSync.shared.syncIngameName(nickname) }
+        let clean = nickname
+        if clean != engine.nickname {
+            engine.setNickname(clean)
+            if !clean.isEmpty { WyrmGameSync.shared.syncIngameName(clean) }
         }
     }
 
