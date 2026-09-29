@@ -351,6 +351,8 @@ struct WyrmDetailChrome<Content: View>: View {
 struct WyrmRootTabBar: View {
     @Binding var selection: WyrmDesignTab
     let unread: Int
+    /// Unseen replies from Wyrm, on the Settings tab (Help & feedback).
+    var settingsBadge: Int = 0
     private let icons: [WyrmDesignTab: String] = [.alerts: "bell.badge", .social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
 
     @State private var dragLocationX: CGFloat?
@@ -439,8 +441,8 @@ struct WyrmRootTabBar: View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
                 Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
-                if tab == .alerts && unread > 0 {
-                    Text("\(min(unread, 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
+                if badgeCount(tab) > 0 {
+                    Text("\(min(badgeCount(tab), 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
                         .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
                 }
             }
@@ -451,6 +453,14 @@ struct WyrmRootTabBar: View {
         .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
         .shadow(color: ATheme.paper.opacity(0.7), radius: 1.4)
         .animation(.easeOut(duration: 0.16), value: selection)
+    }
+
+    private func badgeCount(_ tab: WyrmDesignTab) -> Int {
+        switch tab {
+        case .alerts: return unread
+        case .settings: return settingsBadge
+        default: return 0
+        }
     }
 
     private func select(_ tab: WyrmDesignTab) {

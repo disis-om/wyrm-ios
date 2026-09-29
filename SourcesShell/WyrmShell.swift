@@ -114,6 +114,8 @@ final class WyrmShellStore: ObservableObject {
         NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineScreenChanged"),
                                                object: nil, queue: .main) { [weak self] note in
             let screen = note.userInfo?["screen"] as? Int ?? 0
+            // A match begins: a drop report counts network switches from here.
+            if screen == 2 { WyrmNetworkWatch.shared.matchStarted() }
             Task { @MainActor in self?.engineScreen = screen }
         }
         NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineArenaPortAvailable"),
@@ -236,6 +238,9 @@ final class WyrmShellStore: ObservableObject {
                       sequence, refusedArena, refusedArenaSeconds)
             }
         }
+        // Arena drops: the engine's snapshot of a match the arena closed on a
+        // live snake. The watch adds network, probes and log, then asks.
+        WyrmDropWatch.shared.observe(copiedCString(WyrmIOSArenaDropSnapshot()))
         let version = copiedCString(WyrmIOSSettingsVersion())
         if version != settingsVersion { settingsVersion = version }
         let now = Date()
@@ -721,6 +726,7 @@ private struct ShellTabBar: View {
 final class WyrmShellHost: NSObject {
     @objc static func makeViewController() -> UIViewController {
         WyrmCrashWatch.shared.install()
+        WyrmNetworkWatch.shared.start()
         WyrmFontLoader.register()
         WyrmThemeStore.shared.publishArenaTheme()
         WyrmThemeStore.shared.applyControlAppearance()

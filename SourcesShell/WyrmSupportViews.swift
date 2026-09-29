@@ -209,6 +209,309 @@ struct WyrmCrashPromptHost: View {
     }
 }
 
+// MARK: - Arena drop prompt
+
+/// Raised when the player is back from a match the arena dropped (OM,
+/// 2026-09-29): the crash card's look, with the likeliest cause in plain words.
+/// Over the Ready Room it is drawn in the landscape canvas the player holds.
+struct WyrmDropPrompt: View {
+    let record: WyrmDropRecord
+    /// The landscape canvas over the Ready Room, or nil in the portrait app.
+    let stage: CGSize?
+    let safe: EdgeInsets
+    @ObservedObject private var watch = WyrmDropWatch.shared
+    @ObservedObject private var keyboard = WyrmKeyboardController.shared
+    @State private var note = ""
+    @State private var showDetails = false
+    @State private var phase = Phase.asking
+    @State private var appeared = false
+
+    private enum Phase { case asking, sending, sent, failed }
+
+    /// A warning, not a failure: amber rather than the crash card's red.
+    private static let tint = Color(red: 0.86, green: 0.53, blue: 0.13)
+
+    private var landscape: Bool { stage != nil }
+    private var typing: Bool { keyboard.focused }
+    private var keyboardWidth: CGFloat {
+        let width: CGFloat = stage?.width ?? 0
+        return min(width - safe.leading - safe.trailing - 24, 640 * CGFloat(keyboard.scale))
+    }
+
+    var body: some View {
+        ZStack(alignment: typing ? .top : (landscape ? .center : .bottom)) {
+            ATheme.ink.opacity(appeared ? 0.34 : 0)
+                .ignoresSafeArea()
+                .onTapGesture { Self.resign() }
+            card
+                .padding(.horizontal, landscape ? max(12, safe.leading) : 12)
+                .padding(.top, typing ? (landscape ? max(8, safe.top) : 12) : 0)
+                .padding(.bottom, landscape ? 0 : 12)
+                .offset(y: appeared ? 0 : 520)
+            // The phone stays portrait, so over the Ready Room the keys are
+            // drawn here, in the canvas, the way the Ready Room draws them.
+            if landscape && typing && keyboard.embedded {
+                WyrmKeyboardView(compact: true)
+                    .frame(width: keyboardWidth)
+                    .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
+                    .padding(.bottom, 8)
+                    .frame(maxHeight: .infinity, alignment: .bottom)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(2)
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: keyboard.focused)
+        .onAppear {
+            withAnimation(.spring(response: 0.5, dampingFraction: 0.86)) { appeared = true }
+            UINotificationFeedbackGenerator().notificationOccurred(.warning)
+        }
+    }
+
+    private var card: some View {
+        Group {
+            if phase == .sent {
+                sentView
+            } else if landscape {
+                wideAsking
+            } else {
+                tallAsking
+            }
+        }
+        .padding(landscape ? 18 : 20)
+        .frame(maxWidth: landscape ? 720 : 520)
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.card))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.rule))
+        .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
+        .animation(.spring(response: 0.38, dampingFraction: 0.86), value: phase)
+        .animation(.spring(response: 0.34, dampingFraction: 0.9), value: showDetails)
+    }
+
+    /// Portrait: one column, as the crash card.
+    private var tallAsking: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            header
+            headline.padding(.top, 16)
+            noteField.padding(.top, 16)
+            detailsToggle.padding(.top, 6)
+            if showDetails { details }
+            switchRow
+            failure
+            buttons
+        }
+    }
+
+    /// Landscape: the words on the left, the answer on the right. While the
+    /// note is typed only the field stays, above the keys. The field keeps its
+    /// place in the tree either way, so it never loses focus.
+    private var wideAsking: some View {
+        HStack(alignment: .top, spacing: 22) {
+            if !typing {
+                VStack(alignment: .leading, spacing: 0) {
+                    header
+                    headline.padding(.top, 12)
+                    detailsToggle.padding(.top, 4)
+                    if showDetails { details }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                noteField
+                if !typing {
+                    switchRow.padding(.top, 4)
+                    failure
+                    buttons
+                }
+            }
+            .frame(maxWidth: typing ? .infinity : 290)
+        }
+    }
+
+    private var header: some View {
+        HStack(alignment: .center, spacing: 12) {
+            ZStack {
+                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(Self.tint.opacity(0.14))
+                Image(systemName: "wifi.exclamationmark").font(.system(size: 20, weight: .semibold)).foregroundColor(Self.tint)
+            }.frame(width: 50, height: 50)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("ARENA DROP").font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(Self.tint)
+                Text(record.subtitle).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+    }
+
+    private var headline: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("The arena dropped you").font(.androidWyrm(landscape ? 20 : 22, .bold)).foregroundColor(ATheme.ink)
+            Text(record.hintText)
+                .font(.androidWyrm(13.5)).foregroundColor(ATheme.mute).lineSpacing(3)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private var noteField: some View {
+        TextField("What happened? (optional)", text: $note)
+            .font(.androidWyrm(14)).foregroundColor(ATheme.ink)
+            .padding(.horizontal, 14).frame(height: 46)
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ATheme.well))
+            .disabled(phase == .sending)
+    }
+
+    private var detailsToggle: some View {
+        Button { showDetails.toggle() } label: {
+            HStack(spacing: 6) {
+                Text("What's included").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.link)
+                    .rotationEffect(.degrees(showDetails ? 180 : 0))
+                Spacer()
+            }.frame(height: 38).contentShape(Rectangle())
+        }.buttonStyle(.plain)
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            WyrmIncludedLine(icon: "scope", text: "Arena, ping and how long you were in")
+            WyrmIncludedLine(icon: "wifi", text: "Wi-Fi or mobile data, and whether it switched")
+            WyrmIncludedLine(icon: "text.alignleft", text: "The last minutes of Wyrm's own log")
+            WyrmIncludedLine(icon: "lock.fill", text: "Never your password, keys, Team ID or messages", tint: ATheme.live)
+        }
+        .padding(.bottom, 8)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var switchRow: some View {
+        HStack(spacing: 12) {
+            WSRowText(title: "Always send drop reports", detail: "Skip this question next time")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            WSInkSwitch(on: watch.autoSend) { watch.autoSend = $0 }
+        }.padding(.vertical, 6)
+    }
+
+    @ViewBuilder private var failure: some View {
+        if phase == .failed {
+            Text("Couldn't send it. Check your connection and try again.")
+                .font(.androidWyrm(12)).foregroundColor(ATheme.badge)
+                .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
+        }
+    }
+
+    private var buttons: some View {
+        VStack(spacing: 0) {
+            Button(action: send) {
+                HStack(spacing: 8) {
+                    if phase == .sending { ProgressView().tint(ATheme.onInk) }
+                    Text(phase == .sending ? "Sending…" : phase == .failed ? "Try again" : "Send report")
+                        .font(.androidWyrm(15.5, .bold))
+                }
+                .foregroundColor(ATheme.onInk)
+                .frame(maxWidth: .infinity).frame(height: 52)
+                .background(Capsule().fill(ATheme.ink))
+            }
+            .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, landscape ? 8 : 12)
+
+            Button {
+                Self.resign()
+                withAnimation(.easeIn(duration: 0.22)) { appeared = false }
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { watch.dismissPrompt() }
+            } label: {
+                Text("Not now").font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.mute)
+                    .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
+            }
+            .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, 2)
+        }
+    }
+
+    private var sentView: some View {
+        VStack(spacing: 10) {
+            ZStack {
+                Circle().fill(ATheme.live.opacity(0.14)).frame(width: 64, height: 64)
+                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(ATheme.live)
+            }
+            .transition(.scale.combined(with: .opacity))
+            Text("Thank you").font(.androidWyrm(21, .bold)).foregroundColor(ATheme.ink)
+            Text("The report is with the developer. You just made Wyrm a little better.")
+                .font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity).padding(.vertical, 18)
+    }
+
+    private static func resign() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
+    private func send() {
+        Self.resign()
+        phase = .sending
+        Task {
+            // `send` clears the prompt itself; keep the card up to say thanks.
+            let ok = await watch.send(record, note: note)
+            if ok {
+                UINotificationFeedbackGenerator().notificationOccurred(.success)
+                phase = .sent
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                phase = .failed
+            }
+        }
+    }
+}
+
+/// Holds the drop card through its "Thank you", like the crash host, and
+/// shows the short toast after a quiet "Always send" report.
+struct WyrmDropPromptHost: View {
+    /// True over the landscape Ready Room.
+    let landscape: Bool
+    @ObservedObject private var watch = WyrmDropWatch.shared
+    @State private var shown: WyrmDropRecord?
+
+    var body: some View {
+        Group {
+            if landscape {
+                WyrmLandscapeStage { size, safe in
+                    layer(stage: size, safe: safe)
+                }
+            } else {
+                layer(stage: nil, safe: EdgeInsets())
+            }
+        }
+        .onAppear { shown = watch.prompt }
+        .onChange(of: watch.prompt) { next in
+            if let next {
+                shown = next
+            } else if shown != nil {
+                // Sent: leave the thanks up for a moment. Dismissed: already slid away.
+                DispatchQueue.main.asyncAfter(deadline: .now() + 1.6) {
+                    if watch.prompt == nil { withAnimation(.easeOut(duration: 0.25)) { shown = nil } }
+                }
+            }
+        }
+    }
+
+    private func layer(stage: CGSize?, safe: EdgeInsets) -> some View {
+        ZStack {
+            if let record = shown {
+                WyrmDropPrompt(record: record, stage: stage, safe: safe)
+                    .transition(.opacity)
+                    .zIndex(1)
+            }
+            if !watch.toast.isEmpty {
+                Text(watch.toast)
+                    .font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.onInk)
+                    .padding(.horizontal, 16).padding(.vertical, 11)
+                    .background(Capsule().fill(ATheme.ink))
+                    .frame(maxHeight: .infinity, alignment: .top)
+                    .padding(.top, stage == nil ? 58 : max(12, safe.top))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .onAppear {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2.4) { watch.clearToast() }
+                    }
+            }
+        }
+        .animation(.spring(response: 0.4, dampingFraction: 0.86), value: watch.toast)
+    }
+}
+
 private struct WyrmIncludedLine: View {
     let icon: String
     let text: String
@@ -255,6 +558,7 @@ struct WyrmHelpCenterPage: View {
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var watch = WyrmCrashWatch.shared
+    @ObservedObject private var drops = WyrmDropWatch.shared
     @ObservedObject private var store = WyrmSupportStore.shared
     @State private var expanded: Int?
     @State private var sendingLast = false
@@ -290,6 +594,10 @@ struct WyrmHelpCenterPage: View {
                           detail: "If Wyrm closes unexpectedly, the report goes without asking.",
                           on: watch.autoSend, first: true) { watch.autoSend = $0 }
                     .wyrmSettingAnchor("app.crash.auto")
+                WSBoolRow(title: "Always send drop reports",
+                          detail: "If the arena drops you mid-match, the report goes without asking.",
+                          on: drops.autoSend) { drops.autoSend = $0 }
+                    .wyrmSettingAnchor("app.drop.auto")
                 if let last = watch.last {
                     WSHairline()
                     HStack(spacing: 12) {
@@ -520,7 +828,9 @@ struct WyrmSupportComposePage: View {
         error = ""
         let words = trimmed
         Task {
-            let failure = await store.send(kind: kind, message: words, attach: attach, screen: "Help & feedback")
+            // The screen the problem was on, not the help page it was typed on.
+            let failure = await store.send(kind: kind, message: words, attach: attach,
+                                           screen: WyrmCrashWatch.shared.lastRealScreen)
             sending = false
             if let failure {
                 error = failure
@@ -620,7 +930,7 @@ private struct WyrmReportCard: View {
                 Spacer()
                 Text(WyrmTrailTime.short(report.createdAt)).font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
             }
-            Text(report.message.isEmpty ? "Crash report" : report.message)
+            Text(report.message.isEmpty ? (report.kind == WyrmSupportKind.drop.rawValue ? "Arena drop report" : "Crash report") : report.message)
                 .font(.androidWyrm(14)).foregroundColor(ATheme.ink).lineLimit(5).lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             if !report.reply.isEmpty {

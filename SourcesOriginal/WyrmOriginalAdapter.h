@@ -1,5 +1,6 @@
 #pragma once
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 #include <vulkan/vulkan.h>
 typedef struct tenv tenv;
@@ -38,6 +39,16 @@ const char* WyrmIOSArenaIdentitySnapshot(void);
 const char* WyrmIOSArenaVisibleSnapshot(void);
 void WyrmIOSArenaSkinSet(int snake_id, const char* nickname, const uint32_t* colours, int count);
 void WyrmIOSArenaSkinsClear(void);
+/* Arena drops (HomeMailbox.inc). The engine thread stamps each dial, notes a
+   CLOSE frame or transport error, and publishes one snapshot per dropped
+   match; Swift polls "sequence\tkey=value\t…" ("0" before the first). */
+void WyrmIOSArenaConnectStamp(void);
+void WyrmIOSArenaCloseFrame(const uint8_t* data, size_t length);
+void WyrmIOSArenaNoteError(const char* text);
+void WyrmIOSArenaDropped(tenv* env);
+/* A 'v' death packet within a moment of spawning is a drop too. */
+void WyrmIOSArenaFastDeath(tenv* env, int death_code);
+const char* WyrmIOSArenaDropSnapshot(void);
 /* Image arrow skin (-1 = the engine's polygon style) and a 0.2-1.0 brightness
    applied to image and polygon arrows alike; AppleArrowSkins.c. */
 void WyrmIOSSetArrowSkin(int skin, float brightness);

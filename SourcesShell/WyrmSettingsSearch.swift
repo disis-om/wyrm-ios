@@ -169,6 +169,10 @@ enum WyrmSettingsIndex {
                               page: "Help & feedback", route: .help, keywords: "crash report bug problem feedback support") {
                 AnyView(WyrmCrashAutoRow())
             },
+            WyrmSettingsEntry(id: "app.drop.auto", title: "Always send drop reports", detail: "If the arena drops you mid-match, the report goes without asking",
+                              page: "Help & feedback", route: .help, keywords: "arena drop disconnect kicked lag network report") {
+                AnyView(WyrmDropAutoRow())
+            },
             WyrmSettingsEntry(id: "app.help", title: "Help & feedback", detail: "Report a problem, suggest an idea, ask for help",
                               page: "Settings", route: .help, keywords: "support bug crash problem idea suggestion feedback contact question faq") {
                 AnyView(WSValueRow(title: "Help & feedback", value: "", first: true))
@@ -196,6 +200,15 @@ private struct WyrmCrashAutoRow: View {
     var body: some View {
         WSBoolRow(title: "Always send crash reports", detail: "If Wyrm closes unexpectedly, the report goes without asking.",
                   on: watch.autoSend, first: true) { watch.autoSend = $0 }
+    }
+}
+
+/// The arena-drop auto-send switch, live in search results.
+private struct WyrmDropAutoRow: View {
+    @ObservedObject var drops = WyrmDropWatch.shared
+    var body: some View {
+        WSBoolRow(title: "Always send drop reports", detail: "If the arena drops you mid-match, the report goes without asking.",
+                  on: drops.autoSend, first: true) { drops.autoSend = $0 }
     }
 }
 

@@ -8,6 +8,8 @@ struct WyrmDesignMain: View {
     @ObservedObject private var notificationPrefs = WyrmNotificationPrefs.shared
     @ObservedObject private var keyboard = WyrmKeyboardController.shared
     @ObservedObject private var updates = WyrmUpdateStore.shared
+    /// Replies from Wyrm the player has not opened: the Settings tab's badge.
+    @ObservedObject private var support = WyrmSupportStore.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
     /// iOS has no push for Wyrm yet, so likes, replies and answers arrive as
@@ -40,7 +42,7 @@ struct WyrmDesignMain: View {
                         .id(tab)
                         .transition(.opacity.combined(with: .scale(scale: 0.985)))
 
-                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts)
+                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts, settingsBadge: support.unseenReplies)
                         .frame(width: proxy.size.width)
                         .padding(.bottom, tabBarBottomInset)
                         // Typing hides the bar, as system tab bars sit under the keyboard.
@@ -109,7 +111,11 @@ struct WyrmDesignMain: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
-            Task { await pollAlerts() }
+            Task {
+                await pollAlerts()
+                // Back in the foreground: a reply may have come while away.
+                await support.refresh()
+            }
         }
         // Where the player is, for a crash or problem report.
         .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
@@ -165,7 +171,7 @@ struct WyrmDesignMain: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .background(WyrmPaperBackground())
                     }
-                    .badge(value == .alerts ? unreadAlerts : 0)
+                    .badge(value == .alerts ? unreadAlerts : value == .settings ? support.unseenReplies : 0)
                 }
             }
             .tint(ATheme.ink)
@@ -208,6 +214,8 @@ struct WyrmDesignMain: View {
     private func pollAlerts() async {
         guard UIApplication.shared.applicationState == .active, engine.engineScreen == 0 else { return }
         let fresh = await services.pollAlerts()
+        // A reply from Wyrm: fetch it now so the Settings badge counts it.
+        if fresh.contains(where: { $0.kind == "support" }) { await support.refresh() }
         guard let newest = fresh.first(where: { WyrmAlertRouting.banners.contains($0.kind) && notificationPrefs.allows($0.kind) }) else { return }
         UINotificationFeedbackGenerator().notificationOccurred(.success)
         withAnimation(.spring(response: 0.44, dampingFraction: 0.82)) { banner = newest }

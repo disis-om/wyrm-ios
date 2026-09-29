@@ -21,12 +21,12 @@ import UIKit
 
 // MARK: - Feature switch
 
-/// Trails are paused for the beta (OM, 2026-09-29, build 79). The code stays;
-/// `enabled = true` brings every entry point back: the Social teaser, the
-/// profile's Trails count, grid and trail badges, the trail routes, trail
-/// alerts and banners, and the Trails group in Settings › Notifications.
+/// Trails were paused for build 79 and are back on (OM, 2026-09-29). The
+/// switch stays; `enabled = false` hides every entry point again: the Social
+/// teaser, the profile's Trails count, grid and trail badges, the trail routes,
+/// trail alerts and banners, and the Trails group in Settings › Notifications.
 enum WyrmTrailsFeature {
-    static let enabled = false
+    static let enabled = true
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]

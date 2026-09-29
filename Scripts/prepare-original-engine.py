@@ -404,7 +404,43 @@ for path in sorted(OUTPUT.rglob("*")):
           game_data_reset(env);
           gdata->conn = DISCONNECTED;
           gdata->curr_screen = LOBBY;''')
+        # Arena drop, the second close path: no death is pending here (the
+        # branch above took that case), so the same test minus the watch.
+        # Read-only; the death fade that follows is unchanged. HomeMailbox.inc
+        # publishes once per connection, so a drop seen by both paths is one.
+        onclose = '''             after the death wait. Instant lobby here was the mid-match eject. */
+          android_home_notify_death(env);'''
+        assert text.count(onclose) == 1
+        text = text.replace(onclose, '''             after the death wait. Instant lobby here was the mid-match eject. */
+          if (!gdata->closed_by_us) {
+            extern void WyrmIOSArenaDropped(tenv* env);
+            WyrmIOSArenaDropped(env);
+          }
+          android_home_notify_death(env);''')
+    if relative == "app/src/network/server.c":
+        # Arena drops: every dial stamps a ring, so a drop report can say how
+        # many connects the last minute held (the arena's IP penalty). The
+        # dial itself is unchanged.
+        dialled = '  gdata->last_connect_ms = gdata->last_packet_ms;\n'
+        assert text.count(dialled) == 1
+        text = text.replace(dialled, dialled + '''  {
+    extern void WyrmIOSArenaConnectStamp(void);
+    WyrmIOSArenaConnectStamp();
+  }
+''')
     if relative == "app/src/network/callback.c":
+        # Arena drops, the fast kind: the arena ends the snake with a 'v'
+        # 0.3-1 s after it spawned (OM, 2026-09-29). Reported first, read-only;
+        # the death handling that follows is unchanged.
+        death_packet = '''  } else if (cmd == 'v') {
+    if (a[m] == 2) {'''
+        assert text.count(death_packet) == 1
+        text = text.replace(death_packet, '''  } else if (cmd == 'v') {
+    {
+      extern void WyrmIOSArenaFastDeath(tenv* env, int death_code);
+      WyrmIOSArenaFastDeath(env, a[m]);
+    }
+    if (a[m] == 2) {''')
         # Preserve real death packets. A silent short life is a terminal
         # refusal of this Play attempt, never an automatic retry or failover.
         # Preserve every original gameplay packet. Add only socket-stage
@@ -427,8 +463,15 @@ for path in sorted(OUTPUT.rglob("*")):
           : 0;
       SDL_Log("Wyrm arena: WebSocket close frame from '%s' code=%u",
               usr->usrs.ipv4, code);
+      /* Kept for an arena-drop report (HomeMailbox.inc). */
+      extern void WyrmIOSArenaCloseFrame(const uint8_t* data, size_t length);
+      WyrmIOSArenaCloseFrame((const uint8_t*)ctl->data.buf, ctl->data.len);
     }
-  } else if (ev == MG_EV_ERROR) {''')
+  } else if (ev == MG_EV_ERROR) {
+    {
+      extern void WyrmIOSArenaNoteError(const char* text);
+      WyrmIOSArenaNoteError((const char*)ev_data);
+    }''')
         # Diagnostic only: record what the arena sends for another player's
         # custom skin, so whether an official Android (AIR) wheel skin reaches
         # a web-identity client with its RGB is settled by one capture. Bytes
@@ -479,7 +522,19 @@ for path in sorted(OUTPUT.rglob("*")):
     }
 '''
         assert text.count(close_block) == 1
-        text = text.replace(close_block, '''    bool refused_short_life =
+        text = text.replace(close_block, '''    /* Arena drop: judged before the death watch starts (once it has, a death
+       is always pending) and before a short-life refusal clears join_spawned,
+       because a silent close right after spawning is the drop players see
+       most. Read-only; the fade and the refusal below are unchanged. */
+    bool wyrm_arena_drop =
+        gdata->join_spawned &&
+        !gdata->closed_by_us && !gdata->leaving && !gdata->restart_req &&
+        !android_home_death_pending();
+    if (wyrm_arena_drop) {
+      extern void WyrmIOSArenaDropped(tenv* env);
+      WyrmIOSArenaDropped(env);
+    }
+    bool refused_short_life =
         gdata->arena_ready && gdata->join_spawned &&
         gdata->last_life > 0 && gdata->last_life < SHORT_LIFE &&
         !gdata->closed_by_us && !gdata->leaving && !gdata->restart_req &&

@@ -88,6 +88,165 @@ const char* WyrmIOSArenaRefusalSnapshot(void) {
   return snapshot;
 }
 
+/* ---------------------------------------------------------------------------
+ * Arena drops (OM, 2026-09-29).
+ *
+ * A drop is the arena socket closing while the player's own snake is alive,
+ * with no death packet, no leave and no refused entry. prepare-original-
+ * engine.py calls WyrmIOSArenaDropped at that moment, before the death watch
+ * starts, from both close paths (callback.c MG_EV_CLOSE and loop.c CONNECTED).
+ * It only reads: the match still fades out and the run still records exactly
+ * as before. One snapshot per connection; SwiftUI polls it and asks the player.
+ *
+ * The connect ring, the close frame and the error text are engine-thread
+ * only (Mongoose callbacks run inside server_poll on that thread). The
+ * published snapshot is guarded by home_mutex like every other mailbox.
+ * ------------------------------------------------------------------------- */
+#include "../network/arena_persona.h"
+
+#define APPLE_CONNECT_RING 64
+static uint64_t apple_connect_ring[APPLE_CONNECT_RING];
+static int apple_connect_next = 0;
+static uint64_t apple_connect_serial = 0;
+static uint64_t apple_drop_published_serial = 0;
+static unsigned apple_close_code = 0;
+static char apple_close_reason[121] = {0};
+static char apple_error_text[121] = {0};
+static uint64_t apple_drop_sequence = 0;
+static char apple_drop_snapshot[1024] = {0};
+
+/* Tabs and line breaks would split the snapshot's fields. */
+static void apple_copy_clean(char* out, size_t size, const char* in, size_t length) {
+  size_t used = 0;
+  for (size_t i = 0; in && i < length && used + 1 < size; ++i) {
+    unsigned char ch = (unsigned char)in[i];
+    if (ch == 0) break;
+    out[used++] = (ch < 0x20 || ch == 0x7F) ? ' ' : (char)ch;
+  }
+  out[used] = '\0';
+}
+
+/* Engine thread, from server_connect: one stamp per dial. */
+void WyrmIOSArenaConnectStamp(void) {
+  apple_connect_ring[apple_connect_next] = (uint64_t)SDL_GetTicks();
+  apple_connect_next = (apple_connect_next + 1) % APPLE_CONNECT_RING;
+  apple_connect_serial++;
+  apple_close_code = 0;
+  apple_close_reason[0] = '\0';
+  apple_error_text[0] = '\0';
+}
+
+/* Engine thread: a WebSocket CLOSE frame's payload, code big-endian first. */
+void WyrmIOSArenaCloseFrame(const uint8_t* data, size_t length) {
+  apple_close_code = (data && length >= 2)
+      ? ((unsigned)data[0] << 8) | (unsigned)data[1] : 0;
+  if (data && length > 2)
+    apple_copy_clean(apple_close_reason, sizeof(apple_close_reason),
+                     (const char*)data + 2, length - 2);
+  else
+    apple_close_reason[0] = '\0';
+}
+
+/* Engine thread: Mongoose's MG_EV_ERROR text for this connection. */
+void WyrmIOSArenaNoteError(const char* text) {
+  apple_copy_clean(apple_error_text, sizeof(apple_error_text), text ? text : "",
+                   text ? strlen(text) : 0);
+  if (!apple_error_text[0]) snprintf(apple_error_text, sizeof(apple_error_text), "error");
+}
+
+/* Engine thread, at the drop, before android_home_notify_death. */
+/* A snake the arena ends within this long of spawning was dropped, not
+   beaten: the arena takes it with a 'v' 0.3 to 1 s after it appears. */
+#define APPLE_FAST_DEATH_SEC 1.5
+
+static void apple_publish_drop(tenv* env, const char* reason, int death_code, double life);
+
+void WyrmIOSArenaDropped(tenv* env) {
+  if (!env) return;
+  apple_publish_drop(env, apple_error_text[0] ? "error" : "closed", -1,
+                     env->usr->gdata.last_life);
+}
+
+/* Engine thread, first thing in the 'v' handler (before the death watch). */
+void WyrmIOSArenaFastDeath(tenv* env, int death_code) {
+  if (!env) return;
+  game_data* gdata = &env->usr->gdata;
+  if (gdata->ai_mode || !gdata->join_spawned || gdata->closed_by_us ||
+      gdata->leaving || gdata->restart_req || android_home_death_pending())
+    return;
+  double life = glfwGetTime() - gdata->life_started_sec;
+  if (life < 0 || life >= APPLE_FAST_DEATH_SEC) return;
+  apple_publish_drop(env, "death_packet", death_code, life);
+}
+
+static void apple_publish_drop(tenv* env, const char* reason, int death_code, double life) {
+  if (!env || !home_mutex) return;
+  if (apple_connect_serial && apple_drop_published_serial == apple_connect_serial) return;
+  apple_drop_published_serial = apple_connect_serial;
+  tuser_data* usr = env->usr;
+  game_data* gdata = &usr->gdata;
+  uint64_t now = (uint64_t)SDL_GetTicks();
+  if (life < 0) life = 0;
+  /* Dial to spawn: how long the arena took to hand over a snake. */
+  long long since_dial = gdata->attempt_started_ms && now >= gdata->attempt_started_ms
+      ? (long long)(now - gdata->attempt_started_ms) : -1;
+  long long dial_to_spawn = since_dial >= 0 ? since_dial - (long long)(life * 1000.0) : -1;
+  if (dial_to_spawn < 0 && since_dial >= 0) dial_to_spawn = 0;
+
+  int connects = 0;
+  for (int i = 0; i < APPLE_CONNECT_RING; ++i)
+    if (apple_connect_ring[i] && now - apple_connect_ring[i] <= 60000) connects++;
+
+  /* The same own-snake reading as game_capture_final_score, without writing. */
+  int score = gdata->data.score, kills = gdata->data.kills, length = 0;
+  size_t count = gdata->data.snakes ? tdarray_length(gdata->data.snakes) : 0;
+  if (count && gdata->data.snakes[count - 1].local_player) {
+    snake* me = gdata->data.snakes + count - 1;
+    int sct = me->sct + me->rsc;
+    int limit = gdata->data.fpsls ? (int)tdarray_length(gdata->data.fpsls) - 1 : -1;
+    if (sct >= 0 && sct <= limit && gdata->data.fmlts[sct] > 0)
+      score = (int)floorf((gdata->data.fpsls[sct] +
+                           me->fam / gdata->data.fmlts[sct] - 1) * 15 - 5);
+    kills = (int)me->kill_count;
+    length = me->sct;
+  }
+  uint64_t silent = gdata->last_packet_ms && now >= gdata->last_packet_ms
+      ? now - gdata->last_packet_ms : 0;
+  const arena_persona* persona = arena_persona_get(gdata->persona);
+
+  SDL_LockMutex(home_mutex);
+  apple_drop_sequence++;
+  snprintf(apple_drop_snapshot, sizeof(apple_drop_snapshot),
+           "%llu\tdropReason=%s\tdeathPacket=%d\tdialToSpawnMs=%lld"
+           "\tcloseCode=%u\tcloseReason=%s\terrorText=%s"
+           "\tlifeSec=%.1f\tscore=%d\tlength=%d\tkills=%d\tpingMs=%d\tlagging=%d"
+           "\tfps=%d\tlastPacketAgoMs=%llu\tconnectsLastMin=%d\tpersona=%s"
+           "\tprotocol=%d\tarena=%s",
+           (unsigned long long)apple_drop_sequence,
+           reason, death_code, dial_to_spawn, apple_close_code,
+           apple_close_reason, apple_error_text, life,
+           score < 0 ? 0 : score, length, kills < 0 ? 0 : kills,
+           gdata->data.ping, gdata->data.lagging ? 1 : 0, gdata->data.fps,
+           (unsigned long long)silent, connects,
+           persona && persona->name ? persona->name : "",
+           gdata->data.protocol_version, usr->usrs.ipv4);
+  SDL_UnlockMutex(home_mutex);
+  SDL_Log("Wyrm arena drop: '%s' after %.1fs, %s (v %d), close code %u, %s, %d connects in 60s",
+          usr->usrs.ipv4, life, reason, death_code, apple_close_code,
+          apple_error_text[0] ? apple_error_text : "closed", connects);
+}
+
+/* Main thread: "sequence\tkey=value\t…", or "0" before the first drop. */
+const char* WyrmIOSArenaDropSnapshot(void) {
+  static char copy[sizeof(apple_drop_snapshot)];
+  snprintf(copy, sizeof(copy), "0");
+  if (!home_mutex) return copy;
+  SDL_LockMutex(home_mutex);
+  if (apple_drop_sequence) memcpy(copy, apple_drop_snapshot, sizeof(copy));
+  SDL_UnlockMutex(home_mutex);
+  return copy;
+}
+
 const char* WyrmIOSHomeSnapshot(void) {
   static char snapshot[256];
   if (!home_env) return "\t\t0\t0";

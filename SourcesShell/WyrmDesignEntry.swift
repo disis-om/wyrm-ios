@@ -69,6 +69,12 @@ struct WyrmDesignRoot: View {
             if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0 {
                 WyrmCrashPromptHost().zIndex(100)
             }
+            // After an arena drop: asked on the first SwiftUI surface after
+            // the match, the Ready Room (landscape) or the portrait app.
+            if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive
+                && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
+                WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen).zIndex(99)
+            }
         }
         .environmentObject(team)
         .onChange(of: account.phase) { phase in if phase == .signedOut || phase == .signingOut { coldStart = false } }
@@ -83,10 +89,20 @@ struct WyrmDesignRoot: View {
             WyrmGameSync.shared.start()
             services.observeGameSync()
             WyrmCrashWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            WyrmDropWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            WyrmDropWatch.shared.arenaLookup = { [weak services] endpoint in
+                services?.arenas.first(where: { $0.endpoint == endpoint })
+            }
+            WyrmSupportStore.shared.token = { [weak account] in account?.sessionToken ?? "" }
         }
         .task(id: sessionLifecycleID) {
             switch account.phase {
             case .signedIn:
+                // Replies from Wyrm: the cached count at once (the Settings
+                // badge), then the server's answer.
+                WyrmSupportStore.shared.token = { [weak account] in account?.sessionToken ?? "" }
+                WyrmSupportStore.shared.loadCache()
+                Task { await WyrmSupportStore.shared.refresh() }
                 guard !services.isPrepared(for: account.player?.id) else {
                     WyrmGameSync.shared.activate(token: account.sessionToken, playerID: account.player?.id ?? "")
                     return

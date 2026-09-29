@@ -84,6 +84,29 @@ final class WyrmDiagnostics: ObservableObject {
         return "--- APP / NETWORK ---\n\(app.isEmpty ? "(empty)" : app)\n--- ENGINE ---\n\(engine.isEmpty ? "(empty)" : engine)"
     }
 
+    /// For an arena-drop report, taken at the drop: the arena, network and
+    /// death lines of both logs first (so the general tail cannot crowd them
+    /// out), then the usual tail, about 60 KB in all, redacted.
+    func focusedLog(maxBytes: Int = 60_000) -> String {
+        let keys = ["wyrm arena", "wyrm death", "wyrm run", "[network]", "arena", "socket", "websocket"]
+        func lines(_ url: URL) -> [Substring] {
+            guard let data = try? Data(contentsOf: url), !data.isEmpty else { return [] }
+            let text = String(decoding: data.suffix(400_000), as: UTF8.self)
+            return text.split(separator: "\n", omittingEmptySubsequences: true).filter { line in
+                let lower = line.lowercased()
+                return keys.contains { lower.contains($0) }
+            }
+        }
+        var focused = ""
+        for line in lines(appURL).suffix(100) { focused += String(line) + "\n" }
+        for line in lines(engineURL).suffix(160) { focused += String(line) + "\n" }
+        if focused.utf8.count > maxBytes / 3 {
+            focused = String(decoding: Data(focused.utf8).suffix(maxBytes / 3), as: UTF8.self)
+        }
+        let general = recentLog(maxBytes: max(10_000, maxBytes - focused.utf8.count - 64))
+        return WyrmRedact.clean("--- ARENA / NETWORK (focused) ---\n\(focused.isEmpty ? "(none)\n" : focused)\(general)")
+    }
+
     /// Builds a fresh, self-contained text file for UIActivityViewController.
     /// The Keychain session and private chat bodies are intentionally absent.
     func exportFile() -> URL? {
