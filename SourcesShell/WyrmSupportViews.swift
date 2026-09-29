@@ -238,11 +238,15 @@ private struct WyrmFAQ: Identifiable {
         WyrmFAQ(id: 3, question: "How do I keep my settings when I reinstall?",
                 answer: "Settings › Backup & version › Create backup saves skins, controls and settings to a file. Restore from that file on the new install."),
         WyrmFAQ(id: 4, question: "I'm not getting notifications",
-                answer: "Check Settings › Notifications, and that Wyrm is allowed in the iPhone's Settings. On iPhone, likes and replies on your trails arrive in Alerts while Wyrm is open."),
+                answer: WyrmTrailsFeature.enabled
+                    ? "Check Settings › Notifications, and that Wyrm is allowed in the iPhone's Settings. On iPhone, likes and replies on your trails arrive in Alerts while Wyrm is open."
+                    : "Check Settings › Notifications, and that Wyrm is allowed in the iPhone's Settings. On iPhone, new followers and replies from Wyrm arrive in Alerts while Wyrm is open."),
         WyrmFAQ(id: 5, question: "How do I get Wyrm updates?",
                 answer: "Wyrm tells you when a new build is out. Turn on Beta updates in Backup & version to get early builds."),
         WyrmFAQ(id: 6, question: "How do I delete my account?",
-                answer: "Profile › Edit profile › Delete account. Your profile, trails and messages are removed from Wyrm's server."),
+                answer: WyrmTrailsFeature.enabled
+                    ? "Profile › Edit profile › Delete account. Your profile, trails and messages are removed from Wyrm's server."
+                    : "Profile › Edit profile › Delete account. Your profile and messages are removed from Wyrm's server."),
     ]
 }
 

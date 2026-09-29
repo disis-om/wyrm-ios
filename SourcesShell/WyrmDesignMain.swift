@@ -21,7 +21,7 @@ struct WyrmDesignMain: View {
         self.account = account
         self.services = services
         _tab = State(initialValue: initialTab)
-        _routes = State(initialValue: initialRoute.map { [$0] } ?? [])
+        _routes = State(initialValue: initialRoute.map { [$0] }?.filter { WyrmTrailsFeature.shows($0) } ?? [])
     }
 
     var body: some View {
@@ -229,6 +229,8 @@ struct WyrmDesignMain: View {
     }
 
     private func open(_ value: WyrmDesignRoute) {
+        // Trails are paused for the beta: no way into the feed, a trail or the studio.
+        guard WyrmTrailsFeature.shows(value) else { return }
         guard routes.last != value else { return }
         withAnimation(.interactiveSpring(response: 0.44, dampingFraction: 0.84, blendDuration: 0.12)) { routes.append(value) }
     }
@@ -584,7 +586,9 @@ private struct WyrmSocialRoot: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 WyrmScreenHeader(kicker: "Arena", title: "Social")
-                WyrmTrailsTeaser(account: account, open: open)
+                if WyrmTrailsFeature.enabled {
+                    WyrmTrailsTeaser(account: account, open: open)
+                }
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link) { open(.messages) }
@@ -599,7 +603,7 @@ private struct WyrmSocialRoot: View {
             }
         }.refreshable {
             await services.refreshSocial()
-            await WyrmTrailsStore.shared.refresh()
+            if WyrmTrailsFeature.enabled { await WyrmTrailsStore.shared.refresh() }
         }
     }
     private var messageDetail: String { let unread = services.conversations.reduce(0) { $0 + $1.unreadCount }; return unread == 0 ? "No unread messages" : "\(unread) unread" }

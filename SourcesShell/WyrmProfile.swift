@@ -134,6 +134,8 @@ struct WyrmProfilePage: View {
     private var following: Int64 { own ? (account.player?.followingCount ?? 0) : (other?.followingCount ?? 0) }
     private var grid: WyrmAuthorTrails? { trails.authors[targetID] }
     private var book: WyrmBadgeBook? { badgeStore.books[targetID] }
+    /// The badges shown: the Trails ones stay out while Trails are paused.
+    private var shownBadges: [WyrmBadge] { (book?.badges ?? []).filter { WyrmTrailsFeature.shows(badgeID: $0.id) } }
     private var trailCount: String {
         if let book { return Int64(book.trailCount).wyrmFormatted }
         if let grid, grid.loaded, grid.reachedEnd { return "\(grid.trails.count)" }
@@ -148,8 +150,10 @@ struct WyrmProfilePage: View {
                     VStack(spacing: 0) {
                         header
                         badgeStrip
-                        gridHeader
-                        gridBody
+                        if WyrmTrailsFeature.enabled {
+                            gridHeader
+                            gridBody
+                        }
                         if own {
                             WyrmPaperCard {
                                 WyrmListRow(title: "Sign out", destructive: true, showsChevron: false) { account.signOut() }
@@ -190,10 +194,16 @@ struct WyrmProfilePage: View {
         badgeStore.token = token
         let id = targetID
         guard !id.isEmpty else { return }
-        async let gridLoad: Void = trails.loadAuthor(id)
+        async let gridLoad: Void = loadGrid(id)
         async let badgeLoad: Void = badgeStore.load(id)
         if own { if pulled { await account.refreshProfile() } } else { await services.loadPlayer(playerID) }
         _ = await (gridLoad, badgeLoad)
+    }
+
+    /// The trails grid, only while Trails are on (paused for the beta).
+    private func loadGrid(_ id: String) async {
+        guard WyrmTrailsFeature.enabled else { return }
+        await trails.loadAuthor(id)
     }
 
     private func connections(_ kind: String) {
@@ -218,7 +228,9 @@ struct WyrmProfilePage: View {
                 .buttonStyle(WSPressStyle())
                 .accessibilityLabel(own ? "Your photo. Tap to change it." : "\(name)'s photo")
                 HStack(spacing: 0) {
-                    stat(trailCount, "Trails", action: nil)
+                    if WyrmTrailsFeature.enabled {
+                        stat(trailCount, "Trails", action: nil)
+                    }
                     stat(followers.wyrmFormatted, "Followers") { connections("followers") }
                     stat(following.wyrmFormatted, "Following") { connections("following") }
                 }
@@ -244,7 +256,7 @@ struct WyrmProfilePage: View {
             HStack(spacing: 8) {
                 chip("trophy.fill", "Best", score.wyrmFormatted)
                 chip("bolt.fill", "Kills", kills.wyrmFormatted)
-                if let beads = book?.beads, beads > 0 { chip("circle.hexagongrid.fill", "Beads", Int64(beads).wyrmFormatted) }
+                if WyrmTrailsFeature.enabled, let beads = book?.beads, beads > 0 { chip("circle.hexagongrid.fill", "Beads", Int64(beads).wyrmFormatted) }
             }
             .padding(.top, 12)
             actions.padding(.top, 14)
@@ -319,15 +331,15 @@ struct WyrmProfilePage: View {
     // MARK: Badges
 
     private var badgeStrip: some View {
-        let list = (book?.badges ?? []).enumerated().sorted { a, b in
+        let list = shownBadges.enumerated().sorted { a, b in
             a.element.earned != b.element.earned ? a.element.earned : a.offset < b.offset
         }.map(\.element)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("BADGES").font(.androidWyrm(10.5, .semibold)).tracking(0.9).foregroundColor(ATheme.quiet)
                 Spacer()
-                if let book {
-                    Text("\(book.badges.filter(\.earned).count) of \(book.badges.count)")
+                if book != nil {
+                    Text("\(shownBadges.filter(\.earned).count) of \(shownBadges.count)")
                         .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.quiet)
                 }
             }

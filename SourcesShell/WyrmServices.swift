@@ -628,7 +628,7 @@ final class WyrmServiceStore: ObservableObject {
         }
 
         guard !Task.isCancelled, sessionRevision == revision else { return }
-        alerts = values.0 ?? []
+        alerts = WyrmTrailsFeature.visible(values.0 ?? [])
         scoreLeaders = values.1 ?? []
         killLeaders = values.2 ?? []
         conversations = values.3 ?? []
@@ -691,8 +691,9 @@ final class WyrmServiceStore: ObservableObject {
         let known = Set(alerts.map(\.id))
         guard let fresh = try? await WyrmServiceClient.shared.notifications(token: token),
               revision == sessionRevision else { return [] }
-        alerts = fresh
-        return fresh.filter { !known.contains($0.id) && !$0.read }
+        let shown = WyrmTrailsFeature.visible(fresh)
+        alerts = shown
+        return shown.filter { !known.contains($0.id) && !$0.read }
     }
 
     /// Marks one alert read on screen at once and on the server behind it.
@@ -714,7 +715,7 @@ final class WyrmServiceStore: ObservableObject {
         })
     }
 
-    func refreshAlerts() async { await perform { self.alerts = try await WyrmServiceClient.shared.notifications(token: self.token) } }
+    func refreshAlerts() async { await perform { self.alerts = try await WyrmTrailsFeature.visible(WyrmServiceClient.shared.notifications(token: self.token)) } }
     /// A pull never invalidates the signed-in session or clears already visible rows.
     func refreshSocial() async {
         guard !token.isEmpty else { return }
@@ -732,7 +733,7 @@ final class WyrmServiceStore: ObservableObject {
         if let rows = values.1 { killLeaders = rows }
         if let rows = values.2 { conversations = rows }
         if let rows = values.3 { voiceRooms = rows }
-        if let rows = values.4 { alerts = rows }
+        if let rows = values.4 { alerts = WyrmTrailsFeature.visible(rows) }
         if let playerID {
             await loadConnectionLists(playerID: playerID)
         }

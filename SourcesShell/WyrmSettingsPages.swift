@@ -802,13 +802,18 @@ final class WyrmNotificationPrefs: ObservableObject {
     @Published private(set) var revision = 0
 
     var systemEnabled: Bool { status == .authorized || status == .provisional || status == .ephemeral }
-    var enabledCount: Int { systemEnabled ? Self.knownKinds.filter(isEnabled).count : 0 }
+    var enabledCount: Int {
+        systemEnabled ? Self.knownKinds.filter { WyrmTrailsFeature.shows(alertKind: $0) && isEnabled($0) }.count : 0
+    }
 
     /// A new kind starts enabled so an older preference file cannot hide it forever.
     func isEnabled(_ kind: String) -> Bool { UserDefaults.standard.object(forKey: "wyrm.notify.kind.\(kind)") as? Bool ?? true }
 
     /// The in-app feed honours the same choices; unknown kinds always show.
-    func allows(_ kind: String) -> Bool { !Self.knownKinds.contains(kind) || isEnabled(kind) }
+    func allows(_ kind: String) -> Bool {
+        guard WyrmTrailsFeature.shows(alertKind: kind) else { return false }
+        return !Self.knownKinds.contains(kind) || isEnabled(kind)
+    }
 
     func set(_ kind: String, _ enabled: Bool) {
         guard Self.knownKinds.contains(kind) else { return }
@@ -837,7 +842,10 @@ final class WyrmNotificationPrefs: ObservableObject {
 struct WyrmNotificationSettingsPage: View {
     let close: () -> Void
     @ObservedObject var prefs = WyrmNotificationPrefs.shared
-    static let groups: [(String, [(String, String, String)])] = [
+    /// The groups shown here and in settings search. The Trails group stays
+    /// out while Trails are paused (`WyrmTrailsFeature`).
+    static let groups: [(String, [(String, String, String)])] = allGroups.filter { WyrmTrailsFeature.enabled || $0.0 != "Trails" }
+    private static let allGroups: [(String, [(String, String, String)])] = [
         ("People", [("invite", "Arena invites", "Someone sends you a server and key."),
                     ("dm", "Direct messages", "New thread or reply."),
                     ("voice_invite", "Voice invitations", "Private invitations to verified voice rooms."),
@@ -1346,9 +1354,13 @@ struct WyrmBuildNotesPage: View {
         }
     }
 
-    static let notes = [
+    /// Trails notes show only while Trails are on (`WyrmTrailsFeature`).
+    static let notes: [String] = (WyrmTrailsFeature.enabled ? trailNotes : ["Trails are paused in this beta. They come back in a later build."]) + otherNotes
+    private static let trailNotes: [String] = [
         "Trails studio: camera and gallery, crop (with Free), text, drawing with the Beads brush, text-only and canvas trails. Deleting a trail scatters it like food.",
         "Trails: share a photo with a caption in Social. Others can like it with a bead and reply.",
+    ]
+    private static let otherNotes: [String] = [
         "Wyrm beads show in the arena again: the game now refreshes its textures with every new build.",
         "Wyrm beads: 54 now, 30 new (gems, metals, animal prints, neon, aurora, pixel and more), each in its own colours.",
         "Wyrm accessories: one page with Hair, Ears and Glasses tabs, big pictures, and a colour slider for hair.",

@@ -11,8 +11,11 @@ import UIKit
  */
 
 enum WyrmAlertRouting {
-    /// Kinds that raise the banner.
-    static let banners: Set<String> = ["trail_like", "trail_reply", "support", "follow"]
+    /// Kinds that raise the banner. Trail kinds only while Trails are on.
+    static var banners: Set<String> {
+        let all: Set<String> = ["trail_like", "trail_reply", "support", "follow"]
+        return all.filter { WyrmTrailsFeature.shows(alertKind: $0) }
+    }
     /// Kinds whose extra fields are ids for the app, not words for the player.
     static let social: Set<String> = ["trail_like", "trail_reply", "support", "follow", "voice_invite", "invite", "dm"]
     static let hiddenMeta: Set<String> = ["actorId", "actorName", "trailId", "reportId", "reportKind", "roomId", "inviteId", "playerId"]
@@ -28,6 +31,7 @@ enum WyrmAlertRouting {
     }
 
     static func actionTitle(_ kind: String) -> String? {
+        guard WyrmTrailsFeature.shows(alertKind: kind) else { return nil }
         switch kind {
         case "trail_like", "trail_reply": return "View trail"
         case "support": return "See your reports"
@@ -37,6 +41,7 @@ enum WyrmAlertRouting {
     }
 
     static func route(for alert: WyrmServiceAlert) -> WyrmDesignRoute? {
+        guard WyrmTrailsFeature.shows(alertKind: alert.kind) else { return nil }
         switch alert.kind {
         case "trail_like", "trail_reply":
             guard let id = alert.meta["trailId"], !id.isEmpty else { return nil }

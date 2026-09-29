@@ -19,6 +19,40 @@ import UIKit
  * Backend: `Wyrm Android/backend/src/trails.mjs`.
  */
 
+// MARK: - Feature switch
+
+/// Trails are paused for the beta (OM, 2026-09-29, build 79). The code stays;
+/// `enabled = true` brings every entry point back: the Social teaser, the
+/// profile's Trails count, grid and trail badges, the trail routes, trail
+/// alerts and banners, and the Trails group in Settings › Notifications.
+enum WyrmTrailsFeature {
+    static let enabled = false
+
+    /// Alert kinds that belong to Trails.
+    static let alertKinds: Set<String> = ["trail_like", "trail_reply"]
+    /// Badges that can only be earned with Trails (`backend/src/badges.mjs`).
+    static let badgeIDs: Set<String> = ["trailblazer", "crowd-favourite"]
+
+    static func shows(alertKind kind: String) -> Bool { enabled || !alertKinds.contains(kind) }
+    static func shows(badgeID id: String) -> Bool { enabled || !badgeIDs.contains(id) }
+    static func shows(_ route: WyrmDesignRoute) -> Bool { enabled || !route.isTrails }
+
+    /// The alerts a player may see: trail alerts drop out while Trails are paused.
+    static func visible(_ alerts: [WyrmServiceAlert]) -> [WyrmServiceAlert] {
+        enabled ? alerts : alerts.filter { !alertKinds.contains($0.kind) }
+    }
+}
+
+extension WyrmDesignRoute {
+    /// The Trails feed, one trail and the Trails studio.
+    var isTrails: Bool {
+        switch self {
+        case .trails, .trail, .trailCompose: return true
+        default: return false
+        }
+    }
+}
+
 // MARK: - Model
 
 struct WyrmTrailAuthor: Codable, Equatable {
