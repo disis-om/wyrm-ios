@@ -73,7 +73,7 @@ struct WyrmInAppBanner: View {
                     Text("now").font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
                 }
                 if !alert.body.isEmpty {
-                    Text(alert.body).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(2)
+                    Text(WyrmMarkdownBlock.plainText(alert.body)).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(2)
                 }
             }
         }

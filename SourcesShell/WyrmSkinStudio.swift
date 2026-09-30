@@ -367,6 +367,8 @@ struct WyrmSkinRoot: View {
                     .frame(height: 218)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Live native preview of the selected Wyrm skin")
+                    // Share this skin: bottom left of the preview, above the rule (OM).
+                    .overlay(shareSkinButton.padding(.leading, 16).padding(.bottom, 10), alignment: .bottomLeading)
             }
 
             Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
@@ -514,6 +516,29 @@ struct WyrmSkinRoot: View {
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
             }
+        }
+    }
+
+    /// "Share this skin" (OM, 2026-09-30): a small ink capsule that opens the
+    /// Trails share editor with the snake exactly as this preview draws it.
+    @ViewBuilder private var shareSkinButton: some View {
+        if WyrmTrailsFeature.enabled {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                if editingPattern { editingPattern = false; apply() }
+                WyrmShareRun.shared.openSkin()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "square.and.arrow.up").font(.system(size: 12.5, weight: .semibold))
+                    Text("Share this skin").font(.androidWyrm(12.5, .bold))
+                }
+                .foregroundColor(ATheme.onInk)
+                .padding(.horizontal, 13).frame(height: 34)
+                .background(Capsule().fill(ATheme.ink))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(WSPressStyle())
+            .accessibilityLabel("Share this skin")
         }
     }
 

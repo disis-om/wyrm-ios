@@ -277,34 +277,66 @@ private struct WyrmDesignEditField: View {
     var body: some View { VStack(alignment: .leading, spacing: 7) { Text(label.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(label, text: $value).font(.androidWyrm(15)).padding(.horizontal, 14).frame(height: 50).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
 }
 
+/// Voice rooms, redesigned (OM, 2026-09-30): one card per room like a
+/// modern audio app, as Android draws it (`IosVoiceDirectory`). Who is
+/// talking now; a verify card until verified; official Wyrm rooms (the real
+/// Wyrm mark); the player's own room; live rooms; quiet rooms.
 private struct WyrmVoiceDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     private var official: [WyrmVoiceRoom] { services.voiceRooms.filter(\.managedPublic) }
-    private var personal: [WyrmVoiceRoom] { services.voiceRooms.filter { !$0.managedPublic } }
+    private var mine: [WyrmVoiceRoom] { services.voiceRooms.filter { $0.mine && !$0.managedPublic } }
+    private var live: [WyrmVoiceRoom] { services.voiceRooms.filter { !$0.managedPublic && !$0.mine && $0.active } }
+    private var quiet: [WyrmVoiceRoom] { services.voiceRooms.filter { !$0.managedPublic && !$0.mine && !$0.active } }
+    private var talking: Int { services.voiceRooms.filter(\.active).reduce(0) { $0 + $1.activeCount } }
     var body: some View {
         WyrmDetailChrome(title: "Voice rooms", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
+                    HStack(spacing: 8) {
+                        WyrmVoiceLiveBars(colour: talking > 0 ? ATheme.live : ATheme.quiet, playing: talking > 0, height: 13)
+                        Text(talking > 0 ? "\(talking) \(talking == 1 ? "person" : "people") talking now" : "No one is talking yet")
+                            .font(.androidWyrm(13, .semibold)).foregroundColor(talking > 0 ? ATheme.live : ATheme.quiet)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 22).padding(.top, 14)
                     if !services.voiceVerification.verified {
                         Button { open(.voiceVerification) } label: {
                             HStack(spacing: 13) {
-                                Image(systemName: "checkmark.shield.fill").font(.system(size: 22)).foregroundColor(ATheme.live)
-                                VStack(alignment: .leading, spacing: 3) { Text("Your voice profile is not verified").font(.androidWyrm(14.5, .bold)); Text("Verify once to create and enter player rooms.").font(.androidWyrm(11)).foregroundColor(ATheme.quiet) }
-                                Spacer(); Text("Verify").font(.androidWyrm(12.5, .bold)).foregroundColor(ATheme.link)
-                            }.foregroundColor(ATheme.ink).padding(16).background(ATheme.card.opacity(0.9)).cornerRadius(16).overlay(RoundedRectangle(cornerRadius: 16).stroke(ATheme.live.opacity(0.35)))
-                        }.buttonStyle(.plain).padding(.horizontal, 16).padding(.top, 16)
+                                Image(systemName: "checkmark.shield.fill").font(.system(size: 22)).foregroundColor(ATheme.onInk)
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Verify once, talk anywhere").font(.androidWyrm(14.5, .bold)).foregroundColor(ATheme.onInk)
+                                    Text("One email code unlocks player rooms. Official rooms are open now.")
+                                        .font(.androidWyrm(11.5)).foregroundColor(ATheme.onInk.opacity(0.72))
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                Spacer(minLength: 6)
+                                Text("Verify").font(.androidWyrm(12.5, .bold)).foregroundColor(ATheme.ink)
+                                    .padding(.horizontal, 13).padding(.vertical, 7).background(Capsule().fill(ATheme.onInk))
+                            }
+                            .padding(16)
+                            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.ink))
+                        }
+                        .buttonStyle(WSPressStyle()).padding(.horizontal, 16).padding(.top, 14)
                     }
-                    WyrmSectionLabel("Official Wyrm rooms")
-                    WyrmPaperCard {
-                        if official.isEmpty { WyrmEmptyPanel(title: "Official rooms are quiet", note: "Wyrm-managed public rooms appear here first.") }
-                        ForEach(official) { room in WyrmOfficialRoomRow(room: room) { open(.room(room.id)) } }
+                    WyrmVoiceSectionTitle(title: "Official Wyrm rooms", note: "Open to everyone")
+                    if official.isEmpty { WyrmPaperCard { WyrmEmptyPanel(title: "Official rooms are quiet", note: "Wyrm-managed public rooms appear here first.") } }
+                    ForEach(official) { room in WyrmVoiceRoomCard(room: room) { open(.room(room.id)) } }
+                    if !mine.isEmpty {
+                        WyrmVoiceSectionTitle(title: "Your room")
+                        ForEach(mine) { room in WyrmVoiceRoomCard(room: room) { open(.room(room.id)) } }
                     }
-                    WyrmSectionLabel("Player rooms · \(personal.count)")
-                    WyrmPaperCard {
-                        if personal.isEmpty { WyrmEmptyPanel(title: "No player rooms yet", note: "Your rooms and rooms from other players will appear here.") }
-                        ForEach(personal) { room in WyrmListRow(title: room.name, detail: room.mine ? "Your room" : "by \(room.creator.displayName)", value: room.active ? "\(room.activeCount) live" : room.gate.capitalized, icon: room.active ? "waveform" : "mic", tint: room.active ? ATheme.live : ATheme.mute) { open(.room(room.id)) } }
+                    WyrmVoiceSectionTitle(title: "Live now", note: live.isEmpty ? "" : "\(live.count)")
+                    if live.isEmpty {
+                        Text(quiet.isEmpty ? "No player rooms yet." : "No player room is live right now.")
+                            .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 22).padding(.vertical, 4)
+                    }
+                    ForEach(live) { room in WyrmVoiceRoomCard(room: room) { open(.room(room.id)) } }
+                    if !quiet.isEmpty {
+                        WyrmVoiceSectionTitle(title: "Quiet rooms", note: "\(quiet.count)")
+                        ForEach(quiet) { room in WyrmVoiceRoomCard(room: room) { open(.room(room.id)) } }
                     }
                     Spacer().frame(height: 24)
                 }
@@ -313,17 +345,22 @@ private struct WyrmVoiceDetail: View {
     }
 }
 
-private struct WyrmOfficialRoomRow: View {
-    let room: WyrmVoiceRoom
-    let action: () -> Void
-    var body: some View {
-        Button(action: action) {
-            HStack(spacing: 12) {
-                ZStack { RoundedRectangle(cornerRadius: 9).fill(ATheme.ink.opacity(0.06)); Text("W").font(.androidWyrm(17, .bold)).foregroundColor(ATheme.ink.opacity(0.38)) }.frame(width: 38, height: 38)
-                VStack(alignment: .leading, spacing: 2) { Text(room.name).font(.androidWyrm(14.5, .semibold)); Text("Wyrm · direct entry").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
-                Spacer(); Text(room.active ? "\(room.activeCount)/\(room.capacity) live" : "Public").font(.androidWyrm(11.5, .semibold)).foregroundColor(room.active ? ATheme.live : ATheme.quiet); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron)
-            }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58)
-        }.buttonStyle(.plain).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 64), alignment: .bottom)
+/// The server's voice codes in plain words, as Android says them (`voiceMessage`).
+private func wyrmVoiceText(_ raw: String) -> String {
+    switch raw.trimmingCharacters(in: .whitespacesAndNewlines) {
+    case "": return ""
+    case "VOICE_VERIFICATION_REQUIRED": return "Verify your profile once to use player rooms."
+    case "ROOM_PASSWORD_INCORRECT": return "That code didn't work. Check it with the room's creator."
+    case "ROOM_PASSWORD_REQUIRED": return "Enter the room code to join."
+    case "ROOM_CODE_CHANGED": return "The creator changed the code. Ask them for the new one."
+    case "ROOM_CLOSED": return "This room is closed right now. Try again when its creator opens it."
+    case "ROOM_FULL": return "This room already has 10 people."
+    case "ROOM_BANNED": return "You can't join this room."
+    case "ROOM_SUSPENDED": return "This room is paused by Wyrm."
+    case "ROOM_NOT_FOUND": return "This room is gone."
+    case "VOICE_DISABLED": return "Voice rooms aren't available yet."
+    case "VOICE_JOIN_PAUSED": return "New joins are paused for a moment."
+    default: return raw
     }
 }
 
@@ -366,36 +403,112 @@ private struct WyrmVoiceVerificationDetail: View {
     private func confirm() { working = true; Task { _ = await services.confirmVoiceVerification(code: String(code.prefix(6))); await MainActor.run { working = false } } }
 }
 
+/// A room before joining (OM, 2026-09-30): art, name, maker, a live line,
+/// facts and one action. A private room asks for its code in eight boxes and
+/// says how to get one ("Don't have a code? Ask <creator> for it.").
 private struct WyrmRoomDetail: View {
     let roomID: String
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
-    @State private var password = ""
+    @State private var code = ""
+    @State private var joining = false
     private var room: WyrmVoiceRoom? { services.voiceRooms.first(where: { $0.id == roomID }) }
     var body: some View {
-        WyrmDetailChrome(title: room?.name ?? "Room", onBack: close) {
+        WyrmDetailChrome(title: "Voice room", onBack: close) {
             ScrollView(showsIndicators: false) {
-                VStack(spacing: 0) {
-                    VStack(spacing: 9) { Image(systemName: "waveform.circle.fill").font(.system(size: 62, weight: .light)).foregroundColor(room?.active == true ? ATheme.live : ATheme.quiet); Text(room?.active == true ? "Room is live" : "Room is quiet").font(.androidWyrm(24, .bold)); Text("\(room?.activeCount ?? 0) of \(room?.capacity ?? 10) people").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet) }.padding(.vertical, 34)
-                    WyrmPaperCard {
-                        WyrmListRow(title: room?.managedPublic == true ? "Managed by" : "Created by", value: room?.managedPublic == true ? "Wyrm" : (room?.creator.displayName ?? ""), showsChevron: false)
-                        WyrmListRow(title: "Access", value: room?.gate.capitalized ?? "Open", showsChevron: false)
-                        WyrmListRow(title: "Status", value: room?.suspended == true ? "Suspended" : "Available", showsChevron: false)
-                    }
-                    if let room {
-                        if !room.managedPublic && !room.member && services.voiceVerification.verified {
-                            SecureField("8-character room key", text: $password).textInputAutocapitalization(.never).disableAutocorrection(true).font(.androidWyrm(14)).padding(.horizontal, 14).frame(height: 50).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)).padding(.horizontal, 16).padding(.top, 16)
-                        }
-                        WyrmPrimaryAction(title: room.member ? "Open call" : room.managedPublic ? "Enter public room" : services.voiceVerification.verified ? "Join room" : "Verify to join", icon: "mic.fill", disabled: !room.managedPublic && !room.member && services.voiceVerification.verified && password.count != 8) { if room.member { open(.call(room.id)) } else if !room.managedPublic && !services.voiceVerification.verified { open(.voiceVerification) } else { Task { await services.joinVoice(room, password: password); if services.errorMessage.isEmpty { open(.call(room.id)) } } } }.padding(16)
-                        if room.member { WyrmOutlineAction(title: "Leave room", destructive: true) { Task { await services.leaveVoice(room); close() } }.padding(.horizontal, 16) }
-                    }
+                if let room {
+                    content(room)
+                } else {
+                    WyrmPaperCard { WyrmEmptyPanel(title: "This room is gone", note: "Pull to refresh the rooms.") }.padding(.top, 20)
                 }
+            }
+        }
+    }
+
+    private func content(_ room: WyrmVoiceRoom) -> some View {
+        let verified = services.voiceVerification.verified
+        let error = wyrmVoiceText(services.errorMessage)
+        let needsCode = verified && !room.managedPublic && !room.mine && (!room.member || !error.isEmpty)
+        let needsVerify = !verified && !room.managedPublic
+        let canJoin = !joining && (!needsCode || code.count == 8)
+        return VStack(spacing: 0) {
+            VStack(spacing: 0) {
+                WyrmVoiceRoomArt(room: room, size: 88)
+                Text(room.name).font(.androidWyrm(28, .bold)).foregroundColor(ATheme.ink).multilineTextAlignment(.center).padding(.top, 14)
+                if room.managedPublic {
+                    Text("Official Wyrm room").font(.androidWyrm(13)).foregroundColor(ATheme.quiet).padding(.top, 6)
+                } else {
+                    Button { open(.profile(room.creator.id)) } label: {
+                        HStack(spacing: 7) {
+                            WyrmAvatar(initials: String(room.creator.displayName.prefix(2)).uppercased(), size: 20, url: room.creator.avatarURL)
+                            Text("by \(room.creator.displayName)").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.mute)
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 4)
+                    }.buttonStyle(.plain).padding(.top, 6)
+                }
+                HStack(spacing: 7) {
+                    WyrmVoiceLiveBars(colour: room.active ? ATheme.live : ATheme.quiet, playing: room.active, height: 11)
+                    Text(room.active ? "Live · \(room.activeCount) of \(room.capacity) inside"
+                         : (room.gate != "open" && !room.managedPublic) ? "Closed right now" : "Quiet · be the first one in")
+                        .font(.androidWyrm(12.5, .semibold)).foregroundColor(room.active ? ATheme.live : ATheme.mute)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Capsule().fill(room.active ? ATheme.live.opacity(0.13) : ATheme.well))
+                .padding(.top, 12)
+            }
+            .padding(.horizontal, 24).padding(.top, 26)
+            WyrmVoiceFacts(room: room).padding(.top, 20)
+            if needsCode {
+                WyrmVoiceRoomCodeField(code: $code, creator: room.creator.displayName, error: error,
+                                       askCreator: { open(.profile(room.creator.id)) }, done: { if canJoin { join(room) } })
+                    .padding(.horizontal, 20).padding(.top, 24)
+            } else if !error.isEmpty {
+                Text(error).font(.androidWyrm(12.5)).foregroundColor(.red).multilineTextAlignment(.center).padding(.horizontal, 24).padding(.top, 16)
+            }
+            Button {
+                if room.member { open(.call(room.id)) }
+                else if needsVerify { open(.voiceVerification) }
+                else { join(room) }
+            } label: {
+                HStack(spacing: 9) {
+                    if joining { ProgressView().tint(.white) } else { Image(systemName: "mic.fill").font(.system(size: 16, weight: .semibold)) }
+                    Text(joining ? "Joining…" : needsVerify ? "Verify to join" : room.member ? "Open call" : room.mine ? "Join your room" : "Join room")
+                        .font(.androidWyrm(16, .bold))
+                }
+                .foregroundColor(canJoin ? .white : ATheme.quiet)
+                .frame(maxWidth: .infinity).frame(height: 56)
+                .background(Capsule().fill(canJoin ? ATheme.live : ATheme.well))
+            }
+            .buttonStyle(WSPressStyle()).disabled(!canJoin)
+            .padding(.horizontal, 20).padding(.top, needsCode ? 20 : 24)
+            Text("You join muted. Tap the mic when you want to talk.")
+                .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).padding(.top, 10)
+            if room.member {
+                WyrmOutlineAction(title: "Leave room", destructive: true) { Task { await services.leaveVoice(room); close() } }
+                    .padding(.horizontal, 20).padding(.top, 18)
+            }
+            Spacer().frame(height: 32)
+        }
+    }
+
+    /// One tap, straight in: no separate checks first (the server makes them).
+    private func join(_ room: WyrmVoiceRoom) {
+        guard !joining else { return }
+        joining = true
+        Task {
+            await services.joinVoice(room, password: code)
+            await MainActor.run {
+                joining = false
+                if services.errorMessage.isEmpty { open(.call(room.id)) }
             }
         }
     }
 }
 
+/// In the room (OM, 2026-09-30): the room's art and name, a live line, and a
+/// dock of round controls. Talking on iPhone needs the realtime audio adapter,
+/// which is not built yet; the page says so plainly.
 private struct WyrmCallDetail: View {
     let roomID: String
     @ObservedObject var services: WyrmServiceStore
@@ -407,19 +520,34 @@ private struct WyrmCallDetail: View {
         WyrmDetailChrome(title: "Voice", onBack: close) {
             VStack(spacing: 0) {
                 Spacer()
-                Text(room?.name ?? "Voice room").font(.androidWyrm(28, .bold))
-                Text("Control plane connected").font(.androidWyrm(12)).foregroundColor(ATheme.live).padding(.top, 6)
-                Text("Live audio requires the iOS realtime media adapter and microphone permission on a physical device.").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center).padding(.horizontal, 40).padding(.top, 12)
-                Spacer()
-                HStack(spacing: 22) {
-                    callButton(icon: muted ? "mic.slash.fill" : "mic.fill", title: muted ? "Muted" : "Live", on: !muted) { muted.toggle() }
-                    callButton(icon: deafened ? "speaker.slash.fill" : "speaker.wave.2.fill", title: deafened ? "Deafened" : "Audio", on: !deafened) { deafened.toggle() }
+                if let room { WyrmVoiceRoomArt(room: room, size: 96) }
+                Text(room?.name ?? "Voice room").font(.androidWyrm(28, .bold)).multilineTextAlignment(.center).padding(.top, 16).padding(.horizontal, 24)
+                HStack(spacing: 7) {
+                    WyrmVoiceLiveBars(colour: ATheme.live, playing: true, height: 11)
+                    Text("You're in · \(room?.activeCount ?? 1) in the room").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.live)
                 }
-                if let room { Button { Task { await services.leaveVoice(room); close() } } label: { Image(systemName: "phone.down.fill").font(.system(size: 23)).foregroundColor(.white).frame(width: 66, height: 66).background(Color.red).clipShape(Circle()) }.padding(.top, 28).padding(.bottom, 42) }
+                .padding(.horizontal, 12).padding(.vertical, 7)
+                .background(Capsule().fill(ATheme.live.opacity(0.13))).padding(.top, 12)
+                Text("Talking and listening on iPhone come in a later build. Android players can already talk here.")
+                    .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center).padding(.horizontal, 40).padding(.top, 14)
+                Spacer()
+                HStack(spacing: 0) {
+                    WyrmVoiceDockButton(symbol: muted ? "mic.slash.fill" : "mic.fill", label: muted ? "Unmute" : "Mute", on: !muted) { muted.toggle() }
+                        .frame(maxWidth: .infinity)
+                    WyrmVoiceDockButton(symbol: deafened ? "speaker.slash.fill" : "speaker.wave.2.fill", label: deafened ? "Sound off" : "Sound") { deafened.toggle() }
+                        .frame(maxWidth: .infinity)
+                    if let room {
+                        WyrmVoiceDockButton(symbol: "phone.down.fill", label: "Leave", danger: true) { Task { await services.leaveVoice(room); close() } }
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+                .padding(.vertical, 14)
+                .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(ATheme.card))
+                .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .padding(.horizontal, 12).padding(.bottom, 24)
             }
         }
     }
-    private func callButton(icon: String, title: String, on: Bool, action: @escaping () -> Void) -> some View { Button(action: action) { VStack(spacing: 8) { Image(systemName: icon).font(.system(size: 22)).frame(width: 58, height: 58).background(WyrmGlass.native ? Color.clear : (on ? ATheme.live.opacity(0.14) : ATheme.ink.opacity(0.08))).clipShape(Circle()); Text(title).font(.androidWyrm(11.5)) }.foregroundColor(on ? ATheme.live : ATheme.ink) }.modifier(WyrmGlassButtonModifier(radius: 22, fallback: WSPressStyle())) }
 }
 
 private struct WyrmLobbyDetail: View {

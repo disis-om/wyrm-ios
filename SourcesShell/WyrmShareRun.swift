@@ -176,22 +176,41 @@ final class WyrmSkinTrial: ObservableObject {
     }
 }
 
-/// Share run's presenter: the lobby opens it, WyrmDesignRoot draws the studio
-/// over everything, and a finished post asks WyrmDesignMain for the feed.
+/// Share run's presenter: the lobby opens it (or the Skin tab's "Share this
+/// skin", with no run), WyrmDesignRoot draws the studio over everything, and
+/// a finished post asks WyrmDesignMain for the feed.
 @MainActor
 final class WyrmShareRun: ObservableObject {
     static let shared = WyrmShareRun()
 
     @Published private(set) var run: WyrmLastRun?
+    /// "Share this skin": the studio is open on the skin alone.
+    @Published private(set) var skinOnly = false
     /// Bumped after a post: WyrmDesignMain opens the Trails feed.
     @Published private(set) var trailsRequest = 0
 
+    var isOpen: Bool { run != nil || skinOnly }
+
     func open(_ run: WyrmLastRun) {
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) { self.run = run }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            skinOnly = false
+            self.run = run
+        }
+    }
+
+    /// Skin › Share this skin; closing leaves the Skin tab where it was.
+    func openSkin() {
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            run = nil
+            skinOnly = true
+        }
     }
 
     func close() {
-        withAnimation(.easeOut(duration: 0.25)) { run = nil }
+        withAnimation(.easeOut(duration: 0.25)) {
+            run = nil
+            skinOnly = false
+        }
     }
 
     func posted() {
@@ -263,43 +282,39 @@ final class WyrmStickerArt {
 
 // MARK: - Skin sticker
 
-/// The player's snake as a sticker, drawn like the Skin tab's preview: the
-/// same atlas beads, Wyrm and AIR beads, wheel colours, eyes, accessory and
-/// Wyrm looks, beads 8/48 of a bead apart, along a short S with the head last
-/// and facing right. `draw` paints it centred on the context's origin in
-/// sticker points, for the editor's image and the posted picture alike.
+/// The player's snake as a sticker, exactly as the Skin tab's preview draws
+/// it (OM, 2026-09-30: "same to same"): both rows of 128 beads, 8/48 of a
+/// bead apart, the tail row under the head row, the head row's beads turned
+/// half round, the same atlas beads, Wyrm and AIR beads, wheel colours, eyes,
+/// accessory and Wyrm looks, the head at the top row's right end facing
+/// right. `draw` paints it centred on the context's origin in sticker points,
+/// for the editor's image and the posted picture alike. Android draws it with
+/// the preview's own code (`drawSkinRows`).
 enum WyrmSkinSticker {
     /// One bead's size in sticker points.
     static let bead: CGFloat = 18
+    /// Beads in each of the preview's two rows.
+    static let row = 128
 
     /// Segment centres from the head (code position 0) to the tail, each with
-    /// the direction it travels, around the S's middle.
+    /// the direction it travels: +x along the head row, -x along the tail row,
+    /// which `draw` turns into the preview's 180 and 0 degree beads.
     static let segments: [(point: CGPoint, heading: CGFloat)] = {
         let b = bead
-        // A full wave, level at both ends: the head comes out of it facing +x.
-        let samples: [CGPoint] = (0...600).reversed().map { step in
-            let t = CGFloat(step) / 600
-            return CGPoint(x: (t - 0.5) * 11 * b, y: 1.25 * b * sin(.pi * (2 * t - 0.5)))
+        let step = b * 8 / 48
+        let gap = b * 0.16
+        let bodyWidth = b + step * CGFloat(row - 1)
+        let x = -bodyWidth / 2
+        let headY = -b * 0.5 - gap * 0.5
+        let tailY = b * 0.5 + gap * 0.5
+        // WyrmSkinPreview.segmentPoint, indexed by code position instead of segment.
+        return (0..<(row * 2)).map { codeIndex -> (point: CGPoint, heading: CGFloat) in
+            let segment = row * 2 - 1 - codeIndex
+            let local = segment % row
+            let top = segment >= row
+            let slot = top ? local : row - 1 - local
+            return (CGPoint(x: x + b * 0.5 + CGFloat(slot) * step, y: top ? headY : tailY), top ? 0 : CGFloat.pi)
         }
-        var lengths: [CGFloat] = [0]
-        for i in 1..<samples.count {
-            lengths.append(lengths[i - 1] + hypot(samples[i].x - samples[i - 1].x, samples[i].y - samples[i - 1].y))
-        }
-        let total = lengths[lengths.count - 1]
-        let spacing = b * 8 / 48
-        var result: [(point: CGPoint, heading: CGFloat)] = []
-        var j = 0
-        var distance: CGFloat = 0
-        while distance <= total && result.count < 256 {
-            while j < samples.count - 2 && lengths[j + 1] < distance { j += 1 }
-            let span = max(lengths[j + 1] - lengths[j], 0.0001)
-            let f = min(max((distance - lengths[j]) / span, 0), 1)
-            let a = samples[j], c = samples[j + 1]
-            // Samples run head to tail, so the body travels from c towards a.
-            result.append((CGPoint(x: a.x + (c.x - a.x) * f, y: a.y + (c.y - a.y) * f), atan2(a.y - c.y, a.x - c.x)))
-            distance += spacing
-        }
-        return result
     }()
 
     /// The drawing's box in sticker points: the body, and round the head room
@@ -347,7 +362,7 @@ enum WyrmSkinSticker {
             guard let image = art.image(source, tint: tint, side: 192) else { continue }
             cg.saveGState()
             cg.translateBy(x: segment.point.x, y: segment.point.y)
-            // A bead travelling +x is drawn turned half round, as in the preview's top row.
+            // The head row's beads turned half round, the tail row's upright, as in the preview.
             cg.rotate(by: segment.heading + .pi)
             WyrmStickerArt.put(image, in: CGRect(x: -bead / 2, y: -bead / 2, width: bead, height: bead), cg: cg)
             cg.restoreGState()

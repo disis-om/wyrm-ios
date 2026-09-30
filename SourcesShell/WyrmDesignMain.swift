@@ -660,18 +660,32 @@ private struct WyrmAlertCard: View {
     @ObservedObject var services: WyrmServiceStore
     let open: (WyrmDesignRoute) -> Void
     @State private var showingMenu = false
+    /// Only the facts a player reads, named as Android names them
+    /// (`alertMeta`); ids, "previous" values and other raw fields never show (OM).
     private var shownMeta: [(key: String, value: String)] {
-        alert.meta.filter { !WyrmAlertRouting.hiddenMeta.contains($0.key) && !$0.value.isEmpty }.sorted(by: { $0.key < $1.key })
+        func value(_ key: String) -> String? {
+            guard let raw = alert.meta[key]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty, raw != "null" else { return nil }
+            return raw
+        }
+        var rows: [(key: String, value: String)] = []
+        // Trail and support alerts already say who in their own words.
+        if !["trail_like", "trail_reply", "support"].contains(alert.kind), let from = value("actorName") { rows.append(("From", from)) }
+        if let organizer = value("organizer") { rows.append(("Organizer", organizer)) }
+        if let starts = value("startsAt") { rows.append(("Starts", String(starts.replacingOccurrences(of: "T", with: " ").prefix(16)))) }
+        if let address = value("address") { rows.append(("Server", address)) }
+        if let version = value("version") { rows.append(("Version", version)) }
+        if let number = value("value") ?? value("rank"), Int64(number) != nil { rows.append(("Value", number)) }
+        return rows.sorted { $0.key < $1.key }
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 11) {
             HStack { Circle().fill(alert.read ? Color.clear : ATheme.live).frame(width: 7, height: 7); Text(WyrmAlertRouting.label(alert.kind)).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.live); Spacer(); Text(relative(alert.createdAt)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet); Button { showingMenu = true } label: { Image(systemName: "ellipsis").foregroundColor(ATheme.quiet).frame(width: 28, height: 28) }.buttonStyle(.plain) }
             Text(alert.title).font(.androidWyrm(18, .bold))
-            Text((try? AttributedString(markdown: alert.body,
-                                        options: AttributedString.MarkdownParsingOptions(interpretedSyntax: .full)))
-                ?? AttributedString(alert.body))
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineSpacing(3)
-            if !WyrmAlertRouting.social.contains(alert.kind) && !shownMeta.isEmpty { ForEach(shownMeta, id: \.key) { pair in HStack { Text(pair.key.capitalized).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) } }
+            // Full Markdown, block by block: Enters, spaces, lists, tables…
+            if !alert.body.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                WyrmMarkdown(source: alert.body, size: 12.5)
+            }
+            ForEach(shownMeta, id: \.key) { pair in HStack { Text(pair.key).foregroundColor(ATheme.quiet); Spacer(); Text(pair.value).fontWeight(.semibold) }.font(.androidWyrm(11.5)) }
             if let action = WyrmAlertRouting.actionTitle(alert.kind), WyrmAlertRouting.route(for: alert) != nil {
                 Text("\(action) ›").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.link)
             }

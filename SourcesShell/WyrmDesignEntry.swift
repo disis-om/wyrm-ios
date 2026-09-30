@@ -63,28 +63,29 @@ struct WyrmDesignRoot: View {
                 .allowsHitTesting(!engineOverlay)
             if engine.layoutEditorActive {
                 WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
-            } else if engine.engineScreen == WyrmShellStore.lobbyScreen && shareRun.run == nil {
+            } else if engine.engineScreen == WyrmShellStore.lobbyScreen && !shareRun.isOpen {
                 // Not under Share run: its sideways keyboard would take the
                 // studio's typing.
                 WyrmReadyRoom(engine: engine, services: services)
             }
             // Share run (OM, 2026-09-30): the Trails studio in its share mode,
             // portrait like all of UIKit, over the Home the lobby returned to.
-            if let run = shareRun.run {
-                WyrmTrailStudio(account: account, close: { shareRun.close() }, run: run,
-                                onPosted: { shareRun.posted() })
+            // Share this skin (Skin tab) opens the same studio with no run.
+            if shareRun.isOpen {
+                WyrmTrailStudio(account: account, close: { shareRun.close() }, run: shareRun.run,
+                                skinOnly: shareRun.skinOnly, onPosted: { shareRun.posted() })
                     .transition(.move(edge: .bottom))
                     .zIndex(90)
             }
             // After a crash: asked once the first real screen is up, never over
             // the launch mark or a match.
             if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0
-                && shareRun.run == nil {
+                && !shareRun.isOpen {
                 WyrmCrashPromptHost().zIndex(100)
             }
             // After an arena drop: asked on the first SwiftUI surface after
             // the match, the Ready Room (landscape) or the portrait app.
-            if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && shareRun.run == nil
+            if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && !shareRun.isOpen
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
                 WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen).zIndex(99)
             }

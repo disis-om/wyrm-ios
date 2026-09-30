@@ -198,7 +198,7 @@ struct WyrmReadyRoom: View {
                     Spacer(minLength: 0)
                     // Share run (OM, 2026-09-30): the last finished run, until the next match.
                     if hasRun && WyrmTrailsFeature.enabled {
-                        paperButton("Share run", "square.and.arrow.up", width: 124, enabled: !entering && !engine.arenaPlayPending) {
+                        WyrmShareRunButton(width: 134, enabled: !entering && !engine.arenaPlayPending) {
                             shareRun()
                         }
                     }
@@ -326,6 +326,67 @@ struct WyrmReadyRoom: View {
 }
 
 /// Android's lobby paper button: the well colour and a darker edge while held.
+/// "Share run", made the one thing the eye goes to (OM, 2026-09-30). The
+/// lobby is paper and ink, so this is its only colour: a warm gradient, a
+/// halo that breathes out every 1.8 s and a light sweep across the face
+/// (contrast first, motion second, as CTA guides say). Reduce Motion keeps it
+/// still. No Liquid Glass here on purpose: glass would make it look like its
+/// neighbours. Android: `LobbyShareRunButton` in `LobbyScreen.kt`.
+struct WyrmShareRunButton: View {
+    let width: CGFloat
+    let enabled: Bool
+    let action: () -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var breathing = false
+    @State private var sweep: CGFloat = -0.6
+
+    static let warm = [Color(red: 1, green: 0.663, blue: 0.122), Color(red: 1, green: 0.353, blue: 0.373),
+                       Color(red: 0.839, green: 0.227, blue: 0.976)]
+    static let coral = Color(red: 1, green: 0.353, blue: 0.373)
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: 11, style: .continuous)
+        let moving = enabled && !reduceMotion
+        return Button(action: action) {
+            HStack(spacing: 8) {
+                Image(systemName: "square.and.arrow.up").font(.system(size: 14, weight: .bold))
+                Text("Share run").font(.androidWyrm(11, .bold))
+            }
+            .foregroundColor(.white)
+            .frame(width: width, height: 44)
+            .background(shape.fill(LinearGradient(colors: Self.warm, startPoint: .topLeading, endPoint: .bottomTrailing)))
+            .overlay(
+                // The light sweep.
+                GeometryReader { proxy in
+                    LinearGradient(colors: [.clear, .white.opacity(0.42), .clear], startPoint: .topLeading, endPoint: .bottomTrailing)
+                        .frame(width: proxy.size.width * 0.44, height: proxy.size.height)
+                        .offset(x: proxy.size.width * (sweep - 0.22))
+                }
+                .clipShape(shape)
+                .opacity(moving ? 1 : 0)
+                .allowsHitTesting(false)
+            )
+            .background(
+                // The halo: a coral ring that grows out and fades.
+                shape.fill(Self.coral)
+                    .padding(breathing ? -9 : 0)
+                    .opacity(moving ? (breathing ? 0 : 0.55) : 0)
+                    .allowsHitTesting(false)
+            )
+            .opacity(enabled ? 1 : 0.45)
+            .contentShape(shape)
+        }
+        .buttonStyle(WyrmLobbyPressStyle())
+        .disabled(!enabled)
+        .accessibilityLabel("Share run")
+        .onAppear {
+            guard !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.8).repeatForever(autoreverses: false)) { breathing = true }
+            withAnimation(.easeInOut(duration: 2.6).delay(0.5).repeatForever(autoreverses: false)) { sweep = 1.6 }
+        }
+    }
+}
+
 struct WyrmLobbyPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

@@ -287,17 +287,23 @@ final class WyrmStudioDraft: ObservableObject {
     private var modeChosen = false
     private var seeded = false
     private var stickerImages: [String: UIImage] = [:]
+    /// "Share this skin" (Skin tab, OM 2026-09-30): the share editor with no
+    /// run, only the skin sticker on a colour; no stats, no screenshot.
+    let skinOnly: Bool
 
-    init(run: WyrmLastRun? = nil) {
-        skin = run == nil ? nil : WyrmTrailSkin.current()
+    init(run: WyrmLastRun? = nil, skinOnly: Bool = false) {
+        self.skinOnly = run == nil && skinOnly
+        skin = run == nil && !skinOnly ? nil : WyrmTrailSkin.current()
         self.run = run
         if let run {
             aspect = .portrait
             shotMode = run.screenshot != nil
+        } else if skinOnly {
+            aspect = .portrait
         }
     }
 
-    var sharing: Bool { run != nil }
+    var sharing: Bool { run != nil || skinOnly }
 
     var ratio: CGFloat {
         if aspect == .free { return freeRatio }
@@ -339,16 +345,16 @@ final class WyrmStudioDraft: ObservableObject {
         if !modeChosen { shotMode = true }
     }
 
-    /// The first layout: the stats box always, the skin sticker in Skin mode.
+    /// The first layout: the stats box for a run, the skin sticker in Skin mode.
     func seedShare(in size: CGSize) {
         guard sharing, !seeded, size.width > 0, size.height > 0 else { return }
         seeded = true
         if !shotMode { addSticker(.skin, in: size) }
-        addSticker(.stats, in: size)
+        if run != nil { addSticker(.stats, in: size) }
     }
 
     func addSticker(_ kind: WyrmStudioSticker.Kind, in size: CGSize) {
-        guard sharing, !stickers.contains(where: { $0.kind == kind }), size.width > 0 else { return }
+        guard sharing, kind == .skin || run != nil, !stickers.contains(where: { $0.kind == kind }), size.width > 0 else { return }
         if kind == .skin { skinAdded = true }
         var sticker = WyrmStudioSticker(kind: kind, center: CGPoint(x: size.width / 2, y: size.height * (kind == .skin ? 0.42 : 0.78)))
         let natural = stickerSize(sticker)
@@ -701,14 +707,16 @@ struct WyrmTrailStudio: View {
 
     enum Step { case pick, edit, caption }
 
+    /// `skinOnly`: "Share this skin" from the Skin tab, the share editor with
+    /// no run (only the skin sticker).
     init(account: WyrmAccountStore, close: @escaping () -> Void, run: WyrmLastRun? = nil,
-         onPosted: (() -> Void)? = nil) {
+         skinOnly: Bool = false, onPosted: (() -> Void)? = nil) {
         self.account = account
         self.close = close
         self.run = run
         self.onPosted = onPosted
-        _draft = StateObject(wrappedValue: WyrmStudioDraft(run: run))
-        _step = State(initialValue: run == nil ? .pick : .edit)
+        _draft = StateObject(wrappedValue: WyrmStudioDraft(run: run, skinOnly: skinOnly))
+        _step = State(initialValue: run == nil && !skinOnly ? .pick : .edit)
     }
 
     /// One number per page, so a change slides the right way.
@@ -728,7 +736,7 @@ struct WyrmTrailStudio: View {
                 // The mode pill sits here, in one place, for every mode; only
                 // the page under it moves.
                 if step == .pick { modeBar.padding(.bottom, 12) }
-                if step == .edit && draft.sharing { shareModeBar.padding(.bottom, 10) }
+                if step == .edit && draft.run != nil { shareModeBar.padding(.bottom, 10) }
                 ZStack {
                     content
                         .id(page)
@@ -803,7 +811,7 @@ struct WyrmTrailStudio: View {
                     .background(Circle().fill(ATheme.well))
             }.buttonStyle(.plain)
             Spacer()
-            Text(step == .pick ? "New trail" : step == .edit ? (draft.sharing ? "Share run" : "Edit") : "Caption")
+            Text(step == .pick ? "New trail" : step == .edit ? (draft.skinOnly ? "Share skin" : draft.sharing ? "Share run" : "Edit") : "Caption")
                 .font(.androidWyrm(16, .bold))
             Spacer()
             actionButton
@@ -1366,7 +1374,7 @@ private struct WyrmStudioEditor: View {
         }
     }
 
-    /// Share run: "+ Skin" / "+ Stats" when binned, the stats box's looks,
+    /// Share run: "+ Skin" / "+ Stats" (a run only) when binned, the stats box's looks,
     /// and the background colours (the studio's and the theme's).
     private var shareBottom: some View {
         let stats = draft.stickers.first { $0.kind == .stats }
@@ -1383,7 +1391,7 @@ private struct WyrmStudioEditor: View {
                                 draft.setStatsStyle(index)
                             }
                         }
-                    } else {
+                    } else if draft.run != nil {
                         WyrmStudioChip(label: "+ Stats", selected: false) { draft.addSticker(.stats, in: canvasSize) }
                     }
                 }
