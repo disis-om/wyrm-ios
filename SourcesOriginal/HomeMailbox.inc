@@ -335,31 +335,41 @@ const char* WyrmIOSHomeSnapshot(void) {
 #define APPLE_RUN_OUTBOX 16
 static int apple_run_scores[APPLE_RUN_OUTBOX];
 static int apple_run_kills[APPLE_RUN_OUTBOX];
+static double apple_run_seconds[APPLE_RUN_OUTBOX];
 static int apple_run_count = 0;
 
-/* Engine thread, once per life that actually spawned in a real arena. */
-void WyrmIOSRecordFinishedRun(int score, int kills) {
+/* Engine thread, once per life that actually spawned in a real arena.
+ * play_time is the life's length in seconds (game_capture_final_score). */
+void WyrmIOSRecordFinishedRun(int score, int kills, double play_time) {
   if (!home_mutex) return;
+  /* NaN and anything absurd read as 0. */
+  double seconds = play_time > 0 && play_time < 1e8 ? play_time : 0;
   SDL_LockMutex(home_mutex);
   if (apple_run_count < APPLE_RUN_OUTBOX) {
     apple_run_scores[apple_run_count] = score < 0 ? 0 : score;
     apple_run_kills[apple_run_count] = kills < 0 ? 0 : kills;
+    apple_run_seconds[apple_run_count] = seconds;
     apple_run_count++;
   }
   SDL_UnlockMutex(home_mutex);
-  SDL_Log("Wyrm run finished: score=%d kills=%d", score, kills);
+  /* "Share this run": the death frame is still on screen, so the frame being
+     drawn now is copied once (AppleRunCapture.inc). */
+  WyrmIOSRunCaptureRequest();
+  SDL_Log("Wyrm run finished: score=%d kills=%d seconds=%.1f", score, kills, seconds);
 }
 
-/* Main thread: one "score\tkills\n" line per run, and the outbox is emptied. */
+/* Main thread: one "score\tkills\tseconds\n" line per run (seconds with three
+ * decimals), and the outbox is emptied. */
 const char* WyrmIOSDrainFinishedRuns(void) {
-  static char buffer[APPLE_RUN_OUTBOX * 32];
+  static char buffer[APPLE_RUN_OUTBOX * 48];
   buffer[0] = '\0';
   if (!home_mutex) return buffer;
   SDL_LockMutex(home_mutex);
   size_t used = 0;
-  for (int i = 0; i < apple_run_count && used < sizeof(buffer) - 32; ++i)
-    used += (size_t)snprintf(buffer + used, sizeof(buffer) - used, "%d\t%d\n",
-                             apple_run_scores[i], apple_run_kills[i]);
+  for (int i = 0; i < apple_run_count && used < sizeof(buffer) - 48; ++i)
+    used += (size_t)snprintf(buffer + used, sizeof(buffer) - used, "%d\t%d\t%.3f\n",
+                             apple_run_scores[i], apple_run_kills[i],
+                             apple_run_seconds[i]);
   apple_run_count = 0;
   SDL_UnlockMutex(home_mutex);
   return buffer;

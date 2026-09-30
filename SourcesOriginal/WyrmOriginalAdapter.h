@@ -31,9 +31,20 @@ void WyrmIOSLobbyHome(void);
 void WyrmIOSEnterLayoutEditor(const char* name);
 void WyrmIOSExitLayoutEditor(void);
 void WyrmIOSToggleEditorLeaderboard(void);
-/* Finished-run receipts and arena skin sync (HomeMailbox.inc). */
-void WyrmIOSRecordFinishedRun(int score, int kills);
+/* Finished-run receipts and arena skin sync (HomeMailbox.inc). A receipt
+   carries the life's length in seconds (usrs.play_time); Swift drains
+   "score\tkills\tseconds\n" lines. */
+void WyrmIOSRecordFinishedRun(int score, int kills, double play_time);
 const char* WyrmIOSDrainFinishedRuns(void);
+/* Run screenshots (AppleRunCapture.inc, appended to thermite's tcontext.c).
+   The run receipt requests one; the next frame's swapchain image is copied
+   without waiting. Take hands over a malloc'd, tightly packed 8-bit picture
+   (bgra 1 = B,G,R,A bytes, 0 = R,G,B,A; sRGB-encoded; alpha meaningless) and
+   returns false when none is ready. Free it with WyrmIOSFreeRunScreenshot. */
+void WyrmIOSRunCaptureRequest(void);
+bool WyrmIOSTakeRunScreenshot(void** pixels, int* width, int* height,
+                              int* stride, int* bgra);
+void WyrmIOSFreeRunScreenshot(void* pixels);
 void WyrmIOSArenaSyncPoll(tenv* env);
 const char* WyrmIOSArenaIdentitySnapshot(void);
 const char* WyrmIOSArenaVisibleSnapshot(void);

@@ -58,6 +58,8 @@ final class WyrmGameSync {
 
     private func tick() {
         drainRuns()
+        // After the drain, so a picture that is already waiting finds its run.
+        WyrmRunCapture.pollScreenshot()
         pollArenaIdentity()
         pollVisibleSkins()
     }
@@ -74,8 +76,13 @@ final class WyrmGameSync {
         guard !text.isEmpty else { return }
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: "\t")
-            guard parts.count == 2, let score = Int(parts[0]), let kills = Int(parts[1]) else { continue }
+            // "score\tkills\tseconds"; an older engine sends the first two only.
+            guard parts.count == 2 || parts.count == 3,
+                  let score = Int(parts[0]), let kills = Int(parts[1]) else { continue }
+            let seconds = parts.count == 3
+                ? Double(parts[2].replacingOccurrences(of: ",", with: ".")) ?? 0 : 0
             recordLocally(score: score, kills: kills)
+            WyrmRunCapture.record(score: score, kills: kills, seconds: seconds)
             WyrmDiagnostics.record("run finished score=\(score) kills=\(kills) account=\(playerID.isEmpty ? "none" : "signed-in")", category: "STATS")
             guard !playerID.isEmpty else { continue }
             var outbox = pendingRuns()

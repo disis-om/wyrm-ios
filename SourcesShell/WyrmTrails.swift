@@ -95,6 +95,9 @@ struct WyrmTrail: Codable, Identifiable, Equatable {
     let mine: Bool
     let createdAt: String
     let author: WyrmTrailAuthor
+    /// The poster's look when they chose to share it (Try this skin); absent
+    /// in older trails and older caches.
+    let skin: WyrmTrailSkin?
 
     /// Width over height, held between a tall 4:5 and a wide 1.91:1 so no
     /// photo takes over the feed or shrinks to a strip.
@@ -209,6 +212,7 @@ final class WyrmTrailsClient {
         case "UNSUPPORTED_IMAGE": return "That photo could not be read."
         case "NOT_FOUND": return "This trail is no longer here."
         case "BLOCKED": return "You can't reply to this trail."
+        case "INVALID_SKIN": return "Your skin could not be shared. Try again without it."
         case "HTTP_429": return "Slow down a little and try again soon."
         default: return "Something went wrong. Try again."
         }
@@ -231,9 +235,12 @@ final class WyrmTrailsClient {
         return media.id
     }
 
-    fileprivate func create(caption: String, photoId: String?, thumbId: String?, token: String) async throws -> WyrmTrail {
-        var body: [String: Any] = ["caption": caption]
+    /// `skin` goes only with `shareSkin` on; the server keeps nothing otherwise.
+    fileprivate func create(caption: String, photoId: String?, thumbId: String?, skin: WyrmTrailSkin? = nil,
+                            shareSkin: Bool = false, token: String) async throws -> WyrmTrail {
+        var body: [String: Any] = ["caption": caption, "shareSkin": shareSkin && skin != nil]
         if let photoId, let thumbId { body["photoId"] = photoId; body["thumbId"] = thumbId }
+        if shareSkin, let skin { body["skin"] = skin.json }
         let envelope: WyrmTrailEnvelope = try await send("/v1/trails", method: "POST", json: body, token: token)
         return envelope.trail
     }
@@ -400,6 +407,9 @@ final class WyrmTrailsStore: ObservableObject {
     @Published private(set) var pendingImage: UIImage?
     @Published private(set) var pendingCaption = ""
     @Published private(set) var pendingActive = false
+    /// The pending post's shared skin (Share run), kept for a retry.
+    private var pendingSkin: WyrmTrailSkin?
+    private var pendingShareSkin = false
     @Published private(set) var comments: [String: [WyrmTrailComment]] = [:]
     @Published var toast = ""
 
@@ -576,21 +586,26 @@ final class WyrmTrailsStore: ObservableObject {
         }
     }
 
-    /// A photo trail, or a text trail when `image` is nil.
-    func post(image: UIImage?, caption: String) async -> Bool {
+    /// A photo trail, or a text trail when `image` is nil. Share run adds the
+    /// player's look (`skin`), sent only when `shareSkin` is on.
+    func post(image: UIImage?, caption: String, skin: WyrmTrailSkin? = nil, shareSkin: Bool = false) async -> Bool {
         guard !posting.busy else { return false }
         let words = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        let shared = shareSkin ? skin : nil
         withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
             pendingImage = image
             pendingCaption = words
             pendingActive = true
         }
+        pendingSkin = shared
+        pendingShareSkin = shared != nil
         posting = .preparing
         guard let image else {
             posting = .uploading(0.5)
             do {
                 let trail = try await Task {
-                    try await WyrmTrailsClient.shared.create(caption: words, photoId: nil, thumbId: nil, token: token())
+                    try await WyrmTrailsClient.shared.create(caption: words, photoId: nil, thumbId: nil, skin: shared,
+                                                             shareSkin: shared != nil, token: token())
                 }.value
                 landed(trail)
                 return true
@@ -613,7 +628,8 @@ final class WyrmTrailsStore: ObservableObject {
             let photoId = try await WyrmTrailsClient.shared.upload(files.full, token: token()) { value in
                 Task { @MainActor in self.posting = .uploading((thumbShare + value * (1 - thumbShare)) * 0.97) }
             }
-            let trail = try await WyrmTrailsClient.shared.create(caption: words, photoId: photoId, thumbId: thumbId, token: token())
+            let trail = try await WyrmTrailsClient.shared.create(caption: words, photoId: photoId, thumbId: thumbId, skin: shared,
+                                                                 shareSkin: shared != nil, token: token())
             landed(trail)
             return true
         } catch {
@@ -639,8 +655,8 @@ final class WyrmTrailsStore: ObservableObject {
 
     func retryPending() {
         guard pendingActive, !posting.busy else { return }
-        let image = pendingImage, caption = pendingCaption
-        Task { _ = await post(image: image, caption: caption) }
+        let image = pendingImage, caption = pendingCaption, skin = pendingSkin, share = pendingShareSkin
+        Task { _ = await post(image: image, caption: caption, skin: skin, shareSkin: share) }
     }
 
     func discardPending() {
@@ -872,7 +888,11 @@ struct WyrmTrailCard: View {
             HStack(spacing: 8) {
                 WyrmTrailBead(liked: trail.liked, count: trail.likeCount) { store.toggleLike(trail.id) }
                 WyrmTrailRepliesPill(count: trail.commentCount, action: onOpen)
-                Spacer()
+                Spacer(minLength: 0)
+                // The poster shared their look: preview it in the Skin tab.
+                if let skin = trail.skin {
+                    WyrmTrySkinCapsule { WyrmSkinTrial.shared.start(skin, author: trail.author.name) }
+                }
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }

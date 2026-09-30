@@ -5,6 +5,8 @@ struct WyrmDesignRoot: View {
     @StateObject private var account = WyrmAccountStore()
     @StateObject private var services = WyrmServiceStore()
     @StateObject private var team = WyrmTeamStore()
+    /// Share run's studio, drawn over everything while it is open.
+    @ObservedObject private var shareRun = WyrmShareRun.shared
 
     private let arguments = ProcessInfo.processInfo.arguments
     /// True from launch until the first account snapshot is installed. A
@@ -61,21 +63,34 @@ struct WyrmDesignRoot: View {
                 .allowsHitTesting(!engineOverlay)
             if engine.layoutEditorActive {
                 WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
-            } else if engine.engineScreen == WyrmShellStore.lobbyScreen {
+            } else if engine.engineScreen == WyrmShellStore.lobbyScreen && shareRun.run == nil {
+                // Not under Share run: its sideways keyboard would take the
+                // studio's typing.
                 WyrmReadyRoom(engine: engine, services: services)
+            }
+            // Share run (OM, 2026-09-30): the Trails studio in its share mode,
+            // portrait like all of UIKit, over the Home the lobby returned to.
+            if let run = shareRun.run {
+                WyrmTrailStudio(account: account, close: { shareRun.close() }, run: run,
+                                onPosted: { shareRun.posted() })
+                    .transition(.move(edge: .bottom))
+                    .zIndex(90)
             }
             // After a crash: asked once the first real screen is up, never over
             // the launch mark or a match.
-            if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0 {
+            if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0
+                && shareRun.run == nil {
                 WyrmCrashPromptHost().zIndex(100)
             }
             // After an arena drop: asked on the first SwiftUI surface after
             // the match, the Ready Room (landscape) or the portrait app.
-            if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive
+            if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && shareRun.run == nil
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
                 WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen).zIndex(99)
             }
         }
+        // A death picture that lands after Share run opened joins it.
+        .onReceive(NotificationCenter.default.publisher(for: WyrmRunCapture.didChange)) { _ in shareRun.refresh() }
         .environmentObject(team)
         .onChange(of: account.phase) { phase in if phase == .signedOut || phase == .signingOut { coldStart = false } }
         .onChange(of: services.isPrepared(for: account.player?.id)) { prepared in
@@ -112,6 +127,8 @@ struct WyrmDesignRoot: View {
                 WyrmGameSync.shared.deactivate()
                 services.resetSession()
                 WyrmTrailsStore.shared.reset()
+                WyrmShareRun.shared.close()
+                WyrmSkinTrial.shared.end()
                 WyrmBadgeStore.shared.reset()
                 WyrmSupportStore.shared.reset()
                 try? await Task.sleep(nanoseconds: 920_000_000)

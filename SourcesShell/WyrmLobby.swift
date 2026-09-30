@@ -53,6 +53,8 @@ struct WyrmReadyRoom: View {
     @State var entering = false
     @State var quickSettings = false
     @State var lastRefusal: UInt64 = 0
+    /// A finished run is kept until the next match starts: Share run.
+    @State private var hasRun = WyrmRunCapture.lastRun != nil
     @FocusState var nameFocused: Bool
     @ObservedObject var keyboard = WyrmKeyboardController.shared
 
@@ -103,6 +105,10 @@ struct WyrmReadyRoom: View {
             keyboard.embedded = true
             nickname = engine.nickname
             lastRefusal = engine.arenaRefusalSequence
+            hasRun = WyrmRunCapture.lastRun != nil
+        }
+        .onReceive(NotificationCenter.default.publisher(for: WyrmRunCapture.didChange)) { _ in
+            hasRun = WyrmRunCapture.lastRun != nil
         }
         .onDisappear {
             nameFocused = false
@@ -190,6 +196,12 @@ struct WyrmReadyRoom: View {
                     // Quick settings is gone from the lobby (OM); Home takes its place.
                     paperButton("Home", "house", width: 112, enabled: !entering) { saveName(); engine.leaveLobby() }
                     Spacer(minLength: 0)
+                    // Share run (OM, 2026-09-30): the last finished run, until the next match.
+                    if hasRun && WyrmTrailsFeature.enabled {
+                        paperButton("Share run", "square.and.arrow.up", width: 124, enabled: !entering && !engine.arenaPlayPending) {
+                            shareRun()
+                        }
+                    }
                     // A blank name is allowed: the arena shows no name (OM).
                     paperButton("Play with AI", "sparkles", width: 128, enabled: !entering && !engine.arenaPlayPending) {
                         saveName(); engine.playOffline(name: nickname)
@@ -228,6 +240,17 @@ struct WyrmReadyRoom: View {
         saveName()
         entering = true
         engine.playOnline(name: nickname, address: engine.arena)
+    }
+
+    /// Share run: the studio opens in portrait over the app (WyrmDesignRoot)
+    /// and the lobby returns Home underneath, as Android leaves the lobby
+    /// for its share route. Close lands on Home, Post on the Trails feed.
+    private func shareRun() {
+        guard let run = WyrmRunCapture.lastRun else { hasRun = false; return }
+        nameFocused = false
+        saveName()
+        WyrmShareRun.shared.open(run)
+        engine.leaveLobby()
     }
 
     private func saveName() {

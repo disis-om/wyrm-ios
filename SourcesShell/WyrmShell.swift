@@ -116,6 +116,13 @@ final class WyrmShellStore: ObservableObject {
             let screen = note.userInfo?["screen"] as? Int ?? 0
             // A match begins: a drop report counts network switches from here.
             if screen == 2 { WyrmNetworkWatch.shared.matchStarted() }
+            // A new run forgets the last one (Share run); the layout editor's
+            // bot arena is not a run.
+            if screen == 2 {
+                MainActor.assumeIsolated {
+                    if self?.layoutEditorActive != true { WyrmRunCapture.runStarted() }
+                }
+            }
             Task { @MainActor in self?.engineScreen = screen }
         }
         NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineArenaPortAvailable"),

@@ -35,6 +35,21 @@ enum WyrmStudioPalette {
         let r = Double((rgb >> 16) & 0xFF), g = Double((rgb >> 8) & 0xFF), b = Double(rgb & 0xFF)
         return (0.299 * r + 0.587 * g + 0.114 * b) > 150 ? 0x111111 : 0xFFFFFF
     }
+    /// The studio's colours and then the theme's own: Share run's backgrounds.
+    static var withTheme: [UInt32] {
+        var list = colours
+        for colour in [ATheme.paper, ATheme.card, ATheme.ink, ATheme.live] {
+            let value = Self.rgb(of: UIColor(colour))
+            if !list.contains(value) { list.append(value) }
+        }
+        return list
+    }
+    static func rgb(of colour: UIColor) -> UInt32 {
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        colour.getRed(&r, green: &g, blue: &b, alpha: &a)
+        func byte(_ v: CGFloat) -> UInt32 { UInt32(min(max((v * 255).rounded(), 0), 255)) }
+        return byte(r) << 16 | byte(g) << 8 | byte(b)
+    }
 }
 
 enum WyrmStudioFont: String, CaseIterable {
@@ -243,9 +258,164 @@ final class WyrmStudioDraft: ObservableObject {
     /// The Free crop's shape, set by dragging the canvas edges.
     @Published var freeRatio: CGFloat = 0.8
 
+    // Share run (OM, 2026-09-30): the studio's share mode. Everything below
+    // is unused for an ordinary trail (`run` nil).
+
+    /// The finished run being shared.
+    @Published var run: WyrmLastRun?
+    /// Screenshot (the death picture behind everything) or Skin (a colour).
+    @Published var shotMode = false
+    @Published var shotScale: CGFloat = 1
+    @Published var shotOffset: CGSize = .zero
+    @Published var stickers: [WyrmStudioSticker] = []
+    /// "Share my skin" on the caption step, on by default (OM).
+    @Published var shareSkin = true
+    /// The player's look when the studio opened: the skin sticker and the
+    /// post's `skin`.
+    let skin: WyrmTrailSkin?
+    /// The Skin tab's textures, for the skin sticker; set by the studio.
+    var textures: WyrmSkinTextureLibrary? {
+        didSet {
+            art = textures.map { WyrmStickerArt(textures: $0) }
+            stickerImages["skin"] = nil
+            // Textures that were already loaded bring no change of their own.
+            objectWillChange.send()
+        }
+    }
+    private(set) var art: WyrmStickerArt?
+    /// The player picked Skin or Screenshot, so a late picture changes nothing.
+    private var modeChosen = false
+    private var seeded = false
+    private var stickerImages: [String: UIImage] = [:]
+
+    init(run: WyrmLastRun? = nil) {
+        skin = run == nil ? nil : WyrmTrailSkin.current()
+        self.run = run
+        if let run {
+            aspect = .portrait
+            shotMode = run.screenshot != nil
+        }
+    }
+
+    var sharing: Bool { run != nil }
+
     var ratio: CGFloat {
         if aspect == .free { return freeRatio }
+        if sharing { return aspect.ratio(for: shotMode ? run?.screenshot : nil) }
         return mode == .canvas ? (aspect == .original ? 0.8 : aspect.ratio(for: nil)) : aspect.ratio(for: image)
+    }
+
+    /// Where the screenshot sits: covering the canvas, then the player's zoom
+    /// and move. It may shrink inside the canvas; the colour shows round it.
+    func shotRect(in size: CGSize) -> CGRect {
+        guard let shot = run?.screenshot, shot.size.width > 0, shot.size.height > 0 else { return CGRect(origin: .zero, size: size) }
+        let fill = max(size.width / shot.size.width, size.height / shot.size.height)
+        let w = shot.size.width * fill * shotScale
+        let h = shot.size.height * fill * shotScale
+        return CGRect(x: (size.width - w) / 2 + shotOffset.width, y: (size.height - h) / 2 + shotOffset.height, width: w, height: h)
+    }
+
+    /// Keeps a piece of the screenshot on the canvas after a move or zoom.
+    func clampShot(in size: CGSize) {
+        let rect = shotRect(in: size)
+        let limitX = max(0, (size.width + rect.width) / 2 - 48)
+        let limitY = max(0, (size.height + rect.height) / 2 - 48)
+        shotOffset = CGSize(width: min(max(shotOffset.width, -limitX), limitX), height: min(max(shotOffset.height, -limitY), limitY))
+    }
+
+    /// Skin or Screenshot. The first switch to Skin brings the skin sticker.
+    func setShotMode(_ on: Bool, canvas size: CGSize) {
+        guard on != shotMode, !on || run?.screenshot != nil else { return }
+        modeChosen = true
+        shotMode = on
+        if !on && !stickers.contains(where: { $0.kind == .skin }) && !skinAdded { addSticker(.skin, in: size) }
+    }
+    private var skinAdded = false
+
+    /// A death picture that landed after the studio opened.
+    func adopt(_ latest: WyrmLastRun?) {
+        guard let latest, latest.screenshot != nil, run?.screenshot == nil, latest.endedAt == run?.endedAt else { return }
+        run = latest
+        if !modeChosen { shotMode = true }
+    }
+
+    /// The first layout: the stats box always, the skin sticker in Skin mode.
+    func seedShare(in size: CGSize) {
+        guard sharing, !seeded, size.width > 0, size.height > 0 else { return }
+        seeded = true
+        if !shotMode { addSticker(.skin, in: size) }
+        addSticker(.stats, in: size)
+    }
+
+    func addSticker(_ kind: WyrmStudioSticker.Kind, in size: CGSize) {
+        guard sharing, !stickers.contains(where: { $0.kind == kind }), size.width > 0 else { return }
+        if kind == .skin { skinAdded = true }
+        var sticker = WyrmStudioSticker(kind: kind, center: CGPoint(x: size.width / 2, y: size.height * (kind == .skin ? 0.42 : 0.78)))
+        let natural = stickerSize(sticker)
+        sticker.scale = min(1, size.width * (kind == .skin ? 0.8 : 0.84) / max(natural.width, 1))
+        withAnimation(.spring(response: 0.36, dampingFraction: 0.78)) { stickers.append(sticker) }
+    }
+
+    func removeSticker(_ id: UUID) { stickers.removeAll { $0.id == id } }
+
+    /// The stats box's look: tap cycles, the strip picks.
+    func setStatsStyle(_ style: Int) {
+        guard let i = stickers.firstIndex(where: { $0.kind == .stats }) else { return }
+        let count = WyrmStatsBox.styles.count
+        stickers[i].style = ((style % count) + count) % count
+    }
+
+    func cycleStatsStyle() {
+        guard let stats = stickers.first(where: { $0.kind == .stats }) else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        setStatsStyle(stats.style + 1)
+    }
+
+    func statsBox(_ style: Int) -> WyrmStatsBox? {
+        guard let run else { return nil }
+        return WyrmStatsBox(style: style, score: run.score, kills: run.kills, seconds: run.seconds)
+    }
+
+    /// A sticker's own size in canvas points, before its scale and rotation.
+    func stickerSize(_ sticker: WyrmStudioSticker) -> CGSize {
+        switch sticker.kind {
+        case .skin: return WyrmSkinSticker.size
+        case .stats: return statsBox(sticker.style)?.size ?? CGSize(width: 200, height: 80)
+        }
+    }
+
+    /// The sticker as the editor shows it; nil while the skin's textures load.
+    func stickerImage(_ sticker: WyrmStudioSticker) -> UIImage? {
+        switch sticker.kind {
+        case .skin:
+            guard let skin, let art, art.textures.ready else { return nil }
+            if let hit = stickerImages["skin"] { return hit }
+            let made = WyrmSkinSticker.image(skin, art: art)
+            stickerImages["skin"] = made
+            return made
+        case .stats:
+            let key = "stats-\(sticker.style)"
+            if let hit = stickerImages[key] { return hit }
+            guard let made = statsBox(sticker.style)?.image() else { return nil }
+            stickerImages[key] = made
+            return made
+        }
+    }
+
+    /// Paints a sticker centred on the context's origin, in canvas points.
+    func drawSticker(_ sticker: WyrmStudioSticker, in cg: CGContext) {
+        switch sticker.kind {
+        case .skin: if let skin, let art { WyrmSkinSticker.draw(skin, art: art, in: cg) }
+        case .stats: statsBox(sticker.style)?.draw(in: cg)
+        }
+    }
+
+    /// Keeps stickers and words on a canvas that changed shape.
+    func keepItems(in size: CGSize) {
+        guard sharing, size.width > 0, size.height > 0 else { return }
+        func inside(_ p: CGPoint) -> CGPoint { CGPoint(x: min(max(p.x, 0), size.width), y: min(max(p.y, 0), size.height)) }
+        for i in stickers.indices where inside(stickers[i].center) != stickers[i].center { stickers[i].center = inside(stickers[i].center) }
+        for i in texts.indices where inside(texts[i].center) != texts[i].center { texts[i].center = inside(texts[i].center) }
     }
 
     func reset(for mode: WyrmStudioMode) {
@@ -285,7 +455,24 @@ final class WyrmStudioDraft: ObservableObject {
         format.opaque = true
         return UIGraphicsImageRenderer(size: out, format: format).image { context in
             let cg = context.cgContext
-            if let image {
+            if sharing {
+                // Share run: the colour, the screenshot over it, then the
+                // stickers; strokes and words go on top as in any trail.
+                WyrmStudioPalette.ui(background).setFill()
+                cg.fill(CGRect(origin: .zero, size: out))
+                if shotMode, let shot = run?.screenshot {
+                    let r = shotRect(in: size)
+                    shot.draw(in: CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k))
+                }
+                for sticker in stickers {
+                    cg.saveGState()
+                    cg.translateBy(x: sticker.center.x * k, y: sticker.center.y * k)
+                    cg.rotate(by: CGFloat(sticker.rotation.radians))
+                    cg.scaleBy(x: sticker.scale * k, y: sticker.scale * k)
+                    drawSticker(sticker, in: cg)
+                    cg.restoreGState()
+                }
+            } else if let image {
                 UIColor.black.setFill()
                 cg.fill(CGRect(origin: .zero, size: out))
                 let r = photoRect(in: size)
@@ -493,11 +680,18 @@ struct WyrmSystemCamera: UIViewControllerRepresentable {
 struct WyrmTrailStudio: View {
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
-    @StateObject private var draft = WyrmStudioDraft()
+    /// Share run: the finished run to share. The studio then opens straight
+    /// in its share editor (no camera, no photos) and `onPosted` replaces
+    /// `close` after Post.
+    let run: WyrmLastRun?
+    let onPosted: (() -> Void)?
+    @StateObject private var draft: WyrmStudioDraft
     @StateObject private var camera = WyrmTrailCamera()
     @StateObject private var gallery = WyrmTrailGallery()
+    /// The skin sticker's textures (shared with the Skin tab while both live).
+    @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
     @ObservedObject private var store = WyrmTrailsStore.shared
-    @State private var step: Step = .pick
+    @State private var step: Step
     @State private var picking = false
     @State private var systemCamera = false
     @State private var loadingPhoto = false
@@ -506,6 +700,16 @@ struct WyrmTrailStudio: View {
     @State private var forward = true
 
     enum Step { case pick, edit, caption }
+
+    init(account: WyrmAccountStore, close: @escaping () -> Void, run: WyrmLastRun? = nil,
+         onPosted: (() -> Void)? = nil) {
+        self.account = account
+        self.close = close
+        self.run = run
+        self.onPosted = onPosted
+        _draft = StateObject(wrappedValue: WyrmStudioDraft(run: run))
+        _step = State(initialValue: run == nil ? .pick : .edit)
+    }
 
     /// One number per page, so a change slides the right way.
     private var page: Int {
@@ -524,6 +728,7 @@ struct WyrmTrailStudio: View {
                 // The mode pill sits here, in one place, for every mode; only
                 // the page under it moves.
                 if step == .pick { modeBar.padding(.bottom, 12) }
+                if step == .edit && draft.sharing { shareModeBar.padding(.bottom, 10) }
                 ZStack {
                     content
                         .id(page)
@@ -539,10 +744,18 @@ struct WyrmTrailStudio: View {
         .onAppear {
             store.token = { [weak account] in account?.sessionToken ?? "" }
             store.resetPosting()
-            camera.start()
-            gallery.load()
+            if draft.sharing {
+                // Share run needs no camera or photos, only the skin's textures.
+                draft.textures = textures
+                textures.prepare()
+                WyrmKeyboardController.shared.embedded = false
+            } else {
+                camera.start()
+                gallery.load()
+            }
         }
         .onDisappear { camera.stop() }
+        .onChange(of: run?.screenshot != nil) { _ in draft.adopt(run) }
         .sheet(isPresented: $picking) {
             WyrmPhotoPicker { picked in
                 picking = false
@@ -563,12 +776,12 @@ struct WyrmTrailStudio: View {
     private var content: some View {
         switch step {
         case .caption: captionStep
-        case .edit: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize)
+        case .edit: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, textures: textures)
         case .pick:
             switch draft.mode {
             case .photo: picker
             case .text: WyrmTextTrailComposer(draft: draft)
-            case .canvas: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize)
+            case .canvas: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, textures: textures)
             }
         }
     }
@@ -585,12 +798,13 @@ struct WyrmTrailStudio: View {
     private var header: some View {
         HStack {
             Button { back() } label: {
-                Image(systemName: step == .pick ? "xmark" : "chevron.left")
+                Image(systemName: step == .pick || (draft.sharing && step == .edit) ? "xmark" : "chevron.left")
                     .font(.system(size: 16, weight: .bold)).frame(width: 38, height: 38)
                     .background(Circle().fill(ATheme.well))
             }.buttonStyle(.plain)
             Spacer()
-            Text(step == .pick ? "New trail" : step == .edit ? "Edit" : "Caption").font(.androidWyrm(16, .bold))
+            Text(step == .pick ? "New trail" : step == .edit ? (draft.sharing ? "Share run" : "Edit") : "Caption")
+                .font(.androidWyrm(16, .bold))
             Spacer()
             actionButton
         }
@@ -603,7 +817,8 @@ struct WyrmTrailStudio: View {
             switch step {
             case .pick: return draft.mode == .text ? !draft.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
                 : draft.mode == .canvas
-            case .edit: return true
+            // Share run waits for the skin sticker's textures before export.
+            case .edit: return !(draft.sharing && draft.stickers.contains(where: { $0.kind == .skin }) && !textures.ready)
             case .caption: return !store.posting.busy
             }
         }()
@@ -630,10 +845,50 @@ struct WyrmTrailStudio: View {
         .padding(.horizontal, 16)
     }
 
+    /// Share run: Skin | Screenshot. Screenshot is off when the run has no picture.
+    private var shareModeBar: some View {
+        let hasShot = draft.run?.screenshot != nil
+        return VStack(spacing: 6) {
+            HStack(spacing: 3) {
+                shareSegment("Skin", selected: !draft.shotMode, enabled: true) {
+                    draft.setShotMode(false, canvas: canvasSize)
+                }
+                shareSegment("Screenshot", selected: draft.shotMode, enabled: hasShot) {
+                    draft.setShotMode(true, canvas: canvasSize)
+                }
+            }
+            .padding(3)
+            .background(Capsule().fill(ATheme.well))
+            if !hasShot {
+                Text("No screenshot for this run").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private func shareSegment(_ label: String, selected: Bool, enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            guard enabled, !selected else { return }
+            UISelectionFeedbackGenerator().selectionChanged()
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { action() }
+        } label: {
+            Text(label).font(.androidWyrm(13.5, .bold))
+                .foregroundColor(selected ? ATheme.onInk : ATheme.ink)
+                .frame(maxWidth: .infinity).frame(height: 32)
+                .background(Capsule().fill(selected ? ATheme.ink : Color.clear))
+                .opacity(enabled ? 1 : 0.4)
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
     private func back() {
         switch step {
         case .pick: close()
         case .edit:
+            // Share run opens on its editor, so back is close.
+            if draft.sharing { close(); return }
             if draft.mode == .photo { draft.image = nil; camera.start() }
             go(.pick)
         case .caption: go(draft.mode == .canvas ? .pick : .edit)
@@ -656,9 +911,12 @@ struct WyrmTrailStudio: View {
     private func post(image: UIImage?) {
         guard !store.posting.busy else { return }
         let caption = draft.caption
+        // Share run: the player's look goes along only with Share my skin on.
+        let share = draft.sharing && draft.shareSkin && draft.skin != nil
+        let skin = share ? draft.skin : nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        Task { _ = await store.post(image: image, caption: caption) }
-        close()
+        Task { _ = await store.post(image: image, caption: caption, skin: skin, shareSkin: share) }
+        if let onPosted { onPosted() } else { close() }
     }
 
     private func open(_ image: UIImage) {
@@ -857,6 +1115,15 @@ private struct WyrmStudioCaption: View {
                 .padding(.horizontal, 14).padding(.top, 8)
                 Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
                     .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.top, 6)
+                if draft.sharing {
+                    // Share run: whether others may try the player's skin from this post.
+                    WSBoolRow(title: "Share my skin",
+                              detail: "Others can try your skin from this post. Turn it off to keep it to yourself.",
+                              on: draft.shareSkin, first: true) { draft.shareSkin = $0 }
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                        .padding(.horizontal, 14).padding(.top, 14)
+                }
             }
         }
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true } }
@@ -875,6 +1142,8 @@ private enum WyrmStudioTool { case none, text, draw, crop }
 private struct WyrmStudioEditor: View {
     @ObservedObject var draft: WyrmStudioDraft
     @Binding var canvasSize: CGSize
+    /// Share run's skin sticker appears once these are ready.
+    @ObservedObject var textures: WyrmSkinTextureLibrary
     @State private var tool: WyrmStudioTool = .none
     @State private var brush: WyrmStudioBrush = .beads
     @State private var inkRGB: UInt32 = 0xF2B84B
@@ -886,6 +1155,14 @@ private struct WyrmStudioEditor: View {
     @State private var dragStart: [UUID: CGPoint] = [:]
     @State private var dragging = false
     @State private var overBin = false
+    // Share run: where a sticker's move, pinch and turn began, and the
+    // screenshot's.
+    @State private var stickerDrag: [UUID: CGPoint] = [:]
+    @State private var stickerZoom: [UUID: CGFloat] = [:]
+    @State private var stickerTurn: [UUID: Angle] = [:]
+    @State private var pinching = false
+    @State private var shotPan: CGSize?
+    @State private var shotZoom: CGFloat?
 
     var body: some View {
         GeometryReader { proxy in
@@ -896,8 +1173,15 @@ private struct WyrmStudioEditor: View {
             let size = CGSize(width: height * draft.ratio, height: height)
             VStack(spacing: 8) {
                 canvas(size, maxWidth: width, maxHeight: maxHeight)
-                    .onAppear { canvasSize = size }
-                    .onChange(of: size) { canvasSize = $0 }
+                    .onAppear {
+                        canvasSize = size
+                        draft.seedShare(in: size)
+                    }
+                    .onChange(of: size) { next in
+                        canvasSize = next
+                        draft.seedShare(in: next)
+                        draft.keepItems(in: next)
+                    }
                 bottom.frame(height: bottomBar)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
@@ -910,7 +1194,33 @@ private struct WyrmStudioEditor: View {
     private func canvas(_ size: CGSize, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
         let bin = CGPoint(x: size.width / 2, y: size.height - 46)
         return ZStack(alignment: .topLeading) {
-            if let image = draft.image {
+            if draft.sharing {
+                // Share run: the colour, the screenshot over it, the stickers.
+                WyrmStudioPalette.color(draft.background)
+                if draft.shotMode, let shot = draft.run?.screenshot {
+                    let rect = draft.shotRect(in: size)
+                    Image(uiImage: shot).resizable()
+                        .frame(width: rect.width, height: rect.height)
+                        .position(x: rect.midX, y: rect.midY)
+                        .allowsHitTesting(false)
+                }
+                ForEach(draft.stickers) { sticker in
+                    let s = draft.stickerSize(sticker)
+                    Group {
+                        if let image = draft.stickerImage(sticker) {
+                            Image(uiImage: image).resizable()
+                        } else {
+                            ProgressView().tint(WyrmStudioPalette.color(WyrmStudioPalette.contrast(draft.background)))
+                        }
+                    }
+                    .frame(width: s.width, height: s.height)
+                    .contentShape(Rectangle())
+                    .scaleEffect(sticker.scale).rotationEffect(sticker.rotation)
+                    .position(sticker.center)
+                    .gesture(tool == .none ? stickerGesture(sticker.id, size, bin: bin) : nil)
+                    .onTapGesture { if tool == .none && sticker.kind == .stats { draft.cycleStatsStyle() } }
+                }
+            } else if let image = draft.image {
                 let rect = draft.photoRect(in: size)
                 Color.black
                 Image(uiImage: image).resizable()
@@ -961,6 +1271,7 @@ private struct WyrmStudioEditor: View {
         .contentShape(Rectangle())
         .gesture(tool == .draw ? drawGesture(size) : nil)
         .simultaneousGesture((tool == .none || tool == .crop) && draft.image != nil ? photoGesture(size) : nil)
+        .simultaneousGesture((tool == .none || tool == .crop) && draft.sharing && draft.shotMode ? shotGesture(size) : nil)
         .overlay(alignment: .topTrailing) { rail }
         .overlay(alignment: .top) { if tool == .draw { drawBar } }
         .overlay(alignment: .trailing) { if tool == .draw { inkColumn } }
@@ -972,7 +1283,8 @@ private struct WyrmStudioEditor: View {
         if tool == .none && !dragging {
             VStack(spacing: 10) {
                 WyrmStudioRoundButton(text: "Aa") {
-                    let rgb: UInt32 = draft.image == nil ? WyrmStudioPalette.contrast(draft.background) : 0xFFFFFF
+                    let rgb: UInt32 = draft.image == nil && !(draft.sharing && draft.shotMode)
+                        ? WyrmStudioPalette.contrast(draft.background) : 0xFFFFFF
                     editing = WyrmStudioText(text: "", rgb: rgb, font: .sans, filled: false,
                                              center: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
                     tool = .text
@@ -981,7 +1293,8 @@ private struct WyrmStudioEditor: View {
                     UISelectionFeedbackGenerator().selectionChanged()
                     tool = .draw
                 }
-                if draft.image != nil { WyrmStudioRoundButton(symbol: "crop") { tool = .crop } }
+                // Share run changes its canvas shape in both of its modes.
+                if draft.image != nil || draft.sharing { WyrmStudioRoundButton(symbol: "crop") { tool = .crop } }
                 if !draft.strokes.isEmpty { WyrmStudioRoundButton(symbol: "arrow.uturn.backward") { draft.strokes.removeLast() } }
             }
             .padding(10)
@@ -1034,6 +1347,8 @@ private struct WyrmStudioEditor: View {
                 }
                 WyrmStudioChip(label: "Done", selected: true) { tool = .none }
             }
+        } else if draft.sharing && tool == .none {
+            shareBottom
         } else if draft.image == nil && tool == .none {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
@@ -1051,7 +1366,112 @@ private struct WyrmStudioEditor: View {
         }
     }
 
+    /// Share run: "+ Skin" / "+ Stats" when binned, the stats box's looks,
+    /// and the background colours (the studio's and the theme's).
+    private var shareBottom: some View {
+        let stats = draft.stickers.first { $0.kind == .stats }
+        return VStack(spacing: 6) {
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    if !draft.stickers.contains(where: { $0.kind == .skin }) {
+                        WyrmStudioChip(label: "+ Skin", selected: false) { draft.addSticker(.skin, in: canvasSize) }
+                    }
+                    if let stats {
+                        ForEach(WyrmStatsBox.styles.indices, id: \.self) { index in
+                            WyrmStudioChip(label: WyrmStatsBox.styles[index], selected: stats.style == index) {
+                                UISelectionFeedbackGenerator().selectionChanged()
+                                draft.setStatsStyle(index)
+                            }
+                        }
+                    } else {
+                        WyrmStudioChip(label: "+ Stats", selected: false) { draft.addSticker(.stats, in: canvasSize) }
+                    }
+                }
+                .padding(.horizontal, 16)
+            }
+            WyrmStudioSwatches(selected: draft.background, colours: WyrmStudioPalette.withTheme) { draft.background = $0 }
+        }
+    }
+
     // MARK: Gestures
+
+    /// Share run: a sticker moves, pinches and turns like words do, and is
+    /// thrown into the bin to remove it.
+    private func stickerGesture(_ id: UUID, _ size: CGSize, bin: CGPoint) -> some Gesture {
+        SimultaneousGesture(
+            DragGesture(minimumDistance: 6)
+                .onChanged { value in
+                    guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
+                    let start = stickerDrag[id] ?? draft.stickers[i].center
+                    if stickerDrag[id] == nil { stickerDrag[id] = start }
+                    draft.stickers[i].center = CGPoint(x: min(max(start.x + value.translation.width, 0), size.width),
+                                                       y: min(max(start.y + value.translation.height, 0), size.height))
+                    if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
+                    let near = hypot(draft.stickers[i].center.x - bin.x, draft.stickers[i].center.y - bin.y) < 46
+                    if near != overBin {
+                        overBin = near
+                        if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+                    }
+                }
+                .onEnded { _ in
+                    if overBin { withAnimation(.easeOut(duration: 0.2)) { draft.removeSticker(id) } }
+                    stickerDrag[id] = nil
+                    withAnimation(.easeOut(duration: 0.15)) { dragging = false }
+                    overBin = false
+                },
+            SimultaneousGesture(
+                MagnificationGesture()
+                    .onChanged { value in
+                        guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
+                        let start = stickerZoom[id] ?? draft.stickers[i].scale
+                        if stickerZoom[id] == nil { stickerZoom[id] = start }
+                        pinching = true
+                        draft.stickers[i].scale = min(max(start * value, 0.3), 5)
+                    }
+                    .onEnded { _ in
+                        stickerZoom[id] = nil
+                        pinching = false
+                    },
+                RotationGesture()
+                    .onChanged { value in
+                        guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
+                        let start = stickerTurn[id] ?? draft.stickers[i].rotation
+                        if stickerTurn[id] == nil { stickerTurn[id] = start }
+                        pinching = true
+                        draft.stickers[i].rotation = .radians(start.radians + value.radians)
+                    }
+                    .onEnded { _ in
+                        stickerTurn[id] = nil
+                        pinching = false
+                    }
+            )
+        )
+    }
+
+    /// Share run's screenshot: dragged and pinched behind the stickers, free
+    /// to shrink inside the canvas (the colour shows round it).
+    private func shotGesture(_ size: CGSize) -> some Gesture {
+        SimultaneousGesture(
+            DragGesture()
+                .onChanged { value in
+                    guard !dragging, !pinching else { return }
+                    let start = shotPan ?? draft.shotOffset
+                    if shotPan == nil { shotPan = start }
+                    draft.shotOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
+                    draft.clampShot(in: size)
+                }
+                .onEnded { _ in shotPan = nil },
+            MagnificationGesture()
+                .onChanged { value in
+                    guard !dragging, !pinching else { return }
+                    let start = shotZoom ?? draft.shotScale
+                    if shotZoom == nil { shotZoom = start }
+                    draft.shotScale = min(max(start * value, 0.3), 5)
+                    draft.clampShot(in: size)
+                }
+                .onEnded { _ in shotZoom = nil }
+        )
+    }
 
     private func drawGesture(_ size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .local)
@@ -1188,11 +1608,12 @@ struct WyrmStudioChip: View {
 
 struct WyrmStudioSwatches: View {
     let selected: UInt32
+    var colours: [UInt32] = WyrmStudioPalette.colours
     let pick: (UInt32) -> Void
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 9) {
-                ForEach(WyrmStudioPalette.colours, id: \.self) { rgb in
+                ForEach(colours, id: \.self) { rgb in
                     Button { UISelectionFeedbackGenerator().selectionChanged(); pick(rgb) } label: {
                         Circle().fill(WyrmStudioPalette.color(rgb)).frame(width: 28, height: 28)
                             .overlay(Circle().stroke(Color.white.opacity(0.4), lineWidth: 1))

@@ -10,6 +10,9 @@ struct WyrmDesignMain: View {
     @ObservedObject private var updates = WyrmUpdateStore.shared
     /// Replies from Wyrm the player has not opened: the Settings tab's badge.
     @ObservedObject private var support = WyrmSupportStore.shared
+    /// Try this skin opens the Skin tab; a Share run post opens the feed.
+    @ObservedObject private var trial = WyrmSkinTrial.shared
+    @ObservedObject private var shareRun = WyrmShareRun.shared
     @State private var tab: WyrmDesignTab
     @State private var routes: [WyrmDesignRoute]
     /// iOS has no push for Wyrm yet, so likes, replies and answers arrive as
@@ -119,7 +122,21 @@ struct WyrmDesignMain: View {
         }
         // Where the player is, for a crash or problem report.
         .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
-        .onChange(of: tab) { value in if routes.isEmpty { WyrmCrashWatch.shared.screen = value.rawValue } }
+        .onChange(of: tab) { value in
+            if routes.isEmpty { WyrmCrashWatch.shared.screen = value.rawValue }
+            // Leaving the Skin tab without Wear drops a tried skin.
+            if value != .skin { trial.end() }
+        }
+        .onChange(of: trial.request) { _ in
+            withAnimation(.easeOut(duration: 0.2)) { routes.removeAll() }
+            tab = .skin
+        }
+        .onChange(of: shareRun.trailsRequest) { _ in
+            // Posted from Share run: the feed, where the new trail is landing.
+            routes.removeAll()
+            tab = .social
+            open(.trails)
+        }
         .onChange(of: engine.toast) { value in
             guard !value.isEmpty else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 2.2) {

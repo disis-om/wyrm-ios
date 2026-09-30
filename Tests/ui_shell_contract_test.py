@@ -29,6 +29,8 @@ KEYBOARD = (ROOT / "SourcesShell" / "WyrmKeyboard.swift").read_text(encoding="ut
 CHAT = (ROOT / "SourcesShell" / "WyrmChatUI.swift").read_text(encoding="utf-8")
 SEARCH = (ROOT / "SourcesShell" / "WyrmSettingsSearch.swift").read_text(encoding="utf-8")
 SOCIAL = (ROOT / "SourcesShell" / "WyrmSocialExtras.swift").read_text(encoding="utf-8")
+RUN_CAPTURE = (ROOT / "SourcesShell" / "WyrmRunCapture.swift").read_text(encoding="utf-8")
+RUN_CAPTURE_C = (ROOT / "SourcesOriginal" / "AppleRunCapture.inc").read_text(encoding="utf-8")
 
 
 checks = {
@@ -71,6 +73,14 @@ checks = {
     "tab pill rests plain and lifts into clear glass": "Glass.clear.interactive()" in COMPONENTS and ".opacity(lifted ? 0 : 1)" in COMPONENTS,
     "finished runs reach /v1/me/stats through a durable outbox": "WyrmIOSRecordFinishedRun(env->usr->usrs.score" in PREPARE
         and "/v1/me/stats" in SYNC and "eventId" in SYNC and "wyrm.ios.runs.pending" in SYNC,
+    "the last run keeps its length and a death-frame screenshot": "env->usr->usrs.play_time" in PREPARE
+        and "wyrm_capture_record(context);" in PREPARE and "wyrm_capture_harvest(context);" in PREPARE
+        and "AppleRunCapture.inc" in PREPARE and "vkGetFenceStatus" in RUN_CAPTURE_C
+        and "vkWaitForFences" not in RUN_CAPTURE_C and "VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0" in RUN_CAPTURE_C
+        and "parts.count == 2 || parts.count == 3" in SYNC and "WyrmRunCapture.record(" in SYNC
+        and "WyrmRunCapture.runStarted()" in LEGACY
+        and 'Notification.Name("WyrmRunCaptureChanged")' in RUN_CAPTURE
+        and "static var lastRun: WyrmLastRun?" in RUN_CAPTURE and "let screenshot: UIImage?" in RUN_CAPTURE,
     "local totals reconcile every five hours": "/v1/me/stats/reconcile" in SYNC and "5 * 3600" in SYNC,
     "custom skins publish, heartbeat, clear and look up": all(s in SYNC for s in ('"/v1/arena/skin", method: "POST"',
         '"/v1/arena/skin", method: "DELETE"', '"/v1/arena/skins"', "60_000_000_000")) and "WyrmIOSArenaSyncPoll(env);" in PREPARE,

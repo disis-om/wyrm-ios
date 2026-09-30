@@ -363,6 +363,78 @@ def apply_air_skin_render(text):
                                   : (vec4s){{1, 1, 1, a}}});''', 1)
     return text[:start] + chunk + text[end:]
 
+
+# "Share this run" (OM, 2026-09-30): a one-frame swapchain readback when a run
+# is recorded. SourcesOriginal/AppleRunCapture.inc is appended to tcontext.c;
+# the frame path gains five calls and none of them waits on the GPU.
+RUN_CAPTURE_PROTOTYPES = r'''#include "tcontext.h"
+
+/* Wyrm iOS run screenshots; defined in AppleRunCapture.inc (appended). */
+static VkImageUsageFlags wyrm_capture_usage(tcontext* context,
+                                            VkImageUsageFlags supported);
+static void wyrm_capture_refused(VkResult result);
+static void wyrm_capture_record(tcontext* context);
+static void wyrm_capture_submitted(tcontext* context, bool submitted);
+static void wyrm_capture_harvest(tcontext* context);
+static void wyrm_capture_release(tcontext* context);
+'''
+
+
+def apply_run_capture(text):
+    def once(old, new):
+        nonlocal text
+        if text.count(old) != 1:
+            raise SystemExit(f"run capture: anchor not unique in tcontext.c: {old[:60]!r}")
+        text = text.replace(old, new, 1)
+
+    once('#include "tcontext.h"\n', RUN_CAPTURE_PROTOTYPES)
+    # The swapchain adds TRANSFER_SRC only when the surface offers it, and is
+    # built again without it if the driver still refuses: a screenshot must
+    # never cost the game its swapchain.
+    once('''  VkResult result = vkCreateSwapchainKHR(
+      context->device,
+      &(VkSwapchainCreateInfoKHR){''',
+         '''  VkSwapchainCreateInfoKHR wyrm_swapchain_info = (VkSwapchainCreateInfoKHR){''')
+    once('          .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,',
+         '''          .imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                        wyrm_capture_usage(context, capabilities.supportedUsageFlags),''')
+    once('''          .oldSwapchain = context->old_swapchain},
+      NULL, &context->swapchain);''',
+         '''          .oldSwapchain = context->old_swapchain};
+  VkResult result = vkCreateSwapchainKHR(context->device, &wyrm_swapchain_info,
+                                         NULL, &context->swapchain);
+  if (result != VK_SUCCESS &&
+      (wyrm_swapchain_info.imageUsage & VK_IMAGE_USAGE_TRANSFER_SRC_BIT)) {
+    wyrm_capture_refused(result);
+    wyrm_swapchain_info.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    /* The failed call retired the old swapchain, which may not be passed
+       again. */
+    wyrm_swapchain_info.oldSwapchain = VK_NULL_HANDLE;
+    context->swapchain = VK_NULL_HANDLE;
+    result = vkCreateSwapchainKHR(context->device, &wyrm_swapchain_info, NULL,
+                                  &context->swapchain);
+  }''')
+    # A finished copy is read once its frame's fence has signalled; checked
+    # after this slot's own wait, before its reset.
+    once('  vkWaitForFences(context->device, 1, &fr->wait_fence, VK_TRUE, UINT64_MAX);\n',
+         '  vkWaitForFences(context->device, 1, &fr->wait_fence, VK_TRUE, UINT64_MAX);\n'
+         '  wyrm_capture_harvest(context);\n')
+    # The copy is recorded after the render pass, before recording ends.
+    once('''  vkCmdEndRenderPass(fr->cmd);
+  vkEndCommandBuffer(fr->cmd);''',
+         '''  vkCmdEndRenderPass(fr->cmd);
+  wyrm_capture_record(context);
+  vkEndCommandBuffer(fr->cmd);''')
+    once('''      fr->wait_fence);
+  if (submit_result != VK_SUCCESS) {''',
+         '''      fr->wait_fence);
+  wyrm_capture_submitted(context, submit_result == VK_SUCCESS);
+  if (submit_result != VK_SUCCESS) {''')
+    once('void tcontext_destroy(tcontext* context) {\n',
+         'void tcontext_destroy(tcontext* context) {\n  wyrm_capture_release(context);\n')
+    return text + (ROOT / 'SourcesOriginal' / 'AppleRunCapture.inc').read_text(encoding="utf-8")
+
+
 for path in sorted(OUTPUT.rglob("*")):
     if path.suffix not in (".c", ".cpp", ".h"):
         continue
@@ -421,9 +493,12 @@ for path in sorted(OUTPUT.rglob("*")):
             text = text[:start] + text[end:]
         for name, body in {
             # The run receipt goes to SwiftUI's durable outbox, which posts it
-            # to /v1/me/stats exactly as Android's Kotlin outbox does.
-             'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills);
-  WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills);''',
+            # to /v1/me/stats exactly as Android's Kotlin outbox does. It also
+            # carries the life's length and asks for the death-frame screenshot
+            # ("Share this run", 2026-09-30; Android: recordRunFromNative(IID)V).
+             'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills, double play_time);
+  WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills,
+                           env->usr->usrs.play_time);''',
              'android_home_set_screen': '(void)screen;',
              'android_home_set_arena_port_available': '(void)available;',
              'android_home_publish_state': '(void)env_ptr;',
@@ -745,6 +820,7 @@ for path in sorted(OUTPUT.rglob("*")):
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('vkCreateInstance(', 'WyrmIOSCreateInstance(')
         text = text.replace('vkCreateDevice(', 'WyrmIOSCreateDevice(')
+        text = apply_run_capture(text)
     if text != original:
         path.write_text(text, encoding="utf-8")
         changed.append(relative)

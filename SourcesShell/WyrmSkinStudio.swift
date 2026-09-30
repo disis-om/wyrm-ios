@@ -26,6 +26,17 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     private(set) var backgrounds: [Int: CGImage] = [:]
     private var loading = false
 
+    /// One library while any screen holds it (the Skin tab, Share run's skin
+    /// sticker): the 8K atlas is decoded once and freed with its last holder.
+    private static weak var live: WyrmSkinTextureLibrary? = nil
+
+    static func acquire() -> WyrmSkinTextureLibrary {
+        if let live { return live }
+        let made = WyrmSkinTextureLibrary()
+        live = made
+        return made
+    }
+
     func prepare() {
         guard !ready, !loading else { return }
         loading = true
@@ -254,7 +265,9 @@ private let wyrmTagsDisabled = true
 
 struct WyrmSkinRoot: View {
     @ObservedObject var engine: WyrmShellStore
-    @StateObject private var textures = WyrmSkinTextureLibrary()
+    @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
+    /// Try this skin: a trail's look shown as a draft until Wear.
+    @ObservedObject private var trial = WyrmSkinTrial.shared
     @State private var section: WyrmSkinStudioSection
     @State private var editingPattern = false
     @State private var lookTab = 0
@@ -335,30 +348,46 @@ struct WyrmSkinRoot: View {
     var body: some View {
         VStack(spacing: 0) {
             WyrmScreenHeader(kicker: "WYRM", title: "Skin")
-            WyrmSkinPreview(textures: textures, groups: previewGroups, colors: previewColors,
-                            preset: preset, custom: customEnabled,
-                            accessoryID: accessory, tagID: tag,
-                            backgroundID: background, chain: chain,
-                            swing: swing, tagScale: tagScale)
-                .frame(height: 218)
-                .accessibilityElement(children: .ignore)
-                .accessibilityLabel("Live native preview of the selected Wyrm skin")
+            if let draft = trial.skin {
+                // Try this skin: the draft, never the saved skin, until Wear.
+                WyrmSkinPreview(textures: textures, groups: draft.wornGroups, colors: draft.wornColors,
+                                preset: draft.preset, custom: draft.wearsPattern,
+                                accessoryID: draft.wornAccessory, tagID: tag,
+                                backgroundID: background, chain: chain,
+                                swing: swing, tagScale: tagScale, trialLook: draft.look)
+                    .frame(height: 218)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Preview of the skin you are trying")
+            } else {
+                WyrmSkinPreview(textures: textures, groups: previewGroups, colors: previewColors,
+                                preset: preset, custom: customEnabled,
+                                accessoryID: accessory, tagID: tag,
+                                backgroundID: background, chain: chain,
+                                swing: swing, tagScale: tagScale)
+                    .frame(height: 218)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Live native preview of the selected Wyrm skin")
+            }
 
             Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
 
             ScrollView(showsIndicators: false) {
                 Group {
-                    switch section {
-                    case .overview: overview
-                    case .presets: presetsPanel
-                    case .pattern: patternPanel
-                    case .accessories: accessoriesPanel
-                    case .tags: tagsPanel
-                    case .background: backgroundsPanel
-                    case .wyrmAccessories: wyrmAccessoriesPanel
+                    if let draft = trial.skin {
+                        trialPanel(draft)
+                    } else {
+                        switch section {
+                        case .overview: overview
+                        case .presets: presetsPanel
+                        case .pattern: patternPanel
+                        case .accessories: accessoriesPanel
+                        case .tags: tagsPanel
+                        case .background: backgroundsPanel
+                        case .wyrmAccessories: wyrmAccessoriesPanel
+                        }
                     }
                 }
-                .id(section)
+                .id(trial.skin == nil ? section.rawValue : "trial")
                 .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
                 .padding(.bottom, 108)
             }
@@ -375,7 +404,94 @@ struct WyrmSkinRoot: View {
         }
         .onDisappear {
             if editingPattern { editingPattern = false; apply() }
+            // Leaving the Skin tab without Wear is Back to mine.
+            trial.end()
         }
+        .onChange(of: trial.request) { _ in
+            // A new Try this skin: the player's own pattern edit is committed
+            // first, then the draft shows on the wardrobe page.
+            if editingPattern { editingPattern = false; apply() }
+            section = .overview
+        }
+    }
+
+    // MARK: Try this skin
+
+    /// The banner and what the draft wears. The Pattern code shows the
+    /// draft's code; nothing here saves or reaches the engine until Wear.
+    private func trialPanel(_ draft: WyrmTrailSkin) -> some View {
+        let author = trial.author.trimmingCharacters(in: .whitespaces).isEmpty ? "Wyrm player" : trial.author
+        let beads = draft.pattern.groups.count
+        let worn = [draft.look.hair, draft.look.ears, draft.look.glasses].filter { $0 >= 0 }.count
+        return VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 10) {
+                    Image(systemName: "paintpalette").font(.system(size: 15, weight: .semibold))
+                    Text("Trying \(author)'s skin").font(.androidWyrm(16, .bold)).lineLimit(2)
+                    Spacer(minLength: 0)
+                }
+                HStack(spacing: 10) {
+                    Button { backToMine() } label: {
+                        Text("Back to mine").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink)
+                            .frame(maxWidth: .infinity).frame(height: 42)
+                            .background(Capsule().fill(ATheme.well))
+                    }.buttonStyle(WSPressStyle())
+                    Button { wear(draft) } label: {
+                        Text("Wear").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.onInk)
+                            .frame(maxWidth: .infinity).frame(height: 42)
+                            .background(Capsule().fill(ATheme.ink))
+                    }.buttonStyle(WSPressStyle())
+                }
+            }
+            .padding(16)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .padding(.horizontal, 16).padding(.top, 14)
+
+            WyrmSectionLabel("Pattern")
+            // The same field as the Pattern page, holding the draft's code.
+            TextField("Type or paste a skin code", text: .constant(draft.wearsPattern ? draft.code : ""))
+                .font(.system(size: 15, design: .monospaced))
+                .textInputAutocapitalization(.never).disableAutocorrection(true)
+                .disabled(true)
+                .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
+                .padding(.horizontal, 20)
+            // Read-only rows (no action): what the draft wears.
+            WyrmPaperCard {
+                WyrmListRow(title: WyrmSkinStudioSection.pattern.title,
+                            value: draft.wearsPattern ? "Custom · \(beads) beads" : String(format: "Preset %02d", draft.preset + 1))
+                WyrmListRow(title: WyrmSkinStudioSection.accessories.title,
+                            value: draft.wornAccessory < 0 ? "None" : String(format: "%02d", draft.wornAccessory + 1))
+                WyrmListRow(title: WyrmSkinStudioSection.wyrmAccessories.title, value: worn == 0 ? "None" : "\(worn) on")
+            }
+            .padding(.top, 12)
+        }
+    }
+
+    private func backToMine() {
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeOut(duration: 0.2)) { trial.end() }
+    }
+
+    /// Wear: the draft becomes the player's skin through the same saves and
+    /// engine call the editor uses, Wyrm looks included.
+    private func wear(_ draft: WyrmTrailSkin) {
+        let worn = draft.pattern
+        if WyrmSkinCatalog.presets.indices.contains(draft.preset) { preset = draft.preset }
+        if !worn.groups.isEmpty {
+            pattern = worn.groups.map(String.init).joined(separator: ",")
+            patternColors = worn.colors.map { String($0, radix: 16) }.joined(separator: ",")
+            customEnabled = true
+        } else {
+            customEnabled = false
+        }
+        accessory = draft.wornAccessory
+        look.wear(hair: draft.look.hair, hairTone: draft.look.hairTone, ears: draft.look.ears, glasses: draft.look.glasses)
+        editingPattern = false
+        apply()
+        UINotificationFeedbackGenerator().notificationOccurred(.success)
+        withAnimation(.easeOut(duration: 0.2)) { trial.end() }
+        WyrmDiagnostics.record("tried skin worn custom=\(customEnabled) accessory=\(accessory)", category: "SKIN")
     }
 
     private var overview: some View {
@@ -733,6 +849,8 @@ private struct WyrmSkinPreview: View {
     let chain: Double
     let swing: Double
     let tagScale: Double
+    /// Try this skin: the draft's Wyrm looks instead of the saved ones.
+    var trialLook: WyrmTrailSkin.Look? = nil
     @ObservedObject var look = WyrmLookStore.shared
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -772,9 +890,12 @@ private struct WyrmSkinPreview: View {
                         .position(x: head.x + CGFloat(item.offset) * 6 * unit, y: head.y)
                 }
                 // Wyrm looks, placed as AppleWyrmLook.c places them (hair at rest).
+                let worn = trialLook
                 Canvas { context, _ in
-                    WyrmLook.draw(in: context, cells: textures.looks, head: head, r: scale / 2, hair: look.hair,
-                                  hairRGB: look.hairRGB, ears: look.ears, glasses: look.glasses)
+                    WyrmLook.draw(in: context, cells: textures.looks, head: head, r: scale / 2,
+                                  hair: worn?.hair ?? look.hair,
+                                  hairRGB: worn.map { WyrmLook.hairTone($0.hairTone) } ?? look.hairRGB,
+                                  ears: worn?.ears ?? look.ears, glasses: worn?.glasses ?? look.glasses)
                 }
                 .allowsHitTesting(false)
                 if !wyrmTagsDisabled,

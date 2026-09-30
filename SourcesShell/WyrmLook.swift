@@ -134,6 +134,16 @@ final class WyrmLookStore: ObservableObject {
     func pickEars(_ v: Int) { ears = WyrmLook.earNames.indices.contains(v) ? v : -1; save() }
     func pickGlasses(_ v: Int) { glasses = WyrmLook.glassesNames.indices.contains(v) ? v : -1; save() }
 
+    /// Try this skin's Wear: a whole look at once, saved and handed to the
+    /// engine once.
+    func wear(hair: Int, hairTone: Double, ears: Int, glasses: Int) {
+        self.hair = WyrmLook.hairNames.indices.contains(hair) ? hair : -1
+        if hairTone.isFinite { self.hairTone = min(max(hairTone, 0), 1) }
+        self.ears = WyrmLook.earNames.indices.contains(ears) ? ears : -1
+        self.glasses = WyrmLook.glassesNames.indices.contains(glasses) ? glasses : -1
+        save()
+    }
+
     private func save() {
         let d = UserDefaults.standard
         d.set(hair, forKey: "wyrm.ios.look.hair")
