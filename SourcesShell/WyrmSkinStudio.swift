@@ -369,6 +369,8 @@ struct WyrmSkinRoot: View {
                     .accessibilityLabel("Live native preview of the selected Wyrm skin")
                     // Share this skin: bottom left of the preview, above the rule (OM).
                     .overlay(shareSkinButton.padding(.leading, 16).padding(.bottom, 10), alignment: .bottomLeading)
+                    // Arena background open: "Adjust size" sits on the rule, top right (OM, 2026-10-01).
+                    .overlay(adjustSizeButton.padding(.trailing, 20).offset(y: 17), alignment: .bottomTrailing)
             }
 
             Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
@@ -516,6 +518,27 @@ struct WyrmSkinRoot: View {
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
             }
+        }
+    }
+
+    @ViewBuilder private var adjustSizeButton: some View {
+        if section == .background {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                engine.openBackgroundEditor()
+            } label: {
+                HStack(spacing: 7) {
+                    Image(systemName: "arrow.up.left.and.arrow.down.right").font(.system(size: 12, weight: .semibold))
+                    Text("Adjust size").font(.androidWyrm(12.5, .bold))
+                }
+                .foregroundColor(ATheme.ink)
+                .padding(.horizontal, 13).frame(height: 34)
+                .background(Capsule().fill(ATheme.card))
+                .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+                .contentShape(Capsule())
+            }
+            .buttonStyle(WSPressStyle())
+            .accessibilityLabel("Adjust arena background size")
         }
     }
 

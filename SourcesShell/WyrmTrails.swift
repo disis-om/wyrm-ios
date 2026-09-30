@@ -1314,6 +1314,8 @@ struct WyrmTrailToast: View {
 struct WyrmTrailsTeaser: View {
     @ObservedObject var account: WyrmAccountStore
     let open: (WyrmDesignRoute) -> Void
+    /// Unread likes and replies on your trails (the badge trail, OM 2026-10-01).
+    var badge = 0
     @ObservedObject private var store = WyrmTrailsStore.shared
 
     var body: some View {
@@ -1322,10 +1324,11 @@ struct WyrmTrailsTeaser: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Trails").font(.wyrmDisplay(24)).foregroundColor(ATheme.ink)
-                        Text(store.trails.isEmpty ? "Show off your skins, kills and best moments." : "New from the Wyrm community")
-                            .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute)
+                        Text(badge > 0 ? "\(badge) new on your trails" : store.trails.isEmpty ? "Show off your skins, kills and best moments." : "New from the Wyrm community")
+                            .font(.androidWyrm(12.5)).foregroundColor(badge > 0 ? ATheme.badge : ATheme.mute)
                     }
                     Spacer()
+                    WyrmCountBadge(count: badge)
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundColor(ATheme.chevron)
                 }
                 HStack(spacing: 8) {

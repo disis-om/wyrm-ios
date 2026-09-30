@@ -229,6 +229,18 @@ final class WyrmThemeStore: ObservableObject {
         palette = theme.palette.withIntensity(intensity)
     }
 
+    /// After a log in or log out rewrote the defaults (WyrmAccountSync).
+    func reloadFromDefaults() {
+        let defaults = UserDefaults.standard
+        let stored = defaults.string(forKey: Self.themeKey)?.lowercased() ?? "paper"
+        let next = WyrmThemeID(rawValue: stored) ?? .paper
+        let level = defaults.object(forKey: Self.intensityKey) as? Double ?? 0.5
+        theme = next
+        intensity = level
+        committedIntensity = level
+        palette = next.palette.withIntensity(level)
+    }
+
     /// Changing appearance rebuilds the whole shell (see `WyrmDesignMain`),
     /// so the key doubles as the identity that forces that rebuild.
     var identity: String { "\(theme.rawValue)-\(Int((committedIntensity * 1000).rounded()))" }

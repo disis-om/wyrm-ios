@@ -19,7 +19,6 @@ struct WyrmSettingsHub: View {
     @ObservedObject var support = WyrmSupportStore.shared
     let open: (WyrmDesignRoute) -> Void
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
-    @AppStorage(WyrmBackup.lastKey) var lastBackup = ""
     @State var confirming = false
     @ObservedObject var search = WyrmSettingsFocus.shared
 
@@ -58,12 +57,10 @@ struct WyrmSettingsHub: View {
                 ])
                 group("Accessibility", [("Themes", "Paper, dark and colour appearances", theme.theme.displayName, .themes)])
                 group("This device", [(
-                    "Backup & version",
-                    (lastBackup.isEmpty ? "Skins, controls, settings and theme" : "Last backup \(lastBackup)")
-                        + " · Wyrm \(WyrmBuild.version)"
-                        + (engine.settingsVersion.isEmpty ? "" : " · format v\(engine.settingsVersion)"),
+                    "Updates & version",
+                    "Wyrm \(WyrmBuild.version) · your settings are saved to your account",
                     "", .backup)])
-                group("Help & feedback", [("Help & feedback", "Report a problem, suggest an idea, crash reports", support.unseenReplies > 0 ? "\(support.unseenReplies) new" : "", .help)])
+                group("Help & feedback", [("Help & feedback", "Report a problem, suggest an idea, crash reports", "", .help)])
                 group("About", [("About Wyrm", "The story, the maker, and how to support", "", .about)])
                 }
 
@@ -78,6 +75,13 @@ struct WyrmSettingsHub: View {
                 WSCard {
                     WSActionRow(title: confirming ? "Tap again to reset everything" : "Reset everything to defaults", first: true, danger: true) {
                         if confirming { confirming = false; engine.reset(1, message: "All settings reset") } else { confirming = true }
+                    }
+                }
+                // Log out (OM, 2026-10-01): the very bottom of Settings; asks first.
+                Spacer().frame(height: 22)
+                WSCard {
+                    WSActionRow(title: "Log out", first: true, danger: true) {
+                        WyrmAccountSync.shared.askingLogOut = true
                     }
                 }
                 Text(engine.settingsVersion.isEmpty ? "Wyrm" : "Wyrm · settings format v\(engine.settingsVersion)")
@@ -116,6 +120,11 @@ struct WyrmSettingsHub: View {
                                 if !row.2.isEmpty {
                                     Text(row.2).font(.androidWyrm(14)).foregroundColor(ATheme.quiet).lineLimit(1)
                                     Spacer().frame(width: 6)
+                                }
+                                // The Settings tab's count, on the row that leads to it.
+                                if row.3 == .help && support.unseenReplies > 0 {
+                                    WyrmCountBadge(count: support.unseenReplies)
+                                    Spacer().frame(width: 8)
                                 }
                                 Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron)
                             }
@@ -584,12 +593,21 @@ struct WyrmModesPage: View {
         let dot = rows.first { local($0) == "show_crosshair" }
         let dotSize = rows.first { local($0) == "head_dot_size" }
         let dotColour = rows.first { local($0) == "head_dot_color" }
-        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) }
+        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" }
         let laser = ["general.laser_thickness", "general.laser_color"].compactMap { engine.setting($0) }
 
         VStack(alignment: .leading, spacing: 0) {
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
+
+            // The size slider moved into a live editor over the arena (OM, 2026-10-01).
+            WSSectionLabel("Arena background")
+            WSCard {
+                WSValueRow(title: "Adjust arena background size",
+                           value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
+                           first: true) { engine.openBackgroundEditor() }
+                    .wyrmSettingAnchor("app.bg-size")
+            }
 
             WSSectionLabel("Joystick guide")
             WSCard {
@@ -659,7 +677,17 @@ struct WyrmFoodPage: View {
     var parent = "Settings"
     let close: () -> Void
     @State var mode = 0
-    @State var advanced = false
+
+    /*
+     * Settings › Food (redesigned, OM 2026-10-01; Android: SettingsFoodScreen.kt):
+     * a live arena preview drawn by the settings below, a grid of shape tiles
+     * with each food glowing as in a match, and one Look card for size, colour
+     * and motion. Only drawing changes: position, value and eating stay original.
+     */
+    static let hues: [Color] = [0xC080FF, 0x9099FF, 0x80D0D0, 0x80FF80, 0xEEEE70, 0xFFA060, 0xFF9090, 0xFF4040, 0xE030E0].map {
+        Color(red: Double(($0 >> 16) & 0xFF) / 255, green: Double(($0 >> 8) & 0xFF) / 255, blue: Double($0 & 0xFF) / 255)
+    }
+    static let floor = Color(red: 0.086, green: 0.106, blue: 0.133)
 
     static func isFood(_ s: EngineSetting) -> Bool {
         let local = s.id.components(separatedBy: ".").dropFirst().joined(separator: ".")
@@ -669,57 +697,181 @@ struct WyrmFoodPage: View {
         guard let s = engine.setting("normal.food_type"), s.options.indices.contains(s.index) else { return "Original" }
         return s.options[s.index]
     }
+    /// Style (Original, Rings, Mixed, Star, Triangle, Diamond, Hexagon, Square, Flower) → drawn shape.
+    static func shape(of style: Int) -> Int { style <= 1 ? style : style - 1 }
 
     var body: some View {
         let group = mode == 0 ? "normal" : "assist"
         let food = engine.settings.filter { $0.group == group && Self.isFood($0) }
-        let style = food.first { $0.id.hasSuffix(".food_type") }
-        let details = food.filter { $0.id != style?.id }
+        func named(_ local: String) -> EngineSetting? { food.first { $0.id == "\(group).\(local)" } }
+        let style = named("food_type")
+        let uniform = named("uniform_food_color")
+        let colour = named("food_color")
+        let order = ["food_scale", "const_food_scale", "uniform_food_color", "food_color", "food_float", "food_flicker"]
+        let look = order.compactMap(named).filter { $0.id != colour?.id || uniform?.enabled == true }
+            + food.filter { row in row.id != style?.id && !order.contains(row.id.components(separatedBy: ".").dropFirst().joined(separator: ".")) }
         WSScaffold(title: "Food", parent: parent, onBack: close) {
-            // A page that opens on a card keeps the same gap below the header as one
-            // that opens on a section label.
             Spacer().frame(height: 18)
-            WSCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    Text("Arena food").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
-                    Text("Change only how food is drawn. Position, value and eating stay original.")
-                        .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
-                        .fixedSize(horizontal: false, vertical: true).padding(.top, 2).padding(.bottom, 12)
-                    WSSegmented(options: ["Normal mode", "With assist"], selected: mode) { mode = $0 }
-                }.padding(14)
+            VStack(spacing: 12) {
+                WyrmFoodPreview(style: style?.index ?? 0,
+                                scale: named("food_scale")?.number ?? 1,
+                                uniform: uniform?.enabled == true,
+                                uniformColour: colour.map { Color(red: $0.channels[0], green: $0.channels[1], blue: $0.channels[2]) } ?? Self.hues[3],
+                                drift: named("food_float")?.enabled == true,
+                                flicker: named("food_flicker")?.enabled == true)
+                WSSegmented(options: ["Normal mode", "With assist"], selected: mode) { mode = $0 }
             }
+            .padding(.horizontal, 16)
+            .onAppear {
+                let target = WyrmSettingsFocus.shared.target ?? ""
+                if target.hasPrefix("assist.") { mode = 1 } else if target.hasPrefix("normal.") { mode = 0 }
+            }
+
             WSSectionLabel("Shape")
-                .onAppear {
-                    let target = WyrmSettingsFocus.shared.target ?? ""
-                    guard target.hasPrefix("normal.") || target.hasPrefix("assist.") else { return }
-                    mode = target.hasPrefix("assist.") ? 1 : 0
-                    if !target.hasSuffix(".food_type") { advanced = true }
-                }
-            WSCard {
-                if let style {
+            if let style {
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                     ForEach(style.options.indices, id: \.self) { index in
-                        if index > 0 { WSHairline() }
-                        Button { engine.write(style, values: [Double(index)]) } label: {
-                            HStack(spacing: 12) {
-                                WyrmFoodIcon(style: index).frame(width: 58, height: 42).background(ATheme.well)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                                Text(style.options[index]).font(.androidWyrm(15.5, style.index == index ? .semibold : .regular))
-                                    .foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
-                                WSRadio(selected: style.index == index)
-                            }.padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 56).contentShape(Rectangle())
-                        }.buttonStyle(WSPressStyle())
+                        WyrmFoodTile(style: index, label: style.options[index], selected: style.index == index) {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            engine.write(style, values: [Double(index)])
+                        }
                     }
                 }
+                .padding(.horizontal, 16)
+                .wyrmSettingAnchor("\(group).food_type")
             }
-            .wyrmSettingAnchor("\(group).food_type", card: true)
-            Text("Mixed uses every shape and keeps each morsel stable for its whole life.")
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
-                .padding(.horizontal, 20).padding(.top, 10)
-            if !details.isEmpty {
-                WSAdvancedFold(label: "Advanced · size, motion and colour", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
-                if advanced { WSCard { WSRows(rows: details, engine: engine) } }
+            WSCaption("Mixed uses every shape and keeps each morsel the same shape for its whole life.")
+
+            WSSectionLabel("Look")
+            WSCard { WSRows(rows: look, engine: engine) }
+            WSCaption("Only how food looks changes. Where it lies, what it is worth and eating it stay the arena's own.")
+            Spacer().frame(height: 22)
+        }
+    }
+}
+
+/// A slice of arena with food on it, drawn by the same rules as the settings.
+/// It moves only when the settings say food moves.
+struct WyrmFoodPreview: View {
+    let style: Int
+    let scale: Double
+    let uniform: Bool
+    let uniformColour: Color
+    let drift: Bool
+    let flicker: Bool
+
+    private static let morsels: [(x: Double, y: Double, size: Double, phase: Double, hue: Int, shape: Int)] = {
+        var seed: UInt64 = 0x5715
+        func next() -> Double { seed = seed &* 6364136223846793005 &+ 1442695040888963407; return Double(seed >> 33) / Double(1 << 31) }
+        return (0..<34).map { _ in (next(), next(), next(), next() * 6.283, Int(next() * 9) % 9, Int(next() * 8) % 8) }
+    }()
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !drift && !flicker)) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 6) / 6 * 6.283
+            Canvas { context, size in
+                // A faint dot lattice, as the arena floor has.
+                let step: CGFloat = 22
+                var y = step / 2, row = 0
+                while y < size.height {
+                    var x = row % 2 == 0 ? step / 2 : step
+                    while x < size.width {
+                        context.fill(Path(ellipseIn: CGRect(x: x - 1.4, y: y - 1.4, width: 2.8, height: 2.8)), with: .color(.white.opacity(0.035)))
+                        x += step
+                    }
+                    y += step * 0.86; row += 1
+                }
+                let base = 5.5 * CGFloat(min(max(scale, 0.25), 3))
+                for m in Self.morsels {
+                    let wobble: CGFloat = drift ? 4 : 0
+                    let c = CGPoint(x: m.x * size.width + CGFloat(cos(t + m.phase)) * wobble,
+                                    y: m.y * size.height + CGFloat(sin(t * 1.3 + m.phase)) * wobble)
+                    let glow = flicker ? 0.55 + 0.45 * (sin(t * 3 + m.phase * 2) + 1) / 2 : 1
+                    let hue = uniform ? uniformColour : WyrmFoodPage.hues[m.hue]
+                    let shape = style == 2 ? m.shape : WyrmFoodPage.shape(of: style)
+                    WyrmFoodTile.glowing(shape, c, base * CGFloat(0.65 + m.size * 0.7), hue, glow, into: &context)
+                }
             }
+        }
+        .frame(height: 176)
+        .background(WyrmFoodPage.floor)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule))
+        .overlay(alignment: .topLeading) {
+            Text("LIVE PREVIEW").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(.white.opacity(0.72))
+                .padding(.horizontal, 9).padding(.vertical, 4)
+                .background(Capsule().fill(.white.opacity(0.08))).padding(12)
+        }
+    }
+}
+
+/// One shape: a small arena tile with the food glowing in it, its name, and a check when chosen.
+struct WyrmFoodTile: View {
+    let style: Int
+    let label: String
+    let selected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Canvas { context, size in
+                    let r = min(size.width, size.height) * 0.17
+                    if style == 2 {
+                        for (spot, shape) in [0, 2, 3, 5].enumerated() {
+                            let c = CGPoint(x: size.width * (spot % 2 == 0 ? 0.33 : 0.67), y: size.height * (spot < 2 ? 0.33 : 0.67))
+                            Self.glowing(shape, c, r * 0.62, WyrmFoodPage.hues[(spot * 2 + 1) % 9], 1, into: &context)
+                        }
+                    } else {
+                        Self.glowing(WyrmFoodPage.shape(of: style), CGPoint(x: size.width / 2, y: size.height / 2), r,
+                                     WyrmFoodPage.hues[style % 9], 1, into: &context)
+                    }
+                }
+                .aspectRatio(1.25, contentMode: .fit)
+                .background(WyrmFoodPage.floor)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .overlay(alignment: .topTrailing) {
+                    if selected {
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.onInk)
+                            .frame(width: 20, height: 20).background(Circle().fill(ATheme.ink)).padding(6)
+                    }
+                }
+                Text(label).font(.androidWyrm(12.5, selected ? .bold : .semibold))
+                    .foregroundColor(selected ? ATheme.ink : ATheme.mute).lineLimit(1)
+            }
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        }
+        .buttonStyle(WSPressStyle())
+        .accessibilityLabel("\(label) food")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+
+    /// Food as the arena draws it: a soft halo, the body, a small bright highlight.
+    static func glowing(_ shape: Int, _ c: CGPoint, _ r: CGFloat, _ colour: Color, _ glow: Double, into context: inout GraphicsContext) {
+        let halo = r * 2.8
+        context.fill(Path(ellipseIn: CGRect(x: c.x - halo, y: c.y - halo, width: halo * 2, height: halo * 2)),
+                     with: .radialGradient(Gradient(colors: [colour.opacity(0.55 * glow), colour.opacity(0)]),
+                                           center: c, startRadius: 0, endRadius: halo))
+        let body = GraphicsContext.Shading.color(colour.opacity(0.55 + 0.45 * glow))
+        switch shape {
+        case 0: context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)), with: body)
+        case 1:
+            let rr = r * 0.88
+            context.stroke(Path(ellipseIn: CGRect(x: c.x - rr, y: c.y - rr, width: rr * 2, height: rr * 2)), with: body, lineWidth: r * 0.34)
+        case 2: context.fill(WyrmFoodIcon.polygon(c, r, 10) { $0 % 2 == 0 ? 1 : 0.45 }, with: body)
+        case 3: context.fill(WyrmFoodIcon.polygon(c, r, 3), with: body)
+        case 4: context.fill(WyrmFoodIcon.polygon(c, r, 4), with: body)
+        case 5: context.fill(WyrmFoodIcon.polygon(c, r, 6), with: body)
+        case 6: context.fill(Path(CGRect(x: c.x - r * 0.85, y: c.y - r * 0.85, width: r * 1.7, height: r * 1.7)), with: body)
+        default: context.fill(WyrmFoodIcon.polygon(c, r, 24) { 0.82 + 0.18 * CGFloat(cos(Double($0) * 6 * 2 * .pi / 24)) }, with: body)
+        }
+        if shape != 1 {
+            let h = r * 0.28
+            context.fill(Path(ellipseIn: CGRect(x: c.x - r * 0.3 - h, y: c.y - r * 0.32 - h, width: h * 2, height: h * 2)),
+                         with: .color(.white.opacity(0.38 * glow)))
         }
     }
 }
@@ -1059,136 +1211,18 @@ struct WyrmAccessibilityPage: View {
     }
 }
 
-// MARK: - Backup & version
+// MARK: - Updates & version
 
-/// Everything that makes this phone's Wyrm yours, in one portable file:
-/// every engine setting, every button, the skin, the theme and notification
-/// choices. Account and Team secrets stay in Keychain and are never exported.
-struct WyrmBackup: Codable {
-    static let lastKey = "wyrm.ios.backup.last"
-    var format = 1
-    var created: String
-    var app: String
-    var settingsFormat: String
-    var settings: [String: [Double]]
-    var hotkeys: [Hotkey]
-    var defaults: [String: Value]
-
-    struct Hotkey: Codable { var id: Int; var key: Int; var mode: Int; var visible: Bool; var x: Double; var y: Double }
-
-    enum Value: Codable {
-        case string(String), bool(Bool), int(Int), double(Double)
-
-        init?(_ any: Any) {
-            if let text = any as? String { self = .string(text); return }
-            guard let number = any as? NSNumber else { return nil }
-            if CFGetTypeID(number) == CFBooleanGetTypeID() { self = .bool(number.boolValue) }
-            else if CFNumberIsFloatType(number as CFNumber) { self = .double(number.doubleValue) }
-            else { self = .int(number.intValue) }
-        }
-
-        var object: Any {
-            switch self {
-            case .string(let v): return v
-            case .bool(let v): return v
-            case .int(let v): return v
-            case .double(let v): return v
-            }
-        }
-
-        var text: String? { if case .string(let v) = self { return v }; return nil }
-        var number: Double? {
-            switch self {
-            case .int(let v): return Double(v)
-            case .double(let v): return v
-            default: return nil
-            }
-        }
-    }
-
-    static let defaultPrefixes = ["wyrm.ios.skin.", "wyrm.ios.arena.", "wyrm.notify.", "wyrm.ios.theme"]
-
-    @MainActor static func capture(_ engine: WyrmShellStore) -> WyrmBackup {
-        var defaults: [String: Value] = [:]
-        for (key, value) in UserDefaults.standard.dictionaryRepresentation()
-        where defaultPrefixes.contains(where: key.hasPrefix) {
-            defaults[key] = Value(value)
-        }
-        return WyrmBackup(created: ISO8601DateFormatter().string(from: Date()),
-                          app: "\(WyrmBuild.version) (\(WyrmBuild.build))",
-                          settingsFormat: engine.settingsVersion,
-                          settings: Dictionary(uniqueKeysWithValues: engine.settings.filter { !$0.id.hasPrefix("tags.index") }.map { ($0.id, $0.values) }),
-                          hotkeys: engine.hotkeys.map { Hotkey(id: $0.id, key: $0.key, mode: $0.mode, visible: $0.visible, x: $0.x, y: $0.y) },
-                          defaults: defaults)
-    }
-
-    /// The engine mailbox holds 128 changes, so settings go across in slices
-    /// a few frames apart instead of all at once. Returns how many were sent.
-    @MainActor func restore(into engine: WyrmShellStore) async -> Int {
-        let known = Set(engine.settings.map(\.id))
-        let rows = settings.filter { known.contains($0.key) && !$0.value.isEmpty }.sorted { $0.key < $1.key }
-        for (key, value) in defaults { UserDefaults.standard.set(value.object, forKey: key) }
-        var index = 0
-        while index < rows.count {
-            for row in rows[index..<min(index + 60, rows.count)] { engine.write(id: row.key, values: row.value) }
-            index += 60
-            try? await Task.sleep(nanoseconds: 250_000_000)
-        }
-        for key in hotkeys {
-            guard let base = engine.hotkeys.first(where: { $0.id == key.id }) else { continue }
-            var next = base; next.mode = key.mode; next.visible = key.visible; next.x = key.x; next.y = key.y
-            engine.writeHotkey(next, log: false)
-        }
-        WyrmBackup.reapplySkin(engine)
-        return rows.count
-    }
-
-    /// The Skin Studio's saved choice, sent to the engine the same way the
-    /// studio sends it.
-    @MainActor static func reapplySkin(_ engine: WyrmShellStore) {
-        let d = UserDefaults.standard
-        let preset = d.object(forKey: "wyrm.ios.skin.preset") as? Int ?? 2
-        let custom = d.bool(forKey: "wyrm.ios.skin.custom-enabled")
-        let groups = (d.string(forKey: "wyrm.ios.skin.custom-groups") ?? "").split(separator: ",").compactMap { Int($0) }
-        let colours = (d.string(forKey: "wyrm.ios.skin.custom-colors") ?? "").split(separator: ",").compactMap { UInt32($0, radix: 16) }
-        let base = WyrmSkinCatalog.presets.indices.contains(preset) ? WyrmSkinCatalog.presets[preset] : [7]
-        let source = custom && !groups.isEmpty ? groups : base
-        let colourSource = custom && !groups.isEmpty ? colours : []
-        engine.applySkin(preset: preset,
-                         groups: (0..<256).map { source[$0 % source.count] },
-                         colors: (0..<256).map { colourSource.isEmpty ? 0 : colourSource[$0 % colourSource.count] },
-                         custom: custom && !groups.isEmpty,
-                         accessory: d.object(forKey: "wyrm.ios.skin.accessory-id") as? Int ?? -1,
-                         tag: d.object(forKey: "wyrm.ios.skin.tag-id") as? Int ?? -1,
-                         background: d.object(forKey: "wyrm.ios.skin.background-id") as? Int ?? 0)
-    }
-}
-
-struct WyrmBackupDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
-    var data: Data
-    init(data: Data) { self.data = data }
-    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
-}
-
+/// Settings › Updates & version. Until 2026-10-01 this page also made and
+/// restored `.json` backups; settings now live in the account
+/// (WyrmAccountSync), so only updates, the beta switch and the version remain.
 struct WyrmBackupPage: View {
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
-    @AppStorage(WyrmBackup.lastKey) var lastBackup = ""
-    @AppStorage("wyrm.ios.backup.detail") var lastDetail = ""
-    @State var exporting = false
-    @State var importing = false
-    @State var document = WyrmBackupDocument(data: Data())
-    @State var working = ""
-    @State var failed = false
     @State var confirmingReset = false
     @ObservedObject var updates = WyrmUpdateStore.shared
     @Environment(\.openURL) var openURL
-    // "Back up before updating": on by default; the update waits for the backup file.
-    @AppStorage("wyrm.ios.update.backup-first") var backupFirst = true
-    @State var updateAfterBackup = false
     @State var updateNote = ""
 
     private var updateLabel: String {
@@ -1198,43 +1232,22 @@ struct WyrmBackupPage: View {
     }
 
     var body: some View {
-        WSScaffold(title: "Backup", onBack: close) {
-            // A page that opens on a card keeps the same gap below the header as one
-            // that opens on a section label.
+        WSScaffold(title: "Updates", onBack: close) {
             Spacer().frame(height: 18)
-            WSCard {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack(spacing: 7) {
-                        Circle().fill(failed ? ATheme.badge : ATheme.live).frame(width: 6, height: 6)
-                        Text("LAST BACKUP").font(.androidWyrm(11.5, .semibold)).tracking(0.8).foregroundColor(failed ? ATheme.badge : ATheme.live)
-                    }
-                    Text(working.isEmpty ? (lastBackup.isEmpty ? "No backup from this phone yet" : "Backed up \(lastBackup)") : working)
-                        .font(.androidWyrm(19, .semibold)).foregroundColor(ATheme.ink).padding(.top, 9)
-                    Text(lastDetail.isEmpty ? "Skins, controls, settings and theme." : lastDetail)
-                        .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).padding(.top, 3).fixedSize(horizontal: false, vertical: true)
-                    HStack(spacing: 9) {
-                        WSPrimaryButton(label: exporting ? "Backing up…" : "Back up now", enabled: working.isEmpty) { backUp() }
-                        WSOutlineButton(label: importing ? "Loading…" : "Restore", enabled: working.isEmpty) { importing = true }
-                    }.padding(.top, 14)
-                }.padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 14))
-            }
-
             if let next = updates.available {
-                WSSectionLabel("Update")
+                WSSectionLabel("Update", top: 0)
                 WSCard {
                     VStack(alignment: .leading, spacing: 0) {
                         Text("Wyrm \(next.version) is ready").font(.androidWyrm(18, .semibold)).foregroundColor(ATheme.ink)
                         Text(updateNote.isEmpty ? (next.beta ? "Beta build \(next.build)" : "Build \(next.build)") : updateNote)
                             .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).padding(.top, 3)
                             .fixedSize(horizontal: false, vertical: true)
-                        WSPrimaryButton(label: updateAfterBackup ? "Backing up…" : "Update now", enabled: !updateAfterBackup) {
-                            startUpdate(next)
-                        }.padding(.top, 14)
+                        WSPrimaryButton(label: "Update now", enabled: true) { handOff(next) }.padding(.top, 14)
                     }.padding(16)
                 }
             }
 
-            WSSectionLabel("Version")
+            WSSectionLabel("Version", top: updates.available == nil ? 0 : 22)
             WSCard {
                 WSValueRow(title: "Wyrm", value: "\(WyrmBuild.version) (\(WyrmBuild.build))", first: true)
                 // Opens the new build's download; it installs through AltStore.
@@ -1245,9 +1258,6 @@ struct WyrmBackupPage: View {
                           on: updates.betaEnabled) { updates.betaEnabled = $0 }
                     // Also where the beta prompt's "turn them off" shortcut lands.
                     .wyrmSettingAnchor("app.beta-updates")
-                WSBoolRow(title: "Back up before updating", detail: "Saves skins, controls and settings to a file first.",
-                          on: backupFirst) { backupFirst = $0 }
-                    .wyrmSettingAnchor("app.backup-first")
                 if !engine.settingsVersion.isEmpty { WSValueRow(title: "Settings format", value: "v\(engine.settingsVersion)") }
                 WSLinkRow(title: "What's in this build") { open(.buildNotes) }
             }
@@ -1260,59 +1270,12 @@ struct WyrmBackupPage: View {
                     if confirmingReset { confirmingReset = false; engine.reset(1, message: "All settings reset") } else { confirmingReset = true }
                 }
             }
-            WSCaption("A backup is one file you keep in Files, iCloud Drive or anywhere else. Account and Team credentials stay in this iPhone's Keychain and are never written into it.")
+            WSCaption("Your settings, skin and layouts are saved to your Wyrm account, so an update or a new iPhone never loses them. Log in and they come back.")
         }
         .task { await updates.check() }
-        // Two file sheets on one view can shadow each other on iOS 15-16, so
-        // each lives on its own invisible anchor.
-        .background(Color.clear.frame(width: 0, height: 0).fileExporter(isPresented: $exporting, document: document, contentType: .json,
-                      defaultFilename: "Wyrm-backup-\(Self.stamp())") { result in
-            switch result {
-            case .success:
-                failed = false
-                lastBackup = Self.readable()
-                lastDetail = "\(engine.settings.count) settings, \(engine.hotkeys.count) buttons, skin and theme."
-                engine.toast = "Backup saved"
-                if updateAfterBackup, let next = updates.available { handOff(next) }
-            case .failure(let error):
-                failed = true
-                engine.toast = "Backup not saved: \(error.localizedDescription)"
-            }
-            updateAfterBackup = false
-        })
-        .background(Color.clear.frame(width: 0, height: 0).fileImporter(isPresented: $importing, allowedContentTypes: [.json]) { result in
-            guard case .success(let url) = result else { return }
-            let scoped = url.startAccessingSecurityScopedResource()
-            defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-            guard let data = try? Data(contentsOf: url), let backup = try? JSONDecoder().decode(WyrmBackup.self, from: data) else {
-                failed = true
-                engine.toast = "That file is not a Wyrm backup"
-                return
-            }
-            failed = false
-            working = "Restoring backup…"
-            if let theme = WyrmThemeID(rawValue: (backup.defaults["wyrm.ios.theme"]?.text ?? "paper").lowercased()) { WyrmThemeStore.shared.select(theme) }
-            if let intensity = backup.defaults["wyrm.ios.theme-intensity"]?.number { WyrmThemeStore.shared.setIntensity(intensity) }
-            Task { @MainActor in
-                let count = await backup.restore(into: engine)
-                working = ""
-                lastDetail = "Restored \(count) settings from \(backup.app)."
-                engine.toast = "Backup restored"
-            }
-        })
     }
 
-    /// Update now: a backup first when the player keeps that on, then the IPA
-    /// goes to the sideloader on this iPhone, or downloads if there is none.
-    private func startUpdate(_ next: WyrmUpdateInfo) {
-        if backupFirst {
-            updateAfterBackup = true
-            backUp()
-        } else {
-            handOff(next)
-        }
-    }
-
+    /// Update now: the IPA goes to the sideloader on this iPhone, or downloads if there is none.
     private func handOff(_ next: WyrmUpdateInfo) {
         if let installer = WyrmInstaller.preferred {
             updateNote = installer.hand(next) { openURL($0) }
@@ -1320,19 +1283,6 @@ struct WyrmBackupPage: View {
             openURL(next.url)
             updateNote = "Downloading the new build. Install it with AltStore, SideStore, KSign or ESign."
         }
-    }
-
-    private func backUp() {
-        guard let data = try? JSONEncoder().encode(WyrmBackup.capture(engine)) else { failed = true; return }
-        document = WyrmBackupDocument(data: data)
-        exporting = true
-    }
-
-    private static func stamp() -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd-HHmm"; return f.string(from: Date())
-    }
-    private static func readable() -> String {
-        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f.string(from: Date())
     }
 }
 

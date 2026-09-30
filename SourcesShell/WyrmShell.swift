@@ -97,6 +97,8 @@ final class WyrmShellStore: ObservableObject {
     /// Main.m on every change so the Ready Room overlay appears with the lobby.
     @Published private(set) var engineScreen = 0
     @Published private(set) var layoutEditorActive = false
+    /// The same AI-arena stage, holding the background-size slider instead of the HUD (OM, 2026-10-01).
+    @Published private(set) var backgroundEditor = false
     static let lobbyScreen = 3
     private var timer: Timer?
     @Published private(set) var arenaPlayPending = false
@@ -332,10 +334,17 @@ final class WyrmShellStore: ObservableObject {
         WyrmDiagnostics.record("layout editor opened over AI arena", category: "ENGINE")
     }
 
+    /// Adjust arena background size: the AI arena sideways with one slider.
+    func openBackgroundEditor() {
+        backgroundEditor = true
+        openLayoutEditor()
+    }
+
     func closeLayoutEditor() {
         guard layoutEditorActive else { return }
         WyrmIOSExitLayoutEditor()
         layoutEditorActive = false
+        backgroundEditor = false
         // Keep the clear shell until the engine is back on its home screen.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { WyrmIOSSetShellOverlay(false) }
         WyrmDiagnostics.record("layout editor closed", category: "ENGINE")

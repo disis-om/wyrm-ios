@@ -696,6 +696,16 @@ final class WyrmServiceStore: ObservableObject {
         return shown.filter { !known.contains($0.id) && !$0.read }
     }
 
+    /// The badge trail: every unread alert of these kinds, read (the destination opened).
+    func markKindsRead(_ kinds: Set<String>) {
+        alerts.filter { !$0.read && kinds.contains($0.kind) }.forEach(markRead)
+    }
+
+    /// A trail opened: its likes and replies are read.
+    func markTrailRead(_ trailID: String) {
+        alerts.filter { !$0.read && $0.meta["trailId"] == trailID }.forEach(markRead)
+    }
+
     /// Marks one alert read on screen at once and on the server behind it.
     func markRead(_ alert: WyrmServiceAlert) {
         guard !alert.read, let index = alerts.firstIndex(where: { $0.id == alert.id }) else { return }

@@ -58,6 +58,15 @@ final class WyrmKeyboardController: ObservableObject {
                                  height: defaults.double(forKey: "wyrm.ios.keyboard.offset-y"))
     }
 
+    /// After a log in or log out rewrote the defaults (WyrmAccountSync).
+    func reloadFromDefaults() {
+        let defaults = UserDefaults.standard
+        scale = min(1.3, max(0.8, defaults.object(forKey: "wyrm.ios.keyboard.scale") as? Double ?? 1))
+        opacity = min(1, max(0.4, defaults.object(forKey: "wyrm.ios.keyboard.opacity") as? Double ?? 1))
+        landscapeOffset = CGSize(width: defaults.double(forKey: "wyrm.ios.keyboard.offset-x"),
+                                 height: defaults.double(forKey: "wyrm.ios.keyboard.offset-y"))
+    }
+
     func setScale(_ value: Double) {
         scale = min(1.3, max(0.8, (value * 20).rounded() / 20))
         UserDefaults.standard.set(scale, forKey: "wyrm.ios.keyboard.scale")

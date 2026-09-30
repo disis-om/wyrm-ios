@@ -224,6 +224,20 @@ struct WyrmPaperCard<Content: View>: View {
     }
 }
 
+/// The badge trail (OM, 2026-10-01): the same red count on the tab, on the row
+/// that leads to the thing, and on the thing itself, so a player can follow it.
+struct WyrmCountBadge: View {
+    let count: Int
+    var body: some View {
+        if count > 0 {
+            Text(count > 99 ? "99+" : "\(count)")
+                .font(.androidWyrm(11.5, .bold)).foregroundColor(.white)
+                .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
+                .background(Capsule().fill(ATheme.badge))
+        }
+    }
+}
+
 struct WyrmListRow: View {
     let title: String
     var detail = ""
@@ -232,6 +246,8 @@ struct WyrmListRow: View {
     var tint = ATheme.mute
     var destructive = false
     var showsChevron = true
+    /// Something new behind this row: a red count before the chevron.
+    var badge = 0
     var action: (() -> Void)? = nil
 
     var body: some View {
@@ -247,6 +263,7 @@ struct WyrmListRow: View {
                 }
                 Spacer(minLength: 8)
                 if !value.isEmpty { Text(value).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.trailing).lineLimit(2) }
+                WyrmCountBadge(count: badge)
                 if showsChevron && action != nil { Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }
             }
             .padding(.horizontal, 14).frame(minHeight: detail.isEmpty ? 52 : 58)
@@ -353,6 +370,8 @@ struct WyrmRootTabBar: View {
     let unread: Int
     /// Unseen replies from Wyrm, on the Settings tab (Help & feedback).
     var settingsBadge: Int = 0
+    /// Unread DMs, voice invites, new followers and trail replies (the Social trail).
+    var socialBadge: Int = 0
     private let icons: [WyrmDesignTab: String] = [.alerts: "bell.badge", .social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
 
     @State private var dragLocationX: CGFloat?
@@ -443,7 +462,7 @@ struct WyrmRootTabBar: View {
                 Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
                 if badgeCount(tab) > 0 {
                     Text("\(min(badgeCount(tab), 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
-                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.live).clipShape(Capsule()).offset(x: 11, y: -7)
+                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.badge).clipShape(Capsule()).offset(x: 11, y: -7)
                 }
             }
             Text(tab.rawValue).font(.androidWyrm(8.5, selection == tab ? .bold : .semibold)).lineLimit(1)
@@ -458,6 +477,7 @@ struct WyrmRootTabBar: View {
     private func badgeCount(_ tab: WyrmDesignTab) -> Int {
         switch tab {
         case .alerts: return unread
+        case .social: return socialBadge
         case .settings: return settingsBadge
         default: return 0
         }

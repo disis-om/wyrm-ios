@@ -470,6 +470,12 @@ final class WyrmSupportStore: ObservableObject {
 
     private static func replyStamp(_ report: WyrmSupportReport) -> String { "\(report.id)|\(report.updatedAt)" }
 
+    /// The reports whose reply the player has not seen yet (the badge trail's last mark).
+    var unseenIDs: Set<String> {
+        let seen = Set(UserDefaults.standard.stringArray(forKey: Self.seenKey) ?? [])
+        return Set(reports.filter { !$0.reply.isEmpty && !seen.contains(Self.replyStamp($0)) }.map(\.id))
+    }
+
     func markRepliesSeen() {
         let stamps = reports.filter { !$0.reply.isEmpty }.map(Self.replyStamp)
         UserDefaults.standard.set(Array(stamps.suffix(200)), forKey: Self.seenKey)

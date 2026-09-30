@@ -96,7 +96,7 @@ struct WyrmInstaller: Identifiable, Equatable {
     ]
 }
 
-/// The "Install with" cards under Settings › Backup › Version.
+/// The "Install with" cards under Settings › Updates › Version.
 struct WyrmInstallersSection: View {
     let update: WyrmUpdateInfo?
     @Environment(\.openURL) private var openURL

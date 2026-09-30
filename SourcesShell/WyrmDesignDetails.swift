@@ -14,9 +14,13 @@ struct WyrmDetailHost: View {
         case .messages: WyrmMessagesDetail(account: account, services: services, close: close, open: open)
         case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close)
         case .people(let kind): WyrmPeopleDetail(kind: kind, account: account, services: services, close: close, open: open)
+            // The end of the new-follower trail: your connections, seen.
+            .onAppear { if kind == "connections" { services.markKindsRead(["follow"]) } }
         case .profile(let id): WyrmProfilePage(playerID: id, account: account, services: services, close: close, open: open)
         case .editProfile: WyrmEditProfileDetail(account: account, close: close)
         case .voice: WyrmVoiceDetail(services: services, close: close, open: open)
+            // The end of the voice-invite trail: seen once the rooms are open.
+            .onAppear { services.markKindsRead(["voice_invite"]) }
         case .voiceVerification: WyrmVoiceVerificationDetail(services: services, close: close)
         case .room(let id): WyrmRoomDetail(roomID: id, services: services, close: close, open: open)
         case .call(let id): WyrmCallDetail(roomID: id, services: services, close: close)
@@ -41,6 +45,8 @@ struct WyrmDetailHost: View {
         case .about: WyrmAboutPage(close: close)
         case .trails: WyrmTrailsFeed(account: account, close: close, open: open)
         case .trail(let id): WyrmTrailDetail(trailID: id, account: account, close: close, open: open)
+            // The end of the trail-reply trail: this trail's likes and replies, seen.
+            .onAppear { services.markTrailRead(id) }
         case .trailCompose: WyrmTrailStudio(account: account, close: close)
         case .help: WyrmHelpCenterPage(account: account, close: close, open: open)
         case .supportCompose(let kind): WyrmSupportComposePage(account: account, initialKind: kind, close: close, open: open)
@@ -94,7 +100,7 @@ private struct WyrmMessagesDetail: View {
                     WyrmPaperCard {
                         if services.conversations.isEmpty { WyrmEmptyPanel(title: "No messages yet", note: "Mutual follows can start a private conversation.") }
                         ForEach(services.conversations) { row in
-                            WyrmListRow(title: row.player.displayName, detail: row.lastMessage.isEmpty ? "No messages yet" : row.lastMessage, value: row.unreadCount > 0 ? "\(row.unreadCount)" : "", icon: "person.crop.circle.fill", tint: ATheme.link) { open(.thread(row.player.id)) }
+                            WyrmListRow(title: row.player.displayName, detail: row.lastMessage.isEmpty ? "No messages yet" : row.lastMessage, icon: "person.crop.circle.fill", tint: ATheme.link, badge: row.unreadCount) { open(.thread(row.player.id)) }
                         }
                     }
                     if !services.messageCandidates.isEmpty {

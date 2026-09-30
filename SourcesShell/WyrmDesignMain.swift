@@ -45,7 +45,7 @@ struct WyrmDesignMain: View {
                         .id(tab)
                         .transition(.opacity.combined(with: .scale(scale: 0.985)))
 
-                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts, settingsBadge: support.unseenReplies)
+                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts, settingsBadge: support.unseenReplies, socialBadge: socialBadge)
                         .frame(width: proxy.size.width)
                         .padding(.bottom, tabBarBottomInset)
                         // Typing hides the bar, as system tab bars sit under the keyboard.
@@ -105,20 +105,30 @@ struct WyrmDesignMain: View {
         .preferredColorScheme(theme.palette.dark || routes.last == .about ? .dark : .light)
         // Checked once a launch; a newer build raises the prompt above.
         .task { await updates.check() }
-        // Quiet look for new alerts while Wyrm is open and no match is running.
+        // The live inbox (OM, 2026-10-01): new alerts, DMs and replies land at once.
+        // A quiet look stays as a fallback: every 15 s on Alerts, every 45 s elsewhere.
         .task {
+            WyrmLiveInbox.shared.onInbox = { kind in Task { await handleInbox(kind) } }
+            WyrmLiveInbox.shared.start(token: account.sessionToken)
+            var quiet = 0
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 40_000_000_000)
+                try? await Task.sleep(nanoseconds: 15_000_000_000)
                 if Task.isCancelled { break }
-                await pollAlerts()
+                quiet += 1
+                if tab == .alerts || quiet % 3 == 0 { await pollAlerts() }
             }
         }
+        .onDisappear { WyrmLiveInbox.shared.stop() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            WyrmLiveInbox.shared.start(token: account.sessionToken)
             Task {
                 await pollAlerts()
                 // Back in the foreground: a reply may have come while away.
                 await support.refresh()
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            WyrmLiveInbox.shared.stop()
         }
         // Where the player is, for a crash or problem report.
         .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
@@ -149,6 +159,14 @@ struct WyrmDesignMain: View {
         services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count
     }
 
+    /// The Social trail: unread DMs, voice invites, new followers, trail replies.
+    private var socialBadge: Int {
+        let dms = services.conversations.reduce(0) { $0 + $1.unreadCount }
+        let kinds: Set<String> = WyrmTrailsFeature.enabled
+            ? ["voice_invite", "follow", "trail_like", "trail_reply"] : ["voice_invite", "follow"]
+        return dms + services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count
+    }
+
     private static let tabIcons: [WyrmDesignTab: String] = [
         .alerts: "bell.badge", .social: "person.2", .play: "play.circle",
         .skin: "circle.hexagongrid", .settings: "slider.horizontal.3",
@@ -158,7 +176,7 @@ struct WyrmDesignMain: View {
     private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy, padTop: Bool = true) -> some View {
         Group {
             switch value {
-            case .alerts: WyrmAlertsRoot(services: services, open: open)
+            case .alerts: WyrmAlertsRoot(services: services, engine: engine, open: open)
             case .social: WyrmSocialRoot(account: account, services: services, open: open)
             case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
             case .skin: WyrmSkinRoot(engine: engine)
@@ -188,7 +206,7 @@ struct WyrmDesignMain: View {
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .background(WyrmPaperBackground())
                     }
-                    .badge(value == .alerts ? unreadAlerts : value == .settings ? support.unseenReplies : 0)
+                    .badge(value == .alerts ? unreadAlerts : value == .settings ? support.unseenReplies : value == .social ? socialBadge : 0)
                 }
             }
             .tint(ATheme.ink)
@@ -197,7 +215,7 @@ struct WyrmDesignMain: View {
 #endif
     }
 
-    /// The update prompt's buttons: Settings › Backup, where the update starts.
+    /// The update prompt's buttons: Settings › Updates, where the update starts.
     private func openUpdateSettings(highlightBeta: Bool) {
         withAnimation(.easeOut(duration: 0.2)) { updates.answerPrompt() }
         tab = .settings
@@ -226,6 +244,23 @@ struct WyrmDesignMain: View {
         }
         bar.standardAppearance = appearance
         bar.scrollEdgeAppearance = appearance
+    }
+
+    /// Something new for this player: refetch what it touches ("" = everything, after a reconnect).
+    private func handleInbox(_ kind: String) async {
+        switch kind {
+        case "dm":
+            await services.refreshConversations()
+        case "support":
+            await pollAlerts()
+            await support.refresh()
+        case "":
+            await pollAlerts()
+            await services.refreshConversations()
+            await support.refresh()
+        default:
+            await pollAlerts()
+        }
     }
 
     private func pollAlerts() async {
@@ -611,14 +646,17 @@ private struct WyrmSocialRoot: View {
             VStack(spacing: 0) {
                 WyrmScreenHeader(kicker: "Arena", title: "Social")
                 if WyrmTrailsFeature.enabled {
-                    WyrmTrailsTeaser(account: account, open: open)
+                    WyrmTrailsTeaser(account: account, open: open, badge: unread(["trail_like", "trail_reply"]))
                 }
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
-                    WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link) { open(.messages) }
+                    WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link,
+                                badge: services.conversations.reduce(0) { $0 + $1.unreadCount }) { open(.messages) }
                     WyrmListRow(title: "Global chat", detail: "Everyone in Wyrm · last 24 hours", icon: "bubble.left.and.bubble.right.fill", tint: ATheme.link) { open(.globalChat) }
-                    WyrmListRow(title: "Voice rooms", detail: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
-                    WyrmListRow(title: "Connections", detail: "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following", icon: "person.2") { open(.people("connections")) }
+                    WyrmListRow(title: "Voice rooms", detail: unread(["voice_invite"]) > 0 ? "\(unread(["voice_invite"])) invitation(s) · \(services.liveRooms.count) live" : "\(services.liveRooms.count) live",
+                                icon: "mic.fill", tint: ATheme.live, badge: unread(["voice_invite"])) { open(.voice) }
+                    WyrmListRow(title: "Connections", detail: unread(["follow"]) > 0 ? "\(unread(["follow"])) new · \(account.player?.followerCount ?? 0) followers" : "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following",
+                                icon: "person.2", badge: unread(["follow"])) { open(.people("connections")) }
                     WyrmListRow(title: "Your profile", detail: account.player?.handle ?? "", icon: "person.crop.circle.fill") { open(.profile("")) }
                 }
                 WyrmSectionLabel("Recently played with")
@@ -631,11 +669,13 @@ private struct WyrmSocialRoot: View {
         }
     }
     private var messageDetail: String { let unread = services.conversations.reduce(0) { $0 + $1.unreadCount }; return unread == 0 ? "No unread messages" : "\(unread) unread" }
+    private func unread(_ kinds: Set<String>) -> Int { services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count }
     private var leaderboardDetail: String { guard let id = account.player?.id, let rank = services.killLeaders.firstIndex(where: { $0.id == id }) else { return "Score and kills" }; return "You are \(rank + 1) by kills" }
 }
 
 private struct WyrmAlertsRoot: View {
     @ObservedObject var services: WyrmServiceStore
+    let engine: WyrmShellStore
     let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var prefs = WyrmNotificationPrefs.shared
     var body: some View {
@@ -646,7 +686,7 @@ private struct WyrmAlertsRoot: View {
                     WyrmPaperCard { WyrmEmptyPanel(title: services.loading ? "Checking Wyrm…" : "All caught up", note: services.loading ? "Looking for real invites and notices." : "Nothing new right now.") }
                 } else {
                     LazyVStack(spacing: 12) {
-                        ForEach(services.alerts.filter { prefs.allows($0.kind) }) { alert in WyrmAlertCard(alert: alert, services: services, open: open) }
+                        ForEach(services.alerts.filter { prefs.allows($0.kind) }) { alert in WyrmAlertCard(alert: alert, services: services, engine: engine, open: open) }
                     }
                 }
                 Spacer().frame(height: 102)
@@ -658,8 +698,10 @@ private struct WyrmAlertsRoot: View {
 private struct WyrmAlertCard: View {
     let alert: WyrmServiceAlert
     @ObservedObject var services: WyrmServiceStore
+    let engine: WyrmShellStore
     let open: (WyrmDesignRoute) -> Void
     @State private var showingMenu = false
+    @State private var copied = false
     /// Only the facts a player reads, named as Android names them
     /// (`alertMeta`); ids, "previous" values and other raw fields never show (OM).
     private var shownMeta: [(key: String, value: String)] {
@@ -689,6 +731,7 @@ private struct WyrmAlertCard: View {
             if let action = WyrmAlertRouting.actionTitle(alert.kind), WyrmAlertRouting.route(for: alert) != nil {
                 Text("\(action) ›").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.link)
             }
+            if alert.kind == "event", let address = eventAddress { eventActions(address) }
         }.padding(16).background(ATheme.card.opacity(0.92)).cornerRadius(17).overlay(RoundedRectangle(cornerRadius: 17).stroke(ATheme.rule)).padding(.horizontal, 16)
             .contentShape(Rectangle())
             .onTapGesture {
@@ -705,4 +748,66 @@ private struct WyrmAlertCard: View {
             }
     }
     private func relative(_ raw: String) -> String { raw.isEmpty ? "" : String(raw.prefix(10)) }
+
+    // MARK: Battledome (OM, 2026-10-01)
+
+    private var eventAddress: String? {
+        guard let raw = alert.meta["address"]?.trimmingCharacters(in: .whitespacesAndNewlines), !raw.isEmpty, raw != "null" else { return nil }
+        return raw
+    }
+
+    private var eventStart: Date? {
+        guard let raw = alert.meta["startsAt"], !raw.isEmpty else { return nil }
+        let full = ISO8601DateFormatter()
+        full.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return full.date(from: raw) ?? ISO8601DateFormatter().date(from: raw)
+    }
+
+    /// "Starts in 04:12", from the start time every second; nil once it has begun.
+    private func countdown(_ now: Date) -> String? {
+        guard let start = eventStart, start > now else { return nil }
+        let left = Int(ceil(start.timeIntervalSince(now)))
+        let days = left / 86_400, hours = (left % 86_400) / 3_600, minutes = (left % 3_600) / 60, seconds = left % 60
+        if days > 0 { return "Starts in \(days)d \(hours)h" }
+        if hours > 0 { return String(format: "Starts in %d:%02d:%02d", hours, minutes, seconds) }
+        return String(format: "Starts in %02d:%02d", minutes, seconds)
+    }
+
+    /// Copy IP and Play. Play enters this event's arena (not the lobby's
+    /// selection); until the start it is a live countdown.
+    private func eventActions(_ address: String) -> some View {
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            let waiting = countdown(context.date)
+            HStack(spacing: 10) {
+                Button {
+                    UIPasteboard.general.string = address
+                    UINotificationFeedbackGenerator().notificationOccurred(.success)
+                    copied = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { copied = false }
+                } label: {
+                    Text(copied ? "Copied" : "Copy IP").font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.ink)
+                        .frame(maxWidth: .infinity, minHeight: 46)
+                        .background(Capsule().stroke(ATheme.rule, lineWidth: 1.2))
+                }.buttonStyle(.plain)
+                Button {
+                    if let waiting {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        engine.toast = "The event \(waiting.lowercased())"
+                    } else {
+                        services.markRead(alert)
+                        engine.enterLobby(name: engine.nickname, address: address)
+                    }
+                } label: {
+                    HStack(spacing: 7) {
+                        Image(systemName: waiting == nil ? "play.fill" : "timer").font(.system(size: 13, weight: .bold))
+                        Text(waiting ?? "Play").font(.androidWyrm(14, .bold)).monospacedDigit()
+                    }
+                    .foregroundColor(waiting == nil ? ATheme.onInk : ATheme.ink)
+                    .frame(maxWidth: .infinity, minHeight: 46)
+                    .background(Capsule().fill(waiting == nil ? ATheme.ink : ATheme.well))
+                }.buttonStyle(.plain)
+                .layoutPriority(1.2)
+            }
+        }
+    }
 }

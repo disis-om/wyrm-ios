@@ -704,6 +704,9 @@ struct WyrmCinematicAuth: View {
             // Keep the existing W working stage on screen until every
             // account-scoped surface has received a fresh snapshot. Home never
             // renders with the previous account's or an empty bootstrap state.
+            // First the account's own settings (OM, 2026-10-01): skin, controls,
+            // layouts and theme are this account's before Home appears.
+            await WyrmAccountSync.shared.restore(token: account.sessionToken, playerID: account.player?.id ?? "")
             await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
 
             withAnimation(motion) { stage = .success }

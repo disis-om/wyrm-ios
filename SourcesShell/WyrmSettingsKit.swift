@@ -298,6 +298,8 @@ struct WSValueRow: View {
     let title: String
     let value: String
     var first = false
+    /// The badge trail: a red count for something new behind this row.
+    var badge = 0
     var onOpen: (() -> Void)? = nil
     var body: some View {
         VStack(spacing: 0) {
@@ -309,6 +311,7 @@ struct WSValueRow: View {
                     if !value.isEmpty {
                         Text(value).font(.androidWyrm(14)).foregroundColor(ATheme.quiet).multilineTextAlignment(.trailing)
                     }
+                    WyrmCountBadge(count: badge)
                     if onOpen != nil { Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron) }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 54).contentShape(Rectangle())

@@ -7,6 +7,9 @@ struct WyrmDesignRoot: View {
     @StateObject private var team = WyrmTeamStore()
     /// Share run's studio, drawn over everything while it is open.
     @ObservedObject private var shareRun = WyrmShareRun.shared
+    /// Account-linked settings: saved in the background and on log out (WyrmAccountSync).
+    @ObservedObject private var accountSync = WyrmAccountSync.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     private let arguments = ProcessInfo.processInfo.arguments
     /// True from launch until the first account snapshot is installed. A
@@ -41,7 +44,7 @@ struct WyrmDesignRoot: View {
     }
 
     private var sessionSmokeTitle: String? {
-        if arguments.contains("--smoke-session-signout") { return "Signing you out…" }
+        if arguments.contains("--smoke-session-signout") { return "Logging you out…" }
         if arguments.contains("--smoke-session-sync") { return "Syncing your Wyrm…" }
         return nil
     }
@@ -62,7 +65,11 @@ struct WyrmDesignRoot: View {
                 .opacity(engineOverlay ? 0 : 1)
                 .allowsHitTesting(!engineOverlay)
             if engine.layoutEditorActive {
-                WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
+                if engine.backgroundEditor {
+                    WyrmBackgroundSizeEditor(engine: engine) { engine.closeLayoutEditor() }
+                } else {
+                    WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
+                }
             } else if engine.engineScreen == WyrmShellStore.lobbyScreen && !shareRun.isOpen {
                 // Not under Share run: its sideways keyboard would take the
                 // studio's typing.
@@ -89,6 +96,49 @@ struct WyrmDesignRoot: View {
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
                 WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen).zIndex(99)
             }
+            // Log out (OM, 2026-10-01): the question, the save, and a failed save's choices.
+            if accountSync.askingLogOut {
+                Color.black.opacity(0.32).ignoresSafeArea()
+                    .onTapGesture { withAnimation(.easeOut(duration: 0.2)) { accountSync.askingLogOut = false } }
+                    .transition(.opacity).zIndex(110)
+                VStack {
+                    Spacer()
+                    WyrmLogOutSheet(
+                        name: account.player?.displayName ?? "Wyrm player",
+                        handle: account.player?.handle ?? "",
+                        onLogOut: logOut,
+                        onCancel: { withAnimation(.easeOut(duration: 0.2)) { accountSync.askingLogOut = false } }
+                    )
+                }
+                .padding(.bottom, 8)
+                .transition(.move(edge: .bottom))
+                .zIndex(111)
+            }
+            if accountSync.logOutStage == .saving {
+                WyrmSessionTransition(title: "Saving your settings…").zIndex(112)
+            }
+            if case .failed(let reason) = accountSync.logOutStage {
+                WyrmLogOutFailed(
+                    message: reason,
+                    onRetry: logOut,
+                    onLogOutAnyway: {
+                        accountSync.logOutStage = .idle
+                        account.signOut()
+                    },
+                    onStay: { accountSync.logOutStage = .idle }
+                ).zIndex(113)
+            }
+        }
+        .animation(.spring(response: 0.42, dampingFraction: 0.86), value: accountSync.askingLogOut)
+        // The account keeps a current copy of the settings: saved whenever the app leaves the screen.
+        .onChange(of: scenePhase) { phase in
+            guard phase == .background, account.phase == .signedIn else { return }
+            let token = account.sessionToken
+            let work = UIApplication.shared.beginBackgroundTask(withName: "wyrm.settings", expirationHandler: nil)
+            Task {
+                await accountSync.save(token: token)
+                UIApplication.shared.endBackgroundTask(work)
+            }
         }
         // A death picture that lands after Share run opened joins it.
         .onReceive(NotificationCenter.default.publisher(for: WyrmRunCapture.didChange)) { _ in shareRun.refresh() }
@@ -110,6 +160,7 @@ struct WyrmDesignRoot: View {
                 services?.arenas.first(where: { $0.endpoint == endpoint })
             }
             WyrmSupportStore.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            accountSync.engine = engine
         }
         .task(id: sessionLifecycleID) {
             switch account.phase {
@@ -124,7 +175,10 @@ struct WyrmDesignRoot: View {
                     return
                 }
                 await services.bootstrap(token: account.sessionToken, playerID: account.player?.id)
+                // A session restored at launch: finish an owed restore, or keep the account's copy current.
+                accountSync.resume(token: account.sessionToken, playerID: account.player?.id ?? "")
             case .signingOut:
+                WyrmLiveInbox.shared.stop()
                 WyrmGameSync.shared.deactivate()
                 services.resetSession()
                 WyrmTrailsStore.shared.reset()
@@ -132,11 +186,25 @@ struct WyrmDesignRoot: View {
                 WyrmSkinTrial.shared.end()
                 WyrmBadgeStore.shared.reset()
                 WyrmSupportStore.shared.reset()
+                // Nothing of this account stays on the phone: defaults, engine settings, looks.
+                accountSync.wipeDevice()
                 try? await Task.sleep(nanoseconds: 920_000_000)
                 guard !Task.isCancelled else { return }
                 account.completeSignOut()
             default:
                 break
+            }
+        }
+    }
+
+    /// Log out: settings to the account first; a failed save asks before anything is lost.
+    private func logOut() {
+        withAnimation(.easeOut(duration: 0.2)) { accountSync.askingLogOut = false }
+        let token = account.sessionToken
+        Task {
+            if await accountSync.saveForLogOut(token: token) {
+                accountSync.logOutStage = .idle
+                account.signOut()
             }
         }
     }
@@ -194,7 +262,7 @@ struct WyrmDesignRoot: View {
                         WyrmSessionTransition(title: "Syncing your Wyrm…")
                     }
                 case .signingOut:
-                    WyrmSessionTransition(title: "Signing you out…")
+                    WyrmSessionTransition(title: "Logging you out…")
                 }
             }
         }

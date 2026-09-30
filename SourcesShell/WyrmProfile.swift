@@ -154,12 +154,6 @@ struct WyrmProfilePage: View {
                             gridHeader
                             gridBody
                         }
-                        if own {
-                            WyrmPaperCard {
-                                WyrmListRow(title: "Sign out", destructive: true, showsChevron: false) { account.signOut() }
-                            }
-                            .padding(.top, 28)
-                        }
                         Spacer().frame(height: 36)
                     }
                 }

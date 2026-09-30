@@ -11,6 +11,7 @@ MAIN = (ROOT / "SourcesShell" / "WyrmDesignMain.swift").read_text(encoding="utf-
 PARITY = (ROOT / "SourcesShell" / "AndroidParityShell.swift").read_text(encoding="utf-8")
 LEGACY = (ROOT / "SourcesShell" / "WyrmShell.swift").read_text(encoding="utf-8")
 PAGES = (ROOT / "SourcesShell" / "WyrmSettingsPages.swift").read_text(encoding="utf-8")
+ACCOUNT_SYNC = (ROOT / "SourcesShell" / "WyrmAccountSync.swift").read_text(encoding="utf-8")
 KIT = (ROOT / "SourcesShell" / "WyrmSettingsKit.swift").read_text(encoding="utf-8")
 THEME = (ROOT / "SourcesShell" / "WyrmTheme.swift").read_text(encoding="utf-8")
 SHELL_C = (ROOT / "SourcesOriginal" / "WyrmShell.c").read_text(encoding="utf-8")
@@ -55,8 +56,8 @@ checks = {
         "struct WyrmPrivacyPage", "struct WyrmAccessibilityPage", "struct WyrmBackupPage", "struct WyrmLayoutEditor")),
     "old engine-settings detail list is gone": "WyrmEngineSettingsDetail" not in DETAILS and "WyrmSettingsRoot" not in MAIN,
     "loadout opens Play-scoped settings": all(r in MAIN for r in ("open(.playFood)", "open(.playControls)", "open(.playModes)")),
-    "restore respects the 128-change engine mailbox": "index += 60" in PAGES and "Task.sleep(nanoseconds: 250_000_000)" in PAGES,
-    "backups never carry account or Team secrets": "Keychain" in PAGES and "wyrm.ios.skin." in PAGES and "token" not in PAGES.split("struct WyrmBackup: Codable")[1].split("struct WyrmBackupDocument")[0],
+    "restore respects the 128-change engine mailbox": "index % 40 == 0" in ACCOUNT_SYNC and "Task.sleep(nanoseconds: 150_000_000)" in ACCOUNT_SYNC,
+    "account settings never carry account or Team secrets": "wyrm.ios.skin." in ACCOUNT_SYNC and "token" not in ACCOUNT_SYNC.split("func platformDocument()")[1].split("// MARK: restore")[0] and "Keychain" not in ACCOUNT_SYNC,
     "eight Android themes with intensity": THEME.count("case .") >= 16 and "func withIntensity(_ intensity: Double) -> WyrmPalette" in THEME,
     "theme reaches the engine atomically": "arena_theme_set(next, dark)" in SHELL_C and "WyrmIOSSetArenaTheme" in THEME,
     "tab lens lifts and settles with a spring": "lifted" in COMPONENTS and ".interpolatingSpring(stiffness: 240, damping: 10)" in COMPONENTS and "WyrmTabPillMotion" in COMPONENTS and ".zIndex(4)" in COMPONENTS,

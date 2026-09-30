@@ -12,7 +12,7 @@ SERVICES = (ROOT / "SourcesShell/WyrmServices.swift").read_text(encoding="utf-8"
 checks = {
     "sign out has an explicit transition phase": "case restoring, signedOut, onboarding, signedIn, signingOut" in ACCOUNT,
     "sign out waits for shell cleanup": "func completeSignOut()" in ACCOUNT and "services.resetSession()" in ENTRY,
-    "sign out uses the W cinematic": 'WyrmSessionTransition(title: "Signing you out…")' in ENTRY,
+    "log out uses the W cinematic": 'WyrmSessionTransition(title: "Logging you out…")' in ENTRY,
     "authentication bootstraps before completing": AUTH.index("await services.bootstrap") < AUTH.index("account.completeAuthentication()"),
     "home is gated on prepared account data": "services.isPrepared(for: account.player?.id)" in ENTRY,
     "service sessions invalidate stale requests": "sessionRevision = revision" in SERVICES and "sessionRevision == revision" in SERVICES,

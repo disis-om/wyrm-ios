@@ -125,6 +125,20 @@ final class WyrmLookStore: ObservableObject {
 
     var hairRGB: UInt32 { WyrmLook.hairTone(hairTone) }
 
+    /// After a log in or log out rewrote the defaults (WyrmAccountSync): read and publish.
+    func reloadFromDefaults() {
+        let d = UserDefaults.standard
+        func pick(_ key: String, _ count: Int) -> Int {
+            let v = d.object(forKey: key) as? Int ?? -1
+            return (0..<count).contains(v) ? v : -1
+        }
+        hair = pick("wyrm.ios.look.hair", WyrmLook.hairNames.count)
+        hairTone = min(max(d.object(forKey: "wyrm.ios.look.hair-tone") as? Double ?? 0.22, 0), 1)
+        ears = pick("wyrm.ios.look.ears", WyrmLook.earNames.count)
+        glasses = pick("wyrm.ios.look.glasses", WyrmLook.glassesNames.count)
+        publish()
+    }
+
     func publish() {
         WyrmIOSSetLook(Int32(hair), Int32(hairRGB), Int32(ears), Int32(glasses))
     }

@@ -13,7 +13,7 @@ import SwiftUI
  *
  * Beta updates are on by default (OM, 2026-09-27); a player who switched them
  * off stays off. A newer build raises `WyrmUpdatePrompt` once per build; its
- * button opens Settings › Backup, where the update itself starts.
+ * button opens Settings › Updates, where the update itself starts.
  */
 struct WyrmUpdateInfo: Equatable {
     let version: String
@@ -103,7 +103,7 @@ final class WyrmUpdateStore: ObservableObject {
 }
 
 /// "Update available" / "Beta update available": raised over the menu once per
-/// new build. Its button opens Settings › Backup, where the update starts; the
+/// new build. Its button opens Settings › Updates, where the update starts; the
 /// beta card also says what a beta is and gives a shortcut to switch them off.
 struct WyrmUpdatePrompt: View {
     let info: WyrmUpdateInfo
@@ -124,7 +124,7 @@ struct WyrmUpdatePrompt: View {
                 }
                 Text(info.beta ? "Wyrm \(info.version) beta" : "Wyrm \(info.version)")
                     .font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).padding(.top, 9)
-                Text("Build \(info.build) is ready. Update from Settings › Backup; it installs through AltStore as always.")
+                Text("Build \(info.build) is ready. Update from Settings › Updates; it installs through AltStore as always.")
                     .font(.androidWyrm(13.5)).foregroundColor(ATheme.quiet).padding(.top, 4)
                     .fixedSize(horizontal: false, vertical: true)
                 if info.beta {
@@ -134,7 +134,7 @@ struct WyrmUpdatePrompt: View {
                             .font(.androidWyrm(13)).foregroundColor(ATheme.mute)
                             .fixedSize(horizontal: false, vertical: true)
                         Button(action: onBetaSettings) {
-                            Text("Don't want beta updates? Turn them off in Settings › Backup ›")
+                            Text("Don't want beta updates? Turn them off in Settings › Updates ›")
                                 .font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)

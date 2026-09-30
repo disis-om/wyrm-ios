@@ -56,6 +56,15 @@ final class WyrmArrowSkinStore: ObservableObject {
 
     func publish() { WyrmIOSSetArrowSkin(Int32(skin), Float(brightness)) }
 
+    /// After a log in or log out rewrote the defaults (WyrmAccountSync): read and publish.
+    func reloadFromDefaults() {
+        let defaults = UserDefaults.standard
+        let stored = defaults.object(forKey: Self.skinKey) as? Int ?? -1
+        skin = WyrmArrowImages.names.indices.contains(stored) ? stored : -1
+        brightness = min(1, max(0.2, defaults.object(forKey: Self.brightnessKey) as? Double ?? 1))
+        publish()
+    }
+
     func select(image index: Int) {
         skin = WyrmArrowImages.names.indices.contains(index) ? index : -1
         UserDefaults.standard.set(skin, forKey: Self.skinKey)

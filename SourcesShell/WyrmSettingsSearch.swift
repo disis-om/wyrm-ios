@@ -122,12 +122,20 @@ enum WyrmSettingsIndex {
     @MainActor
     static func entries(engine: WyrmShellStore) -> [WyrmSettingsEntry] {
         var result: [WyrmSettingsEntry] = engine.settings.compactMap { setting in
-            guard let placed = place(setting) else { return nil }
+            // The background size is a button to its live editor now, not a slider.
+            guard !setting.id.hasSuffix(".bg_scale"), let placed = place(setting) else { return nil }
             return WyrmSettingsEntry(id: setting.id, title: setting.label, detail: setting.hint, page: placed.1, route: placed.0,
                                      keywords: setting.id.replacingOccurrences(of: "_", with: " ").replacingOccurrences(of: ".", with: " ")) {
                 AnyView(WSTypedRow(setting: setting, first: true, engine: engine))
             }
         }
+        result.append(WyrmSettingsEntry(id: "app.bg-size", title: "Adjust arena background size",
+                                        detail: "See the arena and choose how big its floor looks", page: "Modes", route: .modes,
+                                        keywords: "background scale size floor zoom arena bg") {
+            AnyView(WSValueRow(title: "Adjust arena background size",
+                               value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
+                               first: true) { engine.openBackgroundEditor() })
+        })
         result += WyrmButtonsContent.allowed(engine.hotkeys).map { key in
             WyrmSettingsEntry(id: "hotkey.\(key.id)", title: "\(key.name) button", detail: "Show it in matches, and whether a press toggles or holds",
                               page: "On-screen buttons", route: .buttons, keywords: "hotkey key toggle hold") {
@@ -156,12 +164,8 @@ enum WyrmSettingsIndex {
         ]
         result += [
             WyrmSettingsEntry(id: "app.beta-updates", title: "Beta updates", detail: "Early builds before everyone else; they can have rough edges",
-                              page: "Backup & version", route: .backup, keywords: "update beta test early stable channel version") {
+                              page: "Updates & version", route: .backup, keywords: "update beta test early stable channel version") {
                 AnyView(WyrmBetaUpdatesRow())
-            },
-            WyrmSettingsEntry(id: "app.backup-first", title: "Back up before updating", detail: "Saves skins, controls and settings to a file first",
-                              page: "Backup & version", route: .backup, keywords: "update backup save restore") {
-                AnyView(WyrmBackupFirstRow())
             },
         ]
         result += [
@@ -270,14 +274,6 @@ private struct WyrmBetaUpdatesRow: View {
     var body: some View {
         WSBoolRow(title: "Beta updates", detail: "Get early builds before everyone else. Turn this off to get stable updates only.",
                   on: updates.betaEnabled, first: true) { updates.betaEnabled = $0 }
-    }
-}
-
-private struct WyrmBackupFirstRow: View {
-    @AppStorage("wyrm.ios.update.backup-first") var backupFirst = true
-    var body: some View {
-        WSBoolRow(title: "Back up before updating", detail: "Saves skins, controls and settings to a file first.",
-                  on: backupFirst, first: true) { backupFirst = $0 }
     }
 }
 

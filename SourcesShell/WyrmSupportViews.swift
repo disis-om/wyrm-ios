@@ -539,13 +539,13 @@ private struct WyrmFAQ: Identifiable {
         WyrmFAQ(id: 2, question: "My skin or beads look different in the arena",
                 answer: "Other players see the arena's own colours, not Wyrm beads; your Wyrm beads and looks are drawn on your own snake. If your snake draws blank, update Wyrm and choose the skin again."),
         WyrmFAQ(id: 3, question: "How do I keep my settings when I reinstall?",
-                answer: "Settings › Backup & version › Create backup saves skins, controls and settings to a file. Restore from that file on the new install."),
+                answer: "Your settings, skin and layouts are saved to your Wyrm account. Log in on the new install and they come back."),
         WyrmFAQ(id: 4, question: "I'm not getting notifications",
                 answer: WyrmTrailsFeature.enabled
                     ? "Check Settings › Notifications, and that Wyrm is allowed in the iPhone's Settings. On iPhone, likes and replies on your trails arrive in Alerts while Wyrm is open."
                     : "Check Settings › Notifications, and that Wyrm is allowed in the iPhone's Settings. On iPhone, new followers and replies from Wyrm arrive in Alerts while Wyrm is open."),
         WyrmFAQ(id: 5, question: "How do I get Wyrm updates?",
-                answer: "Wyrm tells you when a new build is out. Turn on Beta updates in Backup & version to get early builds."),
+                answer: "Wyrm tells you when a new build is out. Turn on Beta updates in Updates & version to get early builds."),
         WyrmFAQ(id: 6, question: "How do I delete my account?",
                 answer: WyrmTrailsFeature.enabled
                     ? "Profile › Edit profile › Delete account. Your profile, trails and messages are removed from Wyrm's server."
@@ -583,7 +583,7 @@ struct WyrmHelpCenterPage: View {
 
             WSSectionLabel("Your reports")
             WSCard {
-                WSValueRow(title: "Your reports", value: reportsSummary, first: true) { open(.supportReports) }
+                WSValueRow(title: "Your reports", value: reportsSummary, first: true, badge: store.unseenReplies) { open(.supportReports) }
             }
 
             }
@@ -890,6 +890,9 @@ struct WyrmSupportReportsPage: View {
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var store = WyrmSupportStore.shared
+    /// The end of the badge trail: replies new when the page opened keep a red
+    /// mark while it is open, even though opening it is reading them.
+    @State private var fresh: Set<String> = []
 
     var body: some View {
         WSScaffold(title: "Your reports", parent: "Help", trailing: "New", onTrailing: { open(.supportCompose(WyrmSupportKind.bug.rawValue)) }, onBack: close) {
@@ -906,14 +909,16 @@ struct WyrmSupportReportsPage: View {
                 .frame(maxWidth: .infinity).padding(.horizontal, 32).padding(.top, 70)
             } else {
                 VStack(spacing: 12) {
-                    ForEach(store.reports) { report in WyrmReportCard(report: report) }
+                    ForEach(store.reports) { report in WyrmReportCard(report: report, fresh: fresh.contains(report.id)) }
                 }.padding(.top, 16)
             }
         }
         .refreshable { await store.refresh() }
         .task {
             store.token = { [weak account] in account?.sessionToken ?? "" }
+            fresh.formUnion(store.unseenIDs)
             await store.refresh()
+            fresh.formUnion(store.unseenIDs)
             store.markRepliesSeen()
         }
     }
@@ -921,12 +926,15 @@ struct WyrmSupportReportsPage: View {
 
 private struct WyrmReportCard: View {
     let report: WyrmSupportReport
+    var fresh = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Text(report.kindTitle.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.ink)
                     .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(ATheme.well))
-                Text(status).font(.androidWyrm(11, .semibold)).foregroundColor(report.reply.isEmpty ? ATheme.quiet : ATheme.live)
+                if fresh { Circle().fill(ATheme.badge).frame(width: 8, height: 8) }
+                Text(fresh ? "New reply from Wyrm" : status).font(.androidWyrm(11, .semibold))
+                    .foregroundColor(fresh ? ATheme.badge : report.reply.isEmpty ? ATheme.quiet : ATheme.live)
                 Spacer()
                 Text(WyrmTrailTime.short(report.createdAt)).font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
             }
