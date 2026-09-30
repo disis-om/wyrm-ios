@@ -684,8 +684,12 @@ struct WyrmFoodPage: View {
      * with each food glowing as in a match, and one Look card for size, colour
      * and motion. Only drawing changes: position, value and eating stay original.
      */
-    static let hues: [Color] = [0xC080FF, 0x9099FF, 0x80D0D0, 0x80FF80, 0xEEEE70, 0xFFA060, 0xFF9090, 0xFF4040, 0xE030E0].map {
-        Color(red: Double(($0 >> 16) & 0xFF) / 255, green: Double(($0 >> 8) & 0xFF) / 255, blue: Double($0 & 0xFF) / 255)
+    static let hueCodes: [UInt32] = [0xC080FF, 0x9099FF, 0x80D0D0, 0x80FF80, 0xEEEE70, 0xFFA060, 0xFF9090, 0xFF4040, 0xE030E0]
+    static let hues: [Color] = hueCodes.map { (code: UInt32) -> Color in
+        let red = Double((code >> 16) & 0xFF) / 255
+        let green = Double((code >> 8) & 0xFF) / 255
+        let blue = Double(code & 0xFF) / 255
+        return Color(red: red, green: green, blue: blue)
     }
     static let floor = Color(red: 0.086, green: 0.106, blue: 0.133)
 
@@ -703,13 +707,18 @@ struct WyrmFoodPage: View {
     var body: some View {
         let group = mode == 0 ? "normal" : "assist"
         let food = engine.settings.filter { $0.group == group && Self.isFood($0) }
-        func named(_ local: String) -> EngineSetting? { food.first { $0.id == "\(group).\(local)" } }
+        let named: (String) -> EngineSetting? = { local in food.first { $0.id == "\(group).\(local)" } }
         let style = named("food_type")
         let uniform = named("uniform_food_color")
         let colour = named("food_color")
         let order = ["food_scale", "const_food_scale", "uniform_food_color", "food_color", "food_float", "food_flicker"]
-        let look = order.compactMap(named).filter { $0.id != colour?.id || uniform?.enabled == true }
-            + food.filter { row in row.id != style?.id && !order.contains(row.id.components(separatedBy: ".").dropFirst().joined(separator: ".")) }
+        let uniformOn = uniform?.enabled == true
+        let ordered: [EngineSetting] = order.compactMap(named).filter { $0.id != colour?.id || uniformOn }
+        let rest: [EngineSetting] = food.filter { (row: EngineSetting) -> Bool in
+            let local = row.id.components(separatedBy: ".").dropFirst().joined(separator: ".")
+            return row.id != style?.id && !order.contains(local)
+        }
+        let look: [EngineSetting] = ordered + rest
         WSScaffold(title: "Food", parent: parent, onBack: close) {
             Spacer().frame(height: 18)
             VStack(spacing: 12) {
