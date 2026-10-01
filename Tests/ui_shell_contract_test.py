@@ -78,7 +78,8 @@ checks = {
         and "wyrm_capture_record(context);" in PREPARE and "wyrm_capture_harvest(context);" in PREPARE
         and "AppleRunCapture.inc" in PREPARE and "vkGetFenceStatus" in RUN_CAPTURE_C
         and "vkWaitForFences" not in RUN_CAPTURE_C and "VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0" in RUN_CAPTURE_C
-        and "parts.count == 2 || parts.count == 3" in SYNC and "WyrmRunCapture.record(" in SYNC
+        and "parts.count >= 2 && parts.count <= 5" in SYNC and "WyrmRunCapture.record(" in SYNC
+        and "WyrmIOSRecordRunPosition(u, v);" in PREPARE and "var map: CGPoint?" in RUN_CAPTURE
         and "WyrmRunCapture.runStarted()" in LEGACY
         and 'Notification.Name("WyrmRunCaptureChanged")' in RUN_CAPTURE
         and "static var lastRun: WyrmLastRun?" in RUN_CAPTURE and "let screenshot: UIImage?" in RUN_CAPTURE,
@@ -107,7 +108,7 @@ checks = {
         and "WyrmKeyboardController.shared.install()" in LEGACY,
     "keyboard size, transparency and drag position persist": all(k in KEYBOARD for k in (
         "wyrm.ios.keyboard.scale", "wyrm.ios.keyboard.opacity", "wyrm.ios.keyboard.offset-x", "wyrm.ios.keyboard.offset-y")),
-    "the lobby draws its own sideways keyboard": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.embedded = true" in LOBBY,
+    "the lobby draws its own sideways keyboard (not upright)": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.embedded = !WyrmPlayOrientation.shared.portrait" in LOBBY,
     "routes leave the keyboard region so fields rise above it": ".ignoresSafeArea(.container)" in MAIN and "keyboard.focused ? 0 : 1" in MAIN,
     "chat composer and transcript are shared by global chat and DMs": "WyrmChatComposer(" in SOCIAL and "WyrmChatComposer(" in DETAILS
         and "WyrmChatTranscript(" in SOCIAL and "WyrmChatTranscript(" in DETAILS and "GlassEffectContainer(spacing: 14)" in CHAT,

@@ -645,7 +645,22 @@ for path in sorted(OUTPUT.rglob("*")):
             # to /v1/me/stats exactly as Android's Kotlin outbox does. It also
             # carries the life's length and asks for the death-frame screenshot
             # ("Share this run", 2026-09-30; Android: recordRunFromNative(IID)V).
+             # Where the run ended goes first (the lobby's last-run minimap,
+             # 2026-10-02; Android: recordRunPositionFromNative(FF)V): the
+             # camera's spot as a share of the arena square, -1 if unknown.
              'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills, double play_time);
+  extern void WyrmIOSRecordRunPosition(float u, float v);
+  {
+    float grd = env->usr->gdata.data.grd;
+    float vx = env->usr->gdata.data.view_xx;
+    float vy = env->usr->gdata.data.view_yy;
+    float u = -1.0f, v = -1.0f;
+    if (grd > 0 && isfinite(vx) && isfinite(vy)) {
+      u = SDL_clamp(vx / (2.0f * grd), 0.0f, 1.0f);
+      v = SDL_clamp(vy / (2.0f * grd), 0.0f, 1.0f);
+    }
+    WyrmIOSRecordRunPosition(u, v);
+  }
   WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills,
                            env->usr->usrs.play_time);''',
              'android_home_set_screen': '(void)screen;',
@@ -1262,7 +1277,7 @@ print("Joystick knob follows the snake")
 # Assist laser in joystick mode (OM, 2026-10-01; Wyrm Android's ui_overlay.c
 # and android_home.c/.h have the same C). The store is in HomeMailbox.inc.
 JOYSTICK_LASER_HEADER = '/* Assist laser in joystick mode: on/off and length (share of the short\n   side, 0.1-1.0). Set by the app (Settings > Modes > Assist). */\nvoid android_home_set_joystick_laser(bool on, float length);\nbool android_home_joystick_laser_on(void);\nfloat android_home_joystick_laser_length(void);\n'
-JOYSTICK_LASER_DRAW = ('            usrs->laser_thickness);\n      }\n', "            usrs->laser_thickness);\n      }\n\n      /* Assist laser in joystick mode (OM, 2026-10-01). With assist on and a\n         joystick (not the arrow, which has its own line), a line from the head\n         where the snake is being steered: the stick's way while it is held,\n         the head's own heading otherwise. Its length is a share of the\n         screen's short side, set in Settings > Modes > Assist; colour and\n         thickness are the laser's. Draw-only: no input, no packet. */\n      if (usrs->hotkeys[HOTKEY_ASSIST].active &&\n          usrs->mobile_controls.joystick_mode != MOBILE_STEERING_ARROW &&\n          android_home_joystick_laser_on() && a > 0.01f) {\n        mobile_controls_state* stick = &usr->mobile_controls;\n        float lx = cosf(me->ehang);\n        float ly = sinf(me->ehang);\n        float held = sqrtf(stick->joystick_axis[0] * stick->joystick_axis[0] +\n                           stick->joystick_axis[1] * stick->joystick_axis[1]);\n        if (stick->joystick_down && held > 0.08f) {\n          lx = stick->joystick_axis[0] / held;\n          ly = stick->joystick_axis[1] / held;\n        }\n        float shortest = ctx->size[0] < ctx->size[1] ? (float)ctx->size[0]\n                                                     : (float)ctx->size[1];\n        float reach = android_home_joystick_laser_length() * shortest;\n        ImVec2 from = {mww2 + (hx - gdata->data.view_xx) * gdata->data.gsc,\n                       mhh2 + (hy - gdata->data.view_yy) * gdata->data.gsc};\n        ImDrawList_AddLine(\n            igGetWindowDrawList(), from,\n            (ImVec2){from.x + lx * reach, from.y + ly * reach},\n            igColorConvertFloat4ToU32(\n                (ImVec4){usrs->laser_color[0], usrs->laser_color[1],\n                         usrs->laser_color[2], usrs->laser_color[3] * a}),\n            usrs->laser_thickness);\n      }\n")
+JOYSTICK_LASER_DRAW = ('            usrs->laser_thickness);\n      }\n', "            usrs->laser_thickness);\n      }\n\n      /* Assist laser in joystick mode (OM, 2026-10-01/02). With assist on and\n         a joystick (not the arrow, which has its own line), a line from the\n         front of the head where the snake is going, like the collision dot:\n         the drawn head's own angle (`ehang`), never the stick. Its length is a\n         share of the screen's short side, set in Settings > Modes > Assist;\n         colour and thickness are the laser's. Draw-only: no input, no packet. */\n      if (usrs->hotkeys[HOTKEY_ASSIST].active &&\n          usrs->mobile_controls.joystick_mode != MOBILE_STEERING_ARROW &&\n          android_home_joystick_laser_on() && a > 0.01f) {\n        float lx = cosf(me->ehang);\n        float ly = sinf(me->ehang);\n        float shortest = ctx->size[0] < ctx->size[1] ? (float)ctx->size[0]\n                                                     : (float)ctx->size[1];\n        float reach = android_home_joystick_laser_length() * shortest;\n        /* The head bead's half size (14.5), as the collision dot uses it. */\n        float front = 14.5f * me->sc * gdata->data.gsc;\n        ImVec2 from = {mww2 + (hx - gdata->data.view_xx) * gdata->data.gsc + lx * front,\n                       mhh2 + (hy - gdata->data.view_yy) * gdata->data.gsc + ly * front};\n        ImDrawList_AddLine(\n            igGetWindowDrawList(), from,\n            (ImVec2){from.x + lx * reach, from.y + ly * reach},\n            igColorConvertFloat4ToU32(\n                (ImVec4){usrs->laser_color[0], usrs->laser_color[1],\n                         usrs->laser_color[2], usrs->laser_color[3] * a}),\n            usrs->laser_thickness);\n      }\n")
 _arrow_patch("app/src/platform/android_home.h", [
     ("const char* android_home_performance_chip(void);\n",
      "const char* android_home_performance_chip(void);\n" + JOYSTICK_LASER_HEADER),
@@ -1296,3 +1311,11 @@ BUTTON_SCALE_PAIR = ("""static float button_scale(tenv* env) {
 _arrow_patch("app/src/mobile/mobile_controls.c", [CONTROL_SCALE_PAIR])
 _arrow_patch("app/src/mobile/mobile_hotkeys.c", [BUTTON_SCALE_PAIR])
 print("Portrait play: controls sized from the short side")
+
+
+# Portrait play has no handedness (OM, 2026-10-02; Wyrm Android's
+# mobile/mobile_controls.c has the same C): upright, the first finger anywhere
+# steers and a second finger anywhere boosts. Sideways unchanged.
+UPRIGHT_HANDS_PAIR = ('    bool joystick_left = cfg->handedness == MOBILE_LEFT_HANDED;\n    bool in_joystick_half = joystick_left ? x < mid : x >= mid;\n', '    bool joystick_left = cfg->handedness == MOBILE_LEFT_HANDED;\n    bool in_joystick_half = joystick_left ? x < mid : x >= mid;\n    /* Upright there is no left or right hand (OM, 2026-10-02): the first free\n       finger anywhere starts the dynamic joystick, and once a joystick is\n       held (or it is a fixed one) any other finger is touch-zone boost, the\n       way Arrow steering already works. Fixed controls keep their drawn hit\n       circles above. Sideways is unchanged. Only which finger starts which\n       control changes; nothing is sent differently. */\n    if (env->wnd->size[1] > env->wnd->size[0])\n      in_joystick_half = cfg->joystick_mode == MOBILE_JOYSTICK_DYNAMIC &&\n                         !state->joystick_down;\n')
+_arrow_patch("app/src/mobile/mobile_controls.c", [UPRIGHT_HANDS_PAIR])
+print("Portrait play: no left or right hand")

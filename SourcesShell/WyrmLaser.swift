@@ -68,7 +68,7 @@ struct WyrmJoystickLaserSection: View {
                 WyrmJoystickLaserPreview(length: store.length, on: store.on, colour: colour, thickness: thickness)
                     .wyrmSettingAnchor("app.joystick-laser")
                 WSBoolRow(title: "Assist laser in joystick",
-                          detail: "With assist on, a line from your head shows where the joystick is steering.",
+                          detail: "With assist on, a line from your head shows where your snake is heading.",
                           on: store.on) { store.setOn($0) }
                 if store.on {
                     WSSliderRow(title: "Laser length", valueText: WyrmJoystickLaserStore.label(store.length),
@@ -93,7 +93,7 @@ struct WyrmJoystickLaserPreview: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Live preview: the line follows your stick, at this length")
+            Text("Live preview: the line goes where your snake goes, at this length")
                 .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
             TimelineView(.animation) { timeline in
                 Canvas { context, size in

@@ -156,7 +156,7 @@ enum WyrmSettingsIndex {
                 AnyView(WyrmPlayOrientationSearchRow(engine: engine))
             },
             WyrmSettingsEntry(id: "app.joystick-laser", title: "Assist laser in joystick",
-                              detail: "With assist on, a line from your head shows where the joystick steers",
+                              detail: "With assist on, a line from your head shows where your snake is heading",
                               page: "Modes · Assist", route: .modes, keywords: "laser line aim joystick assist helper length guide") {
                 AnyView(WyrmJoystickLaserSearchRow())
             },
@@ -239,7 +239,7 @@ private struct WyrmPlayOrientationSearchRow: View {
 private struct WyrmJoystickLaserSearchRow: View {
     @ObservedObject var store = WyrmJoystickLaserStore.shared
     var body: some View {
-        WSBoolRow(title: "Assist laser in joystick", detail: "With assist on, a line from your head shows where the joystick steers.",
+        WSBoolRow(title: "Assist laser in joystick", detail: "With assist on, a line from your head shows where your snake is heading.",
                   on: store.on, first: true) { store.setOn($0) }
     }
 }

@@ -7,6 +7,8 @@ struct WyrmDesignRoot: View {
     @StateObject private var team = WyrmTeamStore()
     /// Share run's studio, drawn over everything while it is open.
     @ObservedObject private var shareRun = WyrmShareRun.shared
+    /// Upright play: the lobby is portrait, so the drop card takes the portrait path.
+    @ObservedObject private var playOrientation = WyrmPlayOrientation.shared
     /// Account-linked settings: saved in the background and on log out (WyrmAccountSync).
     @ObservedObject private var accountSync = WyrmAccountSync.shared
     @Environment(\.scenePhase) private var scenePhase
@@ -94,7 +96,7 @@ struct WyrmDesignRoot: View {
             // the match, the Ready Room (landscape) or the portrait app.
             if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && !shareRun.isOpen
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
-                WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen).zIndex(99)
+                WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen && !playOrientation.portrait).zIndex(99)
             }
             // Log out (OM, 2026-10-01): the question, the save, and a failed save's choices.
             if accountSync.askingLogOut {

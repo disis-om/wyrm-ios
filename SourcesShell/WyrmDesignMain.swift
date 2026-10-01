@@ -680,9 +680,9 @@ private struct WyrmSocialRoot: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 WyrmScreenHeader(kicker: "Arena", title: "Social")
-                if WyrmTrailsFeature.enabled {
-                    WyrmTrailsTeaser(account: account, open: open, badge: unread(["trail_like", "trail_reply"]))
-                }
+                // Switched off: the same card, no count; it opens the "in development" page.
+                WyrmTrailsTeaser(account: account, open: open,
+                                 badge: WyrmTrailsFeature.enabled ? unread(["trail_like", "trail_reply"]) : 0)
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link,

@@ -44,7 +44,10 @@ struct WyrmDetailHost: View {
         case .globalChat: WyrmGlobalChatDetail(account: account, services: services, close: close, open: open)
         case .developer: WyrmDeveloperDetail(close: close)
         case .about: WyrmAboutPage(close: close)
-        case .trails: WyrmTrailsFeed(account: account, close: close, open: open)
+        case .trails:
+            // Switched off: the Social card opens the "in development" page.
+            if WyrmTrailsFeature.enabled { WyrmTrailsFeed(account: account, close: close, open: open) }
+            else { WyrmTrailsComingSoon(close: close) }
         case .trail(let id): WyrmTrailDetail(trailID: id, account: account, close: close, open: open)
             // The end of the trail-reply trail: this trail's likes and replies, seen.
             .onAppear { services.markTrailRead(id) }

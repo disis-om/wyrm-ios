@@ -25,8 +25,12 @@ import UIKit
 /// switch stays; `enabled = false` hides every entry point again: the Social
 /// teaser, the profile's Trails count, grid and trail badges, the trail routes,
 /// trail alerts and banners, and the Trails group in Settings › Notifications.
+/// Trails are switched off while they are finished (OM, 2026-10-02). `false`
+/// hides the feed, trail, studio, Share run / Share this skin, trail badges and
+/// trail alerts; the Social card still shows, looking as it did, and `.trails`
+/// opens `WyrmTrailsComingSoon`. `true` brings everything back.
 enum WyrmTrailsFeature {
-    static let enabled = true
+    static let enabled = false
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]
@@ -35,7 +39,8 @@ enum WyrmTrailsFeature {
 
     static func shows(alertKind kind: String) -> Bool { enabled || !alertKinds.contains(kind) }
     static func shows(badgeID id: String) -> Bool { enabled || !badgeIDs.contains(id) }
-    static func shows(_ route: WyrmDesignRoute) -> Bool { enabled || !route.isTrails }
+    /// `.trails` always opens: the feed, or the "in development" page while off.
+    static func shows(_ route: WyrmDesignRoute) -> Bool { enabled || !route.isTrails || route == .trails }
 
     /// The alerts a player may see: trail alerts drop out while Trails are paused.
     static func visible(_ alerts: [WyrmServiceAlert]) -> [WyrmServiceAlert] {
@@ -1317,6 +1322,7 @@ struct WyrmTrailsTeaser: View {
     /// Unread likes and replies on your trails (the badge trail, OM 2026-10-01).
     var badge = 0
     @ObservedObject private var store = WyrmTrailsStore.shared
+    private var trails: [WyrmTrail] { WyrmTrailsFeature.enabled ? store.trails : [] }
 
     var body: some View {
         Button { open(.trails) } label: {
@@ -1324,7 +1330,7 @@ struct WyrmTrailsTeaser: View {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Trails").font(.wyrmDisplay(24)).foregroundColor(ATheme.ink)
-                        Text(badge > 0 ? "\(badge) new on your trails" : store.trails.isEmpty ? "Show off your skins, kills and best moments." : "New from the Wyrm community")
+                        Text(badge > 0 ? "\(badge) new on your trails" : trails.isEmpty ? "Show off your skins, kills and best moments." : "New from the Wyrm community")
                             .font(.androidWyrm(12.5)).foregroundColor(badge > 0 ? ATheme.badge : ATheme.mute)
                     }
                     Spacer()
@@ -1335,13 +1341,13 @@ struct WyrmTrailsTeaser: View {
                     ForEach(0..<4, id: \.self) { index in
                         ZStack {
                             RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.well)
-                            if index < store.trails.count, let thumb = store.trails[index].thumbUrl {
+                            if index < trails.count, let thumb = trails[index].thumbUrl {
                                 WyrmTrailImage(full: thumb, thumb: thumb, aspect: 1)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            } else if index < store.trails.count {
-                                Text(store.trails[index].caption).font(.wyrmDisplay(11)).foregroundColor(ATheme.ink)
+                            } else if index < trails.count {
+                                Text(trails[index].caption).font(.wyrmDisplay(11)).foregroundColor(ATheme.ink)
                                     .lineLimit(4).padding(6)
-                            } else if index == 0 && store.trails.isEmpty {
+                            } else if index == 0 && trails.isEmpty {
                                 Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(ATheme.quiet)
                             }
                         }
@@ -1357,7 +1363,8 @@ struct WyrmTrailsTeaser: View {
         }
         .buttonStyle(WSPressStyle())
         .onAppear { store.token = { [weak account] in account?.sessionToken ?? "" } }
-        .task { if !store.loaded { await store.refresh() } }
+        // Switched off: the same card, empty, and no feed fetch.
+        .task { if WyrmTrailsFeature.enabled && !store.loaded { await store.refresh() } }
     }
 }
 
@@ -1447,5 +1454,200 @@ struct WyrmTrailDetail: View {
             if await store.reply(trailID, body: body) { draft = "" }
             sending = false
         }
+    }
+}
+
+// MARK: - Trails, switched off
+
+/// Trails while it is switched off (OM, 2026-10-02; `WyrmTrailsFeature.enabled
+/// = false`). The Social card still looks the same and opens this page, which
+/// says plainly that Trails is being finished and what it will bring. Android
+/// twin: `TrailsComingSoonScreen` (TrailsComingSoon.kt), same copy.
+struct WyrmTrailsComingSoon: View {
+    let close: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            ZStack {
+                HStack {
+                    Button(action: close) {
+                        HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
+                            .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                    }
+                    Spacer()
+                }
+                Text("Trails").font(.androidWyrm(16, .semibold))
+            }
+            .padding(.horizontal, 16).frame(height: 52)
+            .background(ATheme.paper)
+
+            ScrollView(showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer().frame(height: 6)
+                    WyrmTrailsComingHero()
+                    Spacer().frame(height: 22)
+                    WyrmCapsLabel("In development")
+                    Spacer().frame(height: 6)
+                    Text("Trails is still growing.").font(.wyrmDisplay(34)).foregroundColor(ATheme.ink)
+                    Spacer().frame(height: 10)
+                    Text("Trails is where your best runs will live: the moment, the skin and the numbers, shared with everyone who plays Wyrm. We've switched it off for a little while so we can finish it properly instead of handing you something half-baked.")
+                        .font(.androidWyrm(15)).lineSpacing(4).foregroundColor(ATheme.mute)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    Spacer().frame(height: 24)
+                    WyrmCapsLabel("Where it is")
+                    Spacer().frame(height: 10)
+                    WyrmTrailsStages()
+
+                    Spacer().frame(height: 26)
+                    WyrmCapsLabel("What's coming")
+                    Spacer().frame(height: 10)
+                    VStack(spacing: 0) {
+                        row("square.and.arrow.up", "Share a run from the lobby",
+                            "Your score, kills and time, right on top of the moment you went down.")
+                        rule
+                        row("tshirt", "Show off your skin",
+                            "Anyone who likes it can try it on with one tap before they wear it.")
+                        rule
+                        row("sparkles", "Beads and replies",
+                            "Drop a bead on a run you loved, and talk about it underneath.")
+                        rule
+                        row("square.grid.3x3", "Your trails on your profile",
+                            "Every run you share, in one grid, so your profile tells your story.")
+                    }
+                    .background(ATheme.card)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+
+                    Spacer().frame(height: 16)
+                    HStack(spacing: 14) {
+                        Image(systemName: "bell").font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.ink)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("We'll tell you the moment it's ready.").font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.ink)
+                            Text("Until then, go make a run worth sharing.").font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+                        }
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 16).padding(.vertical, 14)
+                    .background(ATheme.well)
+                    .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    Spacer().frame(height: 110)
+                }
+                .padding(.horizontal, 20)
+            }
+        }
+        .background(ATheme.paper.ignoresSafeArea())
+        .foregroundColor(ATheme.ink)
+    }
+
+    private var rule: some View {
+        Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 66)
+    }
+
+    private func row(_ icon: String, _ title: String, _ detail: String) -> some View {
+        HStack(alignment: .top, spacing: 14) {
+            Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundColor(ATheme.ink)
+                .frame(width: 36, height: 36)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ATheme.well))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.ink)
+                Text(detail).font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 16).padding(.vertical, 14)
+    }
+}
+
+/// A snake of beads gliding along a dotted trail, forever.
+private struct WyrmTrailsComingHero: View {
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                let w = Double(size.width), h = Double(size.height)
+                func at(_ p: Double) -> CGPoint {
+                    let x: Double = -0.1 * w + p * 1.2 * w
+                    let wave: Double = sin(p * 2.0 * Double.pi * 1.35)
+                    let y: Double = h * 0.52 + wave * h * 0.22
+                    return CGPoint(x: x, y: y)
+                }
+                var trail = Path()
+                for i in 0...80 {
+                    let p = at(Double(i) / 80)
+                    if i == 0 { trail.move(to: p) } else { trail.addLine(to: p) }
+                }
+                context.stroke(trail, with: .color(ATheme.quiet.opacity(0.45)),
+                               style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 9]))
+                for k in 0..<5 {
+                    let a: Double = (Double(k) * 72.0 + 18.0) * Double.pi / 180.0
+                    let fx: Double = w * (0.15 + 0.18 * Double(k))
+                    let fy: Double = h * (0.2 + 0.12 * cos(a))
+                    let f = CGPoint(x: fx, y: fy)
+                    context.fill(Path(ellipseIn: CGRect(x: f.x - 3, y: f.y - 3, width: 6, height: 6)),
+                                 with: .color(ATheme.quiet.opacity(0.22)))
+                }
+                let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 5.2) / 5.2
+                let bead: Double = h * 0.07
+                for i in stride(from: 11, through: 0, by: -1) {
+                    let p = t - Double(i) * 0.022
+                    if p < -0.05 { continue }
+                    let c = at(p)
+                    let r: Double = bead * (1.0 - Double(i) * 0.025)
+                    context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
+                                 with: .color(ATheme.ink.opacity(1 - Double(i) / 14)))
+                }
+                let c = at(t), ahead = at(t + 0.01)
+                let dx = Double(ahead.x - c.x), dy = Double(ahead.y - c.y)
+                let len: Double = max(0.001, (dx * dx + dy * dy).squareRoot())
+                let nx: Double = dx / len, ny: Double = dy / len
+                for side in [-1.0, 1.0] {
+                    let ex: Double = Double(c.x) + nx * bead * 0.35 - ny * side * bead * 0.42
+                    let ey: Double = Double(c.y) + ny * bead * 0.35 + nx * side * bead * 0.42
+                    let e = CGPoint(x: ex, y: ey)
+                    let r: Double = bead * 0.26
+                    context.fill(Path(ellipseIn: CGRect(x: e.x - r, y: e.y - r, width: r * 2, height: r * 2)),
+                                 with: .color(ATheme.well))
+                }
+            }
+        }
+        .frame(height: 150)
+        .frame(maxWidth: .infinity)
+        .background(ATheme.well)
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .accessibilityHidden(true)
+    }
+}
+
+/// Sketched ✓ · Built ✓ · Polishing (now) · In your hands.
+private struct WyrmTrailsStages: View {
+    @State private var pulse = false
+
+    var body: some View {
+        HStack(spacing: 6) {
+            chip("Sketched", 2)
+            chip("Built", 2)
+            chip("Polishing", 1)
+            chip("In your hands", 0).layoutPriority(1)
+        }
+        .onAppear {
+            withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { pulse = true }
+        }
+    }
+
+    private func chip(_ name: String, _ state: Int) -> some View {
+        HStack(spacing: 5) {
+            if state == 2 {
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.onInk)
+            } else if state == 1 {
+                Circle().fill(ATheme.ink.opacity(pulse ? 1 : 0.35)).frame(width: 7, height: 7)
+            }
+            Text(name).font(.androidWyrm(11, .bold)).lineLimit(1).minimumScaleFactor(0.8)
+                .foregroundColor(state == 2 ? ATheme.onInk : state == 1 ? ATheme.ink : ATheme.quiet)
+        }
+        .padding(.vertical, 9).padding(.horizontal, 6)
+        .frame(maxWidth: .infinity)
+        .background(Capsule().fill(state == 2 ? ATheme.ink : ATheme.card))
+        .overlay(Capsule().stroke(state == 1 ? ATheme.ink : ATheme.rule, lineWidth: 1))
     }
 }

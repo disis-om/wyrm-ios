@@ -273,7 +273,9 @@ struct WyrmControlsContent: View {
                             .padding(.horizontal, 14).padding(.bottom, 14)
                     }
                 }
-                if let handedness {
+                // Upright there is no left or right hand (OM, 2026-10-02): the row
+                // hides; the stored choice stays for sideways play.
+                if let handedness, !orientation.portrait {
                     WSEnumBlock(title: handedness.label, detail: handedness.hint, options: ["Left", "Right"],
                                 selected: min(max(handedness.index, 0), 1)) { engine.write(handedness, values: [Double($0)]) }
                         .wyrmSettingAnchor(handedness.id)
@@ -284,6 +286,8 @@ struct WyrmControlsContent: View {
                         .wyrmSettingAnchor(boostMode.id)
                 }
             }
+
+            if orientation.portrait { WSCaption("Upright there is no left or right hand: your first finger steers, a second finger boosts.") }
 
             WSSectionLabel("Basic · size")
             WSCard {
