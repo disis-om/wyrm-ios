@@ -78,8 +78,8 @@ checks = {
         and "wyrm_capture_record(context);" in PREPARE and "wyrm_capture_harvest(context);" in PREPARE
         and "AppleRunCapture.inc" in PREPARE and "vkGetFenceStatus" in RUN_CAPTURE_C
         and "vkWaitForFences" not in RUN_CAPTURE_C and "VK_IMAGE_USAGE_TRANSFER_SRC_BIT) != 0" in RUN_CAPTURE_C
-        and "parts.count >= 2 && parts.count <= 5" in SYNC and "WyrmRunCapture.record(" in SYNC
-        and "WyrmIOSRecordRunPosition(u, v);" in PREPARE and "var map: CGPoint?" in RUN_CAPTURE
+        and "parts.count == 2 || parts.count == 3" in SYNC and "WyrmRunCapture.record(" in SYNC
+        and "wyrm_last_death_set(" in PREPARE
         and "WyrmRunCapture.runStarted()" in LEGACY
         and 'Notification.Name("WyrmRunCaptureChanged")' in RUN_CAPTURE
         and "static var lastRun: WyrmLastRun?" in RUN_CAPTURE and "let screenshot: UIImage?" in RUN_CAPTURE,

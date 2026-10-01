@@ -18,8 +18,6 @@ struct WyrmLastRun {
     let seconds: Double
     let endedAt: Date
     let screenshot: UIImage?
-    /// Where the run ended on the arena, 0...1 of the minimap's square (nil: unknown).
-    var map: CGPoint? = nil
 }
 
 enum WyrmRunCapture {
@@ -41,10 +39,10 @@ enum WyrmRunCapture {
     }
 
     /// Main thread: a run receipt drained from the engine.
-    static func record(score: Int, kills: Int, seconds: Double, map: CGPoint? = nil) {
+    static func record(score: Int, kills: Int, seconds: Double) {
         let run = WyrmLastRun(score: max(0, score), kills: max(0, kills),
                               seconds: seconds.isFinite ? max(0, seconds) : 0,
-                              endedAt: Date(), screenshot: nil, map: map)
+                              endedAt: Date(), screenshot: nil)
         set(run)
         WyrmDiagnostics.record("last run kept score=\(run.score) kills=\(run.kills) seconds=\(Int(run.seconds))", category: "STATS")
     }
@@ -98,7 +96,7 @@ enum WyrmRunCapture {
             return
         }
         current = WyrmLastRun(score: run.score, kills: run.kills, seconds: run.seconds,
-                              endedAt: run.endedAt, screenshot: image, map: run.map)
+                              endedAt: run.endedAt, screenshot: image)
         generation += 1
         lock.unlock()
         WyrmDiagnostics.record("run screenshot kept \(Int(image.size.width))x\(Int(image.size.height))", category: "STATS")

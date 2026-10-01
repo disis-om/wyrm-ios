@@ -48,7 +48,6 @@ int WyrmIOSDisplayMaxFPS(void);
    carries the life's length in seconds (usrs.play_time); Swift drains
    "score\tkills\tseconds\n" lines. */
 void WyrmIOSRecordFinishedRun(int score, int kills, double play_time);
-void WyrmIOSRecordRunPosition(float u, float v);
 const char* WyrmIOSDrainFinishedRuns(void);
 /* Run screenshots (AppleRunCapture.inc, appended to thermite's tcontext.c).
    The run receipt requests one; the next frame's swapchain image is copied

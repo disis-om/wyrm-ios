@@ -43,7 +43,7 @@ struct WyrmSettingsHub: View {
                 Group {
                 group("Arena", [
                     ("Display", "Scores, names, minimap, text sizes", "", .display),
-                    ("Controls", "Steering, boost, zoom bar", engine.setting("controls.joystick_mode")?.index == 2 ? "Arrow" : "Joystick", .controls),
+                    ("Controls", "Steering, boost, zoom bar", engine.setting("controls.joystick_mode")?.index == 2 || WyrmPlayOrientation.shared.portrait ? "Arrow" : "Joystick", .controls),
                     ("On-screen buttons", "Which buttons appear and how they fire", engine.hotkeys.isEmpty ? "" : "\(WyrmButtonsContent.allowed(engine.hotkeys).filter(\.visible).count) on", .buttons),
                 ])
                 group("Playing help", [
@@ -233,7 +233,9 @@ struct WyrmControlsContent: View {
     var body: some View {
         let steeringSetting = engine.setting("controls.joystick_mode")
         let steering = steeringSetting?.index ?? 0
-        let arrow = steering == 2
+        // Upright play steers with the arrow only (OM, 2026-10-02; engine
+        // mobile_controls_steering_mode); the sideways choice is kept.
+        let arrow = orientation.portrait || steering == 2
         let boostMode = engine.setting("controls.boost_mode")
         let boostButton = (boostMode?.index ?? 0) == 1
         let joystickSize = engine.setting("controls.joystick_size")
@@ -258,11 +260,13 @@ struct WyrmControlsContent: View {
 
             WSSectionLabel("Basic · steering")
             WSCard {
-                WSEnumBlock(title: "Steering style", options: ["Joystick", "Arrow"], selected: arrow ? 1 : 0, first: true) { pick in
-                    guard let setting = steeringSetting else { return }
-                    engine.write(setting, values: [pick == 1 ? 2 : Double((0...1).contains(steering) ? steering : 0)])
+                if !orientation.portrait {
+                    WSEnumBlock(title: "Steering style", options: ["Joystick", "Arrow"], selected: arrow ? 1 : 0, first: true) { pick in
+                        guard let setting = steeringSetting else { return }
+                        engine.write(setting, values: [pick == 1 ? 2 : Double((0...1).contains(steering) ? steering : 0)])
+                    }
+                    .wyrmSettingAnchor("controls.joystick_mode")
                 }
-                .wyrmSettingAnchor("controls.joystick_mode")
                 if !arrow, let setting = steeringSetting, setting.options.count >= 2 {
                     let behaviour = Array(setting.options.prefix(2))
                     WSValueRow(title: "Joystick behaviour", value: behaviour[min(max(steering, 0), 1)]) {
@@ -282,12 +286,13 @@ struct WyrmControlsContent: View {
                 }
                 if let boostMode {
                     WSEnumBlock(title: "Boost", detail: boostMode.hint, options: boostMode.options,
-                                selected: min(max(boostMode.index, 0), max(boostMode.options.count - 1, 0))) { engine.write(boostMode, values: [Double($0)]) }
+                                selected: min(max(boostMode.index, 0), max(boostMode.options.count - 1, 0)),
+                                first: orientation.portrait) { engine.write(boostMode, values: [Double($0)]) }
                         .wyrmSettingAnchor(boostMode.id)
                 }
             }
 
-            if orientation.portrait { WSCaption("Upright there is no left or right hand: your first finger steers, a second finger boosts.") }
+            if orientation.portrait { WSCaption("Upright you always steer with the arrow: the joystick is for sideways play, and your sideways choice is kept. No left or right hand: your first finger steers, a second finger boosts.") }
 
             WSSectionLabel("Basic · size")
             WSCard {
@@ -355,7 +360,7 @@ struct WyrmControlsPreview: View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(ATheme.quiet).padding(12)
-                if steering != 2 {
+                if steering != 2 && !orientation.portrait {
                     WyrmPaperJoystick(diameter: 60 * engine.value("controls.joystick_size", 1), opacity: opacity)
                         .wyrmAdjustPlace(.joystick)
                         .position(previewCentre("layout.joystick", proxy.size, child: 60 * engine.value("controls.joystick_size", 1)))
@@ -1430,7 +1435,8 @@ struct WyrmLayoutEditor: View {
             // catches stray touches so they never reach the engine below.
             Color.black.opacity(0.001)
             Group {
-                if engine.setting("controls.joystick_mode")?.index != 2 {
+                // Upright steers with the arrow only (OM, 2026-10-02): no joystick to place.
+                if engine.setting("controls.joystick_mode")?.index != 2 && !WyrmPlayOrientation.shared.portrait {
                     piece("layout.joystick", size, CGSize(width: 112 * joystick, height: 112 * joystick),
                           Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "controls.joystick_size", range: 0.65...1.45),
                                                                               Slider(label: "OPACITY", id: "layout.joystick_opacity", range: 0.05...1)])) {

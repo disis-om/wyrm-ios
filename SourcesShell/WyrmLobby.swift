@@ -581,49 +581,11 @@ private extension UInt8 {
     var isControlCharacter: Bool { self < 0x20 || self == 0x7F }
 }
 
-/// The arena as the in-game minimap draws it (a round world on a square
-/// frame) with a dot where the last run ended (OM, 2026-10-02). Android:
-/// `LobbyRunMap`.
-struct WyrmLobbyRunMap: View {
-    let point: CGPoint
-    let size: CGFloat
-    @State private var pulse = false
-
-    private static let blood = Color(red: 1, green: 0.302, blue: 0.302)
-
-    var body: some View {
-        let r = size / 2
-        let x = (min(max(point.x, 0), 1) - 0.5) * 2 * r
-        let y = (min(max(point.y, 0), 1) - 0.5) * 2 * r
-        let dot = max(3, r * 0.085)
-        ZStack {
-            Circle().fill(ATheme.well)
-            Path { path in
-                path.move(to: CGPoint(x: 0, y: r)); path.addLine(to: CGPoint(x: size, y: r))
-                path.move(to: CGPoint(x: r, y: 0)); path.addLine(to: CGPoint(x: r, y: size))
-            }
-            .stroke(ATheme.rule, lineWidth: 1)
-            .clipShape(Circle())
-            Circle().stroke(ATheme.ink.opacity(0.07), lineWidth: 1).frame(width: r, height: r)
-            Circle().stroke(ATheme.ink.opacity(0.16), lineWidth: 1).padding(0.5)
-            Circle().fill(Self.blood.opacity(pulse ? 0 : 0.35))
-                .frame(width: dot * 2, height: dot * 2)
-                .scaleEffect(pulse ? 3.2 : 1)
-                .offset(x: x, y: y)
-            Circle().fill(ATheme.card).frame(width: dot * 2 + 3, height: dot * 2 + 3).offset(x: x, y: y)
-            Circle().fill(Self.blood).frame(width: dot * 2, height: dot * 2).offset(x: x, y: y)
-        }
-        .frame(width: size, height: size)
-        .onAppear {
-            withAnimation(.linear(duration: 1.8).repeatForever(autoreverses: false)) { pulse = true }
-        }
-        .accessibilityHidden(true)
-    }
-}
-
-/// The last run (OM, 2026-10-02): where it ended, the score, the kills and
-/// how long it lasted. Shown only after a run since launch; `compact` is the
-/// sideways room's header chip. Android: `LobbyLastRunCard`.
+/// The last run (OM, 2026-10-02): the score, the kills and how long it
+/// lasted. Shown only after a run since launch; `compact` is the sideways
+/// room's header chip. Where it ended is a red dot on the arena's own minimap
+/// during the next run (engine `ui_overlay.c`), not here. Android:
+/// `LobbyLastRunCard`.
 struct WyrmLobbyLastRun: View {
     let run: WyrmLastRun
     let compact: Bool
@@ -652,7 +614,6 @@ struct WyrmLobbyLastRun: View {
     var body: some View {
         if compact {
             HStack(spacing: 12) {
-                if let map = run.map { WyrmLobbyRunMap(point: map, size: 46) }
                 VStack(alignment: .leading, spacing: 4) {
                     WyrmCapsLabel("Last run")
                     HStack(alignment: .bottom, spacing: 16) {
@@ -662,25 +623,23 @@ struct WyrmLobbyLastRun: View {
                     }
                 }
             }
-            .padding(.leading, 10).padding(.trailing, 16).padding(.vertical, 8)
+            .padding(.horizontal, 16).padding(.vertical, 10)
             .background(ATheme.card)
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
             .accessibilityElement(children: .combine)
         } else {
-            HStack(spacing: 16) {
-                if let map = run.map { WyrmLobbyRunMap(point: map, size: 92) }
+            HStack(alignment: .bottom, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
                     WyrmCapsLabel("Last run")
                     Spacer().frame(height: 8)
                     stat("Score", score, big: true)
-                    Spacer().frame(height: 10)
-                    HStack(spacing: 22) {
-                        stat("Kills", "\(run.kills)")
-                        stat("Time", Self.time(run.seconds))
-                    }
                 }
                 Spacer(minLength: 0)
+                HStack(spacing: 22) {
+                    stat("Kills", "\(run.kills)")
+                    stat("Time", Self.time(run.seconds))
+                }
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
             .frame(maxWidth: .infinity, alignment: .leading)

@@ -388,22 +388,7 @@ const char* WyrmIOSHomeSnapshot(void) {
 static int apple_run_scores[APPLE_RUN_OUTBOX];
 static int apple_run_kills[APPLE_RUN_OUTBOX];
 static double apple_run_seconds[APPLE_RUN_OUTBOX];
-static float apple_run_map_x[APPLE_RUN_OUTBOX];
-static float apple_run_map_y[APPLE_RUN_OUTBOX];
 static int apple_run_count = 0;
-/* Where the next recorded run ended (0..1 of the arena square, -1 unknown),
-   for the lobby's last-run minimap (OM, 2026-10-02). Set just before
-   WyrmIOSRecordFinishedRun by the same engine call. */
-static float apple_run_next_x = -1.0f;
-static float apple_run_next_y = -1.0f;
-
-void WyrmIOSRecordRunPosition(float u, float v) {
-  if (!home_mutex) return;
-  SDL_LockMutex(home_mutex);
-  apple_run_next_x = u >= 0.0f && u <= 1.0f ? u : -1.0f;
-  apple_run_next_y = v >= 0.0f && v <= 1.0f ? v : -1.0f;
-  SDL_UnlockMutex(home_mutex);
-}
 
 /* Engine thread, once per life that actually spawned in a real arena.
  * play_time is the life's length in seconds (game_capture_final_score). */
@@ -416,12 +401,8 @@ void WyrmIOSRecordFinishedRun(int score, int kills, double play_time) {
     apple_run_scores[apple_run_count] = score < 0 ? 0 : score;
     apple_run_kills[apple_run_count] = kills < 0 ? 0 : kills;
     apple_run_seconds[apple_run_count] = seconds;
-    apple_run_map_x[apple_run_count] = apple_run_next_x;
-    apple_run_map_y[apple_run_count] = apple_run_next_y;
     apple_run_count++;
   }
-  apple_run_next_x = -1.0f;
-  apple_run_next_y = -1.0f;
   SDL_UnlockMutex(home_mutex);
   /* "Share this run": the death frame is still on screen, so the frame being
      drawn now is copied once (AppleRunCapture.inc). */
@@ -429,20 +410,18 @@ void WyrmIOSRecordFinishedRun(int score, int kills, double play_time) {
   SDL_Log("Wyrm run finished: score=%d kills=%d seconds=%.1f", score, kills, seconds);
 }
 
-/* Main thread: one "score\tkills\tseconds\tmapX\tmapY\n" line per run
- * (seconds with three decimals, map 0..1 or -1), and the outbox is emptied. */
+/* Main thread: one "score\tkills\tseconds\n" line per run (seconds with three
+ * decimals), and the outbox is emptied. */
 const char* WyrmIOSDrainFinishedRuns(void) {
-  static char buffer[APPLE_RUN_OUTBOX * 72];
+  static char buffer[APPLE_RUN_OUTBOX * 48];
   buffer[0] = '\0';
   if (!home_mutex) return buffer;
   SDL_LockMutex(home_mutex);
   size_t used = 0;
-  for (int i = 0; i < apple_run_count && used < sizeof(buffer) - 72; ++i)
-    used += (size_t)snprintf(buffer + used, sizeof(buffer) - used,
-                             "%d\t%d\t%.3f\t%.4f\t%.4f\n",
+  for (int i = 0; i < apple_run_count && used < sizeof(buffer) - 48; ++i)
+    used += (size_t)snprintf(buffer + used, sizeof(buffer) - used, "%d\t%d\t%.3f\n",
                              apple_run_scores[i], apple_run_kills[i],
-                             apple_run_seconds[i], (double)apple_run_map_x[i],
-                             (double)apple_run_map_y[i]);
+                             apple_run_seconds[i]);
   apple_run_count = 0;
   SDL_UnlockMutex(home_mutex);
   return buffer;

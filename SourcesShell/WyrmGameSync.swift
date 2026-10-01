@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 
 /*
@@ -77,20 +76,13 @@ final class WyrmGameSync {
         guard !text.isEmpty else { return }
         for line in text.split(separator: "\n") {
             let parts = line.split(separator: "\t")
-            // "score\tkills\tseconds\tmapX\tmapY"; older engines send fewer columns.
-            guard parts.count >= 2 && parts.count <= 5,
+            // "score\tkills\tseconds"; an older engine sends the first two only.
+            guard parts.count == 2 || parts.count == 3,
                   let score = Int(parts[0]), let kills = Int(parts[1]) else { continue }
-            func number(_ index: Int) -> Double? {
-                parts.count > index ? Double(parts[index].replacingOccurrences(of: ",", with: ".")) : nil
-            }
-            let seconds = number(2) ?? 0
-            // Where the run ended on the arena (0..1); -1 or missing = unknown.
-            var map: CGPoint?
-            if let x = number(3), let y = number(4), (0...1).contains(x), (0...1).contains(y) {
-                map = CGPoint(x: x, y: y)
-            }
+            let seconds = parts.count == 3
+                ? Double(parts[2].replacingOccurrences(of: ",", with: ".")) ?? 0 : 0
             recordLocally(score: score, kills: kills)
-            WyrmRunCapture.record(score: score, kills: kills, seconds: seconds, map: map)
+            WyrmRunCapture.record(score: score, kills: kills, seconds: seconds)
             WyrmDiagnostics.record("run finished score=\(score) kills=\(kills) account=\(playerID.isEmpty ? "none" : "signed-in")", category: "STATS")
             guard !playerID.isEmpty else { continue }
             var outbox = pendingRuns()

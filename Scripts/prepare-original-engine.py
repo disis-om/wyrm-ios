@@ -645,22 +645,14 @@ for path in sorted(OUTPUT.rglob("*")):
             # to /v1/me/stats exactly as Android's Kotlin outbox does. It also
             # carries the life's length and asks for the death-frame screenshot
             # ("Share this run", 2026-09-30; Android: recordRunFromNative(IID)V).
-             # Where the run ended goes first (the lobby's last-run minimap,
-             # 2026-10-02; Android: recordRunPositionFromNative(FF)V): the
-             # camera's spot as a share of the arena square, -1 if unknown.
+             # Where the run ended first: a red dot on the minimap during the
+             # next run (ui_overlay.c draw_last_death, OM 2026-10-02; Android
+             # calls the same wyrm_last_death_set). Real arenas only.
              'record_finished_run': '''extern void WyrmIOSRecordFinishedRun(int score, int kills, double play_time);
-  extern void WyrmIOSRecordRunPosition(float u, float v);
-  {
-    float grd = env->usr->gdata.data.grd;
-    float vx = env->usr->gdata.data.view_xx;
-    float vy = env->usr->gdata.data.view_yy;
-    float u = -1.0f, v = -1.0f;
-    if (grd > 0 && isfinite(vx) && isfinite(vy)) {
-      u = SDL_clamp(vx / (2.0f * grd), 0.0f, 1.0f);
-      v = SDL_clamp(vy / (2.0f * grd), 0.0f, 1.0f);
-    }
-    WyrmIOSRecordRunPosition(u, v);
-  }
+  extern void wyrm_last_death_set(float x, float y);
+  if (!env->usr->gdata.ai_mode)
+    wyrm_last_death_set(env->usr->gdata.data.view_xx,
+                        env->usr->gdata.data.view_yy);
   WyrmIOSRecordFinishedRun(env->usr->usrs.score, env->usr->usrs.kills,
                            env->usr->usrs.play_time);''',
              'android_home_set_screen': '(void)screen;',
@@ -1319,3 +1311,27 @@ print("Portrait play: controls sized from the short side")
 UPRIGHT_HANDS_PAIR = ('    bool joystick_left = cfg->handedness == MOBILE_LEFT_HANDED;\n    bool in_joystick_half = joystick_left ? x < mid : x >= mid;\n', '    bool joystick_left = cfg->handedness == MOBILE_LEFT_HANDED;\n    bool in_joystick_half = joystick_left ? x < mid : x >= mid;\n    /* Upright there is no left or right hand (OM, 2026-10-02): the first free\n       finger anywhere starts the dynamic joystick, and once a joystick is\n       held (or it is a fixed one) any other finger is touch-zone boost, the\n       way Arrow steering already works. Fixed controls keep their drawn hit\n       circles above. Sideways is unchanged. Only which finger starts which\n       control changes; nothing is sent differently. */\n    if (env->wnd->size[1] > env->wnd->size[0])\n      in_joystick_half = cfg->joystick_mode == MOBILE_JOYSTICK_DYNAMIC &&\n                         !state->joystick_down;\n')
 _arrow_patch("app/src/mobile/mobile_controls.c", [UPRIGHT_HANDS_PAIR])
 print("Portrait play: no left or right hand")
+
+# Upright play steers with the arrow only, and the previous run's death spot is
+# a red dot on the arena minimap during the next run (OM, 2026-10-02). The same
+# C is in Wyrm Android (mobile_controls.c/.h, redraw.c, ui_overlay.c).
+STEERING_DEF_PAIR = ('  return clampf(short_side / 720.0f, 1.0f, 1.55f);\n}\n', '  return clampf(short_side / 720.0f, 1.0f, 1.55f);\n}\n\n/* Upright play steers with the arrow only (OM, 2026-10-02): both joystick\n   modes are off while the phone is held upright, whatever is chosen for\n   sideways play (that stored choice is kept). Every reader of the steering\n   mode goes through here; nothing is sent differently. */\nint mobile_controls_steering_mode(tenv* env) {\n  if (env->wnd->size[1] > env->wnd->size[0]) return MOBILE_STEERING_ARROW;\n  return env->usr->usrs.mobile_controls.joystick_mode;\n}\n')
+STEERING_DECL_PAIR = ('bool mobile_controls_boost_down(tenv* env);\n', 'bool mobile_controls_boost_down(tenv* env);\n/* The steering actually in use: always the arrow upright (portrait play). */\nint mobile_controls_steering_mode(tenv* env);\n')
+REDRAW_PROTO_PAIR = ('void redraw(tenv* env) {\n', '/* mobile/mobile_controls.c: the arrow upright, the chosen steering sideways. */\nint mobile_controls_steering_mode(tenv* env);\n\nvoid redraw(tenv* env) {\n')
+REDRAW_MODE_PAIR = ('usrs->mobile_controls.joystick_mode != MOBILE_STEERING_ARROW) {', 'mobile_controls_steering_mode(env) != MOBILE_STEERING_ARROW) {')
+OVERLAY_MODE_PAIR = ('usrs->mobile_controls.joystick_mode != MOBILE_STEERING_ARROW &&', 'mobile_controls_steering_mode(env) != MOBILE_STEERING_ARROW &&')
+LAST_DEATH_DEF_PAIR = ('static ImVec2 hud_top_left(tenv* env, float nx, float ny, float width,\n', "/* Where the previous run ended (OM, 2026-10-02): a red dot on the arena's\n   minimap during the next run, so you can see where you went down last time.\n   Set by android_home.c's record_finished_run (real arenas only), kept in\n   memory until the next run ends. Same frame as your own white dot (mm.slang:\n   (pos - grd) / flux_grd, at 0.9 of the radius). Draw-only. */\nstatic bool last_death_valid = false;\nstatic float last_death_x = 0.0f;\nstatic float last_death_y = 0.0f;\n\nvoid wyrm_last_death_set(float x, float y) {\n  if (!isfinite(x) || !isfinite(y) || (x == 0.0f && y == 0.0f)) return;\n  last_death_x = x;\n  last_death_y = y;\n  last_death_valid = true;\n}\n\nstatic void draw_last_death(tenv* env, float left, float top, float diameter) {\n  if (!last_death_valid || diameter <= 0.0f) return;\n  game_data* game = &env->usr->gdata;\n  if (game->ai_mode || ai_mode_editor_bare()) return;\n  float world_radius = game->data.flux_grd;\n  if (world_radius <= 1.0f) return;\n  float nx = (last_death_x - game->data.grd) / world_radius;\n  float ny = (last_death_y - game->data.grd) / world_radius;\n  float reach = sqrtf(nx * nx + ny * ny);\n  if (reach > 1.0f) {\n    nx /= reach;\n    ny /= reach;\n  }\n  float half = diameter * 0.5f;\n  ImVec2 point = {left + half + nx * half * 0.9f, top + half + ny * half * 0.9f};\n  float radius = diameter * 0.024f;\n  if (radius < 3.5f) radius = 3.5f;\n  if (radius > 6.5f) radius = 6.5f;\n  ImDrawList* draw = igGetForegroundDrawList_ViewportPtr(NULL);\n  /* A dark ring so it survives a pale patch of map, then Wyrm's death red\n     (the app's Blood, #FF4D4D), never the white of you or a teammate's green. */\n  ImDrawList_AddCircleFilled(draw, point, radius + 2.0f,\n                             igColorConvertFloat4ToU32((ImVec4){0, 0, 0, 0.70f}), 20);\n  ImDrawList_AddCircleFilled(draw, point, radius,\n                             igColorConvertFloat4ToU32((ImVec4){1.0f, 0.302f, 0.302f, 1.0f}), 20);\n}\n\nstatic ImVec2 hud_top_left(tenv* env, float nx, float ny, float width,\n")
+LAST_DEATH_DRAW_PAIR = ('    android_team_draw_minimap(env, minimap_left, minimap_top, minimap_diameter);\n', '    android_team_draw_minimap(env, minimap_left, minimap_top, minimap_diameter);\n    draw_last_death(env, minimap_left, minimap_top, minimap_diameter);\n')
+UNUSED_CFG_PAIRS = [('  {\n    mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;\n    mobile_arrow_settings* arrow = &env->usr->usrs.arrow_controls;\n', '  {\n    mobile_arrow_settings* arrow = &env->usr->usrs.arrow_controls;\n'), ('                           float* dy, float* length, float* width) {\n  mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;\n  mobile_arrow_settings* arrow = &env->usr->usrs.arrow_controls;\n', '                           float* dy, float* length, float* width) {\n  mobile_arrow_settings* arrow = &env->usr->usrs.arrow_controls;\n')]
+
+_arrow_patch("app/src/mobile/mobile_controls.c", [STEERING_DEF_PAIR])
+_controls = OUTPUT / "app/src/mobile/mobile_controls.c"
+_text = _controls.read_text(encoding="utf-8")
+if "cfg->joystick_mode" not in _text:
+    raise SystemExit("upright arrow: no cfg->joystick_mode left to route")
+_controls.write_text(_text.replace("cfg->joystick_mode", "mobile_controls_steering_mode(env)"), encoding="utf-8")
+_arrow_patch("app/src/mobile/mobile_controls.c", UNUSED_CFG_PAIRS)
+_arrow_patch("app/src/mobile/mobile_controls.h", [STEERING_DECL_PAIR])
+_arrow_patch("app/src/game/redraw.c", [REDRAW_PROTO_PAIR, REDRAW_MODE_PAIR])
+_arrow_patch("app/src/game/ui_overlay.c", [OVERLAY_MODE_PAIR, LAST_DEATH_DEF_PAIR, LAST_DEATH_DRAW_PAIR])
+print("Portrait play: arrow steering only; last death on the minimap")
