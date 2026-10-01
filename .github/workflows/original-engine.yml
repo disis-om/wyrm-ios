@@ -86,7 +86,7 @@ jobs:
           sleep 6
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin.png
           grep 'Wyrm SwiftUI skin studio presented section=overview' original-artifacts/skin-stderr.log
-          grep -E 'Wyrm native skin textures ready beads=42 accessories=32 tags=164 backgrounds=21' original-artifacts/skin-stderr.log
+          grep -E 'Wyrm native skin textures ready beads=42 accessories=32 tags=164 backgrounds=28' original-artifacts/skin-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/skin-tags-stdout.log" --stderr="$PWD/original-artifacts/skin-tags-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-skin-tags
           sleep 6
