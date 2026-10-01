@@ -516,11 +516,35 @@ private struct WyrmArenaPicker: View {
             return left.code < right.code
         }
     }
+    // Phase 3 I (OM, 2026-10-01): Recent is ranked by ping too (unmeasured
+    // last, joined order kept between equals). Uses only the pings the picker
+    // already measured; no new probes.
     private var recentRows: [WyrmArena] {
-        recent.compactMap { endpoint in
+        let rows = recent.compactMap { endpoint in
             services.arenas.first(where: { $0.endpoint == endpoint && $0.active })
                 ?? (saved.contains(endpoint) ? WyrmArena.custom(endpoint) : nil)
         }.filter { search.isEmpty || $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search) }
+        return rows.enumerated().sorted { left, right in
+            let leftPing = measured(left.element) ?? .max
+            let rightPing = measured(right.element) ?? .max
+            if leftPing != rightPing { return leftPing < rightPing }
+            return left.offset < right.offset
+        }.map(\.element)
+    }
+    private func measured(_ arena: WyrmArena) -> Int? {
+        let value = arena.number == 0 ? customLatencies[arena.endpoint] : services.arenaLatencies[arena.id]
+        return value.flatMap { $0 > 0 ? $0 : nil }
+    }
+    /// "Best for you": the live arena with the lowest measured ping (never a
+    /// custom address). Selecting it is a plain tap; nothing auto-joins.
+    private var bestArena: WyrmArena? {
+        guard search.isEmpty else { return nil }
+        return services.arenas.filter(\.active)
+            .compactMap { arena -> (WyrmArena, Int)? in
+                guard let ping = services.arenaLatencies[arena.id], ping > 0 else { return nil }
+                return (arena, ping)
+            }
+            .min { $0.1 < $1.1 }?.0
     }
     private var ranked: [WyrmArena] { filtered.filter { row in !recent.contains(row.endpoint) } }
 
@@ -550,6 +574,10 @@ private struct WyrmArenaPicker: View {
                             }.font(.androidWyrm(13)).padding(14).background(ATheme.card).cornerRadius(14)
                             if addressError { Text("Enter a valid IPv4 address and port (1–65535).")
                                 .font(.androidWyrm(11)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
+                        }
+                        if let best = bestArena {
+                            sectionLabel("BEST FOR YOU")
+                            arenaRow(best, tag: "Lowest ping")
                         }
                         if !recentRows.isEmpty {
                             sectionLabel("RECENTLY JOINED")
@@ -596,11 +624,18 @@ private struct WyrmArenaPicker: View {
         Text(text).font(.androidWyrm(10, .bold)).tracking(0.8).foregroundColor(ATheme.quiet)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 12).padding(.bottom, 3)
     }
-    private func arenaRow(_ arena: WyrmArena) -> some View {
+    private func arenaRow(_ arena: WyrmArena, tag: String? = nil) -> some View {
         Button { selection = arena.endpoint; presentation.wrappedValue.dismiss() } label: {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(arena.number == 0 ? "Custom arena" : "Arena \(arena.code)").font(.androidWyrm(15, .bold))
+                    HStack(spacing: 8) {
+                        Text(arena.number == 0 ? "Custom arena" : "Arena \(arena.code)").font(.androidWyrm(15, .bold))
+                        if let tag {
+                            Text(tag).font(.androidWyrm(10, .bold)).foregroundColor(ATheme.live)
+                                .padding(.horizontal, 7).padding(.vertical, 2)
+                                .background(ATheme.live.opacity(0.12)).clipShape(Capsule())
+                        }
+                    }
                     Text(arena.endpoint).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
                 }
                 Spacer()

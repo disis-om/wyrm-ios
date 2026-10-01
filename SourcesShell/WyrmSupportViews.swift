@@ -588,7 +588,9 @@ struct WyrmHelpCenterPage: View {
 
             }
             Group {
-            WSSectionLabel("Crash reports")
+            // OM, 2026-10-01: the "Always send" switches live here only (moved
+            // from Settings › Performance), so a choice made on a prompt can be undone.
+            WSSectionLabel("Reports")
             WSCard {
                 WSBoolRow(title: "Always send crash reports",
                           detail: "If Wyrm closes unexpectedly, the report goes without asking.",
@@ -619,6 +621,7 @@ struct WyrmHelpCenterPage: View {
             if !lastError.isEmpty {
                 Text(lastError).font(.androidWyrm(12)).foregroundColor(ATheme.badge).padding(.horizontal, 20).padding(.top, 8)
             }
+            WSCaption("Off: Wyrm asks you each time, with Send and Not now. On: the report goes by itself and only a short note shows.")
             WSCaption("A crash report holds your iPhone model, iOS and Wyrm version, where in Wyrm it stopped and the last few minutes of Wyrm's log. Never your password, keys, Team ID or messages.")
             }
             Group {

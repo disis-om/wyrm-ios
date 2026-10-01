@@ -1055,6 +1055,22 @@ bool ai_mode_is_editor(void) { return editor_session; }"""),
 }
 
 
+# Phase 3 G (OM, 2026-10-01; Wyrm Android's server.c has the same text): the
+# per-frame 5 ms network wait runs on the main thread here, inside SDL's
+# display-link callback (8.3 ms per frame at 120 Hz). The arena socket is plain
+# ws://, so once the WebSocket is open the poll waits 0 ms; while connecting it
+# keeps 5 ms. No packet, timing or keepalive change. Logs a 10 s measurement.
+NET_POLL_OLD = "void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n  /* Vlither blocks 5ms here on Android and 0ms elsewhere. A non-blocking poll\n     is fine over plaintext, where a frame's worth of bytes is already sitting\n     in the socket; a TLS record has to be assembled before there is anything to\n     hand up, and starving that is how a working connection reads as a dead\n     one. */\n#ifdef WYRM_MOBILE\n  mg_mgr_poll(&gdata->network_manager, 5);\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}"
+NET_POLL_NEW = 'void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n#ifdef WYRM_MOBILE\n  /* Phase 3 G (OM, 2026-10-01). Vlither blocked 5 ms here on every frame; its\n     reason was TLS, but the arena socket is plain `ws://` now (see\n     server_connect), so there is no record to assemble. While the socket is\n     still connecting, upgrading or answering the challenge (until the arena\'s\n     \'a\') the 5 ms stays exactly as it was, so entry is untouched; once \'a\'\n     has come the poll only drains what is already there (0 ms), so a\n     frame that finds the socket empty no longer loses up to 5 ms, and ping\n     (counted in frame time) stops carrying that wait. No packet, timing or\n     keepalive changed. Rollback: set WYRM_NET_POLL_OPEN_MS to 5. */\n#ifndef WYRM_NET_POLL_OPEN_MS\n#define WYRM_NET_POLL_OPEN_MS 0\n#endif\n  struct mg_connection* arena = gdata->connection;\n  int wait_ms = (arena && arena->is_websocket && gdata->arena_ready &&\n                 !gdata->closed)\n                    ? WYRM_NET_POLL_OPEN_MS : 5;\n  Uint64 started = SDL_GetTicksNS();\n  mg_mgr_poll(&gdata->network_manager, wait_ms);\n  Uint64 ended = SDL_GetTicksNS();\n\n  /* Measurement for OM\'s before/after check: every 10 s while a WebSocket is\n     open, how long the poll took and how far apart the frames were. */\n  static Uint64 window_start, last_call, poll_sum, poll_max, gap_sum, gap_max;\n  static unsigned frames;\n  if (arena && arena->is_websocket) {\n    if (!window_start) window_start = started;\n    Uint64 took = ended - started;\n    poll_sum += took;\n    if (took > poll_max) poll_max = took;\n    if (last_call) {\n      Uint64 gap = started - last_call;\n      gap_sum += gap;\n      if (gap > gap_max) gap_max = gap;\n    }\n    frames++;\n    if (ended - window_start >= 10000000000ULL && frames > 1) {\n      SDL_Log("Wyrm net poll: wait %d ms, poll avg %.2f ms max %.2f ms, "\n              "frame avg %.2f ms max %.2f ms over %u frames",\n              wait_ms, poll_sum / 1e6 / frames, poll_max / 1e6,\n              gap_sum / 1e6 / (frames - 1), gap_max / 1e6, frames);\n      window_start = ended;\n      poll_sum = poll_max = gap_sum = gap_max = 0;\n      frames = 0;\n    }\n    last_call = started;\n  } else {\n    window_start = last_call = 0;\n    poll_sum = poll_max = gap_sum = gap_max = 0;\n    frames = 0;\n  }\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}'
+_target = OUTPUT / "app/src/network/server.c"
+_text = _target.read_text(encoding="utf-8")
+_nl = "\r\n" if "\r\n" in _text else "\n"
+_old, _new = NET_POLL_OLD.replace("\n", _nl), NET_POLL_NEW.replace("\n", _nl)
+if _text.count(_old) != 1:
+    raise SystemExit("net poll: server_poll anchor missing in app/src/network/server.c")
+_target.write_text(_text.replace(_old, _new, 1), encoding="utf-8")
+print("Net poll: 0 ms once the arena WebSocket is open")
+
 for _relative, _pairs in BARE_EDITOR_PAIRS.items():
     _target = OUTPUT / _relative
     _text = _target.read_text(encoding="utf-8")
@@ -1066,3 +1082,22 @@ for _relative, _pairs in BARE_EDITOR_PAIRS.items():
         _text = _text.replace(_old, _new, 1)
     _target.write_text(_text, encoding="utf-8")
 print("Bare background-size editor applied")
+
+# Phase 3 H (OM, 2026-10-01; Wyrm Android has the same C): the HUD
+# performance chip under the stats. HomeMailbox.inc holds the text
+# (WyrmIOSSetPerformanceChip from WyrmPerformance.swift); the engine only draws.
+PERFORMANCE_CHIP_PAIRS = {
+"app/src/platform/android_home.h": [('bool android_home_death_pending(void);', 'bool android_home_death_pending(void);\n/* Phase 3 H: the HUD performance chip, "" for none (set by the app). */\nvoid android_home_set_performance_chip(const char* text);\nconst char* android_home_performance_chip(void);')],
+"app/src/game/ui_overlay.c": [('#include "../platform/android_voice.h"\n', '#include "../platform/android_voice.h"\n#include "../platform/android_home.h"\n'), ('        draw_stat_row(env, draw, max.x - pad, y, labels[i], values[i], 0.88f);\n        y += row_height;\n      }\n    }', '        draw_stat_row(env, draw, max.x - pad, y, labels[i], values[i], 0.88f);\n        y += row_height;\n      }\n\n      /* Phase 3 H (OM, 2026-10-01): when Auto has stepped the frame rate down\n         (heat, Battery Saver / Low Power Mode), a small chip under the stats\n         says why ms or smoothness changed. The app sets the text; nothing\n         here touches input or gameplay. */\n      const char* chip = android_home_performance_chip();\n      if (chip && chip[0] && stats_alpha > 0.01f) {\n        ImVec2 chip_text = measure_scaled(stats_label_font, chip, stats_scale);\n        float chip_pad = 8.0f * stats_scale;\n        float chip_w = chip_text.x + chip_pad * 2;\n        float chip_h = chip_text.y + chip_pad;\n        float chip_y = max.y + 6.0f * stats_scale;\n        if (chip_y + chip_h > ctx->size[1] - edge)\n          chip_y = min.y - 6.0f * stats_scale - chip_h;\n        ImVec2 chip_min = {max.x - chip_w, chip_y};\n        ImVec2 chip_max = {max.x, chip_y + chip_h};\n        draw_hud_paper(draw, chip_min, chip_max, stats_alpha);\n        ImDrawList_AddText_FontPtr(\n            draw, stats_label_font, stats_label_font->LegacySize * stats_scale,\n            (ImVec2){chip_min.x + chip_pad, chip_min.y + chip_pad * 0.5f},\n            arena_theme_colour(ARENA_THEME_INK, 0.86f * stats_alpha), chip,\n            NULL, 0, NULL);\n      }\n    }')],
+}
+for _relative, _pairs in PERFORMANCE_CHIP_PAIRS.items():
+    _target = OUTPUT / _relative
+    _text = _target.read_text(encoding="utf-8")
+    _nl = "\r\n" if "\r\n" in _text else "\n"
+    for _old, _new in _pairs:
+        _old, _new = _old.replace("\n", _nl), _new.replace("\n", _nl)
+        if _text.count(_old) != 1:
+            raise SystemExit(f"performance chip: anchor missing in {_relative}: {_old[:60]!r}")
+        _text = _text.replace(_old, _new, 1)
+    _target.write_text(_text, encoding="utf-8")
+print("Performance chip applied")

@@ -93,6 +93,8 @@ final class WyrmPerformance: ObservableObject {
         limit = stored == Self.limitAuto || stored == 30 || stored == 60 ? stored : (stored > 60 ? displayMax : Self.limitAuto)
     }
 
+    private var sentChip: String?
+
     private func publish() {
         let info = ProcessInfo.processInfo
         switch info.thermalState {
@@ -124,6 +126,17 @@ final class WyrmPerformance: ObservableObject {
             }
         }
         WyrmIOSSetFrameCap(Int32(cap))
+        // Phase 3 H: the HUD chip, only when Auto stepped down.
+        var chip = ""
+        if mode == .auto {
+            let wanted = chosen ?? displayMax
+            if cap < wanted && heat != .cool { chip = "Cooling down · \(cap) FPS" }
+            else if cap < wanted && lowPower { chip = "Low Power Mode · \(cap) FPS" }
+        }
+        if chip != sentChip {
+            sentChip = chip
+            WyrmIOSSetPerformanceChip(chip)
+        }
     }
 }
 
@@ -134,8 +147,6 @@ final class WyrmPerformance: ObservableObject {
 /// frame limit built from this display's own rates.
 struct WyrmPerformancePage: View {
     @ObservedObject var store = WyrmPerformance.shared
-    @ObservedObject var crashes = WyrmCrashWatch.shared
-    @ObservedObject var drops = WyrmDropWatch.shared
     let close: () -> Void
 
     private struct ModeCopy: Identifiable {
@@ -175,17 +186,6 @@ struct WyrmPerformancePage: View {
             .padding(.horizontal, 16)
             .wyrmSettingAnchor("app.fps-limit")
             WSCaption("Auto lets the mode decide. A number holds Wyrm at that rate. In Auto mode, heat and Low Power Mode can still bring it lower. This display goes up to \(store.displayMax) Hz.")
-
-            // OM, 2026-10-01: the "Always send" switches from the crash and
-            // drop prompts, here too, so a choice made on a prompt can be undone.
-            WSSectionLabel("Reports")
-            WSCard {
-                WSBoolRow(title: "Always send crash reports", detail: "If Wyrm closes unexpectedly, the report goes without asking.",
-                          on: crashes.autoSend, first: true) { crashes.autoSend = $0 }
-                WSBoolRow(title: "Always send drop reports", detail: "If the arena drops you mid-match, the report goes without asking.",
-                          on: drops.autoSend, first: false) { drops.autoSend = $0 }
-            }
-            WSCaption("Off: Wyrm asks you each time, with Send and Not now. On: the report goes by itself and only a short note shows.")
 
             WSSectionLabel("Menus")
             WSCard {

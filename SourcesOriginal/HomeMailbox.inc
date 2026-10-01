@@ -54,6 +54,29 @@ void WyrmIOSExitLayoutEditor(void) {
  * assist off while it is open. Set before the editor is entered. */
 void WyrmIOSSetEditorBare(bool bare) { ai_mode_set_editor_bare(bare); }
 
+/* Phase 3 H (OM, 2026-10-01): the HUD's performance chip ("Cooling down ·
+   60 FPS"). The app decides the text (Settings › Performance, Auto mode only)
+   and the engine only draws it. Two slots and an atomic index: the UI thread
+   writes the slot not being shown, the render thread reads the shown one. The
+   last byte of each slot is never written, so a read always ends. */
+static char performance_chip_text[2][48];
+static SDL_AtomicInt performance_chip_slot;
+
+void android_home_set_performance_chip(const char* text) {
+  int next = 1 - SDL_GetAtomicInt(&performance_chip_slot);
+  snprintf(performance_chip_text[next], sizeof(performance_chip_text[next]) - 1,
+           "%s", text ? text : "");
+  SDL_SetAtomicInt(&performance_chip_slot, next);
+}
+
+const char* android_home_performance_chip(void) {
+  return performance_chip_text[SDL_GetAtomicInt(&performance_chip_slot)];
+}
+
+void WyrmIOSSetPerformanceChip(const char* text) {
+  android_home_set_performance_chip(text);
+}
+
 void WyrmIOSToggleEditorLeaderboard(void) {
   if (!home_mutex) return;
   SDL_LockMutex(home_mutex);
