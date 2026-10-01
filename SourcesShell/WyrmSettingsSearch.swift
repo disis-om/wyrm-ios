@@ -149,6 +149,17 @@ enum WyrmSettingsIndex {
             })
         }
         result += [
+            WyrmSettingsEntry(id: "app.play-orientation", title: "Play orientation",
+                              detail: "Landscape or portrait: the lobby, the match and the layout editor",
+                              page: "Controls", route: .controls,
+                              keywords: "portrait landscape upright vertical orientation rotate hold phone") {
+                AnyView(WyrmPlayOrientationSearchRow(engine: engine))
+            },
+            WyrmSettingsEntry(id: "app.joystick-laser", title: "Assist laser in joystick",
+                              detail: "With assist on, a line from your head shows where the joystick steers",
+                              page: "Modes · Assist", route: .modes, keywords: "laser line aim joystick assist helper length guide") {
+                AnyView(WyrmJoystickLaserSearchRow())
+            },
             WyrmSettingsEntry(id: "app.performance", title: "Performance mode", detail: "Auto, Balanced or Performance: frame rate, heat and battery",
                               page: "Performance", route: .performance,
                               keywords: "fps frame rate heat hot battery smooth lag 120 hz promotion refresh balanced auto") {
@@ -209,6 +220,27 @@ enum WyrmSettingsIndex {
             }
         }
         return result
+    }
+}
+
+/// The play orientation choice, live in search results.
+private struct WyrmPlayOrientationSearchRow: View {
+    @ObservedObject var engine: WyrmShellStore
+    @ObservedObject var orientation = WyrmPlayOrientation.shared
+    var body: some View {
+        WSEnumBlock(title: "Play orientation", detail: "Each way keeps its own layout",
+                    options: ["Landscape", "Portrait"], selected: orientation.portrait ? 1 : 0, first: true) { pick in
+            orientation.switchTo(pick == 1, engine: engine)
+        }
+    }
+}
+
+/// The joystick laser switch, live in search results.
+private struct WyrmJoystickLaserSearchRow: View {
+    @ObservedObject var store = WyrmJoystickLaserStore.shared
+    var body: some View {
+        WSBoolRow(title: "Assist laser in joystick", detail: "With assist on, a line from your head shows where the joystick steers.",
+                  on: store.on, first: true) { store.setOn($0) }
     }
 }
 

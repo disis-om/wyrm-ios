@@ -26,6 +26,9 @@ void WyrmIOSSetEnginePresentation(bool enabled);
 /* SwiftUI draws the landscape Ready Room and the layout editor above the
    rotated engine surface; these let it drive the original home mailbox. */
 void WyrmIOSSetShellOverlay(bool enabled);
+/* Play orientation (OM, 2026-10-01): upright play keeps the engine surface
+   unrotated in the lobby, the match and the layout editor. Main thread. */
+void WyrmIOSSetPortraitPlay(bool portrait);
 void WyrmIOSSaveNickname(const char* name);
 void WyrmIOSLobbyHome(void);
 void WyrmIOSEnterLayoutEditor(const char* name);
@@ -37,6 +40,9 @@ void WyrmIOSSetEditorBare(bool bare);
 void WyrmIOSSetFrameCap(int fps);
 /* Phase 3 H: the HUD performance chip, "" for none (HomeMailbox.inc). */
 void WyrmIOSSetPerformanceChip(const char* text);
+/* Settings > Modes > Assist: the assist laser in joystick mode (length is a
+   share of the screen's short side, 0.1-1.0). */
+void WyrmIOSSetJoystickLaser(bool on, float length);
 int WyrmIOSDisplayMaxFPS(void);
 /* Finished-run receipts and arena skin sync (HomeMailbox.inc). A receipt
    carries the life's length in seconds (usrs.play_time); Swift drains

@@ -805,13 +805,15 @@ struct WyrmSkinRoot: View {
         VStack(spacing: 0) {
             inlineHeader
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                ForEach(WyrmSkinCatalog.backgrounds) { item in
+                // Wyrm, Black, None, Wyrm's own, then the imported set (ids stay the engine's).
+                ForEach(WyrmSkinCatalog.backgroundOrder.compactMap { WyrmSkinCatalog.backgrounds[safe: $0] }) { item in
                     Button {
                         background = item.id; apply(background: item.id)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 13).fill(item.id == 1 ? ATheme.paper : ATheme.ink.opacity(0.05))
+                                // Black is the floor itself: true black, as assist mode draws it.
+                                RoundedRectangle(cornerRadius: 13).fill(item.id == 1 ? ATheme.paper : (item.id == 22 ? Color.black : ATheme.ink.opacity(0.05)))
                                 if let image = textures.backgrounds[item.id] {
                                     Image(decorative: image, scale: 1).resizable().scaledToFill()
                                 } else if item.id == 1 {

@@ -756,6 +756,10 @@ final class WyrmShellHost: NSObject {
         WyrmThemeStore.shared.applyControlAppearance()
         WyrmArrowSkinStore.shared.publish()
         WyrmLookStore.shared.publish()
+        // Modes › Assist: the joystick laser's saved choice reaches the engine.
+        WyrmJoystickLaserStore.shared.publish()
+        // Controls › Play orientation: the engine surface's turn.
+        WyrmPlayOrientation.shared.publish()
         // Settings › Performance: the saved mode reaches the engine's display link.
         _ = WyrmPerformance.shared
         WyrmKeyboardController.shared.install()

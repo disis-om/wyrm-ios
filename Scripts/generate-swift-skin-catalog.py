@@ -51,6 +51,14 @@ background_pattern = re.compile(
 )
 backgrounds = [match.groups() for match in background_pattern.finditer(BACKGROUNDS)]
 assert len(backgrounds) == 22, len(backgrounds)
+# Wyrm's own floors, appended exactly as prepare-original-engine.py appends
+# them to the engine (Scripts/wyrm_backgrounds.py).
+import sys as _sys
+_sys.path.insert(0, str(ROOT / "Scripts"))
+from wyrm_backgrounds import EXTRA_BACKGROUNDS, DISPLAY_ORDER
+for key, label, file, tile_w, tile_h in EXTRA_BACKGROUNDS:
+    path = "NULL" if file is None else f'"app/res/textures/backgrounds/{file}"'
+    backgrounds.append((key, label, path, f"{tile_w:.2f}", f"{tile_h:.2f}"))
 
 scales = [None] * 32
 offsets = [None] * 32
@@ -102,6 +110,9 @@ for index, (key, label, path, tile_w, tile_h) in enumerate(backgrounds):
     )
 lines.extend([
     "    ]", "",
+    "    /// The pickers' order (ids stay the engine's): Wyrm, Black, None, Wyrm's own, then the imported set.",
+    f"    static let backgroundOrder: [Int] = {DISPLAY_ORDER}",
+    "",
     "    static func code(for groups: [Int]) -> String {",
     "        String(groups.prefix(256).compactMap { groupCodes.indices.contains($0) && validGroups.contains($0) ? groupCodes[$0] : nil })",
     "    }",

@@ -328,7 +328,18 @@ enum WyrmSkinCatalog {
         .init(id: 19, key: "bluecube", label: "Blue cube", resourcePath: "res/textures/backgrounds/bg_bluecube.png", tileWidth: 872.0, tileHeight: 882.0),
         .init(id: 20, key: "purplecube", label: "Purple cube", resourcePath: "res/textures/backgrounds/bg_purplecube.png", tileWidth: 872.0, tileHeight: 882.0),
         .init(id: 21, key: "redcube", label: "Red cube", resourcePath: "res/textures/backgrounds/bg_redcube.png", tileWidth: 872.0, tileHeight: 882.0),
+        .init(id: 22, key: "black", label: "Black", resourcePath: nil, tileWidth: 512.00, tileHeight: 512.00),
+        .init(id: 23, key: "wyrm_midnight", label: "Midnight", resourcePath: "res/textures/backgrounds/wyrm_midnight.png", tileWidth: 3790.04, tileHeight: 3282.27),
+        .init(id: 24, key: "wyrm_carbon", label: "Carbon", resourcePath: "res/textures/backgrounds/wyrm_carbon.png", tileWidth: 2954.04, tileHeight: 2954.04),
+        .init(id: 25, key: "wyrm_abyss", label: "Abyss", resourcePath: "res/textures/backgrounds/wyrm_abyss.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 26, key: "wyrm_nebula", label: "Nebula", resourcePath: "res/textures/backgrounds/wyrm_nebula.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 27, key: "wyrm_dotgrid", label: "Dot grid", resourcePath: "res/textures/backgrounds/wyrm_dotgrid.png", tileWidth: 2735.23, tileHeight: 2735.23),
+        .init(id: 28, key: "wyrm_contours", label: "Contours", resourcePath: "res/textures/backgrounds/wyrm_contours.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 29, key: "wyrm_scales", label: "Scales", resourcePath: "res/textures/backgrounds/wyrm_scales.png", tileWidth: 3282.27, tileHeight: 3282.27),
     ]
+
+    /// The pickers' order (ids stay the engine's): Wyrm, Black, None, Wyrm's own, then the imported set.
+    static let backgroundOrder: [Int] = [0, 22, 1, 23, 24, 25, 26, 27, 28, 29, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 
     static func code(for groups: [Int]) -> String {
         String(groups.prefix(256).compactMap { groupCodes.indices.contains($0) && validGroups.contains($0) ? groupCodes[$0] : nil })

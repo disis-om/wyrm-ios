@@ -45,6 +45,8 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.notify.", .sync),
         ("wyrm.ios.theme", .sync),                  // + theme-intensity
         ("wyrm.ios.arrow.", .sync),
+        ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
+        ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
         ("wyrm.ios.keyboard.", .sync),
         ("wyrm.ios.developer-mode", .sync),
@@ -136,6 +138,10 @@ final class WyrmAccountSync: ObservableObject {
             "arenaBackground": d.object(forKey: "wyrm.ios.skin.background-id") as? Int ?? 0,
             "nickname": engine?.nickname ?? "",
             "nicknameChosen": d.bool(forKey: "wyrm.nickname.chosen"),
+            // Common to every platform (OM, 2026-10-01): the same on Android and iOS.
+            "joystickLaser": ["on": WyrmJoystickLaserStore.shared.on, "length": WyrmJoystickLaserStore.shared.length],
+            "playPortrait": WyrmPlayOrientation.shared.portrait,
+            "performanceMode": WyrmPerformance.shared.mode.rawValue,
         ]
     }
 
@@ -224,7 +230,24 @@ final class WyrmAccountSync: ObservableObject {
             engine?.setNickname(name)
             d.set(doc["nicknameChosen"] as? Bool ?? !name.isEmpty, forKey: "wyrm.nickname.chosen")
         }
+        // Common settings (OM, 2026-10-01). Written into this platform's own
+        // keys before the stores reload, so they win over the platform copy.
+        if let laser = doc["joystickLaser"] as? [String: Any] {
+            if let on = laser["on"] as? Bool { d.set(on, forKey: "wyrm.ios.joystick-laser.on") }
+            if let length = (laser["length"] as? NSNumber)?.doubleValue, length.isFinite {
+                d.set(min(max(length, WyrmJoystickLaserStore.range.lowerBound), WyrmJoystickLaserStore.range.upperBound),
+                      forKey: "wyrm.ios.joystick-laser.length")
+            }
+        }
+        if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
+            d.set(mode, forKey: "wyrm.ios.performance.mode")
+        }
+        // The orientation swaps layouts, so it waits for the restored layout (tryRestore).
+        sharedPortraitPending = doc["playPortrait"] as? Bool
     }
+
+    /// The account's common play orientation, applied once the restored layout is in.
+    private var sharedPortraitPending: Bool?
 
     /// The Skin Studio's saved choice, sent to the engine as the studio sends it.
     static func reapplySkin(_ engine: WyrmShellStore) {
@@ -252,6 +275,8 @@ final class WyrmAccountSync: ObservableObject {
         WyrmArrowSkinStore.shared.reloadFromDefaults()
         WyrmKeyboardController.shared.reloadFromDefaults()
         WyrmPerformance.shared.reloadFromDefaults()
+        WyrmJoystickLaserStore.shared.reloadFromDefaults()
+        WyrmPlayOrientation.shared.reloadFromDefaults()
     }
 
     // MARK: network
@@ -317,6 +342,15 @@ final class WyrmAccountSync: ObservableObject {
         if let platform = (body["platform"] as? [String: Any])?["doc"] as? [String: Any] { await applyPlatform(platform) }
         if let shared = (body["shared"] as? [String: Any])?["doc"] as? [String: Any] { applyShared(shared) }
         reloadStores()
+        // The account's common orientation: turn (and swap layouts) once the
+        // engine has the restored layout.
+        if let upright = sharedPortraitPending, let engine {
+            sharedPortraitPending = nil
+            try? await Task.sleep(nanoseconds: 700_000_000)
+            engine.refresh()
+            try? await Task.sleep(nanoseconds: 150_000_000)
+            if upright != WyrmPlayOrientation.shared.portrait { WyrmPlayOrientation.shared.switchTo(upright, engine: engine) }
+        }
         UserDefaults.standard.removeObject(forKey: Self.owedKey)
         ready = true
         WyrmDiagnostics.record("account settings restored", category: "ACCOUNT")

@@ -192,6 +192,80 @@ def apply_render_gate(text):
     return text
 
 
+# Wyrm's own floors (OM, 2026-10-01; Wyrm Android's backgrounds.h has the same
+# rows): Black (assist mode's true black, for any mode) and seven seamless
+# tiles from Resources/Backgrounds. The list lives in Scripts/wyrm_backgrounds.py.
+import sys as _sys
+_sys.path.insert(0, str(ROOT / "Scripts"))
+from wyrm_backgrounds import EXTRA_BACKGROUNDS, BLACK_INDEX, engine_row
+
+
+def apply_wyrm_backgrounds_table(text):
+    nl = "\r\n" if "\r\n" in text else "\n"
+    pairs = [
+        ("  BACKGROUND_NONE = 1,\n", f"  BACKGROUND_NONE = 1,\n  BACKGROUND_BLACK = {BLACK_INDEX},\n"),
+        ('    {"redcube", "Red cube", "app/res/textures/backgrounds/bg_redcube.png", 872.0f, 882.0f},\n',
+         '    {"redcube", "Red cube", "app/res/textures/backgrounds/bg_redcube.png", 872.0f, 882.0f},\n'
+         + "".join(engine_row(*row) + "\n" for row in EXTRA_BACKGROUNDS)),
+    ]
+    for old, new in pairs:
+        old, new = old.replace("\n", nl), new.replace("\n", nl)
+        if text.count(old) != 1:
+            raise SystemExit(f"backgrounds: anchor missing in backgrounds.h: {old[:60]!r}")
+        text = text.replace(old, new, 1)
+    return text
+
+
+def apply_wyrm_backgrounds_redraw(text):
+    nl = "\r\n" if "\r\n" in text else "\n"
+    pairs = [
+        ('''  usr->r->global.bg_opacity =
+      background_clamp(usrs->arena_background) == BACKGROUND_NONE ? 0.0f : 1.0f;''',
+         '''  const int floor_index = background_clamp(usrs->arena_background);
+  usr->r->global.bg_opacity = floor_index == BACKGROUND_NONE ? 0.0f : 1.0f;'''),
+        ('''  usr->r->global.bg_color[0] = usr->r->global.bg_color[1] =
+      usr->r->global.bg_color[2] = mode->show_background;''',
+         '''  /* Black is drawn the way assist mode's hidden floor is: no colour, full
+     opacity, so it is true black in either mode. */
+  usr->r->global.bg_color[0] = usr->r->global.bg_color[1] =
+      usr->r->global.bg_color[2] =
+          floor_index == BACKGROUND_BLACK ? 0.0f : (float)mode->show_background;'''),
+    ]
+    for old, new in pairs:
+        old, new = old.replace("\n", nl), new.replace("\n", nl)
+        if text.count(old) != 1:
+            raise SystemExit(f"backgrounds: anchor missing in redraw.c: {old[:60]!r}")
+        text = text.replace(old, new, 1)
+    return text
+
+
+def apply_wyrm_backgrounds_skin_editor(text):
+    nl = "\r\n" if "\r\n" in text else "\n"
+    old = '''               : (background_clamp(usrs->arena_background) == BACKGROUND_NONE
+                      ? 0.0f
+                      : 0.55f);'''
+    new = '''               : (background_clamp(usrs->arena_background) == BACKGROUND_NONE ||
+                          background_clamp(usrs->arena_background) == BACKGROUND_BLACK
+                      ? 0.0f
+                      : 0.55f);'''
+    old, new = old.replace("\n", nl), new.replace("\n", nl)
+    if text.count(old) != 1:
+        raise SystemExit("backgrounds: anchor missing in skin_editor.c")
+    return text.replace(old, new, 1)
+
+
+def copy_wyrm_backgrounds():
+    target = OUTPUT / "app/res/textures/backgrounds"
+    target.mkdir(parents=True, exist_ok=True)
+    for _key, _label, file, _w, _h in EXTRA_BACKGROUNDS:
+        if file is None:
+            continue
+        source = ROOT / "Resources" / "Backgrounds" / file
+        if not source.exists():
+            raise SystemExit(f"backgrounds: Resources/Backgrounds/{file} is missing")
+        shutil.copyfile(source, target / file)
+
+
 # The slither.io Android (AIR) Build-a-Slither beads. The atlas below is the
 # original one plus three cells written by Scripts/generate-air-skin-assets.py
 # (exact ports of AIR's nsk 0/1 bead bitmaps and its `ksmc_t` shadow, checked
@@ -205,6 +279,7 @@ if hashlib.sha256(atlas_target.read_bytes()).hexdigest() != ORIGINAL_ATLAS_SHA25
 if hashlib.sha256(AIR_ATLAS.read_bytes()).hexdigest() != AIR_ATLAS_SHA256:
     raise SystemExit("Resources/AirSkin/tex_atlas_8k.png does not match its pinned hash")
 shutil.copyfile(AIR_ATLAS, atlas_target)
+copy_wyrm_backgrounds()
 
 AIR_HELPERS = r'''/* Wyrm iOS — the slither.io Android client's Build-a-Slither beads.
  *
@@ -514,6 +589,7 @@ for path in sorted(OUTPUT.rglob("*")):
     if relative == "app/src/game/redraw.c":
         text = text.replace("__ANDROID__", "WYRM_MOBILE")
         text = apply_air_skin_render(text)
+        text = apply_wyrm_backgrounds_redraw(text)
     if relative == "app/src/game/arena_theme.c":
         text = text.replace("#include <jni.h>", "#ifdef __ANDROID__\n#include <jni.h>\n#endif")
         text = text.replace("JNIEXPORT void JNICALL", "#ifdef __ANDROID__\nJNIEXPORT void JNICALL", 1)
@@ -526,6 +602,10 @@ for path in sorted(OUTPUT.rglob("*")):
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
         text = apply_render_gate(text)
+    if relative == "app/src/game/backgrounds.h":
+        text = apply_wyrm_backgrounds_table(text)
+    if relative == "app/src/ui/skin_editor.c":
+        text = apply_wyrm_backgrounds_skin_editor(text)
     if relative == "app/src/imgui_setup.c":
         # Android exposes one pixel coordinate space to both Vulkan and ImGui.
         # SDL on Retina iOS instead reports logical points to ImGui while the
@@ -1101,3 +1181,118 @@ for _relative, _pairs in PERFORMANCE_CHIP_PAIRS.items():
         _text = _text.replace(_old, _new, 1)
     _target.write_text(_text, encoding="utf-8")
 print("Performance chip applied")
+
+
+# The joystick knob follows the snake (OM, 2026-10-01; Wyrm Android's
+# mobile/mobile_controls.c has the same C). After the main pass, so the
+# platform macro is already WYRM_MOBILE here.
+JOYSTICK_KNOB_PAIRS = [
+    ("""#ifdef VLITHER_ANDROID
+static void update_joystick(tenv* env, float x, float y) {""",
+     """/*
+ * The joystick knob follows the snake (OM, 2026-10-01).
+ *
+ * The own snake's heading, as the head is drawn (`ehang`, the same smoothed
+ * angle the head bead turns with). A dynamic joystick starts with its knob on
+ * that side instead of in the centre, and a fixed one rests there between
+ * touches, so the stick always shows where the snake is going. Steering is
+ * unchanged: the first frame of a new touch aims exactly where the snake
+ * already goes, and moving the finger steers from there.
+ */
+static bool joystick_heading(tenv* env, float* hx, float* hy) {
+  game_data* gdata = &env->usr->gdata;
+  snake* own = get_snake(gdata, gdata->data.snake_id);
+  if (!own || own->dead) return false;
+  *hx = cosf(own->ehang);
+  *hy = sinf(own->ehang);
+  return true;
+}
+
+#ifdef VLITHER_ANDROID
+static void update_joystick(tenv* env, float x, float y) {"""),
+    ("""    } else if (cfg->joystick_mode == MOBILE_JOYSTICK_DYNAMIC &&
+               !state->joystick_down && in_joystick_half) {
+      state->joystick_down = true;
+      state->joystick_finger = finger;
+      state->joystick_origin[0] = x;
+      state->joystick_origin[1] = y;
+      update_joystick(env, x, y);
+      return true;
+    }""",
+     """    } else if (cfg->joystick_mode == MOBILE_JOYSTICK_DYNAMIC &&
+               !state->joystick_down && in_joystick_half) {
+      state->joystick_down = true;
+      state->joystick_finger = finger;
+      state->joystick_origin[0] = x;
+      state->joystick_origin[1] = y;
+      /* The base is placed so the finger holds the knob on the snake's side:
+         the stick starts where the snake is going, not in the centre. */
+      float hx, hy;
+      if (joystick_heading(env, &hx, &hy)) {
+        float reach = 92.0f * control_scale(env) * cfg->joystick_size;
+        state->joystick_origin[0] = x - hx * reach;
+        state->joystick_origin[1] = y - hy * reach;
+      }
+      update_joystick(env, x, y);
+      return true;
+    }"""),
+    ("""  float kx = cx + state->joystick_axis[0] * radius * 0.58f;
+  float ky = cy + state->joystick_axis[1] * radius * 0.58f;
+  if (editor) {""",
+     """  float ax = state->joystick_axis[0];
+  float ay = state->joystick_axis[1];
+  /* At rest (or held in the dead zone) the knob shows where the snake goes. */
+  float hx, hy;
+  if (!editor && (!active || (fabsf(ax) < 0.08f && fabsf(ay) < 0.08f)) &&
+      joystick_heading(env, &hx, &hy)) {
+    ax = hx;
+    ay = hy;
+  }
+  float kx = cx + ax * radius * 0.58f;
+  float ky = cy + ay * radius * 0.58f;
+  if (editor) {"""),
+]
+
+_arrow_patch("app/src/mobile/mobile_controls.c",
+             [(old.replace("VLITHER_ANDROID", "WYRM_MOBILE"), new.replace("VLITHER_ANDROID", "WYRM_MOBILE"))
+              for old, new in JOYSTICK_KNOB_PAIRS])
+print("Joystick knob follows the snake")
+
+
+# Assist laser in joystick mode (OM, 2026-10-01; Wyrm Android's ui_overlay.c
+# and android_home.c/.h have the same C). The store is in HomeMailbox.inc.
+JOYSTICK_LASER_HEADER = '/* Assist laser in joystick mode: on/off and length (share of the short\n   side, 0.1-1.0). Set by the app (Settings > Modes > Assist). */\nvoid android_home_set_joystick_laser(bool on, float length);\nbool android_home_joystick_laser_on(void);\nfloat android_home_joystick_laser_length(void);\n'
+JOYSTICK_LASER_DRAW = ('            usrs->laser_thickness);\n      }\n', "            usrs->laser_thickness);\n      }\n\n      /* Assist laser in joystick mode (OM, 2026-10-01). With assist on and a\n         joystick (not the arrow, which has its own line), a line from the head\n         where the snake is being steered: the stick's way while it is held,\n         the head's own heading otherwise. Its length is a share of the\n         screen's short side, set in Settings > Modes > Assist; colour and\n         thickness are the laser's. Draw-only: no input, no packet. */\n      if (usrs->hotkeys[HOTKEY_ASSIST].active &&\n          usrs->mobile_controls.joystick_mode != MOBILE_STEERING_ARROW &&\n          android_home_joystick_laser_on() && a > 0.01f) {\n        mobile_controls_state* stick = &usr->mobile_controls;\n        float lx = cosf(me->ehang);\n        float ly = sinf(me->ehang);\n        float held = sqrtf(stick->joystick_axis[0] * stick->joystick_axis[0] +\n                           stick->joystick_axis[1] * stick->joystick_axis[1]);\n        if (stick->joystick_down && held > 0.08f) {\n          lx = stick->joystick_axis[0] / held;\n          ly = stick->joystick_axis[1] / held;\n        }\n        float shortest = ctx->size[0] < ctx->size[1] ? (float)ctx->size[0]\n                                                     : (float)ctx->size[1];\n        float reach = android_home_joystick_laser_length() * shortest;\n        ImVec2 from = {mww2 + (hx - gdata->data.view_xx) * gdata->data.gsc,\n                       mhh2 + (hy - gdata->data.view_yy) * gdata->data.gsc};\n        ImDrawList_AddLine(\n            igGetWindowDrawList(), from,\n            (ImVec2){from.x + lx * reach, from.y + ly * reach},\n            igColorConvertFloat4ToU32(\n                (ImVec4){usrs->laser_color[0], usrs->laser_color[1],\n                         usrs->laser_color[2], usrs->laser_color[3] * a}),\n            usrs->laser_thickness);\n      }\n")
+_arrow_patch("app/src/platform/android_home.h", [
+    ("const char* android_home_performance_chip(void);\n",
+     "const char* android_home_performance_chip(void);\n" + JOYSTICK_LASER_HEADER),
+])
+_arrow_patch("app/src/game/ui_overlay.c", [JOYSTICK_LASER_DRAW])
+print("Joystick assist laser applied")
+
+
+# Portrait play (OM, 2026-10-01): controls and on-screen buttons are sized
+# from the screen's short side, which is the height when sideways (so nothing
+# changes there) and the width when upright (where the height made them huge).
+# Shared by Wyrm Android (patched in place) and Wyrm iOS (prepare script).
+CONTROL_SCALE_PAIR = ("""static float control_scale(tenv* env) {
+  return clampf(env->wnd->size[1] / 720.0f, 1.0f, 1.55f);
+}""", """static float control_scale(tenv* env) {
+  /* The short side: the height sideways, the width upright (portrait play). */
+  int short_side = env->wnd->size[0] < env->wnd->size[1] ? env->wnd->size[0]
+                                                         : env->wnd->size[1];
+  return clampf(short_side / 720.0f, 1.0f, 1.55f);
+}""")
+
+BUTTON_SCALE_PAIR = ("""static float button_scale(tenv* env) {
+  return clampf_local(env->wnd->size[1] / 720.0f, 0.82f, 1.45f);
+}""", """static float button_scale(tenv* env) {
+  /* The short side: the height sideways, the width upright (portrait play). */
+  int short_side = env->wnd->size[0] < env->wnd->size[1] ? env->wnd->size[0]
+                                                         : env->wnd->size[1];
+  return clampf_local(short_side / 720.0f, 0.82f, 1.45f);
+}""")
+
+_arrow_patch("app/src/mobile/mobile_controls.c", [CONTROL_SCALE_PAIR])
+_arrow_patch("app/src/mobile/mobile_hotkeys.c", [BUTTON_SCALE_PAIR])
+print("Portrait play: controls sized from the short side")

@@ -226,6 +226,7 @@ struct WyrmControlsPage: View {
 
 struct WyrmControlsContent: View {
     @ObservedObject var engine: WyrmShellStore
+    @ObservedObject var orientation = WyrmPlayOrientation.shared
     @State var behaviourOpen = false
     @State var zoomOpen = false
 
@@ -243,6 +244,17 @@ struct WyrmControlsContent: View {
 
         VStack(alignment: .leading, spacing: 0) {
             WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
+
+            // Play orientation (OM, 2026-10-01): the lobby, the match and the editor upright.
+            WSSectionLabel("Play orientation")
+            WSCard {
+                WSEnumBlock(title: "Hold the phone",
+                            detail: "Portrait turns the lobby, the match and the layout editor upright. Each way keeps its own layout.",
+                            options: ["Landscape", "Portrait"], selected: orientation.portrait ? 1 : 0, first: true) { pick in
+                    orientation.switchTo(pick == 1, engine: engine)
+                }
+                .wyrmSettingAnchor("app.play-orientation")
+            }
 
             WSSectionLabel("Basic · steering")
             WSCard {
@@ -291,7 +303,9 @@ struct WyrmControlsContent: View {
 
             VStack(spacing: 9) {
                 WSPrimaryButton(label: "Arrange the layout") { engine.openLayoutEditor() }
-                WSOutlineButton(label: "Reset positions") { engine.reset(2, message: "Control positions reset") }
+                WSOutlineButton(label: "Reset positions") {
+                    WyrmPlayOrientation.shared.reset([2], engine: engine, message: "Control positions reset")
+                }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Opens sideways, the way you hold the phone in a match.")
         }
@@ -327,6 +341,7 @@ enum WyrmArrowShapes {
 struct WyrmControlsPreview: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var arrowSkins = WyrmArrowSkinStore.shared
+    @ObservedObject var orientation = WyrmPlayOrientation.shared
     var body: some View {
         let steering = engine.setting("controls.joystick_mode")?.index ?? 0
         let opacity = engine.value("controls.opacity", 1)
@@ -362,7 +377,8 @@ struct WyrmControlsPreview: View {
                 }
             }
         }
-        .frame(height: 190)
+        .frame(width: orientation.portrait ? 160 : nil, height: orientation.portrait ? 300 : 190)
+        .frame(maxWidth: .infinity)
         .background(ATheme.well)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
@@ -619,6 +635,9 @@ struct WyrmModesPage: View {
                 if let dotSize { WSTypedRow(setting: dotSize, engine: engine) }
                 if let dotColour { WSColourRow(setting: dotColour, engine: engine).wyrmSettingAnchor(dotColour.id) }
             }
+
+            // OM, 2026-10-01: the assist laser for joystick players, with a live preview.
+            if visibleMode == 1 { WyrmJoystickLaserSection(engine: engine) }
 
             WSAdvancedFold(label: "Advanced · helper lines", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
             if advanced { WSCard { WSRows(rows: laser + rest, engine: engine) } }
@@ -1537,17 +1556,36 @@ struct WyrmLayoutEditor: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 8) {
-            Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
-            footerAction("CANCEL") { cancel() }
-            footerAction("RESET") {
-                engine.reset(2, message: ""); engine.reset(4, message: ""); engine.reset(8, message: "Layout reset")
+        // Upright the bar is too narrow for the hint and the actions on one
+        // line: the hint goes above, in its own small pill.
+        let upright = WyrmPlayOrientation.shared.portrait
+        return VStack(spacing: 6) {
+            if upright {
+                Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+                    .padding(.horizontal, 12).padding(.vertical, 5)
+                    .background(Capsule().fill(ATheme.card.opacity(0.92)))
             }
-            footerAction("SAVE", filled: true) { onClose() }
+            HStack(spacing: 8) {
+                if !upright {
+                    Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+                }
+                // Turns the phone and swaps to that orientation's layout; the
+                // edits so far stay with the orientation they were made in.
+                footerAction(upright ? "LANDSCAPE" : "PORTRAIT") {
+                    WyrmPlayOrientation.shared.switchTo(!upright, engine: engine)
+                    snapshot = engine.settings
+                    keySnapshot = engine.hotkeys
+                }
+                footerAction("CANCEL") { cancel() }
+                footerAction("RESET") {
+                    WyrmPlayOrientation.shared.reset([2, 4, 8], engine: engine, message: "Layout reset")
+                }
+                footerAction("SAVE", filled: true) { onClose() }
+            }
+            .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 5)
+            .background(Capsule().fill(ATheme.card.opacity(0.96)))
+            .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
         }
-        .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 5)
-        .background(Capsule().fill(ATheme.card.opacity(0.96)))
-        .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
     }
 
     private func footerAction(_ label: String, filled: Bool = false, _ action: @escaping () -> Void) -> some View {

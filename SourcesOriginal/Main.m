@@ -20,6 +20,9 @@ static int reported_width;
 static int reported_height;
 static int reported_screen = -1;
 static bool engine_presentation;
+/* Play orientation (OM, 2026-10-01): upright play keeps the engine surface
+   unrotated in the lobby and the match (WyrmIOSSetPortraitPlay). */
+static bool portrait_play;
 static bool leaderboard_proven;
 static bool canvas_proven;
 static unsigned gameplay_frames;
@@ -205,6 +208,20 @@ static void apply_shell_visibility(void) {
   shell.backgroundColor = overlay ? UIColor.clearColor : original_background;
 }
 
+/* Play orientation (Settings > Controls). Upright, the presented engine keeps
+   the portrait surface; sideways it turns as before. Applies at once if the
+   engine is on screen (the layout editor), else at the next presentation. */
+void WyrmIOSSetPortraitPlay(bool portrait) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    portrait_play = portrait;
+    if (!engine_container) return;
+    [UIView performWithoutAnimation:^{
+      engine_container.landscapePresentation = engine_presentation && !portrait_play;
+      apply_shell_visibility();
+    }];
+  });
+}
+
 void WyrmIOSSetShellOverlay(bool enabled) {
   dispatch_async(dispatch_get_main_queue(), ^{
     shell_overlay = enabled;
@@ -256,7 +273,7 @@ void WyrmIOSSetEnginePresentation(bool enabled) {
     }
     [engine_container installShellControllerIfNeeded];
     [UIView performWithoutAnimation:^{
-      engine_container.landscapePresentation = enabled;
+      engine_container.landscapePresentation = enabled && !portrait_play;
       apply_shell_visibility();
     }];
     CGRect portrait = engine_container.view.bounds;

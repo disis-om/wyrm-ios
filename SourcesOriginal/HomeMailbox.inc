@@ -77,6 +77,31 @@ void WyrmIOSSetPerformanceChip(const char* text) {
   android_home_set_performance_chip(text);
 }
 
+/* Assist laser in joystick mode (OM, 2026-10-01): set by the app, read by
+   ui_overlay.c every frame. Length is kept in thousandths. */
+static SDL_AtomicInt joystick_laser_on_flag;
+static SDL_AtomicInt joystick_laser_milli;
+
+void android_home_set_joystick_laser(bool on, float length) {
+  if (!(length >= 0.1f)) length = 0.1f;
+  if (length > 1.0f) length = 1.0f;
+  SDL_SetAtomicInt(&joystick_laser_milli, (int)(length * 1000.0f + 0.5f));
+  SDL_SetAtomicInt(&joystick_laser_on_flag, on ? 1 : 0);
+}
+
+bool android_home_joystick_laser_on(void) {
+  return SDL_GetAtomicInt(&joystick_laser_on_flag) != 0;
+}
+
+float android_home_joystick_laser_length(void) {
+  int milli = SDL_GetAtomicInt(&joystick_laser_milli);
+  return milli > 0 ? milli / 1000.0f : 0.45f;
+}
+
+void WyrmIOSSetJoystickLaser(bool on, float length) {
+  android_home_set_joystick_laser(on, length);
+}
+
 void WyrmIOSToggleEditorLeaderboard(void) {
   if (!home_mutex) return;
   SDL_LockMutex(home_mutex);

@@ -7,17 +7,26 @@ import UIKit
 /// Dynamic Island and its trailing edge by the home indicator.
 struct WyrmLandscapeStage<Content: View>: View {
     let content: (CGSize, EdgeInsets) -> Content
+    /// Playing upright (Settings › Controls › Play orientation): no turn, the
+    /// content gets the portrait canvas, as the engine surface does (Main.m).
+    @ObservedObject private var orientation = WyrmPlayOrientation.shared
 
     init(@ViewBuilder content: @escaping (CGSize, EdgeInsets) -> Content) { self.content = content }
 
     var body: some View {
         GeometryReader { outer in
-            let size = CGSize(width: outer.size.height, height: outer.size.width)
             let safe = Self.windowInsets
-            content(size, EdgeInsets(top: safe.left, leading: safe.top, bottom: safe.right, trailing: safe.bottom))
-                .frame(width: size.width, height: size.height)
-                .rotationEffect(.degrees(90))
-                .position(x: outer.size.width / 2, y: outer.size.height / 2)
+            if orientation.portrait {
+                content(outer.size, EdgeInsets(top: safe.top, leading: safe.left, bottom: safe.bottom, trailing: safe.right))
+                    .frame(width: outer.size.width, height: outer.size.height)
+                    .position(x: outer.size.width / 2, y: outer.size.height / 2)
+            } else {
+                let size = CGSize(width: outer.size.height, height: outer.size.width)
+                content(size, EdgeInsets(top: safe.left, leading: safe.top, bottom: safe.right, trailing: safe.bottom))
+                    .frame(width: size.width, height: size.height)
+                    .rotationEffect(.degrees(90))
+                    .position(x: outer.size.width / 2, y: outer.size.height / 2)
+            }
         }
         .ignoresSafeArea()
     }
@@ -72,6 +81,11 @@ struct WyrmReadyRoom: View {
                 if quickSettings {
                     quickSettingsPage(safe).transition(.asymmetric(insertion: .opacity.combined(with: .offset(x: size.width / 7)),
                                                                    removal: .opacity.combined(with: .offset(x: size.width / 7))))
+                } else if size.height > size.width {
+                    // Playing upright: the same room, stacked (OM, 2026-10-01).
+                    readyRoomUpright(size, safe)
+                        .offset(y: keyboard.focused ? -160 : 0)
+                        .animation(.spring(response: 0.34, dampingFraction: 0.86), value: keyboard.focused)
                 } else {
                     readyRoom(size, safe)
                         // Typing lifts the room so the name stays above the keys.
@@ -206,7 +220,7 @@ struct WyrmReadyRoom: View {
                     paperButton("Play with AI", "sparkles", width: 128, enabled: !entering && !engine.arenaPlayPending) {
                         saveName(); engine.playOffline(name: nickname)
                     }
-                    playButton
+                    playButton()
                 }
             }
             .padding(.top, safe.top).padding(.bottom, safe.bottom)
@@ -218,7 +232,84 @@ struct WyrmReadyRoom: View {
         .onTapGesture { if nameFocused { nameFocused = false; saveName() } }
     }
 
-    private var playButton: some View {
+    /// The Ready Room held upright: Home at the top, the arena card and the
+    /// name, then Play with AI and Share run side by side, and Play, the widest,
+    /// at the bottom where the thumb is. Android: `LobbyReadyRoomUpright`.
+    private func readyRoomUpright(_ size: CGSize, _ safe: EdgeInsets) -> some View {
+        let inner = max(size.width - safe.leading - safe.trailing - 44, 200)
+        let showShare = hasRun && WyrmTrailsFeature.enabled
+        let half = showShare ? (inner - 10) / 2 : inner
+        return ZStack(alignment: .topTrailing) {
+            WyrmBrandStroke()
+                .stroke(ATheme.ink.opacity(0.045), style: StrokeStyle(lineWidth: 84 * 0.16, lineCap: .round, lineJoin: .round))
+                .frame(width: 70, height: 70)
+                .padding(.trailing, 22 + safe.trailing).padding(.top, 12 + safe.top)
+
+            VStack(alignment: .leading, spacing: 0) {
+                paperButton("Home", "house", width: 112, enabled: !entering) { saveName(); engine.leaveLobby() }
+                Spacer().frame(height: 18)
+                WyrmCapsLabel("Ready room")
+                Text("Enter the arena").font(.androidWyrm(26, .bold)).tracking(-0.5).foregroundColor(ATheme.ink)
+                Spacer().frame(height: 12)
+                Rectangle().fill(ATheme.rule).frame(height: 1)
+                Spacer().frame(height: 18)
+                VStack(alignment: .leading, spacing: 0) {
+                    WyrmCapsLabel("Selected arena")
+                    Spacer().frame(height: 7)
+                    Text(engine.arena.isEmpty ? "No arena selected" : engine.arena)
+                        .font(.wyrmDisplay(26)).lineLimit(1).minimumScaleFactor(0.6)
+                        .foregroundColor(engine.arena.isEmpty ? ATheme.quiet : ATheme.ink)
+                    Spacer().frame(height: 11)
+                    HStack(spacing: 9) {
+                        identity("Server code", serverCode)
+                        if let arena, arena.number > 0 { identity("Cluster", "\(arena.cluster)") }
+                    }
+                }
+                .padding(.horizontal, 18).padding(.vertical, 14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ATheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                Spacer().frame(height: 22)
+                WyrmCapsLabel("Playing as")
+                Spacer().frame(height: 7)
+                TextField("", text: $nickname)
+                    .font(.wyrmDisplay(36)).foregroundColor(entering ? ATheme.quiet : ATheme.ink)
+                    .textInputAutocapitalization(.never).disableAutocorrection(true)
+                    .submitLabel(.done).focused($nameFocused).disabled(entering)
+                    .overlay(alignment: .leading) {
+                        if nickname.isEmpty { Text("Wyrm Player").font(.wyrmDisplay(36)).foregroundColor(ATheme.quiet).allowsHitTesting(false) }
+                    }
+                    .onChange(of: nickname) { value in
+                        let clean = String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }.prefix(24))
+                        if clean != value { nickname = clean }
+                    }
+                    .onSubmit { saveName(); play() }
+                Spacer().frame(height: 8)
+                LinearGradient(colors: [ATheme.ink.opacity(0.34), ATheme.rule], startPoint: .leading, endPoint: .trailing)
+                    .frame(height: 1)
+                Spacer(minLength: 12)
+                HStack(spacing: 10) {
+                    paperButton("Play with AI", "sparkles", width: half, enabled: !entering && !engine.arenaPlayPending) {
+                        saveName(); engine.playOffline(name: nickname)
+                    }
+                    if showShare {
+                        WyrmShareRunButton(width: half, enabled: !entering && !engine.arenaPlayPending) { shareRun() }
+                    }
+                }
+                Spacer().frame(height: 12)
+                playButton(width: inner)
+            }
+            .padding(.top, safe.top).padding(.bottom, safe.bottom)
+            .padding(.leading, safe.leading).padding(.trailing, safe.trailing)
+            .padding(.horizontal, 22).padding(.vertical, 16)
+        }
+        .frame(width: size.width, height: size.height)
+        .contentShape(Rectangle())
+        .onTapGesture { if nameFocused { nameFocused = false; saveName() } }
+    }
+
+    private func playButton(width: CGFloat = 160) -> some View {
         let enabled = !engine.arena.isEmpty && !entering && !engine.arenaPlayPending
         return Button(action: play) {
             HStack(spacing: 10) {
@@ -227,7 +318,7 @@ struct WyrmReadyRoom: View {
                 Text(entering ? "ENTERING" : "PLAY").font(.androidWyrm(13, .bold)).tracking(2.5)
             }
             .foregroundColor(enabled ? ATheme.onInk : ATheme.quiet)
-            .frame(width: 160, height: 52)
+            .frame(width: width, height: 52)
             .background(Capsule().fill(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.track)))
             .contentShape(Capsule())
         }
