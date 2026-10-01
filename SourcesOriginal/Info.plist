@@ -36,6 +36,8 @@
     <string>Wyrm shows your photos so you can pick one for a trail.</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
+    <key>CADisableMinimumFrameDurationOnPhone</key>
+    <true/>
     <key>GCSupportsGameMode</key>
     <true/>
     <key>UIApplicationSceneManifest</key>

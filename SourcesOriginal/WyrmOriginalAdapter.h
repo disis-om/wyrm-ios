@@ -32,6 +32,10 @@ void WyrmIOSEnterLayoutEditor(const char* name);
 void WyrmIOSExitLayoutEditor(void);
 void WyrmIOSToggleEditorLeaderboard(void);
 void WyrmIOSSetEditorBare(bool bare);
+/* Settings › Performance (Main.m): the engine's frame cap (0 = the display's
+   maximum) and that maximum (120 on ProMotion, else 60). Main thread. */
+void WyrmIOSSetFrameCap(int fps);
+int WyrmIOSDisplayMaxFPS(void);
 /* Finished-run receipts and arena skin sync (HomeMailbox.inc). A receipt
    carries the life's length in seconds (usrs.play_time); Swift drains
    "score\tkills\tseconds\n" lines. */

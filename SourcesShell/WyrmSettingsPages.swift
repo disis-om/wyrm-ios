@@ -16,6 +16,7 @@ struct WyrmSettingsHub: View {
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var theme = WyrmThemeStore.shared
     @ObservedObject var notifications = WyrmNotificationPrefs.shared
+    @ObservedObject var performance = WyrmPerformance.shared
     @ObservedObject var support = WyrmSupportStore.shared
     let open: (WyrmDesignRoute) -> Void
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
@@ -50,6 +51,7 @@ struct WyrmSettingsHub: View {
                     ("Bot", "When it circles, how wide it swings", "", .bot),
                 ])
                 group("Food", [("Food style", "Original, rings and geometric shapes", WyrmFoodPage.label(engine), .food)])
+                group("Performance", [("Performance", "Frame rate, heat and battery", performance.summary, .performance)])
                 group("Account", [
                     ("Profile", "Name, username, photo, bio", account.player?.handle ?? "", .profile("")),
                     ("Notifications", "Invites, team pings, follows", notifications.enabledCount > 0 ? "\(notifications.enabledCount) on" : "", .notificationSettings),
@@ -156,6 +158,7 @@ struct WyrmDisplayPage: View {
         let rest = engine.settings.filter {
             ($0.group == "general" || $0.group.hasPrefix("general.")) && $0.group != "general.bot"
                 && !Self.basicIDs.contains($0.id) && !$0.label.isEmpty
+                && $0.id != "general.vsync" // Settings › Performance owns it now
         }
         WSScaffold(title: "Display", onBack: close) {
             WSSectionLabel("Basic", top: 18)
@@ -166,7 +169,7 @@ struct WyrmDisplayPage: View {
                 WSAdvancedFold(label: "Advanced", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
                 if advanced {
                     WSCard { WSRows(rows: rest, engine: engine) }
-                    WSCaption("VSync, zoom step, cursor size and after-death delay live here — the things nobody touches twice.")
+                    WSCaption("Zoom step, cursor size and after-death delay live here — the things nobody touches twice. Frame rate is in Settings › Performance.")
                 }
             }
         }

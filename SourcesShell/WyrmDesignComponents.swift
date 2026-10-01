@@ -30,6 +30,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case modes
     case bot
     case food
+    case performance
     case notificationSettings
     case privacy
     case themes
@@ -70,6 +71,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .modes: return "modes"
         case .bot: return "bot"
         case .food: return "food"
+        case .performance: return "performance"
         case .notificationSettings: return "notification-settings"
         case .privacy: return "privacy"
         case .themes: return "themes"

@@ -45,6 +45,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.notify.", .sync),
         ("wyrm.ios.theme", .sync),                  // + theme-intensity
         ("wyrm.ios.arrow.", .sync),
+        ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
         ("wyrm.ios.keyboard.", .sync),
         ("wyrm.ios.developer-mode", .sync),
         ("wyrm.ios.stats.", .sync),
@@ -250,6 +251,7 @@ final class WyrmAccountSync: ObservableObject {
         WyrmLookStore.shared.reloadFromDefaults()
         WyrmArrowSkinStore.shared.reloadFromDefaults()
         WyrmKeyboardController.shared.reloadFromDefaults()
+        WyrmPerformance.shared.reloadFromDefaults()
     }
 
     // MARK: network

@@ -756,6 +756,8 @@ final class WyrmShellHost: NSObject {
         WyrmThemeStore.shared.applyControlAppearance()
         WyrmArrowSkinStore.shared.publish()
         WyrmLookStore.shared.publish()
+        // Settings › Performance: the saved mode reaches the engine's display link.
+        _ = WyrmPerformance.shared
         WyrmKeyboardController.shared.install()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())

@@ -124,6 +124,74 @@ def replace_body(text, name, body):
     start, end = function_span(text, name)
     return text[:start] + '{\n' + body + '\n}' + text[end:]
 
+# Performance (OM, 2026-10-01; Wyrm Android's main.c has the same gate): the
+# engine draws only where it can be seen (lobby, match, skin editor, the Skin
+# postcard). Under the opaque SwiftUI pages it draws a few settle frames and
+# then stops, while every poll in trender keeps running. The old Vlither
+# background for screens that no longer exist goes too.
+RENDER_GATE = r"""
+/*
+ * Performance (OM, 2026-10-01): the engine draws only where it can be seen.
+ *
+ * Home, Social, Settings and every other Compose / SwiftUI page are opaque,
+ * and the engine used to draw a whole frame under them every pass anyway. Now
+ * it draws in the lobby, in a match (the AI editors are matches), in the skin
+ * editor and for the Skin postcard. Leaving those, it draws a few settle
+ * frames, so what stays on the surface is the plain clear colour and never a
+ * stale arena, and then stops drawing. The polls at the top of trender still
+ * run every pass, so mailboxes, settings and the socket behave exactly as
+ * before. Nothing here reads or writes the protocol or the game.
+ */
+#define WYRM_SETTLE_FRAMES 4
+static int wyrm_settle = WYRM_SETTLE_FRAMES;
+
+static bool wyrm_engine_visible(tenv* env) {
+  /* Until a frame has reached the screen (start, a new surface), keep drawing. */
+  if (!env->ctx->last_present_succeeded) return true;
+  if (env->usr->gdata.curr_screen != TITLE_SCREEN || ui_skin_editor_postcard()) {
+    wyrm_settle = WYRM_SETTLE_FRAMES;
+    return true;
+  }
+  if (wyrm_settle > 0) {
+    wyrm_settle--;
+    return true;
+  }
+  return false;
+}
+
+"""
+
+
+def apply_render_gate(text):
+    nl = "\r\n" if "\r\n" in text else "\n"
+    pairs = [
+        ("void trender(tenv* env) {\n", RENDER_GATE + "void trender(tenv* env) {\n"),
+        ("""  if (usr->gdata.curr_screen != PLAYING &&
+      usr->gdata.curr_screen != SKIN_EDITOR &&
+      usr->gdata.curr_screen != TITLE_SCREEN &&
+      usr->gdata.curr_screen != LOBBY) {
+    ui_theme_draw_background(env);
+    ui_theme_draw_version(env);
+  }
+""", ""),
+        ("""  igRender();
+  if (tcontext_begin(ctx)) {""", """  igRender();
+  bool draw = wyrm_engine_visible(env);
+  if (draw && tcontext_begin(ctx)) {"""),
+        ("""void tresize(tenv* env) {
+  ui_viewport_resize(env);""", """void tresize(tenv* env) {
+  ui_viewport_resize(env);
+  /* A new swapchain starts empty: give it the settle frames again. */
+  wyrm_settle = WYRM_SETTLE_FRAMES;"""),
+    ]
+    for old, new in pairs:
+        old, new = old.replace("\n", nl), new.replace("\n", nl)
+        if text.count(old) != 1:
+            raise SystemExit(f"render gate: anchor missing in main.c: {old[:60]!r}")
+        text = text.replace(old, new, 1)
+    return text
+
+
 # The slither.io Android (AIR) Build-a-Slither beads. The atlas below is the
 # original one plus three cells written by Scripts/generate-air-skin-assets.py
 # (exact ports of AIR's nsk 0/1 bead bitmaps and its `ksmc_t` shadow, checked
@@ -457,6 +525,7 @@ for path in sorted(OUTPUT.rglob("*")):
                             '  android_skin_poll(env);\n  WyrmIOSApplySkinSelection(env);\n  WyrmIOSArenaSyncPoll(env);')
         text = text.replace('  ui_theme_transition_end(env);',
                             '  ui_theme_transition_end(env);\n  WyrmIOSDrawShell(env);')
+        text = apply_render_gate(text)
     if relative == "app/src/imgui_setup.c":
         # Android exposes one pixel coordinate space to both Vulkan and ImGui.
         # SDL on Retina iOS instead reports logical points to ImGui while the

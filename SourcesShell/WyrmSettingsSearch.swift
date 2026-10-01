@@ -103,7 +103,7 @@ enum WyrmSettingsIndex {
 
     static func place(_ setting: EngineSetting) -> (WyrmDesignRoute, String)? {
         let id = setting.id, group = setting.group
-        guard !setting.label.isEmpty, !id.hasPrefix("tags.") else { return nil }
+        guard !setting.label.isEmpty, !id.hasPrefix("tags."), id != "general.vsync" else { return nil }
         if botIDs.contains(id) { return (.bot, "Bot") }
         if group == "general.bot" { return nil }
         if group == "general" || group.hasPrefix("general.") { return (.display, "Display") }
@@ -148,6 +148,20 @@ enum WyrmSettingsIndex {
                 AnyView(WyrmArrowSettingsCard(engine: engine).padding(.horizontal, -16).padding(.bottom, 2))
             })
         }
+        result += [
+            WyrmSettingsEntry(id: "app.performance", title: "Performance mode", detail: "Auto, Balanced or Performance: frame rate, heat and battery",
+                              page: "Performance", route: .performance,
+                              keywords: "fps frame rate heat hot battery smooth lag 120 hz promotion refresh balanced auto") {
+                AnyView(WSValueRow(title: "Performance mode", value: WyrmPerformance.shared.summary, first: true))
+            },
+            WyrmSettingsEntry(id: "app.fps-limit", title: "Frame limit", detail: "Auto, 30, 60 or this display's maximum",
+                              page: "Performance", route: .performance, keywords: "fps cap limit frame rate 30 60 120") {
+                AnyView(WSEnumBlock(title: "Frame limit", detail: "Auto lets the mode decide",
+                                    options: WyrmPerformance.shared.limitChoices.map(WyrmPerformance.shared.limitLabel),
+                                    selected: WyrmPerformance.shared.limitChoices.firstIndex(of: WyrmPerformance.shared.limit) ?? 0,
+                                    first: true) { WyrmPerformance.shared.chooseLimit(WyrmPerformance.shared.limitChoices[$0]) })
+            },
+        ]
         result += [
             WyrmSettingsEntry(id: "app.theme", title: "Theme", detail: "Paper, dark and colour appearances", page: "Accessibility",
                               route: .themes, keywords: "appearance dark mode colour color " + WyrmThemeID.allCases.map(\.rawValue).joined(separator: " ")) {
