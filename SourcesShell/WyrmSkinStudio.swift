@@ -369,8 +369,8 @@ struct WyrmSkinRoot: View {
                     .accessibilityLabel("Live native preview of the selected Wyrm skin")
                     // Share this skin: bottom left of the preview, above the rule (OM).
                     .overlay(shareSkinButton.padding(.leading, 16).padding(.bottom, 10), alignment: .bottomLeading)
-                    // Arena background open: "Adjust size" sits on the rule, top right (OM, 2026-10-01).
-                    .overlay(adjustSizeButton.padding(.trailing, 20).offset(y: 17), alignment: .bottomTrailing)
+                    // Arena background open: "Adjust size" in line with Share this skin, far right (OM, 2026-10-01).
+                    .overlay(adjustSizeButton.padding(.trailing, 16).padding(.bottom, 10), alignment: .bottomTrailing)
             }
 
             Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)

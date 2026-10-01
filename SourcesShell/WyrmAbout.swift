@@ -17,7 +17,7 @@ enum WyrmAboutInfo {
     static let email = "ommanav.mail@gmail.com"
     static let website = URL(string: "https://www.omrajput.in")!
     /// Not published yet: the button says so until a link is set here.
-    static let discordInvite: URL? = nil
+    static let discordInvite: URL? = URL(string: "https://discord.gg/efqjEmQdeq")
 
     static var upiPay: URL? {
         var parts = URLComponents()

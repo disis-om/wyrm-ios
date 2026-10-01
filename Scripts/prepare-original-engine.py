@@ -917,3 +917,83 @@ _arrow_patch("app/src/game/redraw.c", [
 """),
 ])
 print("Wyrm looks: renderer atlas and redraw hook applied")
+
+
+# Bare editor (OM, 2026-10-01; Android engine has the same change): the
+# background-size editor shows only the AI arena's real minimap and
+# leaderboard, no controls, buttons, stats, team or chat, with assist off while
+# it is open. WyrmIOSSetEditorBare (HomeMailbox.inc) switches it.
+BARE_EDITOR_PAIRS = {
+"app/src/game/ai_mode.h": [
+("bool ai_mode_is_editor(void);",
+ """bool ai_mode_is_editor(void);
+/* Background-size editor: only the real minimap and leaderboard over the AI
+   arena, assist off while it is open (OM, 2026-10-01). */
+void ai_mode_set_editor_bare(bool bare);
+bool ai_mode_editor_bare(void);"""),
+],
+"app/src/game/ai_mode.c": [
+("""void ai_mode_start_editor(tenv* e, const char* nick) {
+  editor_session = true;
+  ai_mode_start(e, nick);
+}
+bool ai_mode_is_editor(void) { return editor_session; }""",
+"""/* The background-size editor (OM, 2026-10-01): no controls, no buttons, no
+   stats; assist off so the floor shows, and back as it was on close. */
+static bool editor_bare;
+static bool bare_assist_saved;
+static bool bare_assist_was;
+void ai_mode_set_editor_bare(bool bare) { editor_bare = bare; }
+bool ai_mode_editor_bare(void) { return editor_session && editor_bare; }
+
+void ai_mode_start_editor(tenv* e, const char* nick) {
+  editor_session = true;
+  if (editor_bare && !bare_assist_saved) {
+    bare_assist_was = e->usr->usrs.hotkeys[HOTKEY_ASSIST].active;
+    bare_assist_saved = true;
+  }
+  if (editor_bare) e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = false;
+  ai_mode_start(e, nick);
+}
+bool ai_mode_is_editor(void) { return editor_session; }"""),
+("""void ai_mode_finish_editor(tenv* e) {
+  editor_session = false;""",
+"""void ai_mode_finish_editor(tenv* e) {
+  if (bare_assist_saved) {
+    e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = bare_assist_was;
+    bare_assist_saved = false;
+  }
+  editor_bare = false;
+  editor_session = false;"""),
+("""  mobile_controls_draw_gameplay(e);
+  draw_notice(e);""",
+"""  if (!ai_mode_editor_bare()) mobile_controls_draw_gameplay(e);
+  draw_notice(e);"""),
+],
+"app/src/game/ui_overlay.c": [
+('#include "ui_overlay.h"\n', '#include "ui_overlay.h"\n#include "ai_mode.h"\n'),
+("""    /* ---- what you are doing, directly under the leaderboard ---- */
+    {""",
+"""    /* ---- what you are doing, directly under the leaderboard ---- */
+    /* Not in the background-size editor: only the map and the board there. */
+    if (!ai_mode_editor_bare()) {"""),
+("""    android_team_draw_roster_centered(env, usrs->hud_team_x * ctx->size[0],
+                                      usrs->hud_team_y * ctx->size[1]);""",
+"""    if (!ai_mode_editor_bare())
+      android_team_draw_roster_centered(env, usrs->hud_team_x * ctx->size[0],
+                                        usrs->hud_team_y * ctx->size[1]);"""),
+],
+}
+
+
+for _relative, _pairs in BARE_EDITOR_PAIRS.items():
+    _target = OUTPUT / _relative
+    _text = _target.read_text(encoding="utf-8")
+    _nl = "\r\n" if "\r\n" in _text else "\n"
+    for _old, _new in _pairs:
+        _old, _new = _old.replace("\n", _nl), _new.replace("\n", _nl)
+        if _text.count(_old) != 1:
+            raise SystemExit(f"bare editor: anchor missing in {_relative}: {_old[:60]!r}")
+        _text = _text.replace(_old, _new, 1)
+    _target.write_text(_text, encoding="utf-8")
+print("Bare background-size editor applied")

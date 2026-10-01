@@ -3,8 +3,8 @@ import SwiftUI
 /// Adjust arena background size (OM, 2026-10-01). Android twin:
 /// `ArenaBackgroundSizeEditor` in LayoutEditors.kt.
 ///
-/// The AI arena sideways, as the HUD editor opens it, with the minimap and the
-/// leaderboard where the player keeps them, and one slider along the bottom.
+/// The AI arena sideways with only its real minimap and leaderboard (the
+/// engine's bare editor: no controls, no buttons, assist off), and one slider.
 /// The engine redraws the floor at the new size every frame, so the player
 /// sees exactly what they will get. The floor is the one chosen in Skin ›
 /// Arena background. One size for both modes; Cancel puts the old one back.
@@ -51,25 +51,10 @@ struct WyrmBackgroundSizeEditor: View {
     }
 
     private func canvas(_ size: CGSize, _ insets: EdgeInsets) -> some View {
-        let screen = UIScreen.main.scale
-        let minimap = min(max(engine.value("general.minimap_size", 300), 128), 512) / screen
-        let lbScale = 1 + Double(min(max(Int(engine.value("general.lb_font", 1)), 0), 2)) * 0.16
-        return ZStack {
+        ZStack {
             // Clear: the AI arena shows through; stray touches never reach it.
             Color.black.opacity(0.001)
-            // References only: where the player keeps them.
-            Text("MAP").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink)
-                .frame(width: minimap, height: minimap)
-                .background(Circle().fill(ATheme.card.opacity(0.18)))
-                .overlay(Circle().stroke(ATheme.ink.opacity(0.76), lineWidth: 3))
-                .position(point("hud.minimap", CGPoint(x: 0.095, y: 0.205), size))
-            Text("LEADERBOARD\n1  Wyrm Player     9503\n2  Northwind       2819\n3  Orbit            418\n4  Meadow           389\n5  Drift            248")
-                .font(.androidWyrm(12)).lineSpacing(5).foregroundColor(ATheme.ink)
-                .frame(width: 250 * lbScale / screen, height: 132 * lbScale / screen, alignment: .topLeading)
-                .padding(12)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card.opacity(0.92)))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule))
-                .position(point("hud.leaderboard", CGPoint(x: 0.905, y: 0.155), size))
+            // The engine draws the real minimap and leaderboard (bare editor); nothing on top.
             VStack {
                 Spacer()
                 panel.frame(maxWidth: 460).padding(.bottom, max(insets.bottom, 0) + 14)

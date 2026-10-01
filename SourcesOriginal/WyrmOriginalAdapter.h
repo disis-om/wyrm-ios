@@ -31,6 +31,7 @@ void WyrmIOSLobbyHome(void);
 void WyrmIOSEnterLayoutEditor(const char* name);
 void WyrmIOSExitLayoutEditor(void);
 void WyrmIOSToggleEditorLeaderboard(void);
+void WyrmIOSSetEditorBare(bool bare);
 /* Finished-run receipts and arena skin sync (HomeMailbox.inc). A receipt
    carries the life's length in seconds (usrs.play_time); Swift drains
    "score\tkills\tseconds\n" lines. */

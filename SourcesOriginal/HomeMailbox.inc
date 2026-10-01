@@ -50,6 +50,10 @@ void WyrmIOSExitLayoutEditor(void) {
   SDL_UnlockMutex(home_mutex);
 }
 
+/* The background-size editor (OM, 2026-10-01): only the real map and board,
+ * assist off while it is open. Set before the editor is entered. */
+void WyrmIOSSetEditorBare(bool bare) { ai_mode_set_editor_bare(bare); }
+
 void WyrmIOSToggleEditorLeaderboard(void) {
   if (!home_mutex) return;
   SDL_LockMutex(home_mutex);

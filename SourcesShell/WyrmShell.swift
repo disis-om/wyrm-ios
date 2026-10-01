@@ -337,6 +337,8 @@ final class WyrmShellStore: ObservableObject {
     /// Adjust arena background size: the AI arena sideways with one slider.
     func openBackgroundEditor() {
         backgroundEditor = true
+        // The engine draws only its real map and board, with assist off.
+        WyrmIOSSetEditorBare(true)
         openLayoutEditor()
     }
 
