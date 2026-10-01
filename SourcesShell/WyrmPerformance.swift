@@ -134,6 +134,8 @@ final class WyrmPerformance: ObservableObject {
 /// frame limit built from this display's own rates.
 struct WyrmPerformancePage: View {
     @ObservedObject var store = WyrmPerformance.shared
+    @ObservedObject var crashes = WyrmCrashWatch.shared
+    @ObservedObject var drops = WyrmDropWatch.shared
     let close: () -> Void
 
     private struct ModeCopy: Identifiable {
@@ -173,6 +175,17 @@ struct WyrmPerformancePage: View {
             .padding(.horizontal, 16)
             .wyrmSettingAnchor("app.fps-limit")
             WSCaption("Auto lets the mode decide. A number holds Wyrm at that rate. In Auto mode, heat and Low Power Mode can still bring it lower. This display goes up to \(store.displayMax) Hz.")
+
+            // OM, 2026-10-01: the "Always send" switches from the crash and
+            // drop prompts, here too, so a choice made on a prompt can be undone.
+            WSSectionLabel("Reports")
+            WSCard {
+                WSBoolRow(title: "Always send crash reports", detail: "If Wyrm closes unexpectedly, the report goes without asking.",
+                          on: crashes.autoSend, first: true) { crashes.autoSend = $0 }
+                WSBoolRow(title: "Always send drop reports", detail: "If the arena drops you mid-match, the report goes without asking.",
+                          on: drops.autoSend, first: false) { drops.autoSend = $0 }
+            }
+            WSCaption("Off: Wyrm asks you each time, with Send and Not now. On: the report goes by itself and only a short note shows.")
 
             WSSectionLabel("Menus")
             WSCard {
