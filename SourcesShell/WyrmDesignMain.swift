@@ -383,6 +383,7 @@ private struct WyrmPlayRoot: View {
                     WyrmLoadoutRow(title: "Food", value: food, first: true, leading: AnyView(WyrmFoodWell())) { open(.playFood) }
                     WyrmLoadoutRow(title: "Controls", value: controls, leading: AnyView(WyrmLoadoutIcon(symbol: "gamecontroller"))) { open(.playControls) }
                     WyrmLoadoutRow(title: "Mode", value: "", leading: AnyView(WyrmLoadoutIcon(symbol: "scope"))) { open(.playModes) }
+                    WyrmNearOriginalRow()
                 }
 
                 WyrmSectionLabel("Rooms & team")

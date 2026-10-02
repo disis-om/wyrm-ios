@@ -45,6 +45,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.notify.", .sync),
         ("wyrm.ios.theme", .sync),                  // + theme-intensity
         ("wyrm.ios.arrow.", .sync),
+        ("wyrm.ios.near-original.", .sync),         // Home: Near Original (also in the shared document)
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
@@ -142,6 +143,8 @@ final class WyrmAccountSync: ObservableObject {
             "joystickLaser": ["on": WyrmJoystickLaserStore.shared.on, "length": WyrmJoystickLaserStore.shared.length],
             "playPortrait": WyrmPlayOrientation.shared.portrait,
             "performanceMode": WyrmPerformance.shared.mode.rawValue,
+            // Home › Near Original (OM, 2026-10-02): the same switch on every platform.
+            "nearOriginal": WyrmNearOriginalStore.shared.on,
         ]
     }
 
@@ -239,6 +242,7 @@ final class WyrmAccountSync: ObservableObject {
                       forKey: "wyrm.ios.joystick-laser.length")
             }
         }
+        if let nearOriginal = doc["nearOriginal"] as? Bool { d.set(nearOriginal, forKey: "wyrm.ios.near-original.on") }
         if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
             d.set(mode, forKey: "wyrm.ios.performance.mode")
         }
@@ -276,6 +280,7 @@ final class WyrmAccountSync: ObservableObject {
         WyrmKeyboardController.shared.reloadFromDefaults()
         WyrmPerformance.shared.reloadFromDefaults()
         WyrmJoystickLaserStore.shared.reloadFromDefaults()
+        WyrmNearOriginalStore.shared.reloadFromDefaults()
         WyrmPlayOrientation.shared.reloadFromDefaults()
     }
 

@@ -98,6 +98,28 @@ float android_home_joystick_laser_length(void) {
   return milli > 0 ? milli / 1000.0f : 0.45f;
 }
 
+/* Near Original (OM, 2026-10-02): set by the app (Home), read by
+   ui_overlay.c and mobile_controls.c every frame. */
+static SDL_AtomicInt near_original_flag;
+static SDL_AtomicInt near_original_server;
+
+void android_home_set_near_original(bool on, int server) {
+  SDL_SetAtomicInt(&near_original_server, server > 0 ? server : 0);
+  SDL_SetAtomicInt(&near_original_flag, on ? 1 : 0);
+}
+
+bool android_home_near_original(void) {
+  return SDL_GetAtomicInt(&near_original_flag) != 0;
+}
+
+int android_home_near_original_server(void) {
+  return SDL_GetAtomicInt(&near_original_server);
+}
+
+void WyrmIOSSetNearOriginal(bool on, int server) {
+  android_home_set_near_original(on, server);
+}
+
 void WyrmIOSSetJoystickLaser(bool on, float length) {
   android_home_set_joystick_laser(on, length);
 }

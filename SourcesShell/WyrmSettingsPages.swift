@@ -227,6 +227,9 @@ struct WyrmControlsPage: View {
 struct WyrmControlsContent: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var orientation = WyrmPlayOrientation.shared
+    /// Home › Near Original (OM, 2026-10-02): slither's own joystick, boost and
+    /// arrow; only the arrow's size stays the player's. Nothing stored changes.
+    @ObservedObject var nearOriginal = WyrmNearOriginalStore.shared
     @State var behaviourOpen = false
     @State var zoomOpen = false
 
@@ -267,7 +270,7 @@ struct WyrmControlsContent: View {
                     }
                     .wyrmSettingAnchor("controls.joystick_mode")
                 }
-                if !arrow, let setting = steeringSetting, setting.options.count >= 2 {
+                if !arrow, !nearOriginal.on, let setting = steeringSetting, setting.options.count >= 2 {
                     let behaviour = Array(setting.options.prefix(2))
                     WSValueRow(title: "Joystick behaviour", value: behaviour[min(max(steering, 0), 1)]) {
                         withAnimation(.easeInOut(duration: 0.25)) { behaviourOpen.toggle() }
@@ -288,21 +291,29 @@ struct WyrmControlsContent: View {
                     WSEnumBlock(title: "Boost", detail: boostMode.hint, options: boostMode.options,
                                 selected: min(max(boostMode.index, 0), max(boostMode.options.count - 1, 0)),
                                 first: orientation.portrait) { engine.write(boostMode, values: [Double($0)]) }
+                        .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
                         .wyrmSettingAnchor(boostMode.id)
                 }
             }
 
             if orientation.portrait { WSCaption("Upright you always steer with the arrow: the joystick is for sideways play, and your sideways choice is kept. No left or right hand: your first finger steers, a second finger boosts.") }
 
+            if nearOriginal.on { WSCaption("Near Original is on: slither's own joystick, boost button and arrow, at their original places. Only the arrow's size is yours. Turn it off on Home to bring your own back.") }
+
             WSSectionLabel("Basic · size")
             WSCard {
                 let sizeRows = [arrow ? nil : joystickSize, boostButton ? boostSize : nil, opacity].compactMap { $0 }
                 WSRows(rows: sizeRows, engine: engine)
             }
+            .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
 
             if arrow {
                 WSSectionLabel("Basic · arrow")
-                WyrmArrowSettingsCard(engine: engine).wyrmSettingAnchor("app.arrow-style", card: true)
+                if nearOriginal.on {
+                    WSCard { if let size = engine.setting("arrow.size") { WSTypedRow(setting: size, engine: engine) } }
+                } else {
+                    WyrmArrowSettingsCard(engine: engine).wyrmSettingAnchor("app.arrow-style", card: true)
+                }
             }
 
             if !zoomRows.isEmpty {
@@ -331,6 +342,8 @@ enum WyrmArrowShapes {
         [(0.82, 0), (0.05, -0.22), (0.16, -0.075), (-0.72, -0.075), (-0.72, 0.075), (0.16, 0.075), (0.05, 0.22)],
         [(0.78, 0), (0.12, -0.42), (-0.10, -0.22), (-0.25, -0.16), (-0.70, 0), (-0.25, 0.16), (-0.10, 0.22), (0.12, 0.42)],
         [(0.82, 0), (-0.64, -0.26), (-0.64, 0.26)],
+        // slither's own arrow (Near Original, 2026-10-02), from the original's 64 px shape.
+        [(-0.56, -0.3155), (-0.56, 0.3155), (0, 0.2227), (0, 0.7423), (0.56, 0), (0, -0.7423), (0, -0.2227)],
     ]
     static let points: [[CGPoint]] = raw.map { shape in shape.map { CGPoint(x: $0.0, y: $0.1) } }
 
@@ -1436,14 +1449,17 @@ struct WyrmLayoutEditor: View {
             Color.black.opacity(0.001)
             Group {
                 // Upright steers with the arrow only (OM, 2026-10-02): no joystick to place.
-                if engine.setting("controls.joystick_mode")?.index != 2 && !WyrmPlayOrientation.shared.portrait {
+                // Near Original (OM, 2026-10-02): the original's joystick, boost and HUD
+                // are fixed; only the on-screen buttons (and the zoom bar) move.
+                if engine.setting("controls.joystick_mode")?.index != 2 && !WyrmPlayOrientation.shared.portrait
+                    && !WyrmNearOriginalStore.shared.on {
                     piece("layout.joystick", size, CGSize(width: 112 * joystick, height: 112 * joystick),
                           Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "controls.joystick_size", range: 0.65...1.45),
                                                                               Slider(label: "OPACITY", id: "layout.joystick_opacity", range: 0.05...1)])) {
                         WyrmPaperJoystick(diameter: 112 * joystick, opacity: engine.value("layout.joystick_opacity", baseOpacity))
                     }
                 }
-                if engine.setting("controls.boost_mode")?.index == 1 {
+                if engine.setting("controls.boost_mode")?.index == 1 && !WyrmNearOriginalStore.shared.on {
                     piece("layout.boost", size, CGSize(width: 86 * boost, height: 86 * boost),
                           Options(id: "boost", title: "BOOST", sliders: [Slider(label: "SIZE", id: "controls.boost_size", range: 0.65...1.45),
                                                                         Slider(label: "OPACITY", id: "layout.boost_opacity", range: 0.05...1)])) {
@@ -1468,6 +1484,7 @@ struct WyrmLayoutEditor: View {
                     WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale)
                 }
             }
+            if !WyrmNearOriginalStore.shared.on {
             Group {
             piece(HUD.minimap.prefix, size, CGSize(width: minimap, height: minimap),
                   Options(id: "minimap", title: "MINIMAP", sliders: [Slider(label: "SIZE", id: "general.minimap_size", range: 128...512, whole: true)]),
@@ -1502,6 +1519,7 @@ struct WyrmLayoutEditor: View {
                     .frame(width: 124 * chatScale / scale, height: 56 * chatScale / scale)
                     .background(RoundedRectangle(cornerRadius: 28).fill(ATheme.card.opacity(0.94 * engine.value("layout.chat_opacity", 1))))
                     .overlay(RoundedRectangle(cornerRadius: 28).stroke(ATheme.ink.opacity(0.45), lineWidth: 1.5))
+            }
             }
             }
             VStack { Spacer(); footer }.padding(.bottom, 14)

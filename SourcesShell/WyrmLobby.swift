@@ -123,6 +123,8 @@ struct WyrmReadyRoom: View {
             // The embedded keys are for the sideways canvas only; upright the
             // phone's own docked keys are used (OM, 2026-10-02).
             keyboard.embedded = !WyrmPlayOrientation.shared.portrait
+            // Near Original: the arena's number labels the original minimap.
+            WyrmNearOriginalStore.shared.setServer(arena?.number ?? 0)
             nickname = engine.nickname
             lastRefusal = engine.arenaRefusalSequence
             lastRun = WyrmRunCapture.lastRun
@@ -397,6 +399,7 @@ struct WyrmReadyRoom: View {
         guard !engine.arena.isEmpty, !entering, !engine.arenaPlayPending else { return }
         saveName()
         entering = true
+        WyrmNearOriginalStore.shared.setServer(arena?.number ?? 0)
         engine.playOnline(name: nickname, address: engine.arena)
     }
 

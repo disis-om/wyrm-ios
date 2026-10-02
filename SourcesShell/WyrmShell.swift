@@ -758,6 +758,8 @@ final class WyrmShellHost: NSObject {
         WyrmLookStore.shared.publish()
         // Modes › Assist: the joystick laser's saved choice reaches the engine.
         WyrmJoystickLaserStore.shared.publish()
+        // Home › Near Original: slither's own HUD and controls.
+        WyrmNearOriginalStore.shared.publish()
         // Controls › Play orientation: the engine surface's turn.
         WyrmPlayOrientation.shared.publish()
         // Settings › Performance: the saved mode reaches the engine's display link.

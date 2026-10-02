@@ -43,6 +43,9 @@ void WyrmIOSSetPerformanceChip(const char* text);
 /* Settings > Modes > Assist: the assist laser in joystick mode (length is a
    share of the screen's short side, 0.1-1.0). */
 void WyrmIOSSetJoystickLaser(bool on, float length);
+/* Near Original (Home): slither's own HUD and controls; `server` labels the
+   minimap (0 = unknown). HomeMailbox.inc. */
+void WyrmIOSSetNearOriginal(bool on, int server);
 int WyrmIOSDisplayMaxFPS(void);
 /* Finished-run receipts and arena skin sync (HomeMailbox.inc). A receipt
    carries the life's length in seconds (usrs.play_time); Swift drains
