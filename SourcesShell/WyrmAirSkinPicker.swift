@@ -195,6 +195,7 @@ extension View {
 /// the bead grid glyph while the wheel is.
 struct WyrmAirWheelToggle: View {
     let showingWheel: Bool
+    var enabled: Bool = true
     let action: () -> Void
 
     var body: some View {
@@ -219,6 +220,8 @@ struct WyrmAirWheelToggle: View {
             .airGlass(Circle())
         }
         .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.28)
         .accessibilityLabel(showingWheel ? "Show bead palette" : "Show colour wheel")
     }
 }

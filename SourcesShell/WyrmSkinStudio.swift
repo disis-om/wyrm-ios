@@ -616,7 +616,7 @@ struct WyrmSkinRoot: View {
                 Button("CLEAR") { savePattern([], colors: []) }
                     .font(.androidWyrm(9.5, .bold)).foregroundColor(.red)
                     .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
-                WyrmAirWheelToggle(showingWheel: showingWheel) {
+                WyrmAirWheelToggle(showingWheel: showingWheel, enabled: !WyrmBead.builtBeadsOff) {
                     withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.84)) { showingWheel.toggle() }
                 }
             }.padding(.horizontal, 20).padding(.bottom, 10)
@@ -659,6 +659,8 @@ struct WyrmSkinRoot: View {
                         .background(ATheme.card.opacity(0.72)).clipShape(Circle())
                 }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
             }
+            // Wyrm's beads, when switched off, stay in view but faded and
+            // cannot be picked.
             ForEach(0..<WyrmBead.count, id: \.self) { kind in
                 Button { addWyrmBead(kind: kind, tint: tint) } label: {
                     WyrmAtlasImage(image: textures.wyrmBeads[kind])
@@ -666,14 +668,17 @@ struct WyrmSkinRoot: View {
                         .padding(5)
                         .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
                         .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                }.buttonStyle(.plain).accessibilityLabel("\(WyrmBead.names[kind]) bead")
+                }.buttonStyle(.plain)
+                    .disabled(WyrmBead.builtBeadsOff)
+                    .opacity(WyrmBead.builtBeadsOff ? 0.28 : 1)
+                    .accessibilityLabel("\(WyrmBead.names[kind]) bead")
             }
         }.padding(.horizontal, 16)
     }
 
     private func addWyrmBead(kind: Int, tint: UInt32) {
         var groups = customGroups
-        guard groups.count < 256 else { return }
+        guard !WyrmBead.builtBeadsOff, groups.count < 256 else { return }
         let rgba = WyrmBead.rgba(kind, tint: tint)
         groups.append(WyrmAirSkin.nearestGroup(rgba & 0xFF_FFFF))
         savePattern(groups, colors: customColors + [rgba])
@@ -695,7 +700,7 @@ struct WyrmSkinRoot: View {
     /// exact picked RGB with the AIR texture named in its alpha byte.
     private func addAirBead(kind: Int, rgb: UInt32) {
         var groups = customGroups
-        guard groups.count < 256 else { return }
+        guard !WyrmBead.builtBeadsOff, groups.count < 256 else { return }
         groups.append(WyrmAirSkin.nearestGroup(rgb))
         savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
     }
