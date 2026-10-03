@@ -49,9 +49,15 @@ uint8_t* get_skin_compressed(tuser_data* usr) {
   }
   if (!count) return reduced;
 
-  /* The smallest period p with groups[i] == groups[i - p] for every i >= p. */
+  /* The smallest period p with groups[i] == groups[i - p] for every i >= p.
+     Below 256 beads p must also divide the pattern: the arena repeats what
+     it is sent, so folding "abcdefga" to "abcdefg" dropped the last bead from
+     every repeat (OM, 2026-10-04; until then any p was taken). A full 256
+     (iOS hands over its motif repeated to 256) may end part-way through a
+     repeat, so there any p is still taken. */
   int period = count;
   for (int p = 1; p < count; p++) {
+    if (count % p != 0 && count != MAX_SKIN_CODE_LEN) continue;
     bool repeats = true;
     for (int i = p; i < count; i++) {
       if (groups[i] != groups[i - p]) {
