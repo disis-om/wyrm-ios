@@ -523,6 +523,33 @@ static void wyrm_capture_release(tcontext* context);
 '''
 
 
+SWAPCHAIN_REBUILD_PAIRS = [('''  free(context->swapchain_frames);
+
+  _tcontext_create_swapchain(context, vsync);
+  if (context->swapchain == VK_NULL_HANDLE) {
+    context->swapchain_ok = false;
+    context->old_swapchain = VK_NULL_HANDLE;
+    return;
+  }''', '''  free(context->swapchain_frames);
+  /* Nothing is left to destroy until the views are built again. A failed
+     rebuild used to keep the freed array and the old count, so the recovery
+     resize destroyed those views a second time (iOS crash reports
+     2026-10-03, vkDestroyImageView from tcontext_resize at launch). */
+  context->swapchain_frames = NULL;
+  context->image_count = 0;
+
+  _tcontext_create_swapchain(context, vsync);
+  if (context->swapchain == VK_NULL_HANDLE) {
+    context->swapchain_ok = false;
+    /* The failed call retired the old swapchain; free it so the next attempt
+       starts on a clear surface. */
+    if (context->old_swapchain != VK_NULL_HANDLE)
+      vkDestroySwapchainKHR(context->device, context->old_swapchain, NULL);
+    context->old_swapchain = VK_NULL_HANDLE;
+    return;
+  }''')]
+
+
 def apply_run_capture(text):
     def once(old, new):
         nonlocal text
@@ -972,10 +999,24 @@ for path in sorted(OUTPUT.rglob("*")):
 #else
                 ''' + draw + '''
 #endif''')
+    if relative == "app/src/ui/viewport.c":
+        # Same guard as Android's viewport.c (crash report 2026-10-02): a
+        # 0 x 0 surface makes VMA refuse the image and the view crashes.
+        resize = '  tcontext* ctx = env->ctx;\n  renderer_resize(usr->r, ctx, ctx->size);\n'
+        assert text.count(resize) == 1
+        text = text.replace(resize, '  tcontext* ctx = env->ctx;\n'
+                            '  if (ctx->size[0] <= 0 || ctx->size[1] <= 0) return;\n'
+                            '  renderer_resize(usr->r, ctx, ctx->size);\n')
     if relative == "thermite/src/graphics/tcontext.c":
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text.replace('vkCreateInstance(', 'WyrmIOSCreateInstance(')
         text = text.replace('vkCreateDevice(', 'WyrmIOSCreateDevice(')
+        # Same text as Android's tcontext.c (crash reports 2026-10-03, build
+        # 91: vkCreateSwapchainKHR -4 at launch, then the recovery resize
+        # destroyed the freed views again -> SIGSEGV in vkDestroyImageView).
+        for old, new in SWAPCHAIN_REBUILD_PAIRS:
+            assert text.count(old) == 1, old[:60]
+            text = text.replace(old, new)
         text = apply_run_capture(text)
     if text != original:
         path.write_text(text, encoding="utf-8")

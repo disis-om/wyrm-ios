@@ -633,45 +633,42 @@ struct WyrmSkinRoot: View {
                 .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
                 .padding(.horizontal, 20)
             WyrmSectionLabel("Build a Wyrm")
+            // The wheel opens above the beads; the beads stay below it
+            // (OM, 2026-10-03: one group, every bead the same size).
             if showingWheel {
-                airWheelPanel.transition(.opacity.combined(with: .scale(scale: 0.96)))
-            } else {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-                    ForEach(WyrmSkinCatalog.validGroups, id: \.self) { group in
-                        Button {
-                            var groups = customGroups
-                            if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
-                        } label: {
-                            WyrmAtlasImage(image: textures.beads[group]).padding(5)
-                                .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                                .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                        }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
-                    }
-                }.padding(.horizontal, 16)
-                .transition(.opacity)
+                airWheelPanel.padding(.bottom, 16).transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
-            wyrmBeadsGrid
+            allBeadsGrid
         }
     }
 
-    /// Wyrm's own beads. Patterned ones take the wheel's current colour; the
-    /// arena only ever gets each bead's nearest slither colour group.
-    private var wyrmBeadsGrid: some View {
+    /// Every bead in one grid, all one size (Android `AllBeadGrid`): slither's
+    /// beads first, then Wyrm's own. Patterned Wyrm beads take the wheel's
+    /// current colour; the arena only ever gets each bead's nearest slither
+    /// colour group.
+    private var allBeadsGrid: some View {
         let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
-        return VStack(alignment: .leading, spacing: 0) {
-            WyrmSectionLabel("Wyrm beads")
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 6), spacing: 8) {
-                ForEach(0..<WyrmBead.count, id: \.self) { kind in
-                    Button { addWyrmBead(kind: kind, tint: tint) } label: {
-                        WyrmAtlasImage(image: textures.wyrmBeads[kind])
-                            .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white)
-                            .padding(4)
-                            .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                            .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                    }.buttonStyle(.plain).accessibilityLabel("\(WyrmBead.names[kind]) bead")
-                }
-            }.padding(.horizontal, 16)
-        }
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+            ForEach(WyrmSkinCatalog.validGroups, id: \.self) { group in
+                Button {
+                    var groups = customGroups
+                    if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
+                } label: {
+                    WyrmAtlasImage(image: textures.beads[group]).padding(5)
+                        .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+                        .background(ATheme.card.opacity(0.72)).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
+            }
+            ForEach(0..<WyrmBead.count, id: \.self) { kind in
+                Button { addWyrmBead(kind: kind, tint: tint) } label: {
+                    WyrmAtlasImage(image: textures.wyrmBeads[kind])
+                        .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white)
+                        .padding(5)
+                        .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
+                        .background(ATheme.card.opacity(0.72)).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("\(WyrmBead.names[kind]) bead")
+            }
+        }.padding(.horizontal, 16)
     }
 
     private func addWyrmBead(kind: Int, tint: UInt32) {

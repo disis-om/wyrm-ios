@@ -339,11 +339,12 @@ struct WyrmKeyboardLookRows: View {
 /// The search field at the top of the hub.
 struct WyrmSettingsSearchField: View {
     @Binding var query: String
+    var placeholder: String = "Search settings"
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(ATheme.quiet)
-            TextField("Search settings", text: $query)
+            TextField(placeholder, text: $query)
                 .font(.androidWyrm(15)).foregroundColor(ATheme.ink)
                 .textInputAutocapitalization(.never).disableAutocorrection(true)
                 .submitLabel(.search).focused($focused)

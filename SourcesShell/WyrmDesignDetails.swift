@@ -59,20 +59,43 @@ struct WyrmDetailHost: View {
     }
 }
 
+/// Leaderboard search (same rules as Android `leaderboardMatches`): every word
+/// must hit one of name, @username, in-game name, score or kills. A number is
+/// matched against the digits of score and kills, so "1,500" finds 1500.
+func wyrmLeaderboardMatches(_ player: WyrmServicePlayer, _ query: String) -> Bool {
+    let words = query.lowercased().split(separator: " ").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+    if words.isEmpty { return true }
+    let names = [player.displayName, player.username, player.ingameName].map { $0.lowercased() }
+    let numbers = [String(player.highestScore), String(player.kills)]
+    return words.allSatisfy { word in
+        let bare = word.hasPrefix("@") ? String(word.dropFirst()) : word
+        let digits = word.filter { $0.isASCII && $0.isNumber }
+        let numeric = !digits.isEmpty && word.allSatisfy { ($0.isASCII && $0.isNumber) || $0 == "," || $0 == "." }
+        return (!bare.isEmpty && names.contains { $0.contains(bare) }) || (numeric && numbers.contains { $0.contains(digits) })
+    }
+}
+
 private struct WyrmLeaderboardDetail: View {
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @State private var sort = 0
+    @State private var query = ""
     private var rows: [WyrmServicePlayer] { sort == 0 ? services.scoreLeaders : services.killLeaders }
+    /// Keeps the real rank: searching narrows the list, it does not re-rank it.
+    private var shown: [(offset: Int, element: WyrmServicePlayer)] {
+        rows.enumerated().filter { wyrmLeaderboardMatches($0.element, query) }.map { (offset: $0.offset, element: $0.element) }
+    }
     var body: some View {
         WyrmDetailChrome(title: "Leaderboard", onBack: close) {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     Picker("Rank by", selection: $sort) { Text("Score").tag(0); Text("Kills").tag(1) }.pickerStyle(.segmented).padding(16)
+                    if !rows.isEmpty { WyrmSettingsSearchField(query: $query, placeholder: "Name, @username, score or kills") }
                     WyrmPaperCard {
                         if rows.isEmpty { WyrmEmptyPanel(title: "No ranked players yet", note: "Finished runs will appear here.") }
-                        ForEach(Array(rows.enumerated()), id: \.element.id) { index, player in
+                        else if shown.isEmpty { WyrmEmptyPanel(title: "No one found", note: "Nobody on this board matches “\(query.trimmingCharacters(in: .whitespaces))”.") }
+                        ForEach(shown, id: \.element.id) { index, player in
                             Button { open(.profile(player.id)) } label: {
                                 HStack(spacing: 12) {
                                     Text("\(index + 1)").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.quiet).frame(width: 24)
