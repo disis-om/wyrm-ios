@@ -556,6 +556,117 @@ SWAPCHAIN_REBUILD_PAIRS = [('''  free(context->swapchain_frames);
   }''')]
 
 
+# Web persona only (OM, 2026-10-04): the AIR identity is removed. These are
+# Wyrm Android's network/arena_persona.h and .c, byte for byte, written over
+# the pinned SharedEngine copies; WEB_ONLY_PAIRS take the AIR branches out
+# of callback.c. Revert: delete these constants and their two uses below.
+WEB_PERSONA_H = r'''#ifndef ARENA_PERSONA_H
+#define ARENA_PERSONA_H
+
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
+
+/*
+ * Which slither client Wyrm claims to be on the wire: the web client only
+ * (`game1107241958.js`, version 291), byte for byte as Vlither sends it.
+ *
+ * Wyrm used to carry a second identity, the Android AIR client (version 294,
+ * its own fingerprint, a CRC32 challenge answer and a settings `c` packet),
+ * and could switch to it. It was removed on 2026-10-04 (OM): every arena
+ * report showed the web identity, and on `148.113.20.151` the AIR identity was
+ * hung up on before the arena said anything. The removed code is in git
+ * history (Android 6.4.2, iOS build 95).
+ */
+typedef struct arena_persona {
+  /* Goes in every arena log line. */
+  const char* name;
+  /* Bytes 2..3 of the join packet. */
+  uint16_t version;
+  /* Bytes 4..23 of the join packet. */
+  uint8_t fingerprint[20];
+} arena_persona;
+
+enum {
+  ARENA_PERSONA_WEB = 0,
+  NUM_ARENA_PERSONAS = 1
+};
+
+/** The web client, whatever `index` says: a settings file written by a build
+    that could still switch to AIR (index 1) joins as the web client too. */
+const arena_persona* arena_persona_get(int index);
+
+#endif
+'''
+WEB_PERSONA_C = r'''#include "arena_persona.h"
+
+/* The web client's identity: `client_version` and `cpw` in game1107241958.js,
+   the same as Vlither's CLIENT_VERSION and `cwa`. */
+static const arena_persona web = {.name = "web",
+                                  .version = 291,
+                                  .fingerprint = {54, 206, 204, 169, 97, 178,
+                                                  74, 136, 124, 117, 14, 210,
+                                                  106, 236, 8, 208, 136, 213,
+                                                  140, 111}};
+
+const arena_persona* arena_persona_get(int index) {
+  (void)index;
+  return &web;
+}
+'''
+WEB_ONLY_PAIRS = [(r'''    /* Two clients, two answers to the same challenge. The web packet is the
+       obfuscated program which produces its per-connection answer; the visible
+       `gotServerVersion` stub is not that answer. `decode_secret` executes the
+       packet's fixed transformation byte-for-byte. The AIR client instead uses
+       the CRC32 path compiled into that store binary. */
+    if (persona->crc32_answer) {
+      uint8_t answer[ARENA_CRC32_ANSWER_LEN];
+      size_t answer_len = arena_persona_crc32_answer(a, a_len, answer);
+      arena_send(c, answer, answer_len);
+    } else {
+      uint8_t answer[27];
+      decode_secret(a, (size_t)a_len, answer);
+      arena_send(c, answer, sizeof(answer));
+      SDL_Log("Wyrm arena: web challenge answer 0x%02X..0x%02X (decoded packet)",
+              answer[0], answer[26]);
+    }''', r'''    /* The web client's answer. The challenge packet is the obfuscated program
+       which produces its per-connection answer; the visible `gotServerVersion`
+       stub is not that answer. `decode_secret` executes the packet's fixed
+       transformation byte-for-byte. (The AIR client's CRC32 answer was removed
+       with that identity, 2026-10-04.) */
+    {
+      uint8_t answer[27];
+      decode_secret(a, (size_t)a_len, answer);
+      arena_send(c, answer, sizeof(answer));
+      SDL_Log("Wyrm arena: web challenge answer 0x%02X..0x%02X (decoded packet)",
+              answer[0], answer[26]);
+    }'''),
+                  (r'''    const arena_persona* persona = arena_persona_get(gdata->persona);
+    if (persona->full_c_packet) {
+      user_settings* usrs = &usr->usrs;
+      uint8_t cp[16];
+      int n = 0;
+      cp[n++] = 'c';
+      cp[n++] = 1;   /* not a team join */
+      cp[n++] = 2;   /* platform: Android */
+      /* Wyrm steers by relative drag, which is the AIR client's arrow mode. */
+      cp[n++] = 2;
+      cp[n++] = usrs->mobile_controls.boost_mode ? 1 : 0;
+      cp[n++] = 0;   /* controls are not flipped */
+      cp[n++] = usrs->hotkeys[HOTKEY_SHOW_NAMES].active ? 1 : 0;
+      cp[n++] = 1;   /* high quality */
+      cp[n++] = 0;   /* minimap is not pinned top-left */
+      cp[n++] = 0;   /* no named background: Wyrm draws its own */
+      cp[n++] = 0;   /* no look-ahead camera */
+      cp[n++] = 1;   /* the nickname is saved */
+      arena_send(c, cp, n);
+    } else {
+      arena_send(c, (uint8_t[]){'c', 0}, 2);
+    }''', r'''    /* The web client's `63 00`. (The AIR client's settings block was removed
+       with that identity, 2026-10-04.) */
+    arena_send(c, (uint8_t[]){'c', 0}, 2);''')]
+
+
 def apply_run_capture(text):
     def once(old, new):
         nonlocal text
@@ -984,9 +1095,16 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
         assert text.count(gate) == 1
         text = text.replace(gate, 'bool can_play = server_address_is_valid(usrs->ipv4);')
     if relative == "app/src/network/arena_persona.c":
-        clamp = 'index = ARENA_PERSONA_AIR;'
-        assert text.count(clamp) == 1
-        text = text.replace(clamp, 'index = ARENA_PERSONA_WEB;')
+        # Web persona only (OM, 2026-10-04); was a clamp from AIR to WEB.
+        assert 'ARENA_PERSONA_AIR' in text
+        text = WEB_PERSONA_C
+    if relative == "app/src/network/arena_persona.h":
+        assert 'ARENA_PERSONA_AIR' in text
+        text = WEB_PERSONA_H
+    if relative == "app/src/network/callback.c":
+        for old, new in WEB_ONLY_PAIRS:
+            assert text.count(old) == 1, old[:60]
+            text = text.replace(old, new)
     if relative == "app/src/platform/android_settings.c":
         # The settings table, validation, persistence and once-per-frame
         # mailbox are engine code, not Android UI code. Compile that exact
