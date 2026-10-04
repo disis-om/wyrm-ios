@@ -1407,6 +1407,19 @@ struct WyrmLayoutEditor: View {
     @State var keySnapshot: [EngineHotkey] = []
     @State var options: Options?
     @State var dragStart: [String: CGPoint] = [:]
+    /// Editor chrome only. Not saved, not synced. Nil until the player drags it.
+    @State var footerNorm: CGPoint?
+    @State var footerDragOrigin: CGPoint?
+    @State var footerSize: CGSize = .zero
+    /// Long-press card. Starts tall so the first frame stays on screen, then shrinks to the rows.
+    @State var popupHeight: CGFloat = 800
+
+    private struct PopupHeightKey: PreferenceKey {
+        static var defaultValue: CGFloat = 0
+        static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+            value = max(value, nextValue())
+        }
+    }
     /// The team roster's and chat window's look (OM, 2026-10-04), saved app side.
     @ObservedObject var teamHud = WyrmTeamHudStore.shared
 
@@ -1518,15 +1531,17 @@ struct WyrmLayoutEditor: View {
                 panel("STATS\nSCORE   9503\nKILLS      4\nRANK    8 / 46\nPING    64 ms\nFPS     61",
                       CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale), opacity: engine.value("layout.stats_opacity", 1))
             }
-            // The roster and chat window are drawn by the engine over the AI arena
-            // with placeholder rows (OM, 2026-10-04); these are their hit boxes at
-            // the same size (engine pixels / screen scale).
+            }
+            }
+            // The roster and chat stay editable in Near Original. The engine draws
+            // them; these are their hit boxes at the same size.
             let teamScale = teamHud.value("team_scale")
             let teamSize = CGSize(width: teamHud.value("team_width") * teamScale / scale,
                                   height: teamHud.value("team_height") * teamScale / scale)
             piece(HUD.team.prefix, size, teamSize,
                   Options(id: "team", title: "TEAM",
                           sliders: [teamHudSlider("SIZE", "team_scale"), teamHudSlider("OPACITY", "team_opacity"),
+                                    teamHudSlider("BACK", "team_panel"),
                                     teamHudSlider("WIDTH", "team_width"), teamHudSlider("HEIGHT", "team_height")],
                           colours: [ColourRow(label: "PLAYER NAME AND SCORE", key: "team_name"),
                                     ColourRow(label: "KEY NAME AND SERVER", key: "team_data")]),
@@ -1539,15 +1554,14 @@ struct WyrmLayoutEditor: View {
                   Options(id: "chat", title: "CHAT",
                           sliders: [Slider(label: "SIZE", id: "layout.chat_scale", range: 0.65...1.60),
                                     Slider(label: "OPACITY", id: "layout.chat_opacity", range: 0.05...1),
+                                    teamHudSlider("BACK", "chat_panel"),
                                     teamHudSlider("WIDTH", "chat_width"), teamHudSlider("HEIGHT", "chat_height")],
                           colours: [ColourRow(label: "PLAYER NAME", key: "chat_name"),
                                     ColourRow(label: "MESSAGES", key: "chat_text")]),
                   fallback: HUD.chat.fallback) {
                 RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: chatSize.width, height: chatSize.height)
             }
-            }
-            }
-            VStack { Spacer(); footer }.padding(.bottom, 14)
+            footerBar(in: size)
             if let options { optionsPopup(options) }
         }
         .coordinateSpace(name: "wyrm-layout")
@@ -1608,9 +1622,64 @@ struct WyrmLayoutEditor: View {
             })
     }
 
-    private var footer: some View {
+    /// The bar's centre. Nil [footerNorm] is the bottom centre, 14 pt up.
+    private func footerCentre(in area: CGSize, measured: CGSize) -> CGPoint {
+        let margin: CGFloat = 8
+        let raw: CGPoint
+        if let footerNorm, area.width > 1, area.height > 1 {
+            raw = CGPoint(x: footerNorm.x * area.width, y: footerNorm.y * area.height)
+        } else {
+            raw = CGPoint(x: area.width / 2, y: area.height - 14 - measured.height / 2)
+        }
+        let halfW = measured.width / 2
+        let halfH = measured.height / 2
+        let minX = margin + halfW
+        let minY = margin + halfH
+        let maxX = max(minX, area.width - margin - halfW)
+        let maxY = max(minY, area.height - margin - halfH)
+        return CGPoint(x: min(max(raw.x, minX), maxX), y: min(max(raw.y, minY), maxY))
+    }
+
+    private func footerBar(in area: CGSize) -> some View {
+        let measured = footerSize.width > 1 ? footerSize : CGSize(width: 280, height: 44)
+        let centre = footerCentre(in: area, measured: measured)
+        return footerChrome(in: area)
+            .background(GeometryReader { geo in
+                Color.clear
+                    .onAppear { footerSize = geo.size }
+                    .onChange(of: geo.size) { footerSize = $0 }
+            })
+            .position(x: centre.x, y: centre.y)
+    }
+
+    private func footerKnob(in area: CGSize) -> some View {
+        VStack(spacing: 3) {
+            ForEach(0..<3, id: \.self) { _ in
+                Capsule().fill(ATheme.quiet).frame(width: 16, height: 2)
+            }
+        }
+        .frame(width: 36, height: 36)
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("wyrm-layout"))
+            .onChanged { value in
+                let measured = footerSize.width > 1 ? footerSize : CGSize(width: 280, height: 44)
+                let start = footerDragOrigin ?? footerCentre(in: area, measured: measured)
+                if footerDragOrigin == nil { footerDragOrigin = start }
+                let margin: CGFloat = 8
+                let halfW = measured.width / 2
+                let halfH = measured.height / 2
+                let nx = min(max(start.x + value.translation.width, margin + halfW), max(margin + halfW, area.width - margin - halfW))
+                let ny = min(max(start.y + value.translation.height, margin + halfH), max(margin + halfH, area.height - margin - halfH))
+                guard area.width > 1, area.height > 1 else { return }
+                footerNorm = CGPoint(x: nx / area.width, y: ny / area.height)
+            }
+            .onEnded { _ in footerDragOrigin = nil })
+    }
+
+    private func footerChrome(in area: CGSize) -> some View {
         // Upright the bar is too narrow for the hint and the actions on one
-        // line: the hint goes above, in its own small pill.
+        // line: the hint goes above, in its own small pill. The grip moves
+        // the whole bar for this session only.
         let upright = WyrmPlayOrientation.shared.portrait
         return VStack(spacing: 6) {
             if upright {
@@ -1619,6 +1688,7 @@ struct WyrmLayoutEditor: View {
                     .background(Capsule().fill(ATheme.card.opacity(0.92)))
             }
             HStack(spacing: 8) {
+                footerKnob(in: area)
                 if !upright {
                     Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
                 }
@@ -1635,7 +1705,7 @@ struct WyrmLayoutEditor: View {
                 }
                 footerAction("SAVE", filled: true) { onClose() }
             }
-            .padding(.leading, 14).padding(.trailing, 8).padding(.vertical, 5)
+            .padding(.leading, 6).padding(.trailing, 8).padding(.vertical, 5)
             .background(Capsule().fill(ATheme.card.opacity(0.96)))
             .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
         }
@@ -1650,8 +1720,10 @@ struct WyrmLayoutEditor: View {
     }
 
     private func optionsPopup(_ options: Options) -> some View {
+        GeometryReader { geo in
         ZStack {
             Color.black.opacity(0.001).onTapGesture { self.options = nil }
+            ScrollView {
             VStack(alignment: .leading, spacing: 10) {
                 Text(options.title).font(.androidWyrm(13, .bold)).tracking(1.4).foregroundColor(ATheme.ink)
                 if options.sliders.isEmpty && !options.zoomChoice {
@@ -1699,10 +1771,19 @@ struct WyrmLayoutEditor: View {
                 }
                 HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(ATheme.ink).padding(8) }
             }
-            .padding(18).frame(width: 300)
+            .padding(18)
+            .background(GeometryReader { row in
+                Color.clear.preference(key: PopupHeightKey.self, value: row.size.height)
+            })
+            }
+            .frame(width: 300)
+            .frame(height: min(max(popupHeight, 1), max(120, geo.size.height - 28)))
+            .onPreferenceChange(PopupHeightKey.self) { popupHeight = $0 }
             .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+        }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }

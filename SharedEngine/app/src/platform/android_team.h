@@ -87,9 +87,10 @@ void android_team_release_chat(tenv* env);
  * `android_team_set_chat` takes the app's team chat (the same list its Team
  * page shows): the first line is how many messages have ever arrived, then one
  * `author<TAB>body` line per message, oldest first. `android_team_set_hud_style`
- * takes ten numbers saved by the app: roster size, opacity, width, height,
- * name colour, data colour; chat width, height, name colour, text colour
- * (colours are palette indexes, 0 = the theme's). `android_team_hud_touch`
+ * takes twelve numbers saved by the app: roster size, opacity, width, height,
+ * name colour, data colour; chat width, height, name colour, text colour;
+ * then the roster plate and the chat plate (1 keeps today's card). Colours
+ * are palette indexes, 0 = the theme's. `android_team_hud_touch`
  * owns a finger that lands on either block: tap the chat's header to fold or
  * open it, tap its message box to write, drag to scroll. Every other finger
  * keeps steering.

@@ -116,10 +116,12 @@ enum {
   STYLE_CHAT_HEIGHT,
   STYLE_CHAT_NAME,
   STYLE_CHAT_TEXT,
+  STYLE_TEAM_PANEL,
+  STYLE_CHAT_PANEL,
   STYLE_COUNT
 };
-static float hud_style[STYLE_COUNT] = {1.0f,   1.0f,   340.0f, 210.0f, 0.0f,
-                                       0.0f,   400.0f, 270.0f, 0.0f,   0.0f};
+static float hud_style[STYLE_COUNT] = {1.0f,   1.0f, 340.0f, 210.0f, 0.0f, 0.0f,
+                                       400.0f, 270.0f, 0.0f, 0.0f,   1.0f, 1.0f};
 
 #define TEAM_CHAT_MAX 80
 typedef struct team_chat_line {
@@ -137,6 +139,15 @@ static unsigned frame_chat_revision = 0;
 static long seen_chat_total = -1;
 
 static bool chat_expanded = true;
+/* 1 open, 0 the TEAM CHAT pill. A match moves this over 220 ms; the editor
+   stays open and does not touch the saved fold. */
+static float chat_openness = 1.0f;
+static Uint64 chat_fold_at = 0;
+static float chat_fold_from = 1.0f;
+/* -1 grows from the full window's top-left, +1 from its top-right. Latched
+   for the whole animation so a resize cannot flip the corner halfway. */
+static int chat_fold_corner = 1;
+static float chat_full_cx = -1.0f;
 static float chat_scroll = 0.0f;   /* from the newest line up */
 static float roster_scroll = 0.0f; /* from the first row down */
 static float roster_rect[4] = {0, 0, 0, 0};
@@ -188,8 +199,30 @@ static ImU32 hud_text_colour(int index, arena_theme_role fallback,
                                             (c & 255) / 255.0f, alpha});
 }
 
+/* The size slider asks for pixels that were never baked (faces load at 20,
+   24 and 28). Baking a new size on the locked atlas returns NULL and the
+   text draw divides by that. Warm the loaded size, then lock baked sizes for
+   this draw only so the closest face is scaled. Stats shares these fonts, so
+   the old flags go back on every exit. */
+static int hud_lock(ImFont* font) {
+  if (!font) return 0;
+  int old = font->Flags;
+  if ((old & ImFontFlags_LockBakedSizes) == 0) {
+    ImVec2 out;
+    ImFont_CalcTextSizeA(&out, font, font->LegacySize, 1e9f, 0.0f, " ", NULL,
+                         NULL);
+  }
+  font->Flags = old | ImFontFlags_LockBakedSizes;
+  return old;
+}
+
+static void hud_unlock(ImFont* font, int old) {
+  if (font) font->Flags = old;
+}
+
 static float hud_text_width(ImFont* font, float size, const char* text,
                             const char* end) {
+  if (!font || !text) return 0.0f;
   ImVec2 out;
   ImFont_CalcTextSizeA(&out, font, size, 1e9f, 0.0f, text, end, NULL);
   return out.x;
@@ -222,8 +255,10 @@ static float hud_wrap(ImDrawList* draw, ImFont* font, float size, float x,
   float line = size * 1.22f;
   float cy = y;
   bool first = true;
-  if (s == end) return line;
-  while (s < end) {
+  if (!font || s == end) return line;
+  int guard = 0;
+  while (s < end && guard < 48) {
+    guard++;
     float avail = width - (first ? indent : 0.0f);
     if (avail < size) avail = size;
     const char* brk = ImFont_CalcWordWrapPosition(font, size, s, end, avail);
@@ -303,12 +338,11 @@ static void snapshot_chat(void) {
   SDL_UnlockMutex(team_mutex);
 }
 
-/* The editor shows the blocks with placeholder rows; not in the background
-   size editor (map and board only) and not in Near Original, whose editor
-   does not place them. */
+/* The editor shows the blocks with placeholder rows. Not in the background
+   size editor (map and board only). Near Original still shows them: the
+   roster and the chat stay movable there. */
 static bool hud_preview(void) {
-  return ai_mode_is_editor() && !ai_mode_editor_bare() &&
-         !android_home_near_original();
+  return ai_mode_is_editor() && !ai_mode_editor_bare();
 }
 
 static void hud_card(ImDrawList* draw, ImVec2 min, ImVec2 max, float radius,
@@ -334,6 +368,43 @@ static void hud_place(tenv* env, float centre_x, float centre_y, float width,
   if (*top + height > h - 16.0f) *top = h - 16.0f - height;
   if (*left < 16.0f) *left = 16.0f;
   if (*top < 16.0f) *top = 16.0f;
+}
+
+static float chat_fold_smooth(float t) {
+  if (t <= 0.0f) return 0.0f;
+  if (t >= 1.0f) return 1.0f;
+  return t * t * (3.0f - 2.0f * t);
+}
+
+/* Samples the fold. Toggling again mid-way reverses from wherever it is. */
+static float chat_fold_sample(void) {
+  if (!chat_fold_at) {
+    chat_openness = chat_expanded ? 1.0f : 0.0f;
+    return chat_openness;
+  }
+  float t = (float)(SDL_GetTicks() - chat_fold_at) / 220.0f;
+  float target = chat_expanded ? 1.0f : 0.0f;
+  if (t >= 1.0f) {
+    chat_fold_at = 0;
+    chat_openness = target;
+    return target;
+  }
+  chat_openness =
+      chat_fold_from + (target - chat_fold_from) * chat_fold_smooth(t);
+  return chat_openness;
+}
+
+static void chat_toggle_fold(float screen_w) {
+  /* Already moving: keep the corner. Otherwise decide from the full window. */
+  if (!chat_fold_at && chat_full_cx >= 0.0f && screen_w > 0.0f)
+    chat_fold_corner = (chat_full_cx < screen_w * 0.5f) ? -1 : 1;
+  float now = chat_fold_at ? chat_openness : (chat_expanded ? 1.0f : 0.0f);
+  chat_expanded = !chat_expanded;
+  chat_fold_from = now;
+  chat_openness = now;
+  chat_fold_at = SDL_GetTicks();
+  if (!chat_fold_at) chat_fold_at = 1;
+  chat_scroll = 0.0f;
 }
 
 void android_team_bind_env(tenv* env) {
@@ -479,6 +550,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
   tuser_data* usr = env->usr;
   float scale = hud_clamp(hud_style[STYLE_TEAM_SCALE], 0.65f, 1.60f);
   float opacity = hud_clamp(hud_style[STYLE_TEAM_OPACITY], 0.05f, 1.0f);
+  float panel = hud_clamp(hud_style[STYLE_TEAM_PANEL], 0.0f, 1.0f);
   float width = hud_clamp(hud_style[STYLE_TEAM_WIDTH], 220.0f, 900.0f) * scale;
   float height = hud_clamp(hud_style[STYLE_TEAM_HEIGHT], 120.0f, 800.0f) * scale;
   int name_colour = (int)hud_style[STYLE_TEAM_NAME];
@@ -487,6 +559,9 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
      light to read over the arena (OM, 2026-10-04). */
   ImFont* bold = usr->imgui_data.regular_font_bold[FONT_SIZE_SMALL];
   ImFont* regular = usr->imgui_data.regular_font[FONT_SIZE_SMALL];
+  if (!bold || !regular) return 0.0f;
+  int bold_flags = hud_lock(bold);
+  int regular_flags = hud_lock(regular);
   float name_size = bold->LegacySize * scale;
   float data_size = regular->LegacySize * 0.86f * scale;
   float pad = 12.0f * scale;
@@ -496,7 +571,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
   hud_place(env, centre_x, centre_y, width, height, &left, &top);
   ImVec2 min = {left, top};
   ImVec2 max = {left + width, top + height};
-  hud_card(draw, min, max, 14.0f * scale, opacity);
+  hud_card(draw, min, max, 14.0f * scale, panel * opacity);
 
   char title[24];
   snprintf(title, sizeof(title), "TEAM  %d", count);
@@ -589,6 +664,8 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
   roster_rect[1] = top;
   roster_rect[2] = width;
   roster_rect[3] = height;
+  hud_unlock(bold, bold_flags);
+  hud_unlock(regular, regular_flags);
   return height;
 }
 
@@ -721,184 +798,205 @@ void android_team_draw_chat_button(tenv* env) {
   tuser_data* usr = env->usr;
   float scale = hud_clamp(usr->usrs.hud_chat_scale, 0.65f, 1.60f);
   float opacity = hud_clamp(usr->usrs.hud_chat_opacity, 0.05f, 1.0f);
+  float panel = hud_clamp(hud_style[STYLE_CHAT_PANEL], 0.0f, 1.0f);
   int name_colour = (int)hud_style[STYLE_CHAT_NAME];
   int text_colour = (int)hud_style[STYLE_CHAT_TEXT];
   ImFont* bold = usr->imgui_data.regular_font_bold[FONT_SIZE_SMALL];
   ImFont* regular = usr->imgui_data.regular_font[FONT_SIZE_SMALL];
+  if (!bold || !regular) return;
+  int bold_flags = hud_lock(bold);
+  int regular_flags = hud_lock(regular);
   float text_size = regular->LegacySize * scale;
   float label_size = bold->LegacySize * 0.86f * scale;
   float pad = 12.0f * scale;
   ImDrawList* draw = igGetForegroundDrawList_ViewportPtr(NULL);
   float centre_x = anchored ? chat_anchor[0] : env->ctx->size[0] - 220.0f;
   float centre_y = anchored ? chat_anchor[1] : 120.0f;
-  bool open = preview || chat_expanded;
+  /* The editor stays fully open so its hit box matches. A match animates,
+     and the editor does not wipe the fold the player left it in. */
+  float openness = preview ? 1.0f : chat_fold_sample();
 
   long unread = 0;
-  if (open)
+  if (openness > 0.5f)
     seen_chat_total = frame_chat_total;
   else if (seen_chat_total >= 0 && frame_chat_total > seen_chat_total)
     unread = frame_chat_total - seen_chat_total;
   if (seen_chat_total < 0) seen_chat_total = frame_chat_total;
 
-  if (!open) {
-    const char* label = "TEAM CHAT";
-    float label_w = hud_text_width(bold, label_size, label, NULL);
-    char badge[16] = {0};
-    if (unread > 0) snprintf(badge, sizeof(badge), "%ld", unread > 99 ? 99 : unread);
-    float badge_w = badge[0] ? hud_text_width(bold, label_size, badge, NULL) +
-                                   14.0f * scale
-                             : 0.0f;
-    float width = label_w + badge_w + 44.0f * scale;
-    float height = label_size + 26.0f * scale;
-    float left, top;
-    hud_place(env, centre_x, centre_y, width, height, &left, &top);
-    ImVec2 min = {left, top}, max = {left + width, top + height};
-    hud_card(draw, min, max, 999.0f, opacity);
+  const char* label = "TEAM CHAT";
+  float label_w = hud_text_width(bold, label_size, label, NULL);
+  char badge[16] = {0};
+  if (unread > 0)
+    snprintf(badge, sizeof(badge), "%ld", unread > 99 ? 99 : unread);
+  float badge_w = badge[0] ? hud_text_width(bold, label_size, badge, NULL) +
+                                 14.0f * scale
+                           : 0.0f;
+  float pill_w = label_w + badge_w + 44.0f * scale;
+  float pill_h = label_size + 26.0f * scale;
+  float full_w =
+      hud_clamp(hud_style[STYLE_CHAT_WIDTH], 240.0f, 1000.0f) * scale;
+  float full_h =
+      hud_clamp(hud_style[STYLE_CHAT_HEIGHT], 150.0f, 900.0f) * scale;
+  float full_left, full_top;
+  hud_place(env, centre_x, centre_y, full_w, full_h, &full_left, &full_top);
+  chat_full_cx = full_left + full_w * 0.5f;
+  /* Idle only. Mid-animation the corner stays where the fold began. */
+  if (!chat_fold_at)
+    chat_fold_corner = (chat_full_cx < env->ctx->size[0] * 0.5f) ? -1 : 1;
+
+  float vis_w = pill_w + (full_w - pill_w) * openness;
+  float vis_h = pill_h + (full_h - pill_h) * openness;
+  float left = chat_fold_corner < 0 ? full_left : (full_left + full_w - vis_w);
+  float top = full_top;
+  ImVec2 min = {left, top};
+  ImVec2 max = {left + vis_w, top + vis_h};
+  float radius = 999.0f + (14.0f * scale - 999.0f) * openness;
+  hud_card(draw, min, max, radius, panel * opacity);
+
+  ImDrawList_PushClipRect(draw, min, max, true);
+  float pill_alpha = opacity * (1.0f - openness);
+  if (pill_alpha > 0.02f) {
     ImDrawList_AddText_FontPtr(
         draw, bold, label_size,
-        (ImVec2){left + 22.0f * scale, top + (height - label_size) * 0.5f},
-        arena_theme_colour(ARENA_THEME_INK, opacity), label, NULL, 0.0f, NULL);
+        (ImVec2){left + 22.0f * scale, top + (vis_h - label_size) * 0.5f},
+        arena_theme_colour(ARENA_THEME_INK, pill_alpha), label, NULL, 0.0f,
+        NULL);
     if (badge[0]) {
       float bx = left + 22.0f * scale + label_w + 8.0f * scale;
       float bh = label_size + 6.0f * scale;
-      float by = top + (height - bh) * 0.5f;
-      ImDrawList_AddRectFilled(draw, (ImVec2){bx, by},
-                               (ImVec2){bx + badge_w, by + bh},
-                               arena_theme_colour(ARENA_THEME_BADGE, opacity),
-                               999.0f, 0);
+      float by = top + (vis_h - bh) * 0.5f;
+      ImDrawList_AddRectFilled(
+          draw, (ImVec2){bx, by}, (ImVec2){bx + badge_w, by + bh},
+          arena_theme_colour(ARENA_THEME_BADGE, pill_alpha), 999.0f, 0);
       ImDrawList_AddText_FontPtr(
-          draw, bold, label_size, (ImVec2){bx + 7.0f * scale, by + 3.0f * scale},
-          team_colour(1, 1, 1, opacity), badge, NULL, 0.0f, NULL);
+          draw, bold, label_size,
+          (ImVec2){bx + 7.0f * scale, by + 3.0f * scale},
+          team_colour(1, 1, 1, pill_alpha), badge, NULL, 0.0f, NULL);
     }
-    chat_rect[0] = chat_header[0] = left;
-    chat_rect[1] = chat_header[1] = top;
-    chat_rect[2] = chat_header[2] = width;
-    chat_rect[3] = chat_header[3] = height;
-    chat_button[0] = left;
-    chat_button[1] = top;
-    chat_button[2] = width;
-    chat_button[3] = height;
-    return;
   }
 
-  float width = hud_clamp(hud_style[STYLE_CHAT_WIDTH], 240.0f, 1000.0f) * scale;
-  float height = hud_clamp(hud_style[STYLE_CHAT_HEIGHT], 150.0f, 900.0f) * scale;
-  float left, top;
-  hud_place(env, centre_x, centre_y, width, height, &left, &top);
-  ImVec2 min = {left, top}, max = {left + width, top + height};
-  hud_card(draw, min, max, 14.0f * scale, opacity);
-
-  /* Header: the title, and a bar that folds the window. */
+  float body_alpha = opacity * openness;
   float header_h = label_size + 18.0f * scale;
-  ImDrawList_AddText_FontPtr(
-      draw, bold, label_size,
-      (ImVec2){left + pad, top + (header_h - label_size) * 0.5f},
-      arena_theme_colour(ARENA_THEME_QUIET, opacity), "TEAM CHAT", NULL, 0.0f,
-      NULL);
-  float fold_y = top + header_h * 0.5f;
-  ImDrawList_AddLine(draw, (ImVec2){max.x - pad - 16.0f * scale, fold_y},
-                     (ImVec2){max.x - pad, fold_y},
-                     arena_theme_colour(ARENA_THEME_INK, 0.8f * opacity),
-                     2.5f * scale);
-  ImDrawList_AddLine(draw, (ImVec2){left + pad, top + header_h},
-                     (ImVec2){max.x - pad, top + header_h},
-                     arena_theme_colour(ARENA_THEME_RULE, 0.8f * opacity), 1.0f);
-
-  /* The message box at the bottom. */
   float input_h = text_size + 16.0f * scale;
-  ImVec2 input_min = {left + pad * 0.6f, max.y - pad * 0.6f - input_h};
-  ImVec2 input_max = {max.x - pad * 0.6f, max.y - pad * 0.6f};
-  ImDrawList_AddRectFilled(draw, input_min, input_max,
-                           arena_theme_colour(ARENA_THEME_WELL, 0.9f * opacity),
-                           999.0f, 0);
-  ImDrawList_AddText_FontPtr(
-      draw, regular, text_size,
-      (ImVec2){input_min.x + pad, input_min.y + (input_h - text_size) * 0.5f},
-      arena_theme_colour(ARENA_THEME_QUIET, opacity), "Message", NULL, 0.0f,
-      NULL);
-
-  /* The lines, newest at the bottom, scrolled by `chat_scroll`. */
-  float list_top = top + header_h + 4.0f * scale;
-  float list_bottom = input_min.y - 6.0f * scale;
-  float list_left = left + pad;
-  float list_width = width - pad * 2.0f;
-  float gap = 5.0f * scale;
-  static const char* sample[][2] = {{"Player name", "Message"},
-                                    {"Player name", "Message"},
-                                    {"Key name", "Message"},
-                                    {"Player name", "Message"}};
-  int lines = preview ? 4 : frame_chat_count;
-  float content = 0.0f;
-  for (int i = 0; i < lines; ++i) {
-    const char* author = preview ? sample[i][0] : frame_chat[i].author;
-    const char* body = preview ? sample[i][1] : frame_chat[i].body;
-    char lead[48];
-    snprintf(lead, sizeof(lead), "%s: ", author);
-    float lead_w = hud_text_width(bold, text_size, lead, NULL);
-    bool own_line = lead_w > list_width * 0.6f;
-    float h = hud_wrap(NULL, regular, text_size, 0, 0, list_width,
-                       own_line ? 0.0f : lead_w, body, 0);
-    if (own_line) h += text_size * 1.22f;
-    content += h + gap;
-  }
-  float list_height = list_bottom - list_top;
-  float most = content > list_height ? content - list_height : 0.0f;
-  chat_scroll = hud_clamp(chat_scroll, 0.0f, most);
-
-  ImDrawList_PushClipRect(draw, (ImVec2){left, list_top},
-                          (ImVec2){max.x, list_bottom}, true);
-  if (lines == 0) {
-    const char* empty = "No messages yet";
-    float w = hud_text_width(regular, text_size, empty, NULL);
+  ImVec2 input_min = {left + pad * 0.6f, top + vis_h - pad * 0.6f - input_h};
+  ImVec2 input_max = {left + vis_w - pad * 0.6f, top + vis_h - pad * 0.6f};
+  if (body_alpha > 0.02f) {
+    /* Header rule and the fold mark stay with the text, not the plate. */
+    ImDrawList_AddText_FontPtr(
+        draw, bold, label_size,
+        (ImVec2){left + pad, top + (header_h - label_size) * 0.5f},
+        arena_theme_colour(ARENA_THEME_QUIET, body_alpha), "TEAM CHAT", NULL,
+        0.0f, NULL);
+    float fold_y = top + header_h * 0.5f;
+    ImDrawList_AddLine(
+        draw, (ImVec2){left + vis_w - pad - 16.0f * scale, fold_y},
+        (ImVec2){left + vis_w - pad, fold_y},
+        arena_theme_colour(ARENA_THEME_INK, 0.8f * body_alpha), 2.5f * scale);
+    ImDrawList_AddLine(
+        draw, (ImVec2){left + pad, top + header_h},
+        (ImVec2){left + vis_w - pad, top + header_h},
+        arena_theme_colour(ARENA_THEME_RULE, 0.8f * body_alpha), 1.0f);
+    ImDrawList_AddRectFilled(
+        draw, input_min, input_max,
+        arena_theme_colour(ARENA_THEME_WELL, 0.9f * body_alpha), 999.0f, 0);
     ImDrawList_AddText_FontPtr(
         draw, regular, text_size,
-        (ImVec2){left + (width - w) * 0.5f,
-                 list_top + (list_height - text_size) * 0.5f},
-        arena_theme_colour(ARENA_THEME_QUIET, opacity), empty, NULL, 0.0f,
-        NULL);
-  }
-  float y = list_bottom + chat_scroll;
-  for (int i = lines - 1; i >= 0; --i) {
-    const char* author = preview ? sample[i][0] : frame_chat[i].author;
-    const char* body = preview ? sample[i][1] : frame_chat[i].body;
-    char lead[48];
-    snprintf(lead, sizeof(lead), "%s: ", author);
-    float lead_w = hud_text_width(bold, text_size, lead, NULL);
-    bool own_line = lead_w > list_width * 0.6f;
-    float h = hud_wrap(NULL, regular, text_size, 0, 0, list_width,
-                       own_line ? 0.0f : lead_w, body, 0);
-    if (own_line) h += text_size * 1.22f;
-    y -= h + gap;
-    if (y > list_bottom) continue;
-    if (y + h < list_top) break;
-    ImDrawList_AddText_FontPtr(
-        draw, bold, text_size, (ImVec2){list_left, y},
-        hud_text_colour(name_colour, ARENA_THEME_INK, opacity), lead, NULL,
+        (ImVec2){input_min.x + pad,
+                 input_min.y + (input_h - text_size) * 0.5f},
+        arena_theme_colour(ARENA_THEME_QUIET, body_alpha), "Message", NULL,
         0.0f, NULL);
-    float body_y = own_line ? y + text_size * 1.22f : y;
-    hud_wrap(draw, regular, text_size, list_left, body_y, list_width,
-             own_line ? 0.0f : lead_w, body,
-             hud_text_colour(text_colour, ARENA_THEME_INK, 0.92f * opacity));
+
+    float list_top = top + header_h + 4.0f * scale;
+    float list_bottom = input_min.y - 6.0f * scale;
+    float list_left = left + pad;
+    float list_width = vis_w - pad * 2.0f;
+    if (list_width < text_size) list_width = text_size;
+    float gap = 5.0f * scale;
+    static const char* sample[][2] = {{"Player name", "Message"},
+                                      {"Player name", "Message"},
+                                      {"Key name", "Message"},
+                                      {"Player name", "Message"}};
+    int lines = preview ? 4 : frame_chat_count;
+    float content = 0.0f;
+    for (int i = 0; i < lines; ++i) {
+      const char* author = preview ? sample[i][0] : frame_chat[i].author;
+      const char* body = preview ? sample[i][1] : frame_chat[i].body;
+      char lead[48];
+      snprintf(lead, sizeof(lead), "%s: ", author);
+      float lead_w = hud_text_width(bold, text_size, lead, NULL);
+      bool own_line = lead_w > list_width * 0.6f;
+      float h = hud_wrap(NULL, regular, text_size, 0, 0, list_width,
+                         own_line ? 0.0f : lead_w, body, 0);
+      if (own_line) h += text_size * 1.22f;
+      content += h + gap;
+    }
+    float list_height = list_bottom - list_top;
+    if (list_height > 4.0f) {
+      float most = content > list_height ? content - list_height : 0.0f;
+      chat_scroll = hud_clamp(chat_scroll, 0.0f, most);
+      ImDrawList_PushClipRect(draw, (ImVec2){left, list_top},
+                              (ImVec2){max.x, list_bottom}, true);
+      if (lines == 0) {
+        const char* empty = "No messages yet";
+        float w = hud_text_width(regular, text_size, empty, NULL);
+        ImDrawList_AddText_FontPtr(
+            draw, regular, text_size,
+            (ImVec2){left + (vis_w - w) * 0.5f,
+                     list_top + (list_height - text_size) * 0.5f},
+            arena_theme_colour(ARENA_THEME_QUIET, body_alpha), empty, NULL,
+            0.0f, NULL);
+      }
+      float y = list_bottom + chat_scroll;
+      for (int i = lines - 1; i >= 0; --i) {
+        const char* author = preview ? sample[i][0] : frame_chat[i].author;
+        const char* body = preview ? sample[i][1] : frame_chat[i].body;
+        char lead[48];
+        snprintf(lead, sizeof(lead), "%s: ", author);
+        float lead_w = hud_text_width(bold, text_size, lead, NULL);
+        bool own_line = lead_w > list_width * 0.6f;
+        float h = hud_wrap(NULL, regular, text_size, 0, 0, list_width,
+                           own_line ? 0.0f : lead_w, body, 0);
+        if (own_line) h += text_size * 1.22f;
+        y -= h + gap;
+        if (y > list_bottom) continue;
+        if (y + h < list_top) break;
+        ImDrawList_AddText_FontPtr(
+            draw, bold, text_size, (ImVec2){list_left, y},
+            hud_text_colour(name_colour, ARENA_THEME_INK, body_alpha), lead,
+            NULL, 0.0f, NULL);
+        float body_y = own_line ? y + text_size * 1.22f : y;
+        hud_wrap(draw, regular, text_size, list_left, body_y, list_width,
+                 own_line ? 0.0f : lead_w, body,
+                 hud_text_colour(text_colour, ARENA_THEME_INK,
+                                 0.92f * body_alpha));
+      }
+      ImDrawList_PopClipRect(draw);
+    }
   }
   ImDrawList_PopClipRect(draw);
 
+  float shown_header = header_h * openness + vis_h * (1.0f - openness);
   chat_rect[0] = left;
   chat_rect[1] = top;
-  chat_rect[2] = width;
-  chat_rect[3] = height;
+  chat_rect[2] = vis_w;
+  chat_rect[3] = vis_h;
   chat_header[0] = left;
   chat_header[1] = top;
-  chat_header[2] = width;
-  chat_header[3] = header_h;
-  chat_input[0] = input_min.x;
-  chat_input[1] = input_min.y;
-  chat_input[2] = input_max.x - input_min.x;
-  chat_input[3] = input_max.y - input_min.y;
+  chat_header[2] = vis_w;
+  chat_header[3] = shown_header;
+  if (openness > 0.72f) {
+    chat_input[0] = input_min.x;
+    chat_input[1] = input_min.y;
+    chat_input[2] = input_max.x - input_min.x;
+    chat_input[3] = input_max.y - input_min.y;
+  }
   /* The respawn toggle hangs off this, beside the header. */
   chat_button[0] = left;
   chat_button[1] = top;
-  chat_button[2] = width;
-  chat_button[3] = header_h;
+  chat_button[2] = vis_w;
+  chat_button[3] = shown_header;
+  hud_unlock(bold, bold_flags);
+  hud_unlock(regular, regular_flags);
 }
 
 bool android_team_hud_touch(tenv* env, int type, unsigned long long finger,
@@ -912,12 +1010,13 @@ bool android_team_hud_touch(tenv* env, int type, unsigned long long finger,
   if (type == SDL_EVENT_FINGER_DOWN) {
     if (hud_touch_mode) return false;
     if (hud_inside(chat_rect, x, y)) {
-      if (!chat_expanded || hud_inside(chat_header, x, y)) {
-        chat_expanded = !chat_expanded;
-        chat_scroll = 0.0f;
+      /* Mostly closed: the whole pill toggles. Open: only the header does.
+         The composer is live only once the window is mostly open. */
+      if (chat_openness < 0.5f || hud_inside(chat_header, x, y)) {
+        chat_toggle_fold(env->ctx->size[0]);
         return true;
       }
-      if (hud_inside(chat_input, x, y)) {
+      if (chat_openness > 0.72f && hud_inside(chat_input, x, y)) {
         open_chat(env);
         return true;
       }
