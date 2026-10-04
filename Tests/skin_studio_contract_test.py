@@ -28,12 +28,15 @@ checks = {
     "preview batches its 256 beads in an asynchronous canvas": "rendersAsynchronously: true" in STUDIO and "rotated.rotate(by: .degrees(180))" in STUDIO,
     "overview has no explanatory captions or asset status": "Original engine skins" not in STUDIO and "ORIGINAL TEXTURES READY" not in STUDIO,
     "preview has no technical caption": "NATIVE ATLAS PREVIEW" not in STUDIO,
+    # Two ForEach over plain Ints in one lazy grid shared ids and recycled the
+    # wrong cells while scrolling (OM, 2026-10-04): one identity per bead.
+    "bead grid gives every bead its own identity": "private enum WyrmPatternBead: Hashable" in STUDIO and "ForEach(cells, id: \\.self)" in STUDIO and "ForEach(0..<WyrmBead.count, id: \\.self)" not in STUDIO and "ForEach(WyrmSkinCatalog.validGroups, id: \\.self)" not in STUDIO,
     "tag swings toward tail without reading device gravity": "CMMotionManager" not in SWING and "0..<10" in SWING and "anchor.x - segment * 0.25" in SWING and "let sway = sin" in SWING,
     "skin code supports original 256 slots": "prefix(256)" in CATALOG and "/ 256 beads" in STUDIO,
     "building shows only placed beads; the engine wears the repeat": "customGroups[$0] : -1" in STUDIO and "if group < 0 { continue }" in STUDIO and "return (0..<256).map { source[$0 % source.count] }" in STUDIO,
     "partial code repeats after leaving pattern editor": "source[$0 % source.count]" in STUDIO and "editingPattern = false; apply()" in STUDIO,
     "preset strip draws no beads beyond its native 128-slot row": "let count = min(128, max(1," in STUDIO,
-    "Build a Wyrm offers the 42 original beads and Wyrm's own in one grid": "ForEach(WyrmSkinCatalog.validGroups" in STUDIO and "allBeadsGrid" in STUDIO and 'WyrmSectionLabel("Wyrm beads")' not in STUDIO and "ForEach(0..<400" not in STUDIO and 'Colour studio' not in STUDIO and "queued.colors" in MAILBOX and "settings->skin_rgba" in MAILBOX,
+    "Build a Wyrm offers the 42 original beads and Wyrm's own in one grid": "WyrmSkinCatalog.validGroups.map(WyrmPatternBead.slither)" in STUDIO and "(0..<WyrmBead.count).map(WyrmPatternBead.wyrm)" in STUDIO and "allBeadsGrid" in STUDIO and 'WyrmSectionLabel("Wyrm beads")' not in STUDIO and "ForEach(0..<400" not in STUDIO and 'Colour studio' not in STUDIO and "queued.colors" in MAILBOX and "settings->skin_rgba" in MAILBOX,
     "picker sprites use shadowless high-resolution derivatives": "accessoryThumbnails" in STUDIO and "tagThumbnails" in STUDIO and "removingSoftShadow" in STUDIO,
     "long editors are constrained to the lower viewport": ".frame(maxHeight: .infinity)" in STUDIO and ".layoutPriority(1)" in STUDIO,
     "skin rows no longer push detail routes": "WyrmSkinRoot(open:" not in MAIN and "open(.presets)" not in MAIN,

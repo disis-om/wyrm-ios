@@ -15,9 +15,15 @@ for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
               "ver", "tlm", "di", "tar"):
     assert f'URLQueryItem(name: "{field}"' in swift, field
 assert "4_000_000_000" in swift
-assert 'URLQueryItem(name: "ver", value: "1.5.1")' in swift
+# NTL back on (OM, 2026-10-04): the real tag, this app's own version, and
+# accessories still never sent to NTL.
+assert 'URLQueryItem(name: "ver", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")' in swift
 assert 'URLQueryItem(name: "cs", value: "-1")' in swift
-assert 'URLQueryItem(name: "tg", value: "-1")' in swift
+assert 'URLQueryItem(name: "tg", value: "\(presence.tag)")' in swift
+assert "static let ntlServicesDisabled = false" in swift
+assert "#define WYRM_TAGS_DISABLED 0" in tags_c
+tick = ntl_net_c.replace("\r\n", "\n").split("void ntl_net_tick", 1)[1][:400]
+assert "  (void)env;\n  return;\n" not in tick, "the NTL tag socket must open (early return removed)"
 presence = swift.split("private struct WyrmTeamPresence", 1)[1].split("@MainActor", 1)[0]
 member = swift.split("struct WyrmTeamMember", 1)[1].split("struct WyrmTeamChatLine", 1)[0]
 assert "let cosmetic: Int" in presence

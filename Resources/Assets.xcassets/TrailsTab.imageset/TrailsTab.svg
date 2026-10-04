@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24">
+  <!-- The Trails tab (OM, 2026-10-04): a post, open at its top right, and a
+       slither trail leaving it for a bead. Same paths as Android's
+       IosGlyph.TRAILS and iOS WyrmTrailsIcon. Template image: the tab bar tints it. -->
+  <g fill="none" stroke="#000000" stroke-width="1.65" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M7.4,3.6 H13.2"/>
+    <path d="M20.4,10.8 V16.6 C20.4,18.7 18.7,20.4 16.6,20.4 H7.4 C5.3,20.4 3.6,18.7 3.6,16.6 V7.4 C3.6,5.3 5.3,3.6 7.4,3.6"/>
+    <path d="M7.6,16.6 C9.8,16.9 11,15.5 11.2,13.8 C11.4,12 12.9,11 14.6,11.4 C16.2,11.8 17.3,10.4 17.6,8.6"/>
+  </g>
+  <g fill="#000000">
+    <circle cx="7.5" cy="16.6" r="1.05"/>
+    <circle cx="18.3" cy="5.7" r="2.3"/>
+  </g>
+</svg>

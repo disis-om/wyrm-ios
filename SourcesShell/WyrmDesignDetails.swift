@@ -17,6 +17,7 @@ struct WyrmDetailHost: View {
             // The end of the new-follower trail: your connections, seen.
             .onAppear { if kind == "connections" { services.markKindsRead(["follow"]) } }
         case .profile(let id): WyrmProfilePage(playerID: id, account: account, services: services, close: close, open: open)
+        case .alerts: WyrmAlertsPage(services: services, engine: engine, open: open, close: close)
         case .editProfile: WyrmEditProfileDetail(account: account, close: close)
         case .voice: WyrmVoiceDetail(services: services, close: close, open: open)
             // The end of the voice-invite trail: seen once the rooms are open.

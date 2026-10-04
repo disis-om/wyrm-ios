@@ -259,9 +259,9 @@ private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
     }
 }
 
-/// Tags are off until Wyrm's own backend serves them: announcing NTL tags got
-/// snakes dropped from the arena. Flip to false to bring them back.
-private let wyrmTagsDisabled = true
+/// Tags are on again (OM, 2026-10-04; off 2026-09-26 to 2026-10-04). true
+/// shows Tag as "Coming soon" and draws no tag in the preview.
+private let wyrmTagsDisabled = false
 
 struct WyrmSkinRoot: View {
     @ObservedObject var engine: WyrmShellStore
@@ -505,8 +505,11 @@ struct WyrmSkinRoot: View {
                 studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)")
                 studioRow(.pattern, value: customEnabled ? "Custom" : "Preset")
                 studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
-                // Tags are off until Wyrm's own backend serves them.
-                WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
+                if wyrmTagsDisabled {
+                    WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
+                } else {
+                    studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { "#\($0.ntlID)" } ?? "None")
+                }
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
             // Wyrm's own looks (hair, ears, glasses): only this phone sees them.
@@ -646,34 +649,49 @@ struct WyrmSkinRoot: View {
     /// beads first, then Wyrm's own. Patterned Wyrm beads take the wheel's
     /// current colour; the arena only ever gets each bead's nearest slither
     /// colour group.
+    ///
+    /// One ForEach with one identity per bead (OM, 2026-10-04): the grid used
+    /// two ForEach over plain Ints (slither groups 0-39, Wyrm beads 0-53), so
+    /// both lists shared ids 0, 1, 2… inside one lazy grid, and scrolling
+    /// recycled the wrong cells — beads drew wrong or vanished and came back.
+    /// Each cell is also a fixed square the bead is laid over.
     private var allBeadsGrid: some View {
         let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
+        let cells = WyrmSkinCatalog.validGroups.map(WyrmPatternBead.slither)
+            + (0..<WyrmBead.count).map(WyrmPatternBead.wyrm)
         return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-            ForEach(WyrmSkinCatalog.validGroups, id: \.self) { group in
-                Button {
-                    var groups = customGroups
-                    if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
-                } label: {
-                    WyrmAtlasImage(image: textures.beads[group]).padding(5)
-                        .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                        .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
-            }
-            // Wyrm's beads, when switched off, stay in view but faded and
-            // cannot be picked.
-            ForEach(0..<WyrmBead.count, id: \.self) { kind in
-                Button { addWyrmBead(kind: kind, tint: tint) } label: {
-                    WyrmAtlasImage(image: textures.wyrmBeads[kind])
-                        .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white)
-                        .padding(5)
-                        .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                        .background(ATheme.card.opacity(0.72)).clipShape(Circle())
-                }.buttonStyle(.plain)
-                    .disabled(WyrmBead.builtBeadsOff)
-                    .opacity(WyrmBead.builtBeadsOff ? 0.28 : 1)
-                    .accessibilityLabel("\(WyrmBead.names[kind]) bead")
+            ForEach(cells, id: \.self) { cell in
+                switch cell {
+                case .slither(let group):
+                    Button {
+                        var groups = customGroups
+                        if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
+                    } label: {
+                        beadCell(WyrmAtlasImage(image: textures.beads[group]))
+                    }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
+                case .wyrm(let kind):
+                    // Wyrm's beads, when switched off, stay in view but faded
+                    // and cannot be picked.
+                    Button { addWyrmBead(kind: kind, tint: tint) } label: {
+                        beadCell(WyrmAtlasImage(image: textures.wyrmBeads[kind])
+                            .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white))
+                    }.buttonStyle(.plain)
+                        .disabled(WyrmBead.builtBeadsOff)
+                        .opacity(WyrmBead.builtBeadsOff ? 0.28 : 1)
+                        .accessibilityLabel("\(WyrmBead.names[kind]) bead")
+                }
             }
         }.padding(.horizontal, 16)
+    }
+
+    /// A square cell on the card disc with the bead laid over it.
+    private func beadCell<Content: View>(_ bead: Content) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay(bead.padding(5))
+            .background(ATheme.card.opacity(0.72))
+            .clipShape(Circle())
+            .contentShape(Circle())
     }
 
     private func addWyrmBead(kind: Int, tint: UInt32) {
@@ -1208,6 +1226,13 @@ private struct WyrmTintedBead: View {
                 }
         } else { Color.clear }
     }
+}
+
+/// One cell of Skin › Pattern's bead grid; a slither group and a Wyrm bead of
+/// the same number are different cells.
+private enum WyrmPatternBead: Hashable {
+    case slither(Int)
+    case wyrm(Int)
 }
 
 private struct WyrmAtlasImage: View {

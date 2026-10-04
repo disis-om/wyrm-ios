@@ -45,7 +45,7 @@ struct WyrmDesignMain: View {
                         .id(tab)
                         .transition(.opacity.combined(with: .scale(scale: 0.985)))
 
-                    WyrmRootTabBar(selection: $tab, unread: unreadAlerts, settingsBadge: support.unseenReplies, socialBadge: socialBadge)
+                    WyrmRootTabBar(selection: $tab, unread: trailsBadge, settingsBadge: support.unseenReplies, socialBadge: socialBadge)
                         .frame(width: proxy.size.width)
                         .padding(.bottom, tabBarBottomInset)
                         // Typing hides the bar, as system tab bars sit under the keyboard.
@@ -115,7 +115,7 @@ struct WyrmDesignMain: View {
                 try? await Task.sleep(nanoseconds: 15_000_000_000)
                 if Task.isCancelled { break }
                 quiet += 1
-                if tab == .alerts || quiet % 3 == 0 { await pollAlerts() }
+                if routes.last == .alerts || quiet % 3 == 0 { await pollAlerts() }
             }
         }
         .onDisappear { WyrmLiveInbox.shared.stop() }
@@ -142,10 +142,9 @@ struct WyrmDesignMain: View {
             tab = .skin
         }
         .onChange(of: shareRun.trailsRequest) { _ in
-            // Posted from Share run: the feed, where the new trail is landing.
+            // Posted from Share run: the Trails tab, where the new trail is landing.
             routes.removeAll()
-            tab = .social
-            open(.trails)
+            tab = .trails
         }
         .onChange(of: engine.toast) { value in
             guard !value.isEmpty else { return }
@@ -159,24 +158,38 @@ struct WyrmDesignMain: View {
         services.alerts.filter { !$0.read && notificationPrefs.allows($0.kind) }.count
     }
 
-    /// The Social trail: unread DMs, voice invites, new followers, trail replies.
+    /// The Social trail: unread DMs, voice invites, new followers, new global chat.
     private var socialBadge: Int {
         let dms = services.conversations.reduce(0) { $0 + $1.unreadCount }
-        let kinds: Set<String> = WyrmTrailsFeature.enabled
-            ? ["voice_invite", "follow", "trail_like", "trail_reply"] : ["voice_invite", "follow"]
-        return dms + services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count
+        let kinds: Set<String> = ["voice_invite", "follow"]
+        return dms + services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count + services.globalUnread
+    }
+
+    /// Unread likes and replies on your trails: the Trails tab's count.
+    private var trailsBadge: Int {
+        guard WyrmTrailsFeature.enabled else { return 0 }
+        let kinds: Set<String> = ["trail_like", "trail_reply"]
+        return services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count
     }
 
     private static let tabIcons: [WyrmDesignTab: String] = [
-        .alerts: "bell.badge", .social: "person.2", .play: "play.circle",
+        .social: "person.2", .play: "play.circle",
         .skin: "circle.hexagongrid", .settings: "slider.horizontal.3",
     ]
+
+    /// The system tab bar's glyph: Trails is Wyrm's own (the `TrailsTab`
+    /// asset, same paths as `WyrmTrailsIcon`), the rest are system symbols.
+    private static func tabImage(_ value: WyrmDesignTab) -> Image {
+        value == .trails ? Image("TrailsTab") : Image(systemName: tabIcons[value] ?? "circle")
+    }
 
     @ViewBuilder
     private func tabPage(_ value: WyrmDesignTab, _ proxy: GeometryProxy, padTop: Bool = true) -> some View {
         Group {
             switch value {
-            case .alerts: WyrmAlertsRoot(services: services, engine: engine, open: open)
+            case .trails:
+                if WyrmTrailsFeature.enabled { WyrmTrailsFeed(account: account, open: open) }
+                else { WyrmTrailsComingSoon() }
             case .social: WyrmSocialRoot(account: account, services: services, open: open)
             case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
             case .skin: WyrmSkinRoot(engine: engine)
@@ -201,12 +214,14 @@ struct WyrmDesignMain: View {
             let _ = Self.styleTabBar()
             TabView(selection: $tab) {
                 ForEach(WyrmDesignTab.allCases, id: \.self) { value in
-                    Tab(value.rawValue, systemImage: Self.tabIcons[value] ?? "circle", value: value) {
+                    Tab(value: value) {
                         tabPage(value, proxy, padTop: false)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                             .background(WyrmPaperBackground())
+                    } label: {
+                        Label { Text(value.rawValue) } icon: { Self.tabImage(value) }
                     }
-                    .badge(value == .alerts ? unreadAlerts : value == .settings ? support.unseenReplies : value == .social ? socialBadge : 0)
+                    .badge(value == .trails ? trailsBadge : value == .settings ? support.unseenReplies : value == .social ? socialBadge : 0)
                 }
             }
             .tint(ATheme.ink)
@@ -265,6 +280,7 @@ struct WyrmDesignMain: View {
 
     private func pollAlerts() async {
         guard UIApplication.shared.applicationState == .active, engine.engineScreen == 0 else { return }
+        if routes.last != .globalChat { await services.refreshGlobalUnread() }
         let fresh = await services.pollAlerts()
         // A reply from Wyrm: fetch it now so the Settings badge counts it.
         if fresh.contains(where: { $0.kind == "support" }) { await support.refresh() }
@@ -285,7 +301,7 @@ struct WyrmDesignMain: View {
     private func openBanner(_ alert: WyrmServiceAlert) {
         dismissBanner()
         services.markRead(alert)
-        if let route = WyrmAlertRouting.route(for: alert) { open(route) } else { tab = .alerts }
+        if let route = WyrmAlertRouting.route(for: alert) { open(route) } else { open(.alerts) }
     }
 
     private func open(_ value: WyrmDesignRoute) {
@@ -331,6 +347,10 @@ private struct WyrmPlayRoot: View {
         return "\(steering) · \(hand.options[hand.index].prefix(1).uppercased() + hand.options[hand.index].dropFirst())"
     }
     private var food: String { WyrmFoodPage.label(engine) }
+    /// Unread alerts the player allows: the count on the bell.
+    private var unreadAlerts: Int {
+        services.alerts.filter { !$0.read && WyrmNotificationPrefs.shared.allows($0.kind) }.count
+    }
 
     var body: some View {
         ScrollView(showsIndicators: false) {
@@ -344,15 +364,16 @@ private struct WyrmPlayRoot: View {
                         Text("Tap to rename in-game name").font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet.opacity(0.55))
                     }
                     Spacer()
-                    Button { open(.profile("")) } label: {
-                        HStack(spacing: 9) {
-                            VStack(alignment: .trailing, spacing: 1) {
-                                Text(account.player?.displayName ?? "Wyrm").font(.androidWyrm(12, .bold))
-                                Text(account.player?.handle ?? "").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
-                            }
+                    // Top right (OM, 2026-10-04): Alerts as a button, then your
+                    // avatar, which opens your profile. No name or @username here.
+                    HStack(spacing: 10) {
+                        WyrmAlertsBellButton(unread: unreadAlerts) { open(.alerts) }
+                        Button { open(.profile("")) } label: {
                             WyrmAvatar(initials: account.player?.initials ?? "W", size: 36, url: account.player?.avatarURL ?? "")
-                        }.foregroundColor(ATheme.ink)
-                    }.buttonStyle(.plain)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Your profile")
+                    }
                 }.padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 15)
 
                 WyrmPaperCard {
@@ -681,14 +702,15 @@ private struct WyrmSocialRoot: View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 WyrmScreenHeader(kicker: "Arena", title: "Social")
-                // Switched off: the same card, no count; it opens the "in development" page.
-                WyrmTrailsTeaser(account: account, open: open,
-                                 badge: WyrmTrailsFeature.enabled ? unread(["trail_like", "trail_reply"]) : 0)
+                // Trails is a tab of its own now (OM, 2026-10-04): no card here.
                 WyrmPaperCard {
                     WyrmListRow(title: "Leaderboard", detail: leaderboardDetail, icon: "trophy.fill") { open(.leaderboard) }
                     WyrmListRow(title: "Messages", detail: messageDetail, icon: "message.fill", tint: ATheme.link,
                                 badge: services.conversations.reduce(0) { $0 + $1.unreadCount }) { open(.messages) }
-                    WyrmListRow(title: "Global chat", detail: "Everyone in Wyrm · last 24 hours", icon: "bubble.left.and.bubble.right.fill", tint: ATheme.link) { open(.globalChat) }
+                    WyrmListRow(title: "Global chat",
+                                detail: services.globalUnread > 0 ? "\(services.globalUnread) new · last 24 hours" : "Everyone in Wyrm · last 24 hours",
+                                icon: "bubble.left.and.bubble.right.fill", tint: ATheme.link,
+                                badge: services.globalUnread) { open(.globalChat) }
                     WyrmListRow(title: "Voice rooms", detail: unread(["voice_invite"]) > 0 ? "\(unread(["voice_invite"])) invitation(s) · \(services.liveRooms.count) live" : "\(services.liveRooms.count) live",
                                 icon: "mic.fill", tint: ATheme.live, badge: unread(["voice_invite"])) { open(.voice) }
                     WyrmListRow(title: "Connections", detail: unread(["follow"]) > 0 ? "\(unread(["follow"])) new · \(account.player?.followerCount ?? 0) followers" : "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following",
@@ -709,14 +731,63 @@ private struct WyrmSocialRoot: View {
     private var leaderboardDetail: String { guard let id = account.player?.id, let rank = services.killLeaders.firstIndex(where: { $0.id == id }) else { return "Score and kills" }; return "You are \(rank + 1) by kills" }
 }
 
+/// Alerts, opened from Play's bell (OM, 2026-10-04): a page with Back.
+struct WyrmAlertsPage: View {
+    @ObservedObject var services: WyrmServiceStore
+    let engine: WyrmShellStore
+    let open: (WyrmDesignRoute) -> Void
+    let close: () -> Void
+    var body: some View {
+        WyrmAlertsRoot(services: services, engine: engine, open: open, close: close)
+    }
+}
+
+/// The bell on Play: a card disc with the unread count.
+struct WyrmAlertsBellButton: View {
+    let unread: Int
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            ZStack(alignment: .topTrailing) {
+                Image(systemName: "bell")
+                    .font(.system(size: 17, weight: .medium))
+                    .foregroundColor(ATheme.ink)
+                    .frame(width: 36, height: 36)
+                    .background(Circle().fill(ATheme.card))
+                    .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                if unread > 0 {
+                    Text(unread > 99 ? "99+" : "\(unread)")
+                        .font(.system(size: 9, weight: .bold)).foregroundColor(ATheme.onInk)
+                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 16)
+                        .background(ATheme.badge).clipShape(Capsule())
+                        .offset(x: 5, y: -4)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(unread > 0 ? "Alerts, \(unread) new" : "Alerts")
+    }
+}
+
 private struct WyrmAlertsRoot: View {
     @ObservedObject var services: WyrmServiceStore
     let engine: WyrmShellStore
     let open: (WyrmDesignRoute) -> Void
+    var close: (() -> Void)? = nil
     @ObservedObject private var prefs = WyrmNotificationPrefs.shared
     var body: some View {
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
+                if let close = close {
+                    HStack {
+                        Button(action: close) {
+                            HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
+                                .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16).frame(height: 52)
+                }
                 WyrmScreenHeader(kicker: "Inbox", title: "Alerts", trailing: AnyView(Button("Read all") { Task { await services.markAllRead() } }.font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.link)))
                 if services.alerts.isEmpty {
                     WyrmPaperCard { WyrmEmptyPanel(title: services.loading ? "Checking Wyrm…" : "All caught up", note: services.loading ? "Looking for real invites and notices." : "Nothing new right now.") }

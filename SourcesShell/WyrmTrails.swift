@@ -30,7 +30,10 @@ import UIKit
 /// trail alerts; the Social card still shows, looking as it did, and `.trails`
 /// opens `WyrmTrailsComingSoon`. `true` brings everything back.
 enum WyrmTrailsFeature {
-    static let enabled = false
+    /// ON for test builds only (OM, 2026-10-04). Set back to false before any
+    /// beta or stable release: releases ship the coming-soon placeholder until
+    /// Trails is final. Android: TRAILS_ENABLED.
+    static let enabled = true
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]
@@ -1176,7 +1179,8 @@ private struct WyrmTrailWobble: ViewModifier {
 
 struct WyrmTrailsFeed: View {
     @ObservedObject var account: WyrmAccountStore
-    let close: () -> Void
+    /// Nil on the Trails tab (OM, 2026-10-04): no Back there.
+    var close: (() -> Void)? = nil
     let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var store = WyrmTrailsStore.shared
 
@@ -1256,9 +1260,11 @@ struct WyrmTrailsFeed: View {
     private var topBar: some View {
         ZStack {
             HStack {
-                Button(action: close) {
-                    HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
-                        .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                if let close = close {
+                    Button(action: close) {
+                        HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
+                            .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                    }
                 }
                 Spacer()
                 if !store.trails.isEmpty || store.pendingActive {
@@ -1464,15 +1470,18 @@ struct WyrmTrailDetail: View {
 /// says plainly that Trails is being finished and what it will bring. Android
 /// twin: `TrailsComingSoonScreen` (TrailsComingSoon.kt), same copy.
 struct WyrmTrailsComingSoon: View {
-    let close: () -> Void
+    /// Nil on the Trails tab (OM, 2026-10-04): no Back there.
+    var close: (() -> Void)? = nil
 
     var body: some View {
         VStack(spacing: 0) {
             ZStack {
                 HStack {
-                    Button(action: close) {
-                        HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
-                            .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                    if let close = close {
+                        Button(action: close) {
+                            HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
+                                .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                        }
                     }
                     Spacer()
                 }

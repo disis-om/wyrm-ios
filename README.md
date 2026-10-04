@@ -11,7 +11,7 @@
 
 ## Status
 
-- Released: **0.18.12 (build 79)** beta. Latest build: **0.18.15 (82)**, not
+- Released: **0.18.24 (build 91)** beta. Latest build: **0.18.31 (98)**, not
   released. iOS **15 or newer**, iPhone first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
@@ -25,7 +25,7 @@
 
 - Username/password sign-up and login with live username availability.
   Signing out clears every account-scoped cache.
-- Play, Alerts, Social, Skin and Settings tabs. On iOS 26 the tab bar, switches,
+- Play, Trails, Social, Skin and Settings tabs. Alerts opens from the bell on Play. On iOS 26 the tab bar, switches,
   sliders, segmented controls and buttons are the system's own Liquid Glass; earlier
   iOS versions get a draggable glass-style
   tab bar.

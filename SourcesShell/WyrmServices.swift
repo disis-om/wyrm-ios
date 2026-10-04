@@ -560,6 +560,8 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var profiles: [String: WyrmServicePlayer] = [:]
     /// The global channel, last 24 hours, oldest first.
     @Published private(set) var globalChat: [WyrmChatItem] = []
+    /// New global messages from others since the room was last read (OM, 2026-10-04).
+    @Published private(set) var globalUnread = 0
     private var syncObservers: [NSObjectProtocol] = []
     @Published private(set) var followers: [WyrmServicePlayer] = []
     @Published private(set) var following: [WyrmServicePlayer] = []
@@ -653,6 +655,32 @@ final class WyrmServiceStore: ObservableObject {
 
     func refreshGlobalChat() async {
         await perform { self.globalChat = try await WyrmServiceClient.shared.globalMessages(token: self.token) }
+    }
+
+    /// The newest global message this phone has shown in the open room.
+    static let globalSeenKey = "wyrm.global-chat.seen-at"
+
+    /// Global chat's count (OM, 2026-10-04): messages from others newer than
+    /// the newest one shown in the open room. The first look only sets that
+    /// mark, so nobody starts with a day's worth of unread. Quiet on failure:
+    /// a missed count is not worth an error on screen.
+    func refreshGlobalUnread() async {
+        guard !token.isEmpty,
+              let items = try? await WyrmServiceClient.shared.globalMessages(token: token) else { return }
+        guard let seen = UserDefaults.standard.string(forKey: Self.globalSeenKey) else {
+            noteGlobalSeen(items)
+            return
+        }
+        let me = preparedPlayerID ?? ""
+        globalUnread = items.filter { $0.createdAt > seen && $0.authorID != me }.count
+    }
+
+    /// The room is on screen: everything in it is read.
+    func noteGlobalSeen(_ items: [WyrmChatItem]? = nil) {
+        guard let newest = (items ?? globalChat).map(\.createdAt).max() else { return }
+        let seen = UserDefaults.standard.string(forKey: Self.globalSeenKey)
+        if seen == nil || newest > seen! { UserDefaults.standard.set(newest, forKey: Self.globalSeenKey) }
+        globalUnread = 0
     }
 
     func sendGlobal(_ body: String) async -> Bool {
@@ -862,6 +890,7 @@ final class WyrmServiceStore: ObservableObject {
 
     private func clearPublishedSession() {
         alerts = []
+        globalUnread = 0
         scoreLeaders = []
         killLeaders = []
         conversations = []

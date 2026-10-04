@@ -1,8 +1,10 @@
 import SwiftUI
 import UIKit
 
+/// Trails took Alerts' place in the tab bar (OM, 2026-10-04); Alerts is the
+/// bell on Play, a page with Back (`WyrmDesignRoute.alerts`).
 enum WyrmDesignTab: String, CaseIterable {
-    case alerts = "Alerts"
+    case trails = "Trails"
     case social = "Social"
     case play = "Play"
     case skin = "Skin"
@@ -10,6 +12,7 @@ enum WyrmDesignTab: String, CaseIterable {
 }
 
 enum WyrmDesignRoute: Identifiable, Equatable {
+    case alerts
     case leaderboard
     case messages
     case thread(String)
@@ -51,6 +54,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
 
     var id: String {
         switch self {
+        case .alerts: return "alerts"
         case .leaderboard: return "leaderboard"
         case .messages: return "messages"
         case .thread(let id): return "thread-\(id)"
@@ -367,14 +371,67 @@ struct WyrmDetailChrome<Content: View>: View {
     }
 }
 
+/// The Trails tab glyph (OM, 2026-10-04): a post, open at its top right, and a
+/// slither trail leaving it for a bead. Same paths as Android's
+/// `IosGlyph.TRAILS` and the `TrailsTab` asset the system tab bar uses.
+struct WyrmTrailsIcon: View {
+    var weight: CGFloat = 1.65
+
+    var body: some View {
+        GeometryReader { proxy in
+            let k = min(proxy.size.width, proxy.size.height) / 24
+            ZStack {
+                WyrmTrailsStrokes(scale: k)
+                    .stroke(style: StrokeStyle(lineWidth: weight * k, lineCap: .round, lineJoin: .round))
+                WyrmTrailsBeads(scale: k).fill()
+            }
+        }
+        .aspectRatio(1, contentMode: .fit)
+    }
+}
+
+private struct WyrmTrailsStrokes: Shape {
+    let scale: CGFloat
+    func path(in rect: CGRect) -> Path {
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * scale, y: y * scale) }
+        var path = Path()
+        // The frame's top edge, up to the gap.
+        path.move(to: p(7.4, 3.6)); path.addLine(to: p(13.2, 3.6))
+        // The rest of the frame, from the gap round to the top left corner.
+        path.move(to: p(20.4, 10.8)); path.addLine(to: p(20.4, 16.6))
+        path.addCurve(to: p(16.6, 20.4), control1: p(20.4, 18.7), control2: p(18.7, 20.4))
+        path.addLine(to: p(7.4, 20.4))
+        path.addCurve(to: p(3.6, 16.6), control1: p(5.3, 20.4), control2: p(3.6, 18.7))
+        path.addLine(to: p(3.6, 7.4))
+        path.addCurve(to: p(7.4, 3.6), control1: p(3.6, 5.3), control2: p(5.3, 3.6))
+        // The trail.
+        path.move(to: p(7.6, 16.6))
+        path.addCurve(to: p(11.2, 13.8), control1: p(9.8, 16.9), control2: p(11, 15.5))
+        path.addCurve(to: p(14.6, 11.4), control1: p(11.4, 12), control2: p(12.9, 11))
+        path.addCurve(to: p(17.6, 8.6), control1: p(16.2, 11.8), control2: p(17.3, 10.4))
+        return path
+    }
+}
+
+private struct WyrmTrailsBeads: Shape {
+    let scale: CGFloat
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        path.addEllipse(in: CGRect(x: (7.5 - 1.05) * scale, y: (16.6 - 1.05) * scale, width: 2.1 * scale, height: 2.1 * scale))
+        path.addEllipse(in: CGRect(x: (18.3 - 2.3) * scale, y: (5.7 - 2.3) * scale, width: 4.6 * scale, height: 4.6 * scale))
+        return path
+    }
+}
+
 struct WyrmRootTabBar: View {
     @Binding var selection: WyrmDesignTab
+    /// Unread likes and replies on your trails, on the Trails tab.
     let unread: Int
     /// Unseen replies from Wyrm, on the Settings tab (Help & feedback).
     var settingsBadge: Int = 0
-    /// Unread DMs, voice invites, new followers and trail replies (the Social trail).
+    /// Unread DMs, voice invites and new followers (the Social trail).
     var socialBadge: Int = 0
-    private let icons: [WyrmDesignTab: String] = [.alerts: "bell.badge", .social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
+    private let icons: [WyrmDesignTab: String] = [.social: "person.2", .play: "play.circle", .skin: "circle.hexagongrid", .settings: "slider.horizontal.3"]
 
     @State private var dragLocationX: CGFloat?
     @State private var lastPreview: WyrmDesignTab?
@@ -461,7 +518,11 @@ struct WyrmRootTabBar: View {
     private func tabLabel(_ tab: WyrmDesignTab) -> some View {
         VStack(spacing: 3) {
             ZStack(alignment: .topTrailing) {
-                Image(systemName: icons[tab]!).font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
+                if tab == .trails {
+                    WyrmTrailsIcon(weight: selection == tab ? 2.0 : 1.65).frame(width: 22, height: 22)
+                } else {
+                    Image(systemName: icons[tab] ?? "circle").font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
+                }
                 if badgeCount(tab) > 0 {
                     Text("\(min(badgeCount(tab), 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
                         .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.badge).clipShape(Capsule()).offset(x: 11, y: -7)
@@ -478,7 +539,7 @@ struct WyrmRootTabBar: View {
 
     private func badgeCount(_ tab: WyrmDesignTab) -> Int {
         switch tab {
-        case .alerts: return unread
+        case .trails: return unread
         case .social: return socialBadge
         case .settings: return settingsBadge
         default: return 0

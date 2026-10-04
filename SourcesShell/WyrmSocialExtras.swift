@@ -84,6 +84,7 @@ struct WyrmGlobalChatDetail: View {
         .task {
             while !Task.isCancelled {
                 await services.refreshGlobalChat()
+                services.noteGlobalSeen()
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
             }
         }

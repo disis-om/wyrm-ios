@@ -226,11 +226,10 @@ final class WyrmTeamStore: ObservableObject {
         try? WyrmTeamKeychain.writeAll(WyrmSavedTeams(selected: selectedTeam, teams: saved))
     }
 
-    /// Every NTL service is switched off (OM, 2026-09-27): arena drops kept
-    /// following NTL traffic, so nothing is sent to or received from
-    /// ntl-slither.com. Teams can still be saved; none of them runs. Set to
-    /// false to bring Team mode back.
-    static let ntlServicesDisabled = true
+    /// NTL services are on again (OM, 2026-10-04): the arena drops were the
+    /// oversized skin block and other causes, not NTL. Off from 2026-09-27 to
+    /// 2026-10-04. true switches Team mode, team chat and tags off again.
+    static let ntlServicesDisabled = false
 
     private func run(_ team: WyrmSavedTeam) {
         stop()
@@ -297,10 +296,11 @@ final class WyrmTeamStore: ObservableObject {
             // Accessories reach the arena in the join packet only, never NTL.
             // -1 is "no cosmetic". Was: presence.cosmetic
             URLQueryItem(name: "cs", value: "-1"),
-            // NTL tags are off (they got snakes dropped); -1 is "no tag".
-            URLQueryItem(name: "tg", value: "-1"),
-            // Wyrm's own version, the same one Android reports. Was: 9.68
-            URLQueryItem(name: "ver", value: "1.5.1"),
+            // The tag in the mod's numbering, -1 for none (on again, OM 2026-10-04).
+            URLQueryItem(name: "tg", value: "\(presence.tag)"),
+            // This app's own version, as Android sends BuildConfig.VERSION_NAME
+            // (OM, 2026-10-04). Was a fixed "1.5.1".
+            URLQueryItem(name: "ver", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""),
             URLQueryItem(name: "tlm", value: ""),
             URLQueryItem(name: "di", value: "0"),
             URLQueryItem(name: "tar", value: ""),

@@ -38,6 +38,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.look.", .wipe),                  // travels in the shared document
         ("wyrm.nickname.chosen", .wipe),            // travels in the shared document
         ("wyrm.support.", .wipe),
+        ("wyrm.global-chat.", .wipe),               // the newest global message seen (a marker)
         ("wyrm.ios.account-sync.", .wipe),
         // The player's choices: synced.
         ("wyrm.ios.skin.", .sync),
