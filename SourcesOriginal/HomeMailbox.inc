@@ -54,6 +54,10 @@ void WyrmIOSExitLayoutEditor(void) {
  * assist off while it is open. Set before the editor is entered. */
 void WyrmIOSSetEditorBare(bool bare) { ai_mode_set_editor_bare(bare); }
 
+/* Snake-look preview (OM, 2026-10-05): the bare editor shows Normal or Assist.
+ * Set before the editor is entered, and when the preview's segment changes. */
+void WyrmIOSSetEditorAssist(bool on) { ai_mode_set_editor_assist(on); }
+
 /* Phase 3 H (OM, 2026-10-01): the HUD's performance chip ("Cooling down ·
    60 FPS"). The app decides the text (Settings › Performance, Auto mode only)
    and the engine only draws it. Two slots and an atomic index: the UI thread
@@ -122,6 +126,13 @@ void WyrmIOSSetNearOriginal(bool on, int server) {
 
 void WyrmIOSSetJoystickLaser(bool on, float length) {
   android_home_set_joystick_laser(on, length);
+}
+
+/* Play feel (OM, 2026-10-05): Settings > Controls (WyrmPlayFeelStore). */
+void mobile_controls_set_play_feel(bool original_arrow, bool look_ahead,
+                                   int zoom_style);
+void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style) {
+  mobile_controls_set_play_feel(original_arrow, look_ahead, zoom_style);
 }
 
 void WyrmIOSToggleEditorLeaderboard(void) {
@@ -279,8 +290,22 @@ void WyrmIOSArenaFastDeath(tenv* env, int death_code) {
   apple_publish_drop(env, "death_packet", death_code, life);
 }
 
+/* Auto restart off after an arena drop (OM, 2026-10-05). A drop and an instant
+   rejoin could chase each other round and round (and earn the arena's IP
+   penalty), so any drop the app reports turns the toggle off; the player turns
+   it back on. Saved at once, so it goes to the account too. */
+static void drop_ends_auto_restart(tenv* env) {
+  user_settings* auto_settings = &env->usr->usrs;
+  if (!auto_settings->auto_respawn) return;
+  auto_settings->auto_respawn = 0;
+  save_user_settings(auto_settings);
+  SDL_Log("Wyrm: auto restart turned off (arena drop)");
+}
+
 static void apple_publish_drop(tenv* env, const char* reason, int death_code, double life) {
   if (!env || !home_mutex) return;
+  /* Before the death that follows ('v' path): no auto restart after a drop. */
+  drop_ends_auto_restart(env);
   if (apple_connect_serial && apple_drop_published_serial == apple_connect_serial) return;
   apple_drop_published_serial = apple_connect_serial;
   tuser_data* usr = env->usr;
@@ -345,6 +370,7 @@ void WyrmIOSArenaPrespawnClosed(tenv* env, const char* phase) {
   if (gdata->ai_mode || gdata->join_spawned || gdata->closed_by_us ||
       gdata->leaving || gdata->restart_req)
     return;
+  drop_ends_auto_restart(env);
   if (apple_connect_serial && apple_drop_published_serial == apple_connect_serial) return;
   apple_drop_published_serial = apple_connect_serial;
   tuser_data* usr = env->usr;

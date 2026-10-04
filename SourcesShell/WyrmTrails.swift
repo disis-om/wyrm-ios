@@ -218,6 +218,7 @@ final class WyrmTrailsClient {
         switch code {
         case "IMAGE_TOO_LARGE": return "That photo is too large."
         case "UNSUPPORTED_IMAGE": return "That photo could not be read."
+        case "STORAGE_FULL": return "Trails is full right now. Try again later."
         case "NOT_FOUND": return "This trail is no longer here."
         case "BLOCKED": return "You can't reply to this trail."
         case "INVALID_SKIN": return "Your skin could not be shared. Try again without it."

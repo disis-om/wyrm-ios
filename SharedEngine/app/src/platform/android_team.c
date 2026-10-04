@@ -118,10 +118,12 @@ enum {
   STYLE_CHAT_TEXT,
   STYLE_TEAM_PANEL,
   STYLE_CHAT_PANEL,
+  STYLE_STATS_PANEL, /* the stats panel's plate (OM, 2026-10-05) */
   STYLE_COUNT
 };
 static float hud_style[STYLE_COUNT] = {1.0f,   1.0f, 340.0f, 210.0f, 0.0f, 0.0f,
-                                       400.0f, 270.0f, 0.0f, 0.0f,   1.0f, 1.0f};
+                                       400.0f, 270.0f, 0.0f, 0.0f,   1.0f, 1.0f,
+                                       1.0f};
 
 #define TEAM_CHAT_MAX 80
 typedef struct team_chat_line {
@@ -282,6 +284,12 @@ void android_team_set_hud_style(const float* values, int count) {
   if (!values) return;
   for (int i = 0; i < count && i < STYLE_COUNT; ++i)
     if (isfinite(values[i])) hud_style[i] = values[i];
+}
+
+/* The stats panel's BACK (OM, 2026-10-05): how much of its white plate shows,
+   0..1; the text keeps its own OPACITY. Drawn by ui_overlay.c. */
+float android_team_stats_panel(void) {
+  return hud_clamp(hud_style[STYLE_STATS_PANEL], 0.0f, 1.0f);
 }
 
 void android_team_set_chat(const char* packed) {
@@ -1439,6 +1447,7 @@ void android_team_set_chat_centre(float centre_x, float centre_y) {
   (void)centre_y;
 }
 bool android_team_chat_open(void) { return false; }
+float android_team_stats_panel(void) { return 1.0f; }
 void android_team_set_chat(const char* packed) { (void)packed; }
 void android_team_set_hud_style(const float* values, int count) {
   (void)values;

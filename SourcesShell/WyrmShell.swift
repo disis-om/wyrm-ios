@@ -99,6 +99,10 @@ final class WyrmShellStore: ObservableObject {
     @Published private(set) var layoutEditorActive = false
     /// The same AI-arena stage, holding the background-size slider instead of the HUD (OM, 2026-10-01).
     @Published private(set) var backgroundEditor = false
+    /// The same stage, holding the snake-look controls (OM, 2026-10-05).
+    @Published private(set) var snakeLookEditor = false
+    /// Assist or normal for the preview that is opening. Not a second setter.
+    private(set) var snakeLookAssist = false
     static let lobbyScreen = 3
     private var timer: Timer?
     private var composerTimer: Timer?
@@ -343,8 +347,19 @@ final class WyrmShellStore: ObservableObject {
     /// Adjust arena background size: the AI arena sideways with one slider.
     func openBackgroundEditor() {
         backgroundEditor = true
+        snakeLookEditor = false
         // The engine draws only its real map and board, with assist off.
         WyrmIOSSetEditorBare(true)
+        openLayoutEditor()
+    }
+
+    /// Snake look: the same AI arena, showing the real snakes (OM, 2026-10-05).
+    func openSnakeLookPreview(assist: Bool) {
+        snakeLookAssist = assist
+        snakeLookEditor = true
+        backgroundEditor = false
+        WyrmIOSSetEditorBare(true)
+        WyrmIOSSetEditorAssist(assist)
         openLayoutEditor()
     }
 
@@ -353,6 +368,7 @@ final class WyrmShellStore: ObservableObject {
         WyrmIOSExitLayoutEditor()
         layoutEditorActive = false
         backgroundEditor = false
+        snakeLookEditor = false
         // Keep the clear shell until the engine is back on its home screen.
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) { WyrmIOSSetShellOverlay(false) }
         WyrmDiagnostics.record("layout editor closed", category: "ENGINE")
@@ -766,6 +782,8 @@ final class WyrmShellHost: NSObject {
         WyrmJoystickLaserStore.shared.publish()
         // The arena's team roster and chat window: their saved look.
         WyrmTeamHudStore.shared.publish()
+        // Controls › play feel: slither's arrow motion, look ahead, spring zoom.
+        WyrmPlayFeelStore.shared.publish()
         // Home › Near Original: slither's own HUD and controls.
         WyrmNearOriginalStore.shared.publish()
         // Controls › Play orientation: the engine surface's turn.

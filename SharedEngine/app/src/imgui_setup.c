@@ -118,8 +118,16 @@ void imgui_init(tenv* env) {
       .Device = env->ctx->device,
       .QueueFamily = env->ctx->queue_family,
       .Queue = env->ctx->queue,
-      .DescriptorPool = env->ctx->descriptor_pool,
-      .DescriptorPoolSize = 0,
+      /* ImGui's own descriptor pool (OM, 2026-10-05: Moto crash while sizing
+         stats). The engine's pool holds 20 sets for the whole renderer, and
+         ImGui shared it: its font atlas, logo, home icons, tags, arrows and
+         looks. A HUD size slider asks for a font size not baked yet, the
+         atlas grows into a new texture, its descriptor set could not be
+         allocated from the full pool, and vkUpdateDescriptorSets faulted
+         (ImGui_ImplVulkan_AddTexture, null pointer). The backend makes and
+         frees this pool itself. */
+      .DescriptorPool = VK_NULL_HANDLE,
+      .DescriptorPoolSize = 64,
       .MinImageCount = env->ctx->min_image_count,
       .ImageCount = env->ctx->fif,
       .PipelineCache = NULL,

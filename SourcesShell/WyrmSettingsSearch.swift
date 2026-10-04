@@ -136,6 +136,16 @@ enum WyrmSettingsIndex {
                                value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
                                first: true) { engine.openBackgroundEditor() })
         })
+        // render_mode, spine and hide_cosmetics already arrive above: place()
+        // lists every labelled normal/assist row. This is only the preview.
+        result.append(WyrmSettingsEntry(id: "app.snake-preview", title: "See it in the arena",
+                                        detail: "Skinless draws every snake as a clear strip in its own colour. Spine is a thin white line down every snake.",
+                                        page: "Modes", route: .modes,
+                                        keywords: "snake look preview skinless spine texture solid flat render") {
+            AnyView(WSValueRow(title: "See it in the arena", value: "", first: true) {
+                engine.openSnakeLookPreview(assist: false)
+            })
+        })
         result += WyrmButtonsContent.allowed(engine.hotkeys).map { key in
             WyrmSettingsEntry(id: "hotkey.\(key.id)", title: "\(key.name) button", detail: "Show it in matches, and whether a press toggles or holds",
                               page: "On-screen buttons", route: .buttons, keywords: "hotkey key toggle hold") {

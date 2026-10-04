@@ -179,6 +179,7 @@ struct WyrmArrowPicker: View {
 struct WyrmArrowSettingsCard: View {
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var store = WyrmArrowSkinStore.shared
+    @ObservedObject var feel = WyrmPlayFeelStore.shared
     @State var choosing = false
 
     var body: some View {
@@ -186,6 +187,12 @@ struct WyrmArrowSettingsCard: View {
         let colour = engine.setting("arrow.color")
         let size = engine.setting("arrow.size")
         let others = engine.settings.filter { $0.group == "controls.arrow" && !["arrow.style", "arrow.color", "arrow.size"].contains($0.id) }
+        // Customise arrow movement (OM, 2026-10-05): the start distance and lag
+        // are the player's while it is on; off, they fold away and the arrow
+        // moves exactly like slither's.
+        let movementIDs = ["arrow.separation", "arrow.smoothness"]
+        let movement = others.filter { movementIDs.contains($0.id) }
+        let rest = others.filter { !movementIDs.contains($0.id) }
         WSCard {
             Button { choosing = true } label: {
                 HStack(spacing: 14) {
@@ -206,7 +213,18 @@ struct WyrmArrowSettingsCard: View {
             WSSliderRow(title: "Brightness", valueText: "\(Int((store.brightness * 100).rounded()))%",
                         value: store.brightness, range: 0.2...1, adjusting: .arrow) { store.setBrightness($0) }
             if store.skin < 0, let colour { WSColourRow(setting: colour, engine: engine) }
-            WSRows(rows: others, engine: engine)
+            WSBoolRow(title: "Customise arrow movement",
+                      detail: feel.customArrow ? "Your own start distance and lag."
+                          : "Off: the arrow moves exactly like slither's, from the start distance to the drift.",
+                      on: feel.customArrow) { next in
+                withAnimation(.easeInOut(duration: 0.25)) { feel.setCustomArrow(next) }
+            }
+            .wyrmSettingAnchor("app.arrow-custom-motion")
+            if feel.customArrow {
+                WSRows(rows: movement, engine: engine)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+            WSRows(rows: rest, engine: engine)
         }
         .sheet(isPresented: $choosing) { WyrmArrowPicker(engine: engine) { choosing = false } }
     }

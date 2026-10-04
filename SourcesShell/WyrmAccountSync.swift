@@ -47,6 +47,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.theme", .sync),                  // + theme-intensity
         ("wyrm.ios.arrow.", .sync),
         ("wyrm.ios.near-original.", .sync),         // Home: Near Original (also in the shared document)
+        ("wyrm.ios.play-feel.", .sync),             // Controls: arrow motion, look ahead, zoom style (also shared)
         ("wyrm.ios.team-hud.", .sync),              // Layout editor: team roster + chat window look
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
@@ -116,6 +117,36 @@ final class WyrmAccountSync: ObservableObject {
     /// Skin (with the player's own pattern even while a preset is worn), look,
     /// arena background, name. The same JSON as Android's.
     func sharedDocument() -> [String: Any] {
+        var doc = sharedDocumentBase()
+        // Auto restart (OM, 2026-10-05): the on-screen toggle's state, the
+        // engine's `general.auto_respawn`. Only when the engine has said what it
+        // is, so an empty read never uploads "off" over the account's "on".
+        if let auto = engine?.setting("general.auto_respawn") {
+            doc["autoRestart"] = (auto.values.first ?? 0) >= 0.5
+        }
+        // Snake look (OM, 2026-10-05): the same on every platform. Only when the
+        // engine has said what each one is, so an empty read never uploads a default.
+        if let mode = engine?.setting("normal.render_mode") {
+            let raw = mode.values.first ?? 0
+            doc["renderModeNormal"] = min(max(raw.isFinite ? Int(raw.rounded()) : 0, 0), 3)
+        }
+        if let mode = engine?.setting("assist.render_mode") {
+            let raw = mode.values.first ?? 0
+            doc["renderModeAssist"] = min(max(raw.isFinite ? Int(raw.rounded()) : 0, 0), 3)
+        }
+        if let spine = engine?.setting("normal.spine") {
+            doc["spineNormal"] = (spine.values.first ?? 0) >= 0.5
+        }
+        if let spine = engine?.setting("assist.spine") {
+            doc["spineAssist"] = (spine.values.first ?? 0) >= 0.5
+        }
+        if let hide = engine?.setting("assist.hide_cosmetics") {
+            doc["assistHideCosmetics"] = (hide.values.first ?? 0) >= 0.5
+        }
+        return doc
+    }
+
+    private func sharedDocumentBase() -> [String: Any] {
         let d = UserDefaults.standard
         let preset = d.object(forKey: "wyrm.ios.skin.preset") as? Int ?? 2
         let customOn = d.object(forKey: "wyrm.ios.skin.custom-enabled") as? Bool ?? false
@@ -147,6 +178,10 @@ final class WyrmAccountSync: ObservableObject {
             "performanceMode": WyrmPerformance.shared.mode.rawValue,
             // Home › Near Original (OM, 2026-10-02): the same switch on every platform.
             "nearOriginal": WyrmNearOriginalStore.shared.on,
+            // Controls › play feel (OM, 2026-10-05): the same on every platform.
+            "arrowCustomMotion": WyrmPlayFeelStore.shared.customArrow,
+            "lookAhead": WyrmPlayFeelStore.shared.lookAhead,
+            "zoomSpring": WyrmPlayFeelStore.shared.zoomSpring,
         ]
     }
 
@@ -245,6 +280,22 @@ final class WyrmAccountSync: ObservableObject {
             }
         }
         if let nearOriginal = doc["nearOriginal"] as? Bool { d.set(nearOriginal, forKey: "wyrm.ios.near-original.on") }
+        // Auto restart (OM, 2026-10-05): straight into the engine (user.dat keeps it).
+        if let auto = doc["autoRestart"] as? Bool { engine?.write(id: "general.auto_respawn", values: [auto ? 1 : 0]) }
+        // Snake look (OM, 2026-10-05): each key on its own; a missing one keeps the phone's.
+        if let raw = doc["renderModeNormal"] as? NSNumber {
+            engine?.write(id: "normal.render_mode", values: [Double(min(max(raw.intValue, 0), 3))])
+        }
+        if let raw = doc["renderModeAssist"] as? NSNumber {
+            engine?.write(id: "assist.render_mode", values: [Double(min(max(raw.intValue, 0), 3))])
+        }
+        if let on = doc["spineNormal"] as? Bool { engine?.write(id: "normal.spine", values: [on ? 1 : 0]) }
+        if let on = doc["spineAssist"] as? Bool { engine?.write(id: "assist.spine", values: [on ? 1 : 0]) }
+        if let on = doc["assistHideCosmetics"] as? Bool { engine?.write(id: "assist.hide_cosmetics", values: [on ? 1 : 0]) }
+        // Play feel (OM, 2026-10-05): each key on its own; a missing one keeps the phone's.
+        if let custom = doc["arrowCustomMotion"] as? Bool { d.set(custom, forKey: WyrmPlayFeelStore.customArrowKey) }
+        if let ahead = doc["lookAhead"] as? Bool { d.set(ahead, forKey: WyrmPlayFeelStore.lookAheadKey) }
+        if let spring = doc["zoomSpring"] as? Bool { d.set(spring, forKey: WyrmPlayFeelStore.zoomSpringKey) }
         if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
             d.set(mode, forKey: "wyrm.ios.performance.mode")
         }
@@ -283,6 +334,7 @@ final class WyrmAccountSync: ObservableObject {
         WyrmPerformance.shared.reloadFromDefaults()
         WyrmJoystickLaserStore.shared.reloadFromDefaults()
         WyrmTeamHudStore.shared.reloadFromDefaults()
+        WyrmPlayFeelStore.shared.reloadFromDefaults()
         WyrmNearOriginalStore.shared.reloadFromDefaults()
         WyrmPlayOrientation.shared.reloadFromDefaults()
     }

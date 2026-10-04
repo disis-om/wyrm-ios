@@ -230,6 +230,8 @@ struct WyrmControlsContent: View {
     /// Home › Near Original (OM, 2026-10-02): slither's own joystick, boost and
     /// arrow; only the arrow's size stays the player's. Nothing stored changes.
     @ObservedObject var nearOriginal = WyrmNearOriginalStore.shared
+    /// Look ahead and the zoom bar's style (OM, 2026-10-05).
+    @ObservedObject var playFeel = WyrmPlayFeelStore.shared
     @State var behaviourOpen = false
     @State var zoomOpen = false
 
@@ -316,9 +318,38 @@ struct WyrmControlsContent: View {
                 }
             }
 
+            // Look ahead (OM, 2026-10-05): slither's own; Near Original and Wyrm alike.
+            WSSectionLabel("Camera")
+            WSCard {
+                WSBoolRow(title: "Look ahead",
+                          detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
+                          on: playFeel.lookAhead, first: true) { playFeel.setLookAhead($0) }
+                    .wyrmSettingAnchor("app.look-ahead")
+            }
+
             if !zoomRows.isEmpty {
                 WSAdvancedFold(label: "Advanced · zoom bar", open: zoomOpen) { withAnimation(.easeInOut(duration: 0.25)) { zoomOpen.toggle() } }
-                if zoomOpen { WSCard { WSRows(rows: zoomRows, engine: engine) } }
+                if zoomOpen {
+                    WSCard {
+                        WSRows(rows: zoomRows, engine: engine)
+                        // The zoom bar's style (OM, 2026-10-05): the slider, or a
+                        // spring whose knob rests in the middle and springs back.
+                        WSHairline()
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Zoom bar style").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
+                            WSSegmented(options: ["Slider", "Spring"], selected: playFeel.zoomSpring ? 1 : 0) {
+                                playFeel.setZoomSpring($0 == 1)
+                            }
+                            Text(playFeel.zoomSpring
+                                 ? "Push the knob toward + to zoom in, toward - to zoom out; let go and it springs back to the middle."
+                                 : "Slide to the zoom you want; it stays there.")
+                                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        .padding(14)
+                        .wyrmSettingAnchor("app.zoom-style")
+                    }
+                }
             }
 
             VStack(spacing: 9) {
@@ -596,6 +627,8 @@ struct WyrmModesPage: View {
     @State var advanced = true
     private static let foodIDs: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "const_food_scale", "uniform_food_color", "food_color"]
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
+    /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
+    private static let snakeIDs: Set<String> = ["render_mode", "spine", "hide_cosmetics"]
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
@@ -634,10 +667,26 @@ struct WyrmModesPage: View {
         let dot = rows.first { local($0) == "show_crosshair" }
         let dotSize = rows.first { local($0) == "head_dot_size" }
         let dotColour = rows.first { local($0) == "head_dot_color" }
-        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" }
+        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" && !Self.snakeIDs.contains(local(row)) }
+        let renderMode = rows.first { local($0) == "render_mode" }
+        let spine = rows.first { local($0) == "spine" }
+        let hideCosmetics = rows.first { local($0) == "hide_cosmetics" }
         let laser = ["general.laser_thickness", "general.laser_color"].compactMap { engine.setting($0) }
 
         VStack(alignment: .leading, spacing: 0) {
+            // Snake look (OM, 2026-10-05): the live arena shows the real snakes.
+            WSSectionLabel("Snake")
+            WSCard {
+                WSValueRow(title: "See it in the arena", value: "", first: true) {
+                    engine.openSnakeLookPreview(assist: visibleMode == 1)
+                }
+                .wyrmSettingAnchor("app.snake-preview")
+                if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
+                if let spine { WSTypedRow(setting: spine, engine: engine) }
+                if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
+            }
+            WSCaption("Skinless draws every snake as a clear strip in its own colour. Spine is a thin white line down every snake.")
+
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
 
@@ -1526,7 +1575,9 @@ struct WyrmLayoutEditor: View {
             }
             piece(HUD.stats.prefix, size, CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale),
                   Options(id: "stats", title: "STATS", sliders: [Slider(label: "SIZE", id: "layout.stats_scale", range: 0.65...1.60),
-                                                                Slider(label: "OPACITY", id: "layout.stats_opacity", range: 0.05...1)]),
+                                                                Slider(label: "OPACITY", id: "layout.stats_opacity", range: 0.05...1),
+                                                                // BACK (OM, 2026-10-05): the plate only.
+                                                                teamHudSlider("BACK", "stats_panel")]),
                   fallback: HUD.stats.fallback) {
                 panel("STATS\nSCORE   9503\nKILLS      4\nRANK    8 / 46\nPING    64 ms\nFPS     61",
                       CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale), opacity: engine.value("layout.stats_opacity", 1))
@@ -1683,14 +1734,15 @@ struct WyrmLayoutEditor: View {
         let upright = WyrmPlayOrientation.shared.portrait
         return VStack(spacing: 6) {
             if upright {
-                Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+                // Upright: the knob sits at the bar's left end, below this card.
+                barHint(arrow: "arrow.down.left")
                     .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(Capsule().fill(ATheme.card.opacity(0.92)))
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card.opacity(0.92)))
             }
             HStack(spacing: 8) {
                 footerKnob(in: area)
                 if !upright {
-                    Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+                    barHint(arrow: "arrow.left")
                 }
                 // Turns the phone and swaps to that orientation's layout; the
                 // edits so far stay with the orientation they were made in.
@@ -1708,6 +1760,19 @@ struct WyrmLayoutEditor: View {
             .padding(.leading, 6).padding(.trailing, 8).padding(.vertical, 5)
             .background(Capsule().fill(ATheme.card.opacity(0.96)))
             .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+        }
+    }
+
+    /// The bar's hint (OM, 2026-10-05): "hold any object" moved up, and under
+    /// it an arrow pointing at the grip knob with "drag this knob to move this bar".
+    private func barHint(arrow: String) -> some View {
+        VStack(alignment: .center, spacing: 2) {
+            Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+            HStack(spacing: 4) {
+                Image(systemName: arrow).font(.system(size: 9, weight: .bold)).foregroundColor(ATheme.ink)
+                Text("DRAG THIS KNOB TO MOVE THIS BAR").font(.androidWyrm(8, .bold)).tracking(0.6)
+                    .foregroundColor(ATheme.ink.opacity(0.8))
+            }
         }
     }
 

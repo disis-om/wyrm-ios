@@ -18,11 +18,11 @@ final class WyrmTeamHudStore: ObservableObject {
     /// Editor ids are `teamhud.<key>`; the order is the engine's.
     static let keys = ["team_scale", "team_opacity", "team_width", "team_height", "team_name", "team_data",
                        "chat_width", "chat_height", "chat_name", "chat_text",
-                       "team_panel", "chat_panel"]
-    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1]
+                       "team_panel", "chat_panel", "stats_panel"]
+    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1]
     private static let ranges: [ClosedRange<Double>] = [0.65...1.60, 0.05...1, 220...900, 120...800, 0...8, 0...8,
                                                         240...1000, 150...900, 0...8, 0...8,
-                                                        0...1, 0...1]
+                                                        0...1, 0...1, 0...1]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
     static let swatches: [Color?] = [nil] + [0xFFFFFF, 0x111111, 0xFFD54A, 0x4DD9FF, 0x5BE37D,

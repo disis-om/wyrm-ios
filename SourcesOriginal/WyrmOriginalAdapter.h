@@ -40,6 +40,8 @@ void WyrmIOSEnterLayoutEditor(const char* name);
 void WyrmIOSExitLayoutEditor(void);
 void WyrmIOSToggleEditorLeaderboard(void);
 void WyrmIOSSetEditorBare(bool bare);
+/* Snake-look preview (OM, 2026-10-05): the bare editor's Normal or Assist. */
+void WyrmIOSSetEditorAssist(bool on);
 /* Settings › Performance (Main.m): the engine's frame cap (0 = the display's
    maximum) and that maximum (120 on ProMotion, else 60). Main thread. */
 void WyrmIOSSetFrameCap(int fps);
@@ -48,6 +50,8 @@ void WyrmIOSSetPerformanceChip(const char* text);
 /* Settings > Modes > Assist: the assist laser in joystick mode (length is a
    share of the screen's short side, 0.1-1.0). */
 void WyrmIOSSetJoystickLaser(bool on, float length);
+/* Play feel (2026-10-05): slither's arrow motion, look ahead, spring zoom (0/1). */
+void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style);
 /* Near Original (Home): slither's own HUD and controls; `server` labels the
    minimap (0 = unknown). HomeMailbox.inc. */
 void WyrmIOSSetNearOriginal(bool on, int server);

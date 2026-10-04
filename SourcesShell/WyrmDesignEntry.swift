@@ -69,7 +69,10 @@ struct WyrmDesignRoot: View {
                 .opacity(engineOverlay ? 0 : 1)
                 .allowsHitTesting(!engineOverlay)
             if engine.layoutEditorActive {
-                if engine.backgroundEditor {
+                // Snake look before the background editor (OM, 2026-10-05).
+                if engine.snakeLookEditor {
+                    WyrmSnakeLookEditor(engine: engine) { engine.closeLayoutEditor() }
+                } else if engine.backgroundEditor {
                     WyrmBackgroundSizeEditor(engine: engine) { engine.closeLayoutEditor() }
                 } else {
                     WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }

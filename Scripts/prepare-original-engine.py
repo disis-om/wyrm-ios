@@ -994,6 +994,15 @@ TEAM_HUD_PAIRS = {
   if (event->type == SDL_EVENT_FINGER_DOWN &&
       ui_overlay_leaderboard_hit(env, x, y)) {'''),
     ],
+    # Stats BACK (OM, 2026-10-05): same line as Android's ui_overlay.c.
+    'app/src/game/ui_overlay.c': [
+        (r'''      draw_hud_paper(draw, min, max, stats_alpha);
+''',
+         r'''      /* BACK (OM, 2026-10-05): the plate alone fades; the rows keep
+         OPACITY. */
+      draw_hud_paper(draw, min, max, stats_alpha * android_team_stats_panel());
+'''),
+    ],
 }  # end TEAM_HUD_PAIRS
 
 def apply_run_capture(text):
@@ -1890,3 +1899,1314 @@ _arrow_patch("app/src/game/ui_overlay.c", WYRM_HUD_OVERLAY_PAIRS)
 _arrow_patch("app/src/mobile/mobile_controls.c", WYRM_HUD_CONTROLS_PAIRS)
 _arrow_patch("app/src/mobile/mobile_hotkeys.c", WYRM_HUD_HOTKEYS_PAIRS)
 print("Wyrm HUD: ink halo, snake-coloured board, floor-tinted minimap")
+
+# Play feel (OM, 2026-10-05): slither's own arrow motion, look ahead, the
+# original arrow's shadow and the original arrow in Wyrm mode, and the spring
+# zoom bar. The same C as Wyrm Android's mobile/mobile_controls.c/.h and
+# game/redraw.c, applied last. Revert: delete this block.
+PLAY_FEEL_PAIRS = {
+  'app/src/mobile/mobile_controls.c': [
+    (r'''static bool original_joystick_right(tenv* env) {''',
+     r'''/*
+ * Play feel (OM, 2026-10-05), set by the app (Settings > Controls) through
+ * mobile_controls_set_play_feel:
+ *  - original_arrow: slither's own arrow motion, number for number (Main.as).
+ *    Near Original always moves like this; Wyrm's arrow does when
+ *    "Customise arrow movement" is off.
+ *  - look_ahead: slither's look ahead (Main.as `look_ahead`), both modes.
+ *  - zoom_spring: the zoom bar as a spring: the knob rests in the middle,
+ *    toward + zooms in, toward - zooms out, and it springs back on release.
+ * Plain ints: written from the app's thread, read once a frame here.
+ */
+static volatile int feel_original_arrow = 0;
+static volatile int feel_look_ahead = 0;
+static volatile int feel_zoom_spring = 0;
+
+void mobile_controls_set_play_feel(bool original_arrow, bool look_ahead,
+                                   int zoom_style) {
+  feel_original_arrow = original_arrow ? 1 : 0;
+  feel_look_ahead = look_ahead ? 1 : 0;
+  feel_zoom_spring = zoom_style == 1 ? 1 : 0;
+}
+
+/* Whether the arrow moves exactly as slither's does. */
+static bool arrow_original_motion(void) {
+  return android_home_near_original() || feel_original_arrow != 0;
+}
+
+/* The spring zoom knob: -1 (all the way to -) .. 1 (all the way to +). */
+static float zoom_spring_t = 0.0f;
+
+/* Look ahead (Main.as `view_lav`, `lav_d`), in the original's units. */
+static float look_lav = 0.0f;
+static float look_lav_d = 75.0f;
+
+/* The player's own snake while alive, or NULL. */
+static snake* feel_own_snake(tenv* env) {
+  game_data* gdata = &env->usr->gdata;
+  int count = tdarray_length(gdata->data.snakes);
+  if (count <= 0) return NULL;
+  snake* own = gdata->data.snakes + (count - 1);
+  return own->local_player ? own : NULL;
+}
+
+/*
+ * Look ahead, once a frame (Main.as 12891-12950). Sideways the camera moves
+ * up or down toward where the snake is heading (sin of its eased angle,
+ * squared with its sign), upright left or right (cos); 75 units ahead, 125
+ * while boosting, eased by slither's own p005 / p01 tables and never more than
+ * 160 a step. Off: no offset at all, and it starts from zero when turned on.
+ */
+void mobile_controls_look_ahead_step(tenv* env) {
+  snake* own = feel_own_snake(env);
+  if (!feel_look_ahead || !own) {
+    look_lav = 0.0f;
+    look_lav_d = 75.0f;
+    return;
+  }
+  if (own->dead) return;
+  game_data* gdata = &env->usr->gdata;
+  float vfr = gdata->data.vfr;
+  if (!(vfr > 0.0f)) vfr = 0.0f;
+  int vfrb = gdata->data.vfrb;
+  if (vfrb < 0) vfrb = 0;
+  if (vfrb > 120) vfrb = 120;
+  bool upright = env->wnd->size[1] > env->wnd->size[0];
+  float s = upright ? cosf(own->eang) : sinf(own->eang);
+  s = s < 0.0f ? -(s * s) : s * s;
+  bool wmd = gdata->data.wmd || mobile_controls_boost_down(env);
+  if (wmd) {
+    if (look_lav_d != 125.0f) {
+      look_lav_d += vfr * 0.5f;
+      if (look_lav_d >= 125.0f) look_lav_d = 125.0f;
+    }
+  } else if (look_lav_d != 75.0f) {
+    look_lav_d -= vfr * 0.25f;
+    if (look_lav_d <= 75.0f) look_lav_d = 75.0f;
+  }
+  float step = s * look_lav_d - look_lav;
+  if (step < -160.0f) step = -160.0f;
+  if (step > 160.0f) step = 160.0f;
+  float k = wmd ? 0.01f : 0.005f;
+  look_lav += step * (1.0f - powf(1.0f - k, (float)vfrb));
+}
+
+/* Where the camera sits ahead of the snake, in screen pixels (the snake is
+   drawn this far the other way from the middle). */
+void mobile_controls_look_ahead_offset(tenv* env, float* x, float* y) {
+  *x = 0.0f;
+  *y = 0.0f;
+  if (!feel_look_ahead) return;
+  float px = look_lav * original_unit(env);
+  if (env->wnd->size[1] > env->wnd->size[0])
+    *x = px;
+  else
+    *y = px;
+}
+
+static bool original_joystick_right(tenv* env) {'''),
+    (r'''static void set_zoom_from_touch(tenv* env, float x, float y) {
+  mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;
+  float cx, cy, length, thickness;
+  zoom_geometry(env, &cx, &cy, &length, &thickness);
+''',
+     r'''static void set_zoom_from_touch(tenv* env, float x, float y) {
+  mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;
+  float cx, cy, length, thickness;
+  zoom_geometry(env, &cx, &cy, &length, &thickness);
+  if (feel_zoom_spring) {
+    /* The spring bar (OM, 2026-10-05): the finger pulls the knob from the
+       middle; + is right (sideways bar) or up (upright bar). */
+    float pull = cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL
+                     ? (x - cx) / (length * 0.5f)
+                     : (cy - y) / (length * 0.5f);
+    zoom_spring_t = clampf(pull, -1.0f, 1.0f);
+    return;
+  }
+'''),
+    (r'''  /* Near Original: the original start distance (separation 1). */
+  float separation = android_home_near_original() ? 1.0f : arrow->separation;
+  float d = 58.0f * sc * gdata->data.gsc * separation;''',
+     r'''  /* slither's own start distance (Main.as touch begin): 58 x snake.sc x its
+     zoom for this length (dgsc = 0.35 + 0.35 / max(1, (sct + 16) / 36)) in its
+     unit, with no floor (OM, 2026-10-05). */
+  if (arrow_original_motion()) {
+    int sct = count > 0 ? gdata->data.snakes[count - 1].sct : 2;
+    float wanted = (sct + 16) / 36.0f;
+    float dgsc = 0.35f + 0.35f / (wanted > 1.0f ? wanted : 1.0f);
+    return 58.0f * sc * dgsc * original_unit(env);
+  }
+  float separation = arrow->separation;
+  float d = 58.0f * sc * gdata->data.gsc * separation;'''),
+    (r'''  int count = tdarray_length(gdata->data.snakes);
+  float heading = count > 0 ? gdata->data.snakes[count - 1].ang : 0.0f;
+  float d = arrow_seed_distance(env);''',
+     r'''  int count = tdarray_length(gdata->data.snakes);
+  float heading = count > 0 ? gdata->data.snakes[count - 1].ang : 0.0f;
+  /* slither seeds along the last steering angle (`twang`), not the snake's. */
+  if (arrow_original_motion() && state->aim_valid &&
+      (state->joystick_axis[0] != 0.0f || state->joystick_axis[1] != 0.0f))
+    heading = atan2f(state->joystick_axis[1], state->joystick_axis[0]);
+  float d = arrow_seed_distance(env);'''),
+    (r'''    /* Near Original: slither's own 0.6 catch-up (smoothness 0.4). */
+    float smoothness = android_home_near_original() ? 0.4f : arrow->smoothness;
+    float ease = clampf(1.0f - smoothness, 0.05f, 0.95f);
+    ease = 1.0f - powf(1.0f - ease, vfr);''',
+     r'''    /* The original motion eases 0.6 every frame, as Main.as does (not per
+       unit of time); Wyrm's own uses the player's lag, frame-rate free. */
+    float ease;
+    if (arrow_original_motion()) {
+      ease = 0.6f;
+    } else {
+      ease = clampf(1.0f - arrow->smoothness, 0.05f, 0.95f);
+      ease = 1.0f - powf(1.0f - ease, vfr);
+    }'''),
+    (r'''    /* Near Original: the boost button's alpha (Main.as: 0.2 idle, up to 0.4''',
+     r'''    /* The spring zoom bar: while pulled it zooms (gently near the middle,
+       quickly at the ends); let go, it springs back to the middle. */
+    if (feel_zoom_spring) {
+      if (!state->zoom_down) {
+        zoom_spring_t *= powf(0.72f, vfr);
+        if (fabsf(zoom_spring_t) < 0.01f) zoom_spring_t = 0.0f;
+      }
+      if (fabsf(zoom_spring_t) > 0.04f) {
+        float rate = 1.4f * zoom_spring_t * fabsf(zoom_spring_t);
+        float* zoom = &env->usr->gdata.data.ms_zoom;
+        *zoom *= expf(rate * vfr * 0.008f);
+        *zoom = clampf(*zoom, MAX_ZOOM_OUT, MAX_ZOOM_IN);
+      }
+    } else {
+      zoom_spring_t = 0.0f;
+    }
+
+    /* Near Original: the boost button's alpha (Main.as: 0.2 idle, up to 0.4'''),
+    (r'''  /* Near Original: the release drift is in the original's unit. */
+  float drift = 260.0f * (android_home_near_original() ? original_unit(env) : scale) *
+                powf(state->arrow_dead, 2.5f);
+  *ax = env->wnd->size[0] * 0.5f + state->arrow_draw[0] + *dx * drift;
+  *ay = env->wnd->size[1] * 0.5f + state->arrow_draw[1] + *dy * drift;''',
+     r'''  /* The original motion drifts 260 of the original's units. */
+  float drift = 260.0f * (arrow_original_motion() ? original_unit(env) : scale) *
+                powf(state->arrow_dead, 2.5f);
+  /* Look ahead moves the camera, so the arrow keeps to the snake (Main.as:
+     arrow_batch at -view_lav). */
+  float lax, lay;
+  mobile_controls_look_ahead_offset(env, &lax, &lay);
+  *ax = env->wnd->size[0] * 0.5f - lax + state->arrow_draw[0] + *dx * drift;
+  *ay = env->wnd->size[1] * 0.5f - lay + state->arrow_draw[1] + *dy * drift;'''),
+    (r'''static void draw_arrow(tenv* env, ImDrawList* dl) {
+  mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;''',
+     r'''static void draw_original_arrow(tenv* env, ImDrawList* dl);
+
+static void draw_arrow(tenv* env, ImDrawList* dl) {
+  mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;'''),
+    (r'''  mobile_arrow_shape shape = arrow_shape(env->usr->usrs.arrow_style);
+  ImVec2 points[8];''',
+     r'''  /* The Original style is slither's own arrow, drawn as Near Original draws
+     it: outline, shadow, the snake's arrow colour, its size (OM, 2026-10-05).
+     An image arrow (above) still wins. */
+  if (env->usr->usrs.arrow_style == MOBILE_ARROW_ORIGINAL) {
+    draw_original_arrow(env, dl);
+    return;
+  }
+  mobile_arrow_shape shape = arrow_shape(env->usr->usrs.arrow_style);
+  ImVec2 points[8];'''),
+    (r'''  {
+    const int bands = 8;
+    const float sigma = 6.0f;
+    float before = 0.0f;
+    for (int j = bands; j >= 1; --j) {
+      float x = (j - 0.5f) * (3.0f * sigma / bands);
+      float want = alpha * 0.5f * erfcf(x / (sigma * 1.41421356f));
+      float a = before >= 0.999f ? 0.0f : 1.0f - (1.0f - want) / (1.0f - before);
+      if (a > 0.003f)
+        ImDrawList_AddPolyline(dl, p, 7, color_u32(0, 0, 0, a), ImDrawFlags_Closed,
+                               (9.0f + 2.0f * j * (3.0f * sigma / bands)) * s);
+      if (want > before) before = want;
+    }
+  }''',
+     r'''  /* OM, 2026-10-05: the shadow spread the arrow. slither draws it inside an
+     84 px texture with the arrow 10 px in, so it reaches only about 11.5 px
+     past the 9 px outline; and thick closed strokes grew mitre spikes at the
+     head's corners. Now: nested fills of the outline pushed out by d along
+     each corner's bisector (no mitre), widest first, the same erfc profile,
+     never past 11.5 texture px, drawn as rings outside the path. */
+  {
+    const int bands = 6;
+    const float sigma = 6.0f;
+    const float reach = 11.5f;
+    /* The outline's outside edge: 4.5 px out from the path. */
+    float before = 0.0f;
+    for (int j = bands; j >= 1; --j) {
+      float x = (j - 0.5f) * (reach / bands);
+      float want = alpha * 0.5f * erfcf(x / (sigma * 1.41421356f));
+      float a = before >= 0.999f ? 0.0f : 1.0f - (1.0f - want) / (1.0f - before);
+      if (a > 0.003f) {
+        float d = 4.5f + j * (reach / bands);
+        ImVec2 q[7];
+        for (int i = 0; i < 7; ++i) {
+          int prev = (i + 6) % 7, next = (i + 1) % 7;
+          /* Outward normals of the two edges at this corner (the shape winds
+             clockwise in screen space: x along, y across). */
+          float e1x = shape_x[i] - shape_x[prev], e1y = shape_y[i] - shape_y[prev];
+          float e2x = shape_x[next] - shape_x[i], e2y = shape_y[next] - shape_y[i];
+          float l1 = sqrtf(e1x * e1x + e1y * e1y), l2 = sqrtf(e2x * e2x + e2y * e2y);
+          float n1x = e1y / l1, n1y = -e1x / l1;
+          float n2x = e2y / l2, n2y = -e2x / l2;
+          float bx = n1x + n2x, by = n1y + n2y;
+          float bl = sqrtf(bx * bx + by * by);
+          if (bl < 0.0001f) { bx = n1x; by = n1y; bl = 1.0f; }
+          float ox = shape_x[i] + bx / bl * d * shadow_side;
+          float oy = shape_y[i] + by / bl * d * shadow_side;
+          q[i] = (ImVec2){ax + dx * ox * s + px * oy * s, ay + dy * ox * s + py * oy * s};
+        }
+        /* A ring from the path out to q: nothing lands under the fill, which
+           the arrow's own alpha would let show through. */
+        ImU32 shade = color_u32(0, 0, 0, a);
+        for (int i = 0; i < 7; ++i) {
+          int next = (i + 1) % 7;
+          ImDrawList_AddTriangleFilled(dl, p[i], p[next], q[next], shade);
+          ImDrawList_AddTriangleFilled(dl, p[i], q[next], q[i], shade);
+        }
+      }
+      if (want > before) before = want;
+    }
+  }'''),
+    (r'''  static const float shape_x[] = {15.0f, 15.0f, 41.0f, 41.0f, 67.0f, 41.0f, 41.0f};
+  static const float shape_y[] = {-10.88f, 10.88f, 7.68f, 25.6f, 0.0f, -25.6f, -7.68f};''',
+     r'''  static const float shape_x[] = {15.0f, 15.0f, 41.0f, 41.0f, 67.0f, 41.0f, 41.0f};
+  static const float shape_y[] = {-10.88f, 10.88f, 7.68f, 25.6f, 0.0f, -25.6f, -7.68f};
+  /* (e.y, -e.x) of each edge points out of a counter-clockwise shape. */
+  float shadow_area = 0.0f;
+  for (int i = 0; i < 7; ++i) {
+    int next = (i + 1) % 7;
+    shadow_area += shape_x[i] * shape_y[next] - shape_x[next] * shape_y[i];
+  }
+  float shadow_side = shadow_area > 0.0f ? 1.0f : -1.0f;'''),
+    (r'''  /* The run reads from the near end to the knob, whichever way the bar sits. */
+  ImVec2 fill_min = track_min;
+  ImVec2 fill_max = track_max;
+  if (cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL)
+    fill_max.x = knob.x;
+  else
+    fill_min.y = knob.y;''',
+     r'''  /* The spring bar (OM, 2026-10-05): the knob rests in the middle, the run
+     reads from the middle to the knob, with - and + at the two ends. */
+  if (feel_zoom_spring) {
+    float half_len = length * 0.5f;
+    if (cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL)
+      knob = (ImVec2){cx + zoom_spring_t * half_len, cy};
+    else
+      knob = (ImVec2){cx, cy - zoom_spring_t * half_len};
+  }
+  /* The run reads from the near end to the knob, whichever way the bar sits. */
+  ImVec2 fill_min = track_min;
+  ImVec2 fill_max = track_max;
+  if (feel_zoom_spring) {
+    if (cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL) {
+      fill_min.x = knob.x < cx ? knob.x : cx;
+      fill_max.x = knob.x < cx ? cx : knob.x;
+    } else {
+      fill_min.y = knob.y < cy ? knob.y : cy;
+      fill_max.y = knob.y < cy ? cy : knob.y;
+    }
+    float mark = half * 0.9f;
+    ImU32 sign = arena_theme_colour(ARENA_THEME_INK, alpha * 0.9f);
+    float inset = half * 2.2f;
+    ImVec2 minus, plus;
+    if (cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL) {
+      minus = (ImVec2){track_min.x + inset, cy};
+      plus = (ImVec2){track_max.x - inset, cy};
+    } else {
+      minus = (ImVec2){cx, track_max.y - inset};
+      plus = (ImVec2){cx, track_min.y + inset};
+    }
+    ImDrawList_AddLine(dl, (ImVec2){minus.x - mark, minus.y}, (ImVec2){minus.x + mark, minus.y}, sign, 2.5f);
+    ImDrawList_AddLine(dl, (ImVec2){plus.x - mark, plus.y}, (ImVec2){plus.x + mark, plus.y}, sign, 2.5f);
+    ImDrawList_AddLine(dl, (ImVec2){plus.x, plus.y - mark}, (ImVec2){plus.x, plus.y + mark}, sign, 2.5f);
+  } else if (cfg->zoom_orientation == MOBILE_ZOOM_HORIZONTAL)
+    fill_max.x = knob.x;
+  else
+    fill_min.y = knob.y;'''),
+  ],
+  'app/src/mobile/mobile_controls.h': [
+    (r'''bool mobile_controls_get_arrow_position(tenv* env, float* x, float* y);
+''',
+     r'''bool mobile_controls_get_arrow_position(tenv* env, float* x, float* y);
+
+/* Play feel (OM, 2026-10-05), from the app: slither's own arrow motion (Wyrm
+   mode; Near Original always), look ahead (both modes), and the zoom bar's
+   style (0 the slider, 1 the spring). */
+void mobile_controls_set_play_feel(bool original_arrow, bool look_ahead,
+                                   int zoom_style);
+/* Look ahead: step it once a frame (redraw), then read the camera's offset
+   in screen pixels (the snake is drawn this far the other way). */
+void mobile_controls_look_ahead_step(tenv* env);
+void mobile_controls_look_ahead_offset(tenv* env, float* x, float* y);
+'''),
+  ],
+  'app/src/game/redraw.c': [
+    (r'''#include "tags.h"
+''',
+     r'''#include "tags.h"
+#include "../mobile/mobile_controls.h"
+'''),
+    (r'''    if (gdata->data.follow_view && snakes_len > 0) {
+      snake* me = gdata->data.snakes + (snakes_len - 1);
+      gdata->data.view_xx = me->xx + me->fx + gdata->data.fvx;
+      gdata->data.view_yy = me->yy + me->fy + gdata->data.fvy;
+    }''',
+     r'''    if (gdata->data.follow_view && snakes_len > 0) {
+      snake* me = gdata->data.snakes + (snakes_len - 1);
+      gdata->data.view_xx = me->xx + me->fx + gdata->data.fvx;
+      gdata->data.view_yy = me->yy + me->fy + gdata->data.fvy;
+      /* Look ahead (OM, 2026-10-05): slither's camera sits ahead of the
+         snake; off, the offset is zero. */
+      mobile_controls_look_ahead_step(env);
+      float ahead_x, ahead_y;
+      mobile_controls_look_ahead_offset(env, &ahead_x, &ahead_y);
+      if (gdata->data.gsc > 0.0f) {
+        gdata->data.view_xx += ahead_x / gdata->data.gsc;
+        gdata->data.view_yy += ahead_y / gdata->data.gsc;
+      }
+    }'''),
+  ],
+}  # end PLAY_FEEL_PAIRS
+for _relative, _pairs in PLAY_FEEL_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+print('Play feel: original arrow motion, look ahead, arrow shadow, spring zoom')
+
+# Your own leaderboard row (OM, 2026-10-05), Wyrm and Near Original: the
+# same C as Wyrm Android's game/ui_overlay.c, applied last.
+LEADERBOARD_ME_PAIRS = [
+    (r'''        /* Your own row sits on a soft ink pill. */
+        if (mine)
+          ImDrawList_AddRectFilled(
+              draw, (ImVec2){board_min.x - 6.0f, row_y - 1.0f},
+              (ImVec2){board_max.x + 6.0f, row_y + row_height - 1.0f},
+              hud_colour(WYRM_HALO.x, WYRM_HALO.y, WYRM_HALO.z, 0.34f),
+              row_height * 0.5f, 0);
+''',
+     r'''        /* Your own row (OM, 2026-10-05: so you see at once where you are): the
+           ink pill, lifted with a Wyrm-green tint and edge, and your name
+           nudged right. */
+        float me_shift = mine ? 8.0f : 0.0f;
+        if (mine) {
+          ImVec2 pill_min = {board_min.x - 6.0f, row_y - 1.0f};
+          ImVec2 pill_max = {board_max.x + 6.0f, row_y + row_height - 1.0f};
+          ImDrawList_AddRectFilled(
+              draw, pill_min, pill_max,
+              hud_colour(WYRM_HALO.x, WYRM_HALO.y, WYRM_HALO.z, 0.42f),
+              row_height * 0.5f, 0);
+          ImDrawList_AddRectFilled(draw, pill_min, pill_max,
+                                   hud_colour(0.247f, 0.933f, 0.588f, 0.16f),
+                                   row_height * 0.5f, 0);
+          ImDrawList_AddRect(draw, pill_min, pill_max,
+                             hud_colour(0.247f, 0.933f, 0.588f, 0.55f),
+                             row_height * 0.5f, 0, 1.5f);
+        }
+'''),
+    (r'''        float name_x = board_min.x + rank_size.x + 10.0f;
+        wyrm_halo_fitted(''',
+     r'''        float name_x = board_min.x + rank_size.x + 10.0f + me_shift;
+        wyrm_halo_fitted('''),
+    (r'''    float y = ly + (5.0f + 14.0f * row_y) * u;
+    char rank[8];
+    snprintf(rank, sizeof(rank), "#%d", row + 1);
+    original_text(draw, bold, size, (ImVec2){lx, y}, colour, alpha, rank);''',
+     r'''    float y = ly + (5.0f + 14.0f * row_y) * u;
+    /* Your own row (OM, 2026-10-05): a faint plate behind it and the rank and
+       name nudged right, so you see at once where you are. */
+    float me_x = mine ? 6.0f * u : 0.0f;
+    if (mine)
+      ImDrawList_AddRectFilled(
+          draw, (ImVec2){lx - 6.0f * u, y - 1.5f * u},
+          (ImVec2){lx + 247.0f * u, y + size + 2.5f * u},
+          igColorConvertFloat4ToU32((ImVec4){1, 1, 1, 0.14f * original_lb_fade}),
+          6.0f * u, 0);
+    char rank[8];
+    snprintf(rank, sizeof(rank), "#%d", row + 1);
+    original_text(draw, bold, size, (ImVec2){lx + me_x, y}, colour, alpha, rank);'''),
+    (r'''      original_text(draw, bold, size, (ImVec2){lx + 28.0f * u, y}, colour, alpha, fitted);''',
+     r'''      original_text(draw, bold, size, (ImVec2){lx + 28.0f * u + me_x, y}, colour, alpha, fitted);'''),
+]  # end LEADERBOARD_ME_PAIRS
+_arrow_patch('app/src/game/ui_overlay.c', LEADERBOARD_ME_PAIRS)
+print('Leaderboard: your own row stands out')
+
+# Auto restart (OM, 2026-10-05): the on-screen toggle in the rope-mode slot;
+# a kill is answered with Restart. The same C as Wyrm Android, applied last.
+AUTO_RESTART_PAIRS = {
+  'app/src/mobile/mobile_hotkeys.c': [
+    (r'''    "Boost",       "Turn left",  "Turn right", "Fullscreen", "Rope mode"};''',
+     r'''    "Boost",       "Turn left",  "Turn right", "Fullscreen", "Auto restart"};'''),
+    (r'''         action == MOBILE_HOTKEY_ZOOM_IN ||
+         action == MOBILE_HOTKEY_ZOOM_OUT;
+}''',
+     r'''         action == MOBILE_HOTKEY_ZOOM_IN ||
+         action == MOBILE_HOTKEY_ZOOM_OUT ||
+         /* Auto restart (OM, 2026-10-05) lives in the rope-mode slot. */
+         action == MOBILE_HOTKEY_ROPE_MODE;
+}'''),
+    (r'''    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+      if (!mobile_hotkey_is_on_screen_button(action)) continue;
+      if (!WYRM_EXPERIMENTAL_ROPE_MODE &&
+          action == MOBILE_HOTKEY_ROPE_MODE)
+        continue;
+      bool visible = false;''',
+     r'''    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+      if (!mobile_hotkey_is_on_screen_button(action)) continue;
+      bool visible = false;'''),
+    (r'''  if (action == MOBILE_HOTKEY_ROPE_MODE)
+    return env->usr->mobile_hotkeys.rope_mode;''',
+     r'''  /* The rope-mode slot is the Auto restart toggle now: lit while it is on. */
+  if (action == MOBILE_HOTKEY_ROPE_MODE)
+    return WYRM_EXPERIMENTAL_ROPE_MODE ? env->usr->mobile_hotkeys.rope_mode
+                                       : env->usr->usrs.auto_respawn != 0;'''),
+    (r'''    if (!mobile_hotkey_is_on_screen_button(action)) continue;
+    if (!WYRM_EXPERIMENTAL_ROPE_MODE && action == MOBILE_HOTKEY_ROPE_MODE)
+      continue;
+    bool visible = false;
+    mobile_hotkey_get_layout(&env->usr->usrs, action, &visible, NULL, NULL);
+    if (!visible) continue;''',
+     r'''    if (!mobile_hotkey_is_on_screen_button(action)) continue;
+    bool visible = false;
+    mobile_hotkey_get_layout(&env->usr->usrs, action, &visible, NULL, NULL);
+    if (!visible) continue;'''),
+    (r'''    ImVec2 size;
+    igCalcTextSize(&size, function, NULL, false, -1);
+    igPopFont();
+    ImDrawList_AddText_FontPtr(
+        draw, font, font->LegacySize,
+        (ImVec2){cx - size.x * 0.5f, cy - size.y * 0.5f}, primary, function,
+        NULL, 0, NULL);''',
+     r'''    ImVec2 size;
+    igCalcTextSize(&size, function, NULL, false, -1);
+    igPopFont();
+    /* A longer name ("Auto restart") is set smaller to stay inside the key. */
+    float text_size = font->LegacySize;
+    float room = width - 16.0f;
+    if (size.x > room && size.x > 0.0f) {
+      text_size *= room / size.x;
+      size.x = room;
+      size.y *= text_size / font->LegacySize;
+    }
+    ImDrawList_AddText_FontPtr(
+        draw, font, text_size,
+        (ImVec2){cx - size.x * 0.5f, cy - size.y * 0.5f}, primary, function,
+        NULL, 0, NULL);'''),
+  ],
+  'app/src/game/input.c': [
+    (r'''       mobile_hotkeys_pressed(env, MOBILE_HOTKEY_ROPE_MODE)))
+    env->usr->mobile_hotkeys.rope_mode = !env->usr->mobile_hotkeys.rope_mode;
+''',
+     r'''       mobile_hotkeys_pressed(env, MOBILE_HOTKEY_ROPE_MODE)))
+    env->usr->mobile_hotkeys.rope_mode = !env->usr->mobile_hotkeys.rope_mode;
+
+  /* Auto restart (OM, 2026-10-05): the on-screen toggle in the rope-mode slot.
+     On, a kill is answered with Restart at once (android_home_notify_death).
+     Kept in `auto_respawn`, which user.dat already holds. */
+  if (!WYRM_EXPERIMENTAL_ROPE_MODE &&
+      mobile_hotkeys_pressed(env, MOBILE_HOTKEY_ROPE_MODE)) {
+    usrs->auto_respawn = usrs->auto_respawn ? 0 : 1;
+    save_user_settings(usrs);
+  }
+'''),
+  ],
+  'app/src/platform/android_settings.c': [
+    (r'''    if (!mobile_hotkey_is_on_screen_button(action)) continue;
+    if (!WYRM_EXPERIMENTAL_ROPE_MODE && action == MOBILE_HOTKEY_ROPE_MODE)
+      continue;
+''',
+     r'''    if (!mobile_hotkey_is_on_screen_button(action)) continue;
+'''),
+    (r'''    {"layout.stats_scale", "layout", "", "", SETTING_FLOAT, 0.65f, 1.60f,''',
+     r'''    /* Auto restart (OM, 2026-10-05): the on-screen toggle's state, so it goes
+       to the account. Never listed as a row. */
+    {"general.auto_respawn", "layout", "", "", SETTING_INT, 0, 1, NULL,
+     OWNER_SETTINGS, SETTINGS_FIELD(auto_respawn)},
+    {"layout.stats_scale", "layout", "", "", SETTING_FLOAT, 0.65f, 1.60f,'''),
+  ],
+  'app/src/platform/android_home.c': [
+    (r'''static bool run_recorded = false;
+''',
+     r'''static bool run_recorded = false;
+/* Auto restart (OM, 2026-10-05): this death's restart is closing the socket. */
+static bool auto_restart_closing = false;
+'''),
+    (r'''  env->usr->gdata.data.follow_view = false;
+  env->usr->gdata.data.lagging = false;
+  env->usr->gdata.data.lag_mult = 1;
+  env->usr->gdata.restart_req = false;
+  env->usr->gdata.leaving = false;
+  death_watching = true;''',
+     r'''  /* Auto restart (OM, 2026-10-05): with the on-screen toggle on, a kill is
+     answered with Restart at once, as if the Restart key were pressed: no
+     death wait, no lobby. Only for a real kill on an open arena socket (a
+     drop still goes to the lobby and its report), and never during a
+     champion's victory exchange. The rejoin keeps the arena's cooldowns. */
+  game_data* auto_gdata = &env->usr->gdata;
+  /* A second death report while that restart closes changes nothing. */
+  if (auto_restart_closing && auto_gdata->restart_req) return;
+  auto_restart_closing = false;
+  if (env->usr->usrs.auto_respawn && auto_gdata->connection &&
+      auto_gdata->join_spawned && !auto_gdata->data.victory_message_requested) {
+    death_watching = false;
+    death_active = false;
+    auto_gdata->data.follow_view = false;
+    auto_gdata->leaving = false;
+    auto_gdata->restart_req = true;
+    auto_restart_closing = true;
+    game_close_connection(auto_gdata, "auto restart");
+    SDL_Log("Wyrm death: auto restart");
+    return;
+  }
+  env->usr->gdata.data.follow_view = false;
+  env->usr->gdata.data.lagging = false;
+  env->usr->gdata.data.lag_mult = 1;
+  env->usr->gdata.restart_req = false;
+  env->usr->gdata.leaving = false;
+  death_watching = true;'''),
+  ],
+}  # end AUTO_RESTART_PAIRS
+for _relative, _pairs in AUTO_RESTART_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+print('Auto restart: on-screen toggle, a kill restarts at once')
+
+SKINLESS_SPINE_PAIRS = {
+  'app/src/game/user_settings.h': [
+    (r'''#include <stdint.h>
+''', r'''#include <stdint.h>
+#include <stddef.h>
+'''),
+    (r'''} mobile_hotkey_label_mode;
+
+typedef struct user_settings {''', r'''} mobile_hotkey_label_mode;
+
+/* Settings added after v2.8 (OM, 2026-10-05). The file stays "2.8": this
+   block is found by its magic and carries its own size, so a file written
+   before a field existed reads back with that field at its default and
+   nothing before it is lost; a newer file read by an older build simply
+   has a longer tail the older build ignores.
+   RULE: every new persistent setting from now on is appended at the END of
+   this block (never in the middle, never elsewhere in user_settings) and
+   gets its default in user_settings_ext_default(). */
+#define USER_SETTINGS_EXT_MAGIC 0x54584557u /* "WEXT" */
+typedef struct user_settings_ext {
+  uint32_t magic;
+  uint32_t size; /* sizeof(user_settings_ext) of the build that wrote it */
+  bool spine[2];              /* normal, assist (OM, 2026-10-05) */
+  bool assist_hide_cosmetics; /* assist only (OM, 2026-10-05) */
+} user_settings_ext;
+
+typedef struct user_settings {'''),
+    (r'''  float hud_chat_opacity;
+} user_settings;
+''', r'''  float hud_chat_opacity;
+
+  /* Appended after v2.8 without a version bump (OM, 2026-10-05). */
+  user_settings_ext ext;
+} user_settings;
+
+void user_settings_ext_default(user_settings_ext* ext);
+/* True when a missing or damaged ext field was put back, so the caller saves. */
+bool user_settings_ext_fix(user_settings* settings, size_t bytes_read);
+'''),
+  ],
+  'app/src/game/user_settings.c': [
+    (r'''void user_settings_default(user_settings* usr_settings) {
+''', r'''static void user_settings_ext_default(user_settings_ext* x) {
+  memset(x, 0, sizeof(*x));
+  x->magic = USER_SETTINGS_EXT_MAGIC;
+  x->size = (uint32_t)sizeof(user_settings_ext);
+  x->spine[0] = false;
+  x->spine[1] = false;
+  x->assist_hide_cosmetics = false;
+}
+
+/* A bool is one byte. A value other than 0 or 1 is not a bool this build wrote. */
+static bool ext_take_bool(bool* field, int present) {
+  unsigned char byte = 0;
+  if (!present) {
+    *field = false;
+    return true;
+  }
+  memcpy(&byte, field, 1);
+  *field = byte == 1;
+  return byte > 1;
+}
+
+bool user_settings_ext_fix(user_settings* settings, size_t bytes_read) {
+  user_settings_ext* ext = &settings->ext;
+  size_t ext_at = offsetof(user_settings, ext);
+  size_t spine0 = offsetof(user_settings_ext, spine);
+  size_t hide_at = offsetof(user_settings_ext, assist_hide_cosmetics);
+  int fixed;
+  uint32_t written;
+  if (bytes_read < ext_at + 8 || ext->magic != USER_SETTINGS_EXT_MAGIC ||
+      ext->size < 8) {
+    user_settings_ext_default(ext);
+    return true;
+  }
+  written = ext->size;
+  fixed = 0;
+  fixed |= ext_take_bool(&ext->spine[0], written >= spine0 + 1);
+  fixed |= ext_take_bool(&ext->spine[1], written >= spine0 + 2);
+  fixed |= ext_take_bool(&ext->assist_hide_cosmetics, written >= hide_at + 1);
+  /* A longer tail belongs to a newer build. Do not shrink it just to rewrite
+     the size we already understood. A shorter one is missing fields, so save. */
+  if (written < (uint32_t)sizeof(user_settings_ext)) fixed = 1;
+  ext->magic = USER_SETTINGS_EXT_MAGIC;
+  ext->size = (uint32_t)sizeof(user_settings_ext);
+  return fixed != 0;
+}
+
+void user_settings_default(user_settings* usr_settings) {
+'''),
+    (r'''  user_settings_default_layout_appearance(usr_settings);
+
+  // normal mode
+''', r'''  user_settings_default_layout_appearance(usr_settings);
+  user_settings_ext_default(&usr_settings->ext);
+
+  // normal mode
+'''),
+    (r'''void read_user_settings(user_settings* usr_settings) {
+  FILE* f = fopen(USER_SETTINGS_FILE, "rb");
+''', r'''void read_user_settings(user_settings* usr_settings) {
+  user_settings_ext_default(&usr_settings->ext);
+  FILE* f = fopen(USER_SETTINGS_FILE, "rb");
+'''),
+    (r'''  bool current = file_size == (long)sizeof(recovered);
+  bool v26 = file_size == (long)v26_size;
+  bool v25 = file_size == (long)v25_size;
+  bool v21 = file_size == (long)v21_size;
+  bool v20 = file_size == (long)v20_size;
+  size_t want = current ? sizeof(recovered)
+                        : v26 ? v26_size
+                              : v25 ? v25_size : v21 ? v21_size : v20_size;
+  bool valid =
+      (current || v26 || v25 || v21 || v20) &&
+      fread(&recovered, want, 1, file) == 1;
+  int trailing = fgetc(file);
+  fclose(file);
+  valid = valid && trailing == EOF &&
+''', r'''  const size_t ext_at = offsetof(user_settings, ext);
+  bool current = file_size >= (long)ext_at &&
+                 file_size <= (long)sizeof(recovered) + 4096;
+  bool v26 = file_size == (long)v26_size;
+  bool v25 = file_size == (long)v25_size;
+  bool v21 = file_size == (long)v21_size;
+  bool v20 = file_size == (long)v20_size;
+  size_t want = current ? ((size_t)file_size < sizeof(recovered)
+                               ? (size_t)file_size
+                               : sizeof(recovered))
+                        : v26 ? v26_size
+                              : v25 ? v25_size : v21 ? v21_size : v20_size;
+  bool valid =
+      (current || v26 || v25 || v21 || v20) &&
+      fread(&recovered, 1, want, file) == want;
+  int trailing = current ? EOF : fgetc(file);
+  fclose(file);
+  valid = valid && trailing == EOF &&
+'''),
+    (r'''  if (valid && v26) user_settings_reset_hud_layout(&recovered);
+''', r'''  if (valid && v26) user_settings_reset_hud_layout(&recovered);
+  if (valid && current) user_settings_ext_fix(&recovered, want);
+'''),
+    (r'''  size_t read = fread(usr_settings, sizeof(user_settings), 1, f);
+  fclose(f);
+''', r'''  const size_t ext_at = offsetof(user_settings, ext);
+  size_t read_bytes = 0;
+  int read_ok = 0;
+  if (file_size >= (long)ext_at) {
+    size_t want = (size_t)file_size < sizeof(user_settings) ? (size_t)file_size
+                                                           : sizeof(user_settings);
+    read_bytes = fread(usr_settings, 1, want, f);
+    read_ok = read_bytes == want;
+  }
+  fclose(f);
+'''),
+    (r'''  if (read == 1 && strncmp(usr_settings->version, "1.8", 3) == 0) {
+    usr_settings->auto_respawn = 0;
+    strcpy(usr_settings->version, SETTINGS_VERSION);
+    save_user_settings(usr_settings);
+    return;
+  }
+
+  if (read != 1 || strncmp(usr_settings->version, SETTINGS_VERSION,
+                           strlen(SETTINGS_VERSION)) != 0) {
+''', r'''  if (read_ok && strncmp(usr_settings->version, "1.8", 3) == 0) {
+    usr_settings->auto_respawn = 0;
+    user_settings_ext_default(&usr_settings->ext);
+    strcpy(usr_settings->version, SETTINGS_VERSION);
+    save_user_settings(usr_settings);
+    return;
+  }
+
+  if (!read_ok || strncmp(usr_settings->version, SETTINGS_VERSION,
+                          strlen(SETTINGS_VERSION)) != 0) {
+'''),
+    (r'''  if (sanitize_mobile_controls(&usr_settings->mobile_controls))
+    save_user_settings(usr_settings);
+''', r'''  if (user_settings_ext_fix(usr_settings, read_bytes))
+    save_user_settings(usr_settings);
+
+  if (sanitize_mobile_controls(&usr_settings->mobile_controls))
+    save_user_settings(usr_settings);
+'''),
+    (r'''  strcpy(usr_settings->version, SETTINGS_VERSION);
+  FILE* file = fopen(USER_SETTINGS_TEMP_FILE, "wb");
+''', r'''  strcpy(usr_settings->version, SETTINGS_VERSION);
+  usr_settings->ext.magic = USER_SETTINGS_EXT_MAGIC;
+  usr_settings->ext.size = (uint32_t)sizeof(user_settings_ext);
+  FILE* file = fopen(USER_SETTINGS_TEMP_FILE, "wb");
+'''),
+    (r'''static void user_settings_ext_default(user_settings_ext* x) {
+''', r'''void user_settings_ext_default(user_settings_ext* x) {
+'''),
+  ],
+  'app/src/platform/android_update.c': [
+    (r'''      mode->boost_type > 1 || mode->render_mode < 0 || mode->render_mode > 2 ||
+''', r'''      mode->boost_type > 1 || mode->render_mode < 0 || mode->render_mode > 3 ||
+'''),
+    (r'''  user_settings merged = {0};
+  FILE* current = fopen(USER_SETTINGS_FILE, "rb");
+  bool have_current =
+      current && fread(&merged, sizeof(merged), 1, current) == 1;
+  if (current) fclose(current);
+  if (!have_current) user_settings_default(&merged);
+''', r'''  user_settings merged = {0};
+  FILE* current = fopen(USER_SETTINGS_FILE, "rb");
+  bool have_current = false;
+  if (current) {
+    long size = 0;
+    fseek(current, 0, SEEK_END);
+    size = ftell(current);
+    rewind(current);
+    user_settings_ext_default(&merged.ext);
+    if (size >= (long)offsetof(user_settings, ext)) {
+      size_t want = (size_t)size < sizeof(merged) ? (size_t)size : sizeof(merged);
+      have_current = fread(&merged, 1, want, current) == want;
+      if (have_current) user_settings_ext_fix(&merged, want);
+    }
+    fclose(current);
+  }
+  if (!have_current) user_settings_default(&merged);
+'''),
+    (r'''    memcpy(&merged.joystick_opacity, &source.joystick_opacity,
+           sizeof(user_settings) - offsetof(user_settings, joystick_opacity));
+''', r'''    memcpy(&merged.joystick_opacity, &source.joystick_opacity,
+           offsetof(user_settings, ext) - offsetof(user_settings, joystick_opacity));
+'''),
+  ],
+  'app/src/platform/android_settings.c': [
+    (r'''    {"assist.head_dot_color", "assist", "Dot colour", "", SETTING_COLOR3,
+     0, 1, NULL, OWNER_SETTINGS,
+     SETTINGS_FIELD(head_dot_color) + sizeof(vec3)},
+''', r'''    {"assist.head_dot_color", "assist", "Dot colour", "", SETTING_COLOR3,
+     0, 1, NULL, OWNER_SETTINGS,
+     SETTINGS_FIELD(head_dot_color) + sizeof(vec3)},
+    {"normal.spine", "normal", "Spine",
+     "A thin white line down the middle of every snake.", SETTING_BOOL, 0, 1,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[0])},
+    {"assist.spine", "assist", "Spine",
+     "A thin white line down the middle of every snake.", SETTING_BOOL, 0, 1,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[1])},
+    {"assist.hide_cosmetics", "assist", "Hide own tag and accessories",
+     "While assist is on, your tag, accessory and Wyrm look are hidden.",
+     SETTING_BOOL, 0, 1, NULL, OWNER_SETTINGS,
+     SETTINGS_FIELD(ext.assist_hide_cosmetics)},
+'''),
+    (r'''    {"render_mode", "Snake rendering", "", SETTING_ENUM, 0, 2,
+     "Texture|Solid|Flat", MODE_FIELD(render_mode)},
+''', r'''    {"render_mode", "Snake rendering", "", SETTING_ENUM, 0, 3,
+     "Texture|Solid|Flat|Skinless", MODE_FIELD(render_mode)},
+'''),
+    (r'''static void write_field(tenv* env, const char* id, const float* values,
+                        int count) {
+''', r'''static void clamp_written(const char* id, void* field, setting_type type) {
+  float lo = 0.0f;
+  float hi = 0.0f;
+  int found = 0;
+  int i;
+  const char* dot;
+  const char* name;
+  for (i = 0; i < (int)(sizeof(GLOBAL_FIELDS) / sizeof(GLOBAL_FIELDS[0])); ++i) {
+    if (strcmp(GLOBAL_FIELDS[i].id, id) != 0) continue;
+    lo = GLOBAL_FIELDS[i].minimum;
+    hi = GLOBAL_FIELDS[i].maximum;
+    found = 1;
+    break;
+  }
+  if (!found) {
+    dot = strchr(id, '.');
+    name = dot ? dot + 1 : id;
+    for (i = 0; i < (int)(sizeof(MODE_FIELDS) / sizeof(MODE_FIELDS[0])); ++i) {
+      if (strcmp(MODE_FIELDS[i].id, name) != 0) continue;
+      lo = MODE_FIELDS[i].minimum;
+      hi = MODE_FIELDS[i].maximum;
+      found = 1;
+      break;
+    }
+  }
+  if (!found || lo > hi) return;
+  if (type == SETTING_FLOAT) {
+    float value = *(float*)field;
+    if (value < lo) *(float*)field = lo;
+    else if (value > hi) *(float*)field = hi;
+    return;
+  }
+  {
+    int value = *(int*)field;
+    if (value < (int)lo) *(int*)field = (int)lo;
+    else if (value > (int)hi) *(int*)field = (int)hi;
+  }
+}
+
+static void write_field(tenv* env, const char* id, const float* values,
+                        int count) {
+'''),
+    (r'''    case SETTING_INT:
+    case SETTING_ENUM:
+      *(int*)field = (int)(values[0] + (values[0] < 0 ? -0.5f : 0.5f));
+      break;
+    case SETTING_FLOAT:
+      *(float*)field = values[0];
+      break;
+''', r'''    case SETTING_INT:
+    case SETTING_ENUM:
+      *(int*)field = (int)(values[0] + (values[0] < 0 ? -0.5f : 0.5f));
+      clamp_written(id, field, type);
+      break;
+    case SETTING_FLOAT:
+      *(float*)field = values[0];
+      clamp_written(id, field, type);
+      break;
+'''),
+  ],
+  'app/src/game/ai_mode.c': [
+    (r'''static bool editor_bare;
+static bool bare_assist_saved;
+static bool bare_assist_was;
+void ai_mode_set_editor_bare(bool bare) { editor_bare = bare; }
+''', r'''static bool editor_bare;
+static bool bare_assist_saved;
+static bool bare_assist_was;
+/* The snake-look preview (OM, 2026-10-05): the bare editor shows the mode
+   the Modes page is on, so assist can be forced on as well as off. */
+static bool bare_assist_on;
+void ai_mode_set_editor_bare(bool bare) { editor_bare = bare; }
+void ai_mode_set_editor_assist(bool on) { bare_assist_on = on; }
+'''),
+    (r'''  if (editor_bare) e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = false;
+''', r'''  if (editor_bare) e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = bare_assist_on;
+'''),
+    (r'''void ai_mode_finish_editor(tenv* e) {
+  if (bare_assist_saved) {
+    e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = bare_assist_was;
+    bare_assist_saved = false;
+  }
+  editor_bare = false;
+  editor_session = false;
+  ai_mode_stop(e);
+  e->usr->gdata.curr_screen = TITLE_SCREEN;
+}
+''', r'''void ai_mode_finish_editor(tenv* e) {
+  bool assist_forced = false;
+  if (bare_assist_saved) {
+    assist_forced =
+        e->usr->usrs.hotkeys[HOTKEY_ASSIST].active != bare_assist_was;
+    e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = bare_assist_was;
+    bare_assist_saved = false;
+  }
+  bare_assist_on = false;
+  editor_bare = false;
+  editor_session = false;
+  ai_mode_stop(e);
+  e->usr->gdata.curr_screen = TITLE_SCREEN;
+  /* A live write during the preview saved the forced assist flag with it. */
+  if (assist_forced) save_user_settings(&e->usr->usrs);
+}
+'''),
+    (r'''  if (editor_session) {
+    int count = tdarray_length(g->data.snakes);
+''', r'''  if (editor_session) {
+    if (editor_bare)
+      e->usr->usrs.hotkeys[HOTKEY_ASSIST].active = bare_assist_on;
+    int count = tdarray_length(g->data.snakes);
+'''),
+  ],
+  'app/src/game/ai_mode.h': [
+    (r'''void ai_mode_set_editor_bare(bool bare);
+''', r'''void ai_mode_set_editor_bare(bool bare);
+void ai_mode_set_editor_assist(bool on);
+'''),
+  ],
+  'app/src/game/redraw.c': [
+    (r'''void redraw(tenv* env) {
+''', r'''
+/* Skinless strip and the spine (OM, 2026-10-05). ImGui is drawn after the
+   sprite batches, so a line here covers the body. Eyes for these modes are
+   circles on the same list and therefore sit on top. */
+static void snake_screen_point(const game_data* gdata, int point, float cx,
+                               float cy, ImVec2* out) {
+  out->x = cx + (gdata->data.pbx[point] - gdata->data.view_xx) * gdata->data.gsc;
+  out->y = cy + (gdata->data.pby[point] - gdata->data.view_yy) * gdata->data.gsc;
+}
+
+static void stroke_smooth(ImDrawList* draw, ImVec2* pts, int count, ImU32 col,
+                          float width) {
+  int i;
+  if (count < 2 || width <= 0.0f) return;
+  ImDrawList_PathClear(draw);
+  ImDrawList_PathLineTo(draw, pts[0]);
+  for (i = 1; i < count - 1; ++i) {
+    ImVec2 mid;
+    mid.x = (pts[i].x + pts[i + 1].x) * 0.5f;
+    mid.y = (pts[i].y + pts[i + 1].y) * 0.5f;
+    ImDrawList_PathBezierQuadraticCurveTo(draw, pts[i], mid, 0);
+  }
+  ImDrawList_PathLineTo(draw, pts[count - 1]);
+  ImDrawList_PathStroke(draw, col, 0, width);
+}
+
+/* On-screen runs only. A full buffer is stroked and continued from its last
+   point so a long snake does not need a 32k stack. */
+static void draw_body_line(tenv* env, int bp, int start, float cx, float cy,
+                           ImU32 under, float under_w, ImU32 over, float over_w) {
+  game_data* gdata = &env->usr->gdata;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImVec2 buf[160];
+  int n = 0;
+  int i;
+  for (i = start; i <= bp; ++i) {
+    int live = i < bp && gdata->data.pbu[i] >= 1;
+    if (live && n < 160) {
+      snake_screen_point(gdata, i, cx, cy, &buf[n]);
+      n += 1;
+      if (n < 160) continue;
+    }
+    if (n >= 2) {
+      if (under_w > 0.0f) stroke_smooth(draw, buf, n, under, under_w);
+      stroke_smooth(draw, buf, n, over, over_w);
+    }
+    if (live) {
+      buf[0] = buf[n > 0 ? n - 1 : 0];
+      n = 1;
+    } else {
+      n = 0;
+    }
+  }
+}
+
+static void snake_strip_colour(tenv* env, snake* o, float* red, float* green,
+                               float* blue) {
+  game_data* gdata = &env->usr->gdata;
+  uint32_t built = built_skin_rgba(env, o, 0);
+  int cg_id;
+  vec3s* col;
+  if (built) {
+    *red = (float)((built >> 16) & 255) / 255.0f;
+    *green = (float)((built >> 8) & 255) / 255.0f;
+    *blue = (float)(built & 255) / 255.0f;
+    return;
+  }
+  cg_id = o->cusk && o->cusk_len > 0 ? o->cusk_data[0]
+                                    : gdata->default_skins[o->cv][1];
+  col = gdata->cg_colors + cg_id;
+  *red = col->r;
+  *green = col->g;
+  *blue = col->b;
+}
+
+static float snake_line_dpi(tenv* env) {
+  float dpi = 1.0f;
+  int w;
+  int h;
+  float short_side;
+  if (!env->wnd) return dpi;
+  w = env->wnd->size[0];
+  h = env->wnd->size[1];
+  short_side = (float)(w < h ? w : h);
+  dpi = short_side / 480.0f;
+  if (dpi < 1.0f) dpi = 1.0f;
+  return dpi;
+}
+
+static void draw_skinless_strip(tenv* env, snake* o, int bp, float cx, float cy,
+                                float lsz, float alpha) {
+  float red, green, blue;
+  float width = lsz * env->usr->gdata.data.gsc;
+  int boosting = o->tsp > o->fsp;
+  ImU32 main_col;
+  ImU32 glow_col;
+  snake_strip_colour(env, o, &red, &green, &blue);
+  main_col = igColorConvertFloat4ToU32((ImVec4){red, green, blue, 0.8f * alpha});
+  glow_col = igColorConvertFloat4ToU32((ImVec4){red, green, blue, 0.22f * alpha});
+  if (boosting)
+    draw_body_line(env, bp, 1, cx, cy, glow_col, width * 1.65f, main_col, width);
+  else
+    draw_body_line(env, bp, 1, cx, cy, 0, 0.0f, main_col, width);
+}
+
+static void draw_snake_spine(tenv* env, int bp, float cx, float cy, float alpha) {
+  float dpi = snake_line_dpi(env);
+  ImU32 dark = igColorConvertFloat4ToU32((ImVec4){0.0f, 0.0f, 0.0f, 0.35f * alpha});
+  ImU32 white = igColorConvertFloat4ToU32((ImVec4){1.0f, 1.0f, 1.0f, 0.8f * alpha});
+  draw_body_line(env, bp, 1, cx, cy, dark, 4.0f * dpi, white, 2.0f * dpi);
+}
+
+static void draw_snake_imgui_eyes(tenv* env, snake* o, float fang, float hx,
+                                  float hy, float ssc, float ea, float cx,
+                                  float cy) {
+  game_data* gdata = &env->usr->gdata;
+  default_skin_data* dfs = gdata->dfs + ((1 - o->cusk) * (1 + o->cv));
+  float ed = 6 * ssc;
+  float esp = 6 * ssc;
+  float iris_r = 6 * ssc * gdata->data.gsc;
+  float pupil_r = dfs->pr * ssc * gdata->data.gsc;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImU32 iris = igColorConvertFloat4ToU32((ImVec4){dfs->ec.r, dfs->ec.g, dfs->ec.b, ea});
+  ImU32 pupil =
+      igColorConvertFloat4ToU32((ImVec4){dfs->ppc.r, dfs->ppc.g, dfs->ppc.b, ea});
+  float side;
+  float ex;
+  float ey;
+  ImVec2 at;
+  for (side = -1.0f; side <= 1.0f; side += 2.0f) {
+    ex = cosf(fang) * ed + cosf(fang + side * (PI / 2)) * (esp + 0.5f);
+    ey = sinf(fang) * ed + sinf(fang + side * (PI / 2)) * (esp + 0.5f);
+    at.x = cx + (ex + hx - gdata->data.view_xx) * gdata->data.gsc;
+    at.y = cy + (ey + hy - gdata->data.view_yy) * gdata->data.gsc;
+    ImDrawList_AddCircleFilled(draw, at, iris_r, iris, 16);
+    ex = cosf(fang) * (ed + 0.5f) + o->rex * ssc +
+         cosf(fang + side * (PI / 2)) * esp;
+    ey = sinf(fang) * (ed + 0.5f) + o->rey * ssc +
+         sinf(fang + side * (PI / 2)) * esp;
+    at.x = cx + (ex + hx - gdata->data.view_xx) * gdata->data.gsc;
+    at.y = cy + (ey + hy - gdata->data.view_yy) * gdata->data.gsc;
+    ImDrawList_AddCircleFilled(draw, at, pupil_r, pupil, 12);
+  }
+}
+
+void redraw(tenv* env) {
+'''),
+    (r'''                          {cg_col->r, cg_col->g, cg_col->b, a}});
+                }
+            }
+          }
+
+          // debugging
+''', r'''                          {cg_col->r, cg_col->g, cg_col->b, a}});
+                }
+            }
+          } else if (mode->render_mode == 3) {
+            /* Skinless (OM, 2026-10-05): one clear strip in the snake's own
+               colour. No body sprites and no snake shadows. */
+            draw_skinless_strip(env, o, bp, mww2, mhh2, lsz, a);
+          }
+
+          // debugging
+'''),
+    (r'''          if (mode->show_boost) {
+''', r'''          if (mode->show_boost && mode->render_mode != 3) {
+'''),
+    (r'''          // draw eyes:
+          float ed = 6 * ssc;   // o->ed
+          float esp = 6 * ssc;  // o->esp
+          float er = 6;         // o->er
+          default_skin_data* dfs = gdata->dfs + ((1 - o->cusk) * (1 + o->cv));
+          float pr = dfs->pr;
+          float iris_r = er * ssc * gdata->data.gsc;
+          float pupil_r = pr * ssc * gdata->data.gsc;
+
+          float ex = cosf(fang) * ed + cosf(fang - PI / 2) * (esp + .5);
+          float ey = sinf(fang) * ed + sinf(fang - PI / 2) * (esp + .5);
+
+          float ea = mode->death_effect
+                         ? o->alive_amt * o->alive_amt * sqrtf(1 - o->dead_amt)
+                         : a;
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       iris_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       iris_r,
+                   iris_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ec.r, dfs->ec.g, dfs->ec.b, ea}});
+
+          ex = cosf(fang) * ed + cosf(fang + PI / 2) * (esp + .5);
+          ey = sinf(fang) * ed + sinf(fang + PI / 2) * (esp + .5);
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       iris_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       iris_r,
+                   iris_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ec.r, dfs->ec.g, dfs->ec.b, ea}});
+
+          ex =
+              cosf(fang) * (ed + .5) + o->rex * ssc + cosf(fang - PI / 2) * esp;
+          ey =
+              sinf(fang) * (ed + .5) + o->rey * ssc + sinf(fang - PI / 2) * esp;
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       pupil_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       pupil_r,
+                   pupil_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ppc.r, dfs->ppc.g, dfs->ppc.b, ea}});
+
+          ex =
+              cosf(fang) * (ed + .5) + o->rex * ssc + cosf(fang + PI / 2) * esp;
+          ey =
+              sinf(fang) * (ed + .5) + o->rey * ssc + sinf(fang + PI / 2) * esp;
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       pupil_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       pupil_r,
+                   pupil_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ppc.r, dfs->ppc.g, dfs->ppc.b, ea}});
+
+''', r'''          // draw eyes:
+          float ed = 6 * ssc;   // o->ed
+          float esp = 6 * ssc;  // o->esp
+          float er = 6;         // o->er
+          default_skin_data* dfs = gdata->dfs + ((1 - o->cusk) * (1 + o->cv));
+          float pr = dfs->pr;
+          float iris_r = er * ssc * gdata->data.gsc;
+          float pupil_r = pr * ssc * gdata->data.gsc;
+
+          float ex = cosf(fang) * ed + cosf(fang - PI / 2) * (esp + .5);
+          float ey = sinf(fang) * ed + sinf(fang - PI / 2) * (esp + .5);
+
+          float ea = mode->death_effect
+                         ? o->alive_amt * o->alive_amt * sqrtf(1 - o->dead_amt)
+                         : a;
+
+          /* Spine sits on the ImGui list, which is drawn after the sprites,
+             so eyes for a spine or a skinless strip are circles on that list
+             and end up on top (OM, 2026-10-05). */
+          {
+            int assist_on = usrs->hotkeys[HOTKEY_ASSIST].active ? 1 : 0;
+            int spine_on = usrs->ext.spine[assist_on] ? 1 : 0;
+            if (spine_on) draw_snake_spine(env, bp, mww2, mhh2, a);
+            if (mode->render_mode == 3 || spine_on)
+              draw_snake_imgui_eyes(env, o, fang, hx, hy, ssc, ea, mww2, mhh2);
+            else {
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       iris_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       iris_r,
+                   iris_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ec.r, dfs->ec.g, dfs->ec.b, ea}});
+
+          ex = cosf(fang) * ed + cosf(fang + PI / 2) * (esp + .5);
+          ey = sinf(fang) * ed + sinf(fang + PI / 2) * (esp + .5);
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       iris_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       iris_r,
+                   iris_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ec.r, dfs->ec.g, dfs->ec.b, ea}});
+
+          ex =
+              cosf(fang) * (ed + .5) + o->rex * ssc + cosf(fang - PI / 2) * esp;
+          ey =
+              sinf(fang) * (ed + .5) + o->rey * ssc + sinf(fang - PI / 2) * esp;
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       pupil_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       pupil_r,
+                   pupil_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ppc.r, dfs->ppc.g, dfs->ppc.b, ea}});
+
+          ex =
+              cosf(fang) * (ed + .5) + o->rex * ssc + cosf(fang + PI / 2) * esp;
+          ey =
+              sinf(fang) * (ed + .5) + o->rey * ssc + sinf(fang + PI / 2) * esp;
+
+          bp_renderer_push(
+              usr->r->bpr,
+              &(bp_instance){
+                  {(mww2 + (ex + hx - gdata->data.view_xx) * gdata->data.gsc) -
+                       pupil_r,
+                   (mhh2 + (ey + hy - gdata->data.view_yy) * gdata->data.gsc) -
+                       pupil_r,
+                   pupil_r * 2, 0},
+                  gdata->cg_uvs[BLANK_UV],
+                  {dfs->ppc.r, dfs->ppc.g, dfs->ppc.b, ea}});
+
+            }
+          }
+
+'''),
+    (r'''          tags_draw(env, o, o->id == gdata->data.snake_id, false);
+''', r'''          const int hide_own_cosmetics =
+              usrs->hotkeys[HOTKEY_ASSIST].active &&
+              usrs->ext.assist_hide_cosmetics &&
+              o->id == gdata->data.snake_id;
+          if (!hide_own_cosmetics)
+          tags_draw(env, o, o->id == gdata->data.snake_id, false);
+'''),
+    (r'''          if (mode->show_accessories && o->accessory < NUM_ACCESSORIES) {
+''', r'''          if (!hide_own_cosmetics && mode->show_accessories && o->accessory < NUM_ACCESSORIES) {
+'''),
+    (r'''          tags_draw(env, o, true, false);
+''', r'''          if (!(usrs->hotkeys[HOTKEY_ASSIST].active &&
+                usrs->ext.assist_hide_cosmetics))
+          tags_draw(env, o, true, false);
+'''),
+  ],
+}  # end SKINLESS_SPINE_PAIRS
+for _relative, _pairs in SKINLESS_SPINE_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+_arrow_patch('app/src/game/redraw.c', [
+    (r'''          if (o->id == gdata->data.snake_id) {
+            extern void wyrm_look_draw(tenv* env, float hx, float hy, float fang,
+                                       float lsz, float alpha, float mww2,
+                                       float mhh2);
+            wyrm_look_draw(env, hx, hy, fang, lsz, ea, mww2, mhh2);
+          }
+''', r'''          if (!hide_own_cosmetics && o->id == gdata->data.snake_id) {
+            extern void wyrm_look_draw(tenv* env, float hx, float hy, float fang,
+                                       float lsz, float alpha, float mww2,
+                                       float mhh2);
+            wyrm_look_draw(env, hx, hy, fang, lsz, ea, mww2, mhh2);
+          }
+'''),
+])
+print('Skinless + spine + assist hide + settings ext')
