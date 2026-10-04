@@ -740,11 +740,11 @@ for path in sorted(OUTPUT.rglob("*")):
   if (!o->cusk || index < 0 || index >= MAX_SKIN_CODE_LEN) return 0;
   if (o->id == usr->gdata.data.snake_id) return usr->usrs.skin_rgba[index];'''
         assert text.count(own) == 1
-        text = text.replace(own, '''/* Colour wheel and Wyrm beads off (OM, 2026-10-04, drop test): our own snake
- * is drawn from the slither colours the join carried, exactly as everyone
- * else sees it. 1 brings back the wheel colours and Wyrm beads on our snake
- * (with WyrmBeads.BUILT_BEADS_OFF = false in the app). */
-#define WYRM_BUILT_BEADS_IN_ARENA 0
+        text = text.replace(own, '''/* Colour wheel and Wyrm beads on our own snake (OM, 2026-10-04; 0 for one
+ * drop-test build): 1 draws the exact colours we built, on this device only.
+ * Everyone else, and the arena, get the slither colours the join carried.
+ * 0 draws our snake from those slither colours too. */
+#define WYRM_BUILT_BEADS_IN_ARENA 1
 
 static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
   tuser_data* usr = env->usr;
