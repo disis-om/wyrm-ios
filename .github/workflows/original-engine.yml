@@ -205,4 +205,4 @@ jobs:
             original-artifacts/*.ips
             original-artifacts/README.md
             original-artifacts/SHA256SUMS
-          retention-days: 14
+          retention-days: 1

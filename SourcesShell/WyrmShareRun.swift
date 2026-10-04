@@ -72,7 +72,7 @@ struct WyrmTrailSkin: Codable, Equatable {
             accessory: WyrmSkinCatalog.accessories.contains(where: { $0.id == accessory }) ? accessory : -1,
             look: Look(hair: look.hair, hairTone: look.hairTone.isFinite ? min(max(look.hairTone, 0), 1) : 0,
                        ears: look.ears, glasses: look.glasses),
-            tag: WyrmSkinCatalog.tags[safe: tagIndex]?.ntlID)
+            tag: WyrmSkinCatalog.tags.indices.contains(tagIndex) ? WyrmSkinCatalog.tags[tagIndex].ntlID : nil)
     }
 
     /// The body for the POST: plain JSON types, so JSONSerialization writes
@@ -410,7 +410,8 @@ enum WyrmSkinSticker {
     @MainActor
     private static func drawTag(_ skin: WyrmTrailSkin, art: WyrmStickerArt, in cg: CGContext) {
         let index = skin.wornTagIndex
-        guard let item = WyrmSkinCatalog.tags[safe: index], let image = art.textures.tags[index] else { return }
+        guard WyrmSkinCatalog.tags.indices.contains(index), let image: CGImage = art.textures.tags[index] else { return }
+        let item = WyrmSkinCatalog.tags[index]
         let unit = bead / 29
         let anchor = CGPoint(x: -8 * unit, y: 0)
         let end = CGPoint(x: anchor.x - 9 * 4 * unit, y: 0)
@@ -435,8 +436,10 @@ enum WyrmSkinSticker {
         }
         cg.translateBy(x: centre.x, y: centre.y)
         cg.rotate(by: .pi)
-        let fit = min(width / CGFloat(max(image.width, 1)), height / CGFloat(max(image.height, 1)))
-        let w = CGFloat(image.width) * fit, h = CGFloat(image.height) * fit
+        let pixelsWide = CGFloat(max(image.width, 1))
+        let pixelsHigh = CGFloat(max(image.height, 1))
+        let fit: CGFloat = min(width / pixelsWide, height / pixelsHigh)
+        let w = pixelsWide * fit, h = pixelsHigh * fit
         WyrmStickerArt.put(image, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h), cg: cg)
         cg.restoreGState()
     }
