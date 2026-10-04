@@ -101,6 +101,7 @@ final class WyrmShellStore: ObservableObject {
     @Published private(set) var backgroundEditor = false
     static let lobbyScreen = 3
     private var timer: Timer?
+    private var composerTimer: Timer?
     @Published private(set) var arenaPlayPending = false
     private var arenaPortBusySeen = false
     private var arenaGateGeneration = 0
@@ -138,6 +139,11 @@ final class WyrmShellStore: ObservableObject {
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: 0.75, repeats: true) { [weak self] _ in
             Task { @MainActor in self?.refresh() }
+        }
+        // The arena chat window's message box (OM, 2026-10-04): a tap opens the
+        // composer within a fifth of a second.
+        composerTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
+            Task { @MainActor in WyrmTeamComposer.shared.takeEngineRequests() }
         }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--smoke-settings-write") {
@@ -758,6 +764,8 @@ final class WyrmShellHost: NSObject {
         WyrmLookStore.shared.publish()
         // Modes › Assist: the joystick laser's saved choice reaches the engine.
         WyrmJoystickLaserStore.shared.publish()
+        // The arena's team roster and chat window: their saved look.
+        WyrmTeamHudStore.shared.publish()
         // Home › Near Original: slither's own HUD and controls.
         WyrmNearOriginalStore.shared.publish()
         // Controls › Play orientation: the engine surface's turn.

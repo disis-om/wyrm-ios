@@ -81,6 +81,24 @@ bool android_team_chat_open(void);
  */
 void android_team_release_chat(tenv* env);
 
+/*
+ * Team HUD (OM, 2026-10-04): the roster and the chat window in the arena.
+ *
+ * `android_team_set_chat` takes the app's team chat (the same list its Team
+ * page shows): the first line is how many messages have ever arrived, then one
+ * `author<TAB>body` line per message, oldest first. `android_team_set_hud_style`
+ * takes ten numbers saved by the app: roster size, opacity, width, height,
+ * name colour, data colour; chat width, height, name colour, text colour
+ * (colours are palette indexes, 0 = the theme's). `android_team_hud_touch`
+ * owns a finger that lands on either block: tap the chat's header to fold or
+ * open it, tap its message box to write, drag to scroll. Every other finger
+ * keeps steering.
+ */
+void android_team_set_chat(const char* packed);
+void android_team_set_hud_style(const float* values, int count);
+bool android_team_hud_touch(tenv* env, int type, unsigned long long finger,
+                            float x, float y);
+
 /** Runs the bot handover and draws the countdown. Called once a frame. */
 void android_team_tick(tenv* env);
 

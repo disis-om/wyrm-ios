@@ -1407,9 +1407,20 @@ struct WyrmLayoutEditor: View {
     @State var keySnapshot: [EngineHotkey] = []
     @State var options: Options?
     @State var dragStart: [String: CGPoint] = [:]
+    /// The team roster's and chat window's look (OM, 2026-10-04), saved app side.
+    @ObservedObject var teamHud = WyrmTeamHudStore.shared
 
     struct Slider { let label: String; let id: String; let range: ClosedRange<Double>; var whole = false }
-    struct Options: Identifiable { let id: String; let title: String; let sliders: [Slider]; var zoomChoice = false }
+    /// A row of colour swatches for a `teamhud.<key>` colour.
+    struct ColourRow { let label: String; let key: String }
+    struct Options: Identifiable {
+        let id: String; let title: String; let sliders: [Slider]; var zoomChoice = false
+        var colours: [ColourRow] = []
+    }
+
+    private func teamHudSlider(_ label: String, _ key: String) -> Slider {
+        Slider(label: label, id: "teamhud.\(key)", range: teamHud.range(key))
+    }
 
     private enum HUD: String, CaseIterable {
         case minimap, leaderboard, stats, team, chat
@@ -1507,18 +1518,32 @@ struct WyrmLayoutEditor: View {
                 panel("STATS\nSCORE   9503\nKILLS      4\nRANK    8 / 46\nPING    64 ms\nFPS     61",
                       CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale), opacity: engine.value("layout.stats_opacity", 1))
             }
-            piece(HUD.team.prefix, size, CGSize(width: 210 / scale, height: 98 / scale),
-                  Options(id: "team", title: "TEAM", sliders: []), fallback: HUD.team.fallback) {
-                panel("TEAM\n● Om Rajput       9503\n● Northwind       2819\n○ Meadow           389", CGSize(width: 210 / scale, height: 98 / scale))
+            // The roster and chat window are drawn by the engine over the AI arena
+            // with placeholder rows (OM, 2026-10-04); these are their hit boxes at
+            // the same size (engine pixels / screen scale).
+            let teamScale = teamHud.value("team_scale")
+            let teamSize = CGSize(width: teamHud.value("team_width") * teamScale / scale,
+                                  height: teamHud.value("team_height") * teamScale / scale)
+            piece(HUD.team.prefix, size, teamSize,
+                  Options(id: "team", title: "TEAM",
+                          sliders: [teamHudSlider("SIZE", "team_scale"), teamHudSlider("OPACITY", "team_opacity"),
+                                    teamHudSlider("WIDTH", "team_width"), teamHudSlider("HEIGHT", "team_height")],
+                          colours: [ColourRow(label: "PLAYER NAME AND SCORE", key: "team_name"),
+                                    ColourRow(label: "KEY NAME AND SERVER", key: "team_data")]),
+                  fallback: HUD.team.fallback) {
+                RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: teamSize.width, height: teamSize.height)
             }
-            piece(HUD.chat.prefix, size, CGSize(width: 124 * chatScale / scale, height: 56 * chatScale / scale),
-                  Options(id: "chat", title: "CHAT", sliders: [Slider(label: "SIZE", id: "layout.chat_scale", range: 0.65...1.60),
-                                                              Slider(label: "OPACITY", id: "layout.chat_opacity", range: 0.05...1)]),
+            let chatSize = CGSize(width: teamHud.value("chat_width") * chatScale / scale,
+                                  height: teamHud.value("chat_height") * chatScale / scale)
+            piece(HUD.chat.prefix, size, chatSize,
+                  Options(id: "chat", title: "CHAT",
+                          sliders: [Slider(label: "SIZE", id: "layout.chat_scale", range: 0.65...1.60),
+                                    Slider(label: "OPACITY", id: "layout.chat_opacity", range: 0.05...1),
+                                    teamHudSlider("WIDTH", "chat_width"), teamHudSlider("HEIGHT", "chat_height")],
+                          colours: [ColourRow(label: "PLAYER NAME", key: "chat_name"),
+                                    ColourRow(label: "MESSAGES", key: "chat_text")]),
                   fallback: HUD.chat.fallback) {
-                Text("CHAT").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.ink)
-                    .frame(width: 124 * chatScale / scale, height: 56 * chatScale / scale)
-                    .background(RoundedRectangle(cornerRadius: 28).fill(ATheme.card.opacity(0.94 * engine.value("layout.chat_opacity", 1))))
-                    .overlay(RoundedRectangle(cornerRadius: 28).stroke(ATheme.ink.opacity(0.45), lineWidth: 1.5))
+                RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: chatSize.width, height: chatSize.height)
             }
             }
             }
@@ -1636,8 +1661,18 @@ struct WyrmLayoutEditor: View {
                     Text(slider.label).font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                     let fallback = slider.id.hasPrefix("layout.key_") ? engine.value(slider.id.hasSuffix("opacity") ? "keys.opacity" : "keys.key_scale", 1)
                         : slider.id.hasPrefix("layout.") && slider.id.hasSuffix("opacity") ? engine.value("controls.opacity", 1) : 1
-                    SwiftUI.Slider(value: Binding(get: { min(max(engine.value(slider.id, fallback), slider.range.lowerBound), slider.range.upperBound) },
-                                                  set: { engine.write(id: slider.id, values: [slider.whole ? $0.rounded() : $0]) }),
+                    SwiftUI.Slider(value: Binding(get: {
+                                                      let current = WyrmTeamHudStore.owns(slider.id)
+                                                          ? teamHud.value(String(slider.id.dropFirst(8))) : engine.value(slider.id, fallback)
+                                                      return min(max(current, slider.range.lowerBound), slider.range.upperBound)
+                                                  },
+                                                  set: {
+                                                      if WyrmTeamHudStore.owns(slider.id) {
+                                                          teamHud.set(slider.id, $0)
+                                                      } else {
+                                                          engine.write(id: slider.id, values: [slider.whole ? $0.rounded() : $0])
+                                                      }
+                                                  }),
                                    in: slider.range, step: slider.whole ? 1 : 0.01)
                         .tint(ATheme.ink)
                 }
@@ -1645,6 +1680,21 @@ struct WyrmLayoutEditor: View {
                     Text("ORIENTATION").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                     WSSegmented(options: ["Horizontal", "Vertical"], selected: orientation.index == 1 ? 1 : 0) {
                         engine.write(orientation, values: [Double($0)])
+                    }
+                }
+                ForEach(options.colours, id: \.key) { row in
+                    let selected = Int(teamHud.value(row.key))
+                    Text("\(row.label) · \(WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)].uppercased())")
+                        .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
+                    HStack(spacing: 5) {
+                        ForEach(0..<WyrmTeamHudStore.swatches.count, id: \.self) { index in
+                            Circle().fill(WyrmTeamHudStore.swatches[index] ?? ATheme.ink)
+                                .padding(3)
+                                .frame(width: 24, height: 24)
+                                .overlay(Circle().stroke(index == selected ? ATheme.ink : ATheme.rule,
+                                                         lineWidth: index == selected ? 2 : 1))
+                                .onTapGesture { teamHud.set("teamhud.\(row.key)", Double(index)) }
+                        }
                     }
                 }
                 HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(ATheme.ink).padding(8) }

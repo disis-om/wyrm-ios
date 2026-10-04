@@ -22,6 +22,11 @@ bool WyrmIOSQueueSkinSelection(int preset, const char* code,
 void WyrmIOSApplySkinSelection(tenv* env);
 const char* WyrmIOSTeamPresenceSnapshot(void);
 void WyrmIOSSetTeamMembers(const char* packed);
+/* Team HUD (2026-10-04): the team chat for the arena's chat window, the
+   roster's and chat window's look, and taps on the window's message box. */
+void WyrmIOSSetTeamChat(const char* packed);
+void WyrmIOSSetTeamHudStyle(const float* values, int count);
+int WyrmIOSTakeTeamComposerRequest(void);
 void WyrmIOSSetEnginePresentation(bool enabled);
 /* SwiftUI draws the landscape Ready Room and the layout editor above the
    rotated engine surface; these let it drive the original home mailbox. */

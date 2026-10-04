@@ -47,6 +47,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.theme", .sync),                  // + theme-intensity
         ("wyrm.ios.arrow.", .sync),
         ("wyrm.ios.near-original.", .sync),         // Home: Near Original (also in the shared document)
+        ("wyrm.ios.team-hud.", .sync),              // Layout editor: team roster + chat window look
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
@@ -281,6 +282,7 @@ final class WyrmAccountSync: ObservableObject {
         WyrmKeyboardController.shared.reloadFromDefaults()
         WyrmPerformance.shared.reloadFromDefaults()
         WyrmJoystickLaserStore.shared.reloadFromDefaults()
+        WyrmTeamHudStore.shared.reloadFromDefaults()
         WyrmNearOriginalStore.shared.reloadFromDefaults()
         WyrmPlayOrientation.shared.reloadFromDefaults()
     }

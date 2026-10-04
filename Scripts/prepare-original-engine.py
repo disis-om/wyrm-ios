@@ -974,6 +974,28 @@ static int ntl_tag_from_corner(const uint8_t* corner) {
 }  # end NTL_SKIN_TAG_PAIRS
 
 
+
+# Team HUD (OM, 2026-10-04): the roster and chat window own the finger that
+# lands on them; the same C as Wyrm Android's mobile/mobile_controls.c.
+# (android_team.c/.h carry the drawing, edited in SharedEngine in place.)
+TEAM_HUD_PAIRS = {
+    'app/src/mobile/mobile_controls.c': [
+        (r'''  /* The interface's own buttons belong to the interface, not to steering. */
+  if (event->type == SDL_EVENT_FINGER_DOWN &&
+      ui_overlay_leaderboard_hit(env, x, y)) {''',
+         r'''  /* The team roster and chat window own the finger that lands on them
+     (scrolling, folding, the message box); every other finger keeps
+     steering, so nothing is reset (OM, 2026-10-04). */
+  if (android_team_hud_touch(env, (int)event->type,
+                             (unsigned long long)finger, x, y))
+    return true;
+
+  /* The interface's own buttons belong to the interface, not to steering. */
+  if (event->type == SDL_EVENT_FINGER_DOWN &&
+      ui_overlay_leaderboard_hit(env, x, y)) {'''),
+    ],
+}  # end TEAM_HUD_PAIRS
+
 def apply_run_capture(text):
     def once(old, new):
         nonlocal text
@@ -1468,6 +1490,9 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
             assert text.count(old) == 1, old[:60]
             text = text.replace(old, new)
         text = apply_run_capture(text)
+    for old, new in TEAM_HUD_PAIRS.get(relative, []):
+        assert text.count(old) == 1, (relative, old[:60])
+        text = text.replace(old, new)
     for old, new in NTL_SKIN_TAG_PAIRS.get(relative, []):
         assert text.count(old) == 1, (relative, old[:60])
         text = text.replace(old, new)

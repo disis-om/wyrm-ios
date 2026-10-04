@@ -22,8 +22,11 @@ struct WyrmTeamMember: Identifiable, Equatable {
         let safeName = name.replacingOccurrences(of: "\t", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
         let present = arena == currentArena && arena != "_GAME_MENU_" && snakeID > 0
+        // Fields 9 and 10 (OM, 2026-10-04): the NTL key and the arena, for the roster.
+        let safeOwner = owner.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+        let server = arena == "_GAME_MENU_" ? "" : arena.replacingOccurrences(of: "\t", with: " ")
         return [safeName, "\(x)", "\(y)", "\(score)", "\(rank)", bot ? "1" : "0",
-                present ? "1" : "0", "\(snakeID)", "\(tag)"].joined(separator: "\t")
+                present ? "1" : "0", "\(snakeID)", "\(tag)", safeOwner, server].joined(separator: "\t")
     }
 }
 
@@ -155,6 +158,19 @@ final class WyrmTeamStore: ObservableObject {
     private var credentials: WyrmTeamCredentials?
     private var loop: Task<Void, Never>?
     private var queuedMessage = ""
+    /// Every message ever received, for the folded arena window's unread count.
+    private var chatTotal = 0
+
+    /// The arena's chat window shows this same list (OM, 2026-10-04): a
+    /// total, then one `author<TAB>body` line per message, oldest first.
+    private func publishChat() {
+        var packed = "\(max(chatTotal, chat.count))"
+        for line in chat {
+            packed += "\n" + line.author.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+            packed += "\t" + line.body.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
+        }
+        packed.withCString { WyrmIOSSetTeamChat($0) }
+    }
     private var seenMessages = Set<String>()
     private let endpoint = URL(string: "https://ntl-slither.com/slither/ntlplay-mt.php")!
     private let session: URLSession = {
@@ -250,6 +266,7 @@ final class WyrmTeamStore: ObservableObject {
         seenMessages = []
         state = .disconnected
         "".withCString { WyrmIOSSetTeamMembers($0) }
+        publishChat()
     }
 
     func send(_ text: String) {
@@ -392,9 +409,11 @@ final class WyrmTeamStore: ObservableObject {
                 let key = "\(author)\u{1f}\(body)"
                 guard seenMessages.insert(key).inserted else { continue }
                 chat.append(WyrmTeamChatLine(id: key, author: author, body: body))
+                chatTotal += 1
             }
         }
         if chat.count > 200 { chat.removeFirst(chat.count - 200) }
+        publishChat()
     }
 
     private static func string(_ value: Any?) -> String {

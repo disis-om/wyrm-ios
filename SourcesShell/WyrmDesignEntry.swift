@@ -11,6 +11,8 @@ struct WyrmDesignRoot: View {
     @ObservedObject private var playOrientation = WyrmPlayOrientation.shared
     /// Account-linked settings: saved in the background and on log out (WyrmAccountSync).
     @ObservedObject private var accountSync = WyrmAccountSync.shared
+    /// The arena chat window's message box: one line above the keyboard.
+    @ObservedObject private var teamComposer = WyrmTeamComposer.shared
     @Environment(\.scenePhase) private var scenePhase
 
     private let arguments = ProcessInfo.processInfo.arguments
@@ -97,6 +99,10 @@ struct WyrmDesignRoot: View {
             if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && !shareRun.isOpen
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
                 WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen && !playOrientation.portrait).zIndex(99)
+            }
+            // Writing to the team from the arena (OM, 2026-10-04); the match plays on.
+            if teamComposer.open && engine.engineScreen == 2 {
+                WyrmArenaComposerBar(team: team).zIndex(105)
             }
             // Log out (OM, 2026-10-01): the question, the save, and a failed save's choices.
             if accountSync.askingLogOut {
