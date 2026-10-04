@@ -742,7 +742,8 @@ struct WyrmAlertsPage: View {
     }
 }
 
-/// The bell on Play: a card disc with the unread count.
+/// The bell on Play: a card squircle (the avatar's own shape, size x 0.3
+/// continuous corners; OM, 2026-10-04) with the unread count.
 struct WyrmAlertsBellButton: View {
     let unread: Int
     let action: () -> Void
@@ -753,8 +754,8 @@ struct WyrmAlertsBellButton: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(ATheme.ink)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(ATheme.card))
-                    .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                    .background(RoundedRectangle(cornerRadius: 36 * 0.3, style: .continuous).fill(ATheme.card))
+                    .overlay(RoundedRectangle(cornerRadius: 36 * 0.3, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
                 if unread > 0 {
                     Text(unread > 99 ? "99+" : "\(unread)")
                         .font(.system(size: 9, weight: .bold)).foregroundColor(ATheme.onInk)

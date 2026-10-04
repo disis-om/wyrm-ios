@@ -44,6 +44,9 @@ struct WyrmTrailSkin: Codable, Equatable {
     var colours: [String]
     var accessory: Int
     var look: Look
+    /// The NTL tag worn, in NTL's numbering (OM, 2026-10-04); nil for none.
+    /// Written only when one is worn; older skins have none.
+    var tag: Int? = nil
 
     /// The player's own look, as the Skin tab saved it.
     static func current() -> WyrmTrailSkin {
@@ -53,6 +56,7 @@ struct WyrmTrailSkin: Codable, Equatable {
         let pattern = d.string(forKey: "wyrm.ios.skin.custom-groups") ?? "7,9,7,9"
         let stored = d.string(forKey: "wyrm.ios.skin.custom-colors") ?? ""
         let accessory = d.object(forKey: "wyrm.ios.skin.accessory-id") as? Int ?? -1
+        let tagIndex = d.object(forKey: "wyrm.ios.skin.tag-id") as? Int ?? -1
         let groups = Array(pattern.split(separator: ",").compactMap { Int($0) }
             .filter { WyrmSkinCatalog.validGroups.contains($0) }.prefix(256))
         let parsed = stored.split(separator: ",", omittingEmptySubsequences: false)
@@ -67,14 +71,19 @@ struct WyrmTrailSkin: Codable, Equatable {
             colours: colours.map { String(format: "%08X", $0) },
             accessory: WyrmSkinCatalog.accessories.contains(where: { $0.id == accessory }) ? accessory : -1,
             look: Look(hair: look.hair, hairTone: look.hairTone.isFinite ? min(max(look.hairTone, 0), 1) : 0,
-                       ears: look.ears, glasses: look.glasses))
+                       ears: look.ears, glasses: look.glasses),
+            tag: WyrmSkinCatalog.tags[safe: tagIndex]?.ntlID)
     }
 
     /// The body for the POST: plain JSON types, so JSONSerialization writes
     /// true/false and integers exactly.
     var json: [String: Any] {
-        ["v": 1, "custom": custom, "preset": preset, "code": code, "colours": colours, "accessory": accessory,
-         "look": ["hair": look.hair, "hairTone": look.hairTone, "ears": look.ears, "glasses": look.glasses]]
+        var body: [String: Any] = ["v": 1, "custom": custom, "preset": preset, "code": code, "colours": colours,
+                                   "accessory": accessory,
+                                   "look": ["hair": look.hair, "hairTone": look.hairTone, "ears": look.ears,
+                                            "glasses": look.glasses]]
+        if let tag, (0...65535).contains(tag) { body["tag"] = tag }
+        return body
     }
 
     /// The pattern as Wyrm wears it, bead group and colour position for
@@ -114,6 +123,13 @@ struct WyrmTrailSkin: Codable, Equatable {
         return (0..<256).map { source.isEmpty ? 0 : source[$0 % source.count] }
     }
 
+    /// The tag as an index in `WyrmSkinCatalog.tags` (what the Skin tab
+    /// saves), or -1 when there is none or this app does not have it.
+    var wornTagIndex: Int {
+        guard let tag else { return -1 }
+        return WyrmSkinCatalog.tags.first(where: { $0.ntlID == tag })?.id ?? -1
+    }
+
     /// A known accessory, or -1.
     var wornAccessory: Int { WyrmSkinCatalog.accessories.contains(where: { $0.id == accessory }) ? accessory : -1 }
 }
@@ -131,6 +147,7 @@ extension WyrmTrailSkin {
         colours = Array(((try? c.decodeIfPresent([String].self, forKey: .colours)) ?? []).prefix(256))
         accessory = (try? c.decodeIfPresent(Int.self, forKey: .accessory)) ?? -1
         look = (try? c.decodeIfPresent(Look.self, forKey: .look)) ?? Look(hair: -1, hairTone: 0, ears: -1, glasses: -1)
+        tag = (try? c.decodeIfPresent(Int.self, forKey: .tag)).flatMap { (0...65535).contains($0) ? $0 : nil }
     }
 }
 
@@ -383,6 +400,44 @@ enum WyrmSkinSticker {
             WyrmStickerArt.put(image, in: CGRect(x: x - w / 2, y: -h / 2, width: w, height: h), cg: cg)
         }
         drawLook(skin.look, art: art, r: bead / 2, in: cg)
+        drawTag(skin, art: art, in: cg)
+        cg.restoreGState()
+    }
+
+    /// The tag (OM, 2026-10-04): `WyrmSwingTag`'s rope and art at rest
+    /// (chain 1, size 1), hanging straight back from the head, in the head's
+    /// frame. Android's `drawSkinSticker` draws the same.
+    @MainActor
+    private static func drawTag(_ skin: WyrmTrailSkin, art: WyrmStickerArt, in cg: CGContext) {
+        let index = skin.wornTagIndex
+        guard let item = WyrmSkinCatalog.tags[safe: index], let image = art.textures.tags[index] else { return }
+        let unit = bead / 29
+        let anchor = CGPoint(x: -8 * unit, y: 0)
+        let end = CGPoint(x: anchor.x - 9 * 4 * unit, y: 0)
+        let width = CGFloat(item.width) * 0.285 * unit
+        let height = CGFloat(item.height) * 0.285 * unit
+        // At rest the rope points straight back (angle pi), so the art turns half way.
+        let centre = CGPoint(x: end.x - (CGFloat(item.anchorX) * 0.285 * unit + width / 2),
+                             y: end.y - (CGFloat(item.anchorY) * 0.285 * unit + height / 2))
+        func rgb(_ value: UInt32, _ alpha: CGFloat) -> CGColor {
+            CGColor(srgbRed: CGFloat((value >> 16) & 0xFF) / 255, green: CGFloat((value >> 8) & 0xFF) / 255,
+                    blue: CGFloat(value & 0xFF) / 255, alpha: alpha)
+        }
+        cg.saveGState()
+        cg.setLineCap(.round)
+        for (lineWidth, colour) in [(5 * unit, rgb(item.accentA, 1)), (4 * unit, rgb(item.accentB, 0.5)),
+                                    (3 * unit, rgb(item.accentB, 0.5)), (2 * unit, rgb(item.accentB, 0.5))] {
+            cg.setStrokeColor(colour)
+            cg.setLineWidth(lineWidth)
+            cg.move(to: anchor)
+            cg.addLine(to: end)
+            cg.strokePath()
+        }
+        cg.translateBy(x: centre.x, y: centre.y)
+        cg.rotate(by: .pi)
+        let fit = min(width / CGFloat(max(image.width, 1)), height / CGFloat(max(image.height, 1)))
+        let w = CGFloat(image.width) * fit, h = CGFloat(image.height) * fit
+        WyrmStickerArt.put(image, in: CGRect(x: -w / 2, y: -h / 2, width: w, height: h), cg: cg)
         cg.restoreGState()
     }
 

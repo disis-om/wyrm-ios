@@ -17,7 +17,7 @@ for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
 assert "4_000_000_000" in swift
 # NTL back on (OM, 2026-10-04): the real tag, this app's own version, and
 # accessories still never sent to NTL.
-assert 'URLQueryItem(name: "ver", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString")' in swift
+assert 'URLQueryItem(name: "ver", value: "9.68")' in swift  # NTL accepts only its own version window
 assert 'URLQueryItem(name: "cs", value: "-1")' in swift
 assert 'URLQueryItem(name: "tg", value: "\(presence.tag)")' in swift
 assert "static let ntlServicesDisabled = false" in swift

@@ -667,6 +667,313 @@ WEB_ONLY_PAIRS = [(r'''    /* Two clients, two answers to the same challenge. Th
     arena_send(c, (uint8_t[]){'c', 0}, 2);''')]
 
 
+
+# NTL's tag in the skin block (OM, 2026-10-04): the same C as Wyrm Android's
+# network/callback.c, game/snake.h, game/tags.c and network/ntl_net.c,
+# byte for byte (free tags 254/18, public 255/38 in bytes 0, 1, 2 and 6 of
+# the join's skin block, read back from other snakes as NTL 9.68 reads
+# them). Revert: delete this constant and its use below.
+NTL_SKIN_TAG_PAIRS = {
+    'app/src/network/callback.c': [
+        (r'''#include "../game/snake.h"
+''',
+         r'''#include "../game/snake.h"
+#include "../game/tags.h"
+'''),
+        (r'''/*
+ * The snake this player is steering, or nothing at all.
+''',
+         r'''/*
+ * NTL's tag in the skin block (OM, 2026-10-04), byte for byte as NTL 9.68
+ * writes it (`legacy/ntl 9.68/main-mt.js`, the join builder) and reads it
+ * (its skin setup `rn`). The arena relays the block untouched and the
+ * official client reads only the runs from byte 8 on, so these first bytes
+ * are how every NTL player, and now every Wyrm player, shows a tag to
+ * everyone without a team:
+ *
+ *   free tags 0..59:      254, 18, skin, 0, 0, 0, tag,       0
+ *   public tags 200..367: 255, 38, skin, 0, 0, 0, tag - 200, 0
+ *   public tags 668..755: 255, 38, skin, 0, 0, 0, tag - 500, 0
+ *
+ * `skin` is 255 for a custom skin, else the preset. A preset that wears a tag
+ * goes out as a block too, with NTL's own runs for that preset (`Ff`), and
+ * NTL draws such a snake as the preset in byte 2. NTL's claimed private tags
+ * (60..199, 368..665, 756 on) travel on the tag socket with their password
+ * instead (ntl_net.c); Wyrm has none of their artwork. Without a tag the
+ * block is exactly what it was. Revert: the Wyrm Android AGENTS.md Log entry
+ * of 2026-10-04 "NTL tag corner".
+ */
+#define NTL_TAG_FREE_MARK 254   /* byte 0 of a free tag */
+#define NTL_TAG_FREE_KIND 18    /* byte 1 of a free tag: NTL's `tn` */
+#define NTL_TAG_PUBLIC_MARK 255 /* byte 0 of a public tag */
+#define NTL_TAG_PUBLIC_KIND 38  /* byte 1 of a public tag */
+#define NTL_TAG_FREE_COUNT 60   /* NTL's `PA`: its 60 bundled tags */
+#define NTL_PRESET_COUNT 66
+
+/* NTL's `Ff`: every preset as (count, colour) runs. */
+static const uint8_t NTL_PRESET_RUNS[NTL_PRESET_COUNT][24] = {
+  {1, 0},
+  {1, 1},
+  {1, 2},
+  {1, 3},
+  {1, 4},
+  {1, 5},
+  {1, 6},
+  {1, 7},
+  {1, 8},
+  {1, 7, 1, 9, 1, 7, 1, 9, 1, 7, 1, 9, 1, 7, 1, 9, 1, 7, 1, 9, 1, 7, 9, 10},
+  {5, 9, 5, 1, 5, 7},
+  {5, 11, 5, 7, 5, 12},
+  {5, 7, 5, 9, 5, 13},
+  {5, 14, 5, 9, 5, 7},
+  {7, 9, 7, 7},
+  {1, 0, 1, 1, 1, 2, 1, 3, 1, 4, 1, 5, 1, 6, 1, 7, 1, 8},
+  {7, 15, 7, 4},
+  {7, 9, 7, 16},
+  {7, 7, 7, 9},
+  {1, 9},
+  {5, 3, 5, 0},
+  {7, 3, 6, 18, 1, 20, 1, 19, 1, 20, 1, 19, 1, 20, 1, 19, 1, 20, 6, 18},
+  {7, 5, 7, 9, 7, 13},
+  {7, 16, 7, 18, 7, 7},
+  {9, 23, 9, 18},
+  {12, 21, 9, 22},
+  {1, 24},
+  {1, 25},
+  {7, 18, 7, 25, 7, 7},
+  {2, 11, 1, 4, 4, 11, 1, 4, 2, 11},
+  {2, 10, 1, 19, 1, 20, 2, 10, 1, 20, 1, 19},
+  {2, 10},
+  {2, 20},
+  {1, 12, 2, 11},
+  {2, 7, 1, 9, 2, 13, 1, 9, 2, 16, 1, 9, 2, 12, 1, 9, 2, 7, 1, 9, 2, 16, 1, 9},
+  {2, 7, 2, 9, 2, 6, 2, 9},
+  {2, 16, 2, 9, 2, 15, 2, 9},
+  {1, 22},
+  {1, 18},
+  {1, 23},
+  {1, 26},
+  {1, 27},
+  {8, 2, 8, 3, 8, 5, 8, 7},
+  {1, 28},
+  {1, 29},
+  {3, 7, 8, 9, 3, 7},
+  {1, 7},
+  {3, 16, 8, 18, 7, 7, 4, 16},
+  {1, 7},
+  {4, 23, 8, 9, 2, 23},
+  {14, 18, 7, 16, 7, 7},
+  {3, 7, 2, 9, 6, 16, 2, 9},
+  {4, 7, 9, 18, 5, 7},
+  {1, 30},
+  {1, 31},
+  {1, 32},
+  {1, 33},
+  {1, 34},
+  {1, 35},
+  {1, 18},
+  {1, 36},
+  {6, 30, 6, 35, 6, 33, 6, 31, 6, 32, 6, 34},
+  {5, 17, 5, 39},
+  {3, 7, 3, 11},
+  {2, 16, 2, 11},
+  {4, 4, 4, 9},
+};
+static const uint8_t NTL_PRESET_RUN_BYTES[NTL_PRESET_COUNT] = {
+  2, 2, 2, 2, 2, 2, 2, 2, 2, 24, 6, 6, 6, 6, 4, 18, 4, 4, 4, 2, 4, 20, 6, 6, 4, 4, 2, 2, 6, 10, 12, 2, 2, 4, 24, 8, 8, 2, 2, 2, 2, 2, 8, 2, 2, 6, 2, 8, 2, 6, 6, 8, 6, 2, 2, 2, 2, 2, 2, 2, 2, 12, 4, 4, 4, 4};
+
+/* NTL's `xA`: presets the official client draws with an antenna of their
+   own, and which tag that is. Wearing exactly that tag on that preset, NTL
+   sends no block (its `HA`), so the official antenna stays for everyone. */
+static const struct {
+  uint8_t skin;
+  int16_t tag;
+} NTL_PRESET_TAGS[] = {{24, 14}, {25, 13}, {27, -1}, {37, 1}, {39, 5}, {40, -1}, {41, -1}, {42, 4}, {45, 0}, {46, 3}, {47, 7}, {48, 2}, {49, 10}, {59, 6}, {62, 8}, {65, 39}};
+
+/* Bytes 0, 1 and 6 of the corner for an NTL tag number; false for a tag that
+   does not travel in the block. */
+static bool ntl_tag_corner(int ntl, uint8_t* mark, uint8_t* kind,
+                           uint8_t* tag) {
+  if (ntl > 199 && ntl < 368) {
+    *mark = NTL_TAG_PUBLIC_MARK;
+    *kind = NTL_TAG_PUBLIC_KIND;
+    *tag = (uint8_t)(ntl - 200);
+    return true;
+  }
+  if (ntl > 667 && ntl < 756) {
+    *mark = NTL_TAG_PUBLIC_MARK;
+    *kind = NTL_TAG_PUBLIC_KIND;
+    *tag = (uint8_t)(ntl - 500);
+    return true;
+  }
+  if (ntl >= 0 && ntl < NTL_TAG_FREE_COUNT) {
+    *mark = NTL_TAG_FREE_MARK;
+    *kind = NTL_TAG_FREE_KIND;
+    *tag = (uint8_t)ntl;
+    return true;
+  }
+  return false;
+}
+
+/* Whether a preset already wears this tag as its official antenna. */
+static bool ntl_preset_wears(int skin, int ntl) {
+  for (size_t i = 0; i < sizeof(NTL_PRESET_TAGS) / sizeof(NTL_PRESET_TAGS[0]);
+       i++)
+    if (NTL_PRESET_TAGS[i].skin == skin) return NTL_PRESET_TAGS[i].tag == ntl;
+  return false;
+}
+
+/* The NTL tag number a received block's corner names, or -1. */
+static int ntl_tag_from_corner(const uint8_t* corner) {
+  if (corner[1] == NTL_TAG_FREE_KIND)
+    return corner[0] == NTL_TAG_FREE_MARK && corner[6] < NTL_TAG_FREE_COUNT
+               ? corner[6]
+               : -1;
+  if (corner[1] == NTL_TAG_PUBLIC_KIND)
+    return corner[6] < 168 ? corner[6] + 200 : corner[6] + 500;
+  return -1;
+}
+
+/*
+ * The snake this player is steering, or nothing at all.
+'''),
+        (r'''    ba = malloc(8 + 20 + nick_len + (skin_compressed ? 8 + skin_compressed_len : 0));
+''',
+         r'''    /* NTL's tag corner (see ntl_tag_corner). A preset wearing a tag goes out
+       with NTL's block for that preset, unless the preset already wears that
+       very tag as its official antenna: then NTL sends no block either. */
+    uint8_t tag_mark = 0, tag_kind = 0, tag_byte = 0;
+    int worn_ntl = tags_valid(usrs->tag_index) ? tags_ntl_id(usrs->tag_index) : -1;
+    bool tag_corner =
+        web_persona && ntl_tag_corner(worn_ntl, &tag_mark, &tag_kind, &tag_byte);
+    bool preset_block = false;
+    if (tag_corner && !skin_compressed &&
+        (usrs->default_skin >= NTL_PRESET_COUNT ||
+         !ntl_preset_wears(usrs->default_skin, worn_ntl))) {
+      int preset = usrs->default_skin % NTL_PRESET_COUNT;
+      skin_compressed = tdarray_create(uint8_t);
+      for (int i = 0; i < NTL_PRESET_RUN_BYTES[preset]; i++) {
+        uint8_t run_byte = NTL_PRESET_RUNS[preset][i];
+        tdarray_push(&skin_compressed, &run_byte);
+      }
+      skin_compressed_len = NTL_PRESET_RUN_BYTES[preset];
+      preset_block = true;
+    }
+    if (!skin_compressed) tag_corner = false;
+    ba = malloc(8 + 20 + nick_len + (skin_compressed ? 8 + skin_compressed_len : 0));
+'''),
+        (r'''    if (skin_compressed) {
+      ba[m++] = 255;
+      ba[m++] = 255;
+      ba[m++] = 255;
+      ba[m++] = 0;
+      ba[m++] = 0;
+      ba[m++] = 0;
+      ba[m++] = rand() % 256;
+      ba[m++] = rand() % 256;
+''',
+         r'''    if (skin_compressed) {
+      int corner = m;
+      ba[m++] = 255;
+      ba[m++] = 255;
+      ba[m++] = 255;
+      ba[m++] = 0;
+      ba[m++] = 0;
+      ba[m++] = 0;
+      ba[m++] = rand() % 256;
+      ba[m++] = rand() % 256;
+      if (tag_corner) {
+        /* NTL's header is 255 255 255 0 0 0 0 0 (`Zf`) with bytes 0, 1, 2
+           and 6 written over; byte 7 stays 0. */
+        ba[corner + 0] = tag_mark;
+        ba[corner + 1] = tag_kind;
+        ba[corner + 2] = preset_block ? usrs->default_skin : 255;
+        ba[corner + 6] = tag_byte;
+        ba[corner + 7] = 0;
+        SDL_Log("Wyrm arena: NTL tag %d in the skin corner (%s block, %d run bytes)",
+                worn_ntl, preset_block ? "preset" : "custom", skin_compressed_len);
+      }
+'''),
+        (r'''      int skl = gdata->data.protocol_version >= 11 ? a[m++] : 0;
+      if (skl > 0) {
+''',
+         r'''      int skl = gdata->data.protocol_version >= 11 ? a[m++] : 0;
+      /* NTL's tag corner (see ntl_tag_corner), read as NTL reads it: the tag,
+         and for NTL's two kinds a preset in byte 2 that NTL draws instead of
+         the runs (255: the runs are the skin). */
+      int corner_tag = -1;
+      int corner_preset = -1;
+      if (skl >= 8 && m + 8 <= alen) {
+        corner_tag = ntl_tag_from_corner(a + m);
+        if ((a[m + 1] == NTL_TAG_FREE_KIND || a[m + 1] == NTL_TAG_PUBLIC_KIND) &&
+            a[m + 2] != 255)
+          corner_preset = a[m + 2];
+      }
+      if (skl > 0) {
+'''),
+        (r'''      o.cv = cv % NUM_DEFAULT_SKINS;
+      o.cusk = skl != 0;
+''',
+         r'''      o.cv = cv % NUM_DEFAULT_SKINS;
+      o.cusk = skl != 0;
+      /* A corner naming a preset: that preset, as NTL draws it (the runs are
+         only the official client's copy of it). */
+      if (corner_preset >= 0) {
+        o.cv = corner_preset % NUM_DEFAULT_SKINS;
+        o.cusk = false;
+        o.cusk_len = 0;
+      }
+      o.skin_tag = corner_tag >= 0 ? tags_from_ntl_id(corner_tag) + 1 : 0;
+'''),
+    ],
+    'app/src/game/snake.h': [
+        (r'''  int ntl_id;
+  bool local_player;
+''',
+         r'''  int ntl_id;
+  /* The tag in NTL's corner of this snake's skin block (callback.c), as an
+     index into the tag sheet plus one: 0 is none, so a zeroed snake (the AI
+     arena's) wears nothing. */
+  int skin_tag;
+  bool local_player;
+'''),
+    ],
+    'app/src/game/tags.c': [
+        (r'''  int index = (mine && tags_valid(usrs->tag_index)) ? usrs->tag_index
+              : slot                               ? slot->tag
+                                                   : -1;
+''',
+         r'''  /* Someone else's: the tag socket's when it named one, else the one in
+     NTL's corner of their skin block (`skin_tag`, index + 1), as NTL does. */
+  int index = (mine && tags_valid(usrs->tag_index)) ? usrs->tag_index
+              : slot && tags_valid(slot->tag)      ? slot->tag
+                                                   : o->skin_tag - 1;
+'''),
+    ],
+    'app/src/network/ntl_net.c': [
+        (r'''/* Long enough that a service which is simply down is not hammered, short enough
+   that a player who was disconnected mid-match gets their tags back. */
+#define NTL_RETRY_MS 15000
+''',
+         r'''/* NTL's own pace (OM, 2026-10-04: same timing as NTL): its one-second tick
+   dials again whenever the socket is gone (`Zo` from `D5`). Was 15000. */
+#define NTL_RETRY_MS 1000
+'''),
+        (r''' * and after that only `[x, y]`. `tagid` is `-1` and `tagpass` empty unless the
+ * player has *claimed* a private tag — the free and bundled ones travel on the
+ * team endpoint's `tg` instead, which Wyrm already sends. So this connection is
+ * here to listen, and it announces mostly so that it is allowed to.
+''',
+         r''' * and after that only `[x, y]`. `tagid` is `-1` and `tagpass` empty unless the
+ * player has *claimed* a private tag. The free and public ones travel in the
+ * corner of the join's skin block (callback.c, `ntl_tag_corner`), as NTL's
+ * do, and to teammates on the team endpoint's `tg`. So this connection is
+ * here to listen, and it announces mostly so that it is allowed to.
+'''),
+    ],
+}  # end NTL_SKIN_TAG_PAIRS
+
+
 def apply_run_capture(text):
     def once(old, new):
         nonlocal text
@@ -1161,6 +1468,9 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
             assert text.count(old) == 1, old[:60]
             text = text.replace(old, new)
         text = apply_run_capture(text)
+    for old, new in NTL_SKIN_TAG_PAIRS.get(relative, []):
+        assert text.count(old) == 1, (relative, old[:60])
+        text = text.replace(old, new)
     if text != original:
         path.write_text(text, encoding="utf-8")
         changed.append(relative)

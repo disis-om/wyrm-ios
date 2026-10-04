@@ -352,7 +352,8 @@ struct WyrmSkinRoot: View {
                 // Try this skin: the draft, never the saved skin, until Wear.
                 WyrmSkinPreview(textures: textures, groups: draft.wornGroups, colors: draft.wornColors,
                                 preset: draft.preset, custom: draft.wearsPattern,
-                                accessoryID: draft.wornAccessory, tagID: tag,
+                                accessoryID: draft.wornAccessory,
+                                tagID: draft.wornTagIndex >= 0 ? draft.wornTagIndex : tag,
                                 backgroundID: background, chain: chain,
                                 swing: swing, tagScale: tagScale, trialLook: draft.look)
                     .frame(height: 218)
@@ -490,6 +491,7 @@ struct WyrmSkinRoot: View {
             customEnabled = false
         }
         accessory = draft.wornAccessory
+        if draft.wornTagIndex >= 0 { tag = draft.wornTagIndex }
         look.wear(hair: draft.look.hair, hairTone: draft.look.hairTone, ears: draft.look.ears, glasses: draft.look.glasses)
         editingPattern = false
         apply()

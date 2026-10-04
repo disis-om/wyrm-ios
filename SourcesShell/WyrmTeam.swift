@@ -298,9 +298,11 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "cs", value: "-1"),
             // The tag in the mod's numbering, -1 for none (on again, OM 2026-10-04).
             URLQueryItem(name: "tg", value: "\(presence.tag)"),
-            // This app's own version, as Android sends BuildConfig.VERSION_NAME
-            // (OM, 2026-10-04). Was a fixed "1.5.1".
-            URLQueryItem(name: "ver", value: Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? ""),
+            // NTL's own version, not Wyrm's (OM, 2026-10-04): the team service
+            // answers only a window around NTL's current release (tested live:
+            // 9.67-9.70 get the roster; 6.4, 6.4.5, 0.18.31, 9.61, 9.99 do not).
+            // Same as Android TeamService.VERSION. Raise it when NTL moves on.
+            URLQueryItem(name: "ver", value: "9.68"),
             URLQueryItem(name: "tlm", value: ""),
             URLQueryItem(name: "di", value: "0"),
             URLQueryItem(name: "tar", value: ""),
