@@ -75,7 +75,7 @@ jobs:
           test "$HOME_HEIGHT" -gt "$HOME_WIDTH"
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/settings-stdout.log" --stderr="$PWD/original-artifacts/settings-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-settings --smoke-settings-write
-          sleep 8
+          sleep 14
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-settings.png
           grep 'Wyrm SwiftUI shell installed' original-artifacts/settings-stderr.log
           grep 'Wyrm engine bootstrap scheduled off main thread' original-artifacts/settings-stderr.log

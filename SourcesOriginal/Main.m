@@ -532,6 +532,11 @@ static int engine_main(int argc, char** argv) {
       @autoreleasepool {
         tinit(&engine);
         CFAbsoluteTime elapsed = CFAbsoluteTimeGetCurrent() - started;
+        /* Log here, on the worker, before hopping back to main. The Simulator
+           smoke test reads this line after a fixed wait, and the main queue can
+           still be inside the first SwiftUI layout. */
+        SDL_Log("Wyrm engine bootstrap completed off main thread in %.0f ms; Apple animation callback installed",
+                elapsed * 1000.0);
         dispatch_async(dispatch_get_main_queue(), ^{
           ready = true;
           if (smoke_ai) WyrmIOSRequestPlay("Apple test", "", true);
@@ -543,8 +548,6 @@ static int engine_main(int argc, char** argv) {
           }
           if (smoke_online)
             WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
-          SDL_Log("Wyrm engine bootstrap completed off main thread in %.0f ms; Apple animation callback installed",
-                  elapsed * 1000.0);
         });
       }
     });
