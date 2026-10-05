@@ -33,8 +33,12 @@ final class WyrmKeyboardController: ObservableObject {
     @Published private(set) var focused = false
     @Published var layout: Layout = .letters
     @Published var shift: Shift = .off
-    /// Set while the Ready Room is on screen: keys are drawn in its canvas.
+    /// Set while the Ready Room or the arena's team composer is on screen
+    /// sideways: keys are drawn in its landscape canvas.
     @Published var embedded = false
+    /// The sideways keyboard's width at scale 1: the size of a phone's own
+    /// keyboard, not stretched across the landscape (OM, 2026-10-06).
+    static let landscapeWidth: CGFloat = 440
     /// The gear key swaps the keys for size and transparency controls.
     @Published var showingSettings = false
     /// 0.8…1.3 of the standard key size; kept on the device.

@@ -11,10 +11,16 @@ import UIKit
  * carries it), and replayable from Settings › Help & feedback.
  *
  * The tour walks the real app: each step names a place (Home, Play › Controls
- * on one of its tabs, the Settings tab) that `WyrmDesignMain` opens, and an
- * anchor id carried by the real control (`wyrmTourAnchor`). Anchors report
- * their frames and the scroll views around them bring them into view. Taps on
- * the dimmed app are held while the tour runs.
+ * on one of its tabs, the Settings tab) that `WyrmDesignMain` opens with the
+ * app's own page animations, and an anchor id carried by the real control
+ * (`wyrmTourAnchor`). Anchors report their frames and the scroll views around
+ * them bring the step's control to the middle.
+ *
+ * Smoothness (OM, 2026-10-06: the card flickered, jumping from top to bottom):
+ * on Next the card fades away, the lit window glides from where it was to the
+ * new control (it stays on the old one until the new one has been laid out),
+ * and the new card only appears once that control has stopped moving, already
+ * in its final place. The tour arrives and leaves cinematically.
  *
  * Same steps, words and order as Wyrm Android (`ui/WyrmTour.kt`).
  */
@@ -43,15 +49,13 @@ final class WyrmTour: ObservableObject {
         WyrmTourStep(place: .home, anchor: "home.near", title: "Near Original",
                      body: "Play like the original slither.io: its minimap, leaderboard, joystick, boost and arrow. Turn it off for Wyrm's own."),
         WyrmTourStep(place: .home, anchor: "home.controls", title: "Controls",
-                     body: "How you play: steering, on-screen buttons and where everything sits in the arena."),
-        WyrmTourStep(place: .controls, anchor: "controls.preview", title: "Steering",
-                     body: "Choose Arrow or Joystick, how you boost, sizes, the arrow's look and movement, and the zoom bar. The preview shows it live."),
+                     body: "How you play. Three tabs inside: Controls, On-screen buttons and Arena UI."),
+        WyrmTourStep(place: .controls, anchor: "controls.tabs", title: "Controls",
+                     body: "Steer with the Arrow or the Joystick, choose how you boost, and set sizes, the arrow's look and movement, and the zoom bar."),
         WyrmTourStep(place: .buttons, anchor: "controls.tabs", title: "On-screen buttons",
                      body: "Pick which buttons appear in the arena, like zoom, auto restart and chat, and how each one fires."),
         WyrmTourStep(place: .arenaUI, anchor: "controls.tabs", title: "Arena UI",
-                     body: "Set the size of the minimap, the leaderboard and the stats text."),
-        WyrmTourStep(place: .arenaUI, anchor: "controls.arrange", title: "Arrange the layout",
-                     body: "Opens the arena editor, sideways like a match. Drag the joystick, boost, buttons, minimap, leaderboard, stats, team roster and chat where you want them, then Save."),
+                     body: "Size the minimap, the leaderboard and the stats text. Arrange arena UI moves them, the team roster and chat anywhere."),
         WyrmTourStep(place: .settings, anchor: "settings.arena", title: "Arena",
                      body: "Display: scores, names, minimap and text sizes. Controls: steering, boost and the zoom bar. On-screen buttons: which ones show and how they fire."),
         WyrmTourStep(place: .settings, anchor: "settings.help", title: "Playing help",
@@ -68,29 +72,55 @@ final class WyrmTour: ObservableObject {
 
     /// -1 while the tour is not running.
     @Published var step = -1
+    /// Finishing: the tour is easing out; it ends when the overlay is gone.
+    @Published var closing = false
 
     var active: Bool { step >= 0 }
     var current: WyrmTourStep? { Self.steps.indices.contains(step) ? Self.steps[step] : nil }
-    var target: String? { current?.anchor }
+    var target: String? { closing ? nil : current?.anchor }
     /// The lit steps (everything but the welcome and the last card).
     var spotlightCount: Int { Self.steps.count - 2 }
     var pending: Bool { UserDefaults.standard.integer(forKey: Self.seenKey) < Self.version }
 
     func start() {
+        closing = false
         WyrmTourFrames.shared.publishAll()
         step = 0
     }
 
     func next() {
+        guard !closing else { return }
         if step >= Self.steps.count - 1 { finish() } else { step += 1 }
     }
 
-    func back() { if step > 0 { step -= 1 } }
+    func back() {
+        guard !closing else { return }
+        if step > 0 { step -= 1 }
+    }
 
-    /// Finished or skipped: seen on this phone for this tour version.
+    /// Finished or skipped: seen on this phone for this tour version; the overlay eases out, then `end`.
     func finish() {
         UserDefaults.standard.set(Self.version, forKey: Self.seenKey)
+        if active { closing = true }
+    }
+
+    /// Called by the overlay once it has eased out.
+    func end() {
         step = -1
+        closing = false
+    }
+
+    /// The window for step `index`: its own control once laid out; until then
+    /// the last lit control before it, so the window glides instead of blinking.
+    static func hole(for index: Int, in frames: [String: CGRect]) -> CGRect? {
+        guard steps.indices.contains(index), let anchor = steps[index].anchor else { return nil }
+        if let frame = frames[anchor] { return frame }
+        var i = index - 1
+        while i >= 0 {
+            if let earlier = steps[i].anchor, let frame = frames[earlier] { return frame }
+            i -= 1
+        }
+        return nil
     }
 }
 
@@ -109,9 +139,11 @@ final class WyrmTourFrames: ObservableObject {
         frames[id] = frame
     }
 
+    /// A control that left: while the tour runs its last frame stays, so the
+    /// window can glide from it.
     func forget(_ id: String) {
         latest[id] = nil
-        if frames[id] != nil { frames[id] = nil }
+        if !WyrmTour.shared.active, frames[id] != nil { frames[id] = nil }
     }
 
     func publishAll() { frames = latest }
@@ -130,16 +162,13 @@ extension View {
             })
     }
 
-    /// Scrolls the tour's current anchor into view when its step comes up.
+    /// Scrolls the tour's current anchor to the middle when its step comes up
+    /// (as far as the page scrolls: a control at the very end stays low).
     func wyrmTourScroll(_ proxy: ScrollViewProxy) -> some View {
         onReceive(WyrmTour.shared.$step) { _ in
-            DispatchQueue.main.async {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.16) {
                 guard let target = WyrmTour.shared.target else { return }
-                // Let a page that just slid in settle before scrolling it.
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.38) {
-                    guard WyrmTour.shared.target == target else { return }
-                    withAnimation(.easeInOut(duration: 0.35)) { proxy.scrollTo(target, anchor: .center) }
-                }
+                withAnimation(.spring(response: 0.5, dampingFraction: 0.9)) { proxy.scrollTo(target, anchor: .center) }
             }
         }
     }
@@ -152,15 +181,28 @@ struct WyrmTourOverlay: View {
     let safeBottom: CGFloat
     @ObservedObject var tour = WyrmTour.shared
     @ObservedObject var frames = WyrmTourFrames.shared
+    /// The cinematic arrival and leaving of the whole tour, 0 to 1.
+    @State private var presence: Double = 0
+    /// The step whose card is on screen, and how far it has come in.
+    @State private var shownIndex = 0
+    @State private var cardIn: Double = 0
+    @State private var cardHeight: CGFloat = 0
+    @State private var settling: Task<Void, Never>?
+
+    private static let glide = Animation.spring(response: 0.55, dampingFraction: 0.9)
 
     var body: some View {
         GeometryReader { geo in
             let origin = geo.frame(in: .global).origin
-            let step = tour.current
-            let lit: CGRect? = step?.anchor.flatMap { frames.frames[$0] }
-                .map { $0.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: -8, dy: -8) }
-                .flatMap { $0.width > 2 && $0.height > 2 ? $0 : nil }
-            let closed = CGRect(x: geo.size.width / 2, y: geo.size.height / 2, width: 0, height: 0)
+            let size = geo.size
+            let hole = local(WyrmTour.hole(for: tour.step, in: frames.frames), origin)
+            let closed = CGRect(x: size.width / 2, y: size.height / 2, width: 0, height: 0)
+            let shownAnchor = WyrmTour.steps.indices.contains(shownIndex) ? WyrmTour.steps[shownIndex].anchor : nil
+            let shownHole = shownAnchor == nil ? nil : local(WyrmTour.hole(for: shownIndex, in: frames.frames), origin)
+            let width = min(size.width - 32, 420)
+            let centerY = cardCenterY(shownHole, size: size)
+            let intro = shownIndex == 0
+            let scale = (intro ? 0.86 + 0.14 * cardIn : 0.96 + 0.04 * cardIn) * (0.94 + 0.06 * presence)
             ZStack(alignment: .topLeading) {
                 // Holds every tap and drag on the app beneath while the tour runs.
                 // A layer under the card, so it never competes with the card's buttons.
@@ -169,31 +211,111 @@ struct WyrmTourOverlay: View {
                     .onTapGesture {}
                     .gesture(DragGesture(minimumDistance: 0))
                 // The dim, with the lit window cut out of it; the window glides between steps.
-                WyrmTourDim(hole: lit ?? closed)
-                    .fill(Color.black.opacity(step?.anchor == nil ? 0.55 : 0.62), style: FillStyle(eoFill: true))
+                WyrmTourDim(hole: hole ?? closed)
+                    .fill(Color.black.opacity((tour.current?.anchor == nil ? 0.58 : 0.64) * presence), style: FillStyle(eoFill: true))
+                    .animation(Self.glide, value: hole)
                     .allowsHitTesting(false)
-                if let lit {
-                    WyrmTourRing(rect: lit)
+                if let hole {
+                    WyrmTourRing(rect: hole)
+                        .opacity(presence)
+                        .animation(Self.glide, value: hole)
                 }
-                if let step {
-                    WyrmTourCardBody(step: step, index: tour.step, total: tour.spotlightCount,
+                if WyrmTour.steps.indices.contains(shownIndex) {
+                    WyrmTourCardBody(step: WyrmTour.steps[shownIndex], index: shownIndex, total: tour.spotlightCount,
+                                     drawn: intro ? cardIn : 1,
                                      onNext: { tour.next() }, onBack: { tour.back() }, onSkip: { tour.finish() })
-                        .frame(width: min(geo.size.width - 32, 420))
+                        .frame(width: width)
                         .fixedSize(horizontal: false, vertical: true)
                         .background(GeometryReader { card in
                             Color.clear.preference(key: WyrmTourCardHeight.self, value: card.size.height)
                         })
-                        .modifier(WyrmTourCardPlacement(lit: lit, top: safeTop + 12,
-                                                        bottom: geo.size.height - safeBottom - 12, size: geo.size))
-                        .id(tour.step)
-                        .transition(.asymmetric(insertion: .opacity.combined(with: .offset(y: 12)), removal: .opacity))
+                        .onPreferenceChange(WyrmTourCardHeight.self) { cardHeight = $0 }
+                        .scaleEffect(scale)
+                        .opacity(cardIn * presence)
+                        .offset(y: (1 - cardIn) * 18 + (1 - presence) * 14)
+                        .position(x: size.width / 2, y: centerY)
+                        // Hidden it jumps to its place; showing it glides with a control that still nudges.
+                        .animation(cardIn > 0.05 ? Animation.spring(response: 0.45, dampingFraction: 0.9) : nil, value: centerY)
+                        .allowsHitTesting(cardIn > 0.5 && !tour.closing)
                 }
             }
-            .frame(width: geo.size.width, height: geo.size.height)
-            .animation(.easeInOut(duration: 0.32), value: lit)
-            .animation(.easeOut(duration: 0.22), value: tour.step)
+            .frame(width: size.width, height: size.height)
         }
         .ignoresSafeArea()
+        .onAppear {
+            shownIndex = max(tour.step, 0)
+            withAnimation(.easeInOut(duration: 0.56)) { presence = 1 }
+            settle(to: tour.step)
+        }
+        .onChange(of: tour.step) { settle(to: $0) }
+        .onChange(of: tour.closing) { closing in
+            guard closing else { return }
+            settling?.cancel()
+            withAnimation(.easeInOut(duration: 0.52)) { presence = 0 }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.54) { tour.end() }
+        }
+        .onDisappear { settling?.cancel() }
+    }
+
+    private func local(_ frame: CGRect?, _ origin: CGPoint) -> CGRect? {
+        guard let frame else { return nil }
+        let lit = frame.offsetBy(dx: -origin.x, dy: -origin.y).insetBy(dx: -8, dy: -8)
+        return lit.width > 2 && lit.height > 2 ? lit : nil
+    }
+
+    /// Under the window when it is in the top half, over it otherwise, centred when nothing is lit.
+    private func cardCenterY(_ lit: CGRect?, size: CGSize) -> CGFloat {
+        let h = max(cardHeight, 1)
+        guard let lit else { return size.height / 2 }
+        let top = safeTop + 12
+        let bottom = size.height - safeBottom - 12
+        let gap: CGFloat = 14
+        let below = lit.maxY + gap
+        let above = lit.minY - gap - h
+        let roomBelow = bottom - below - h
+        let roomAbove = above - top
+        var y: CGFloat
+        if lit.midY < size.height / 2 && roomBelow >= 0 { y = below }
+        else if roomAbove >= 0 { y = above }
+        else if roomBelow >= 0 { y = below }
+        else { y = bottom - h }
+        y = min(max(y, top), max(top, bottom - h))
+        return y + h / 2
+    }
+
+    /// The new step's card waits until its control has stopped moving (page
+    /// changes and scrolls), then rises in, already in its place.
+    private func settle(to index: Int) {
+        settling?.cancel()
+        guard WyrmTour.steps.indices.contains(index) else { return }
+        if cardIn > 0 && shownIndex != index {
+            withAnimation(.easeOut(duration: 0.15)) { cardIn = 0 }
+        }
+        let before = WyrmTour.steps.indices.contains(shownIndex) ? WyrmTour.steps[shownIndex].place : .home
+        let step = WyrmTour.steps[index]
+        let minWait: Double = index == 0 ? 0.42 : (before != step.place ? 0.72 : 0.26)
+        settling = Task { @MainActor in
+            let started = Date()
+            var last: CGRect?
+            var still = 0
+            while !Task.isCancelled {
+                let now = step.anchor.flatMap { WyrmTourFrames.shared.frames[$0] }
+                var settled = step.anchor == nil
+                if let now, let last, abs(now.minX - last.minX) < 0.5, abs(now.minY - last.minY) < 0.5,
+                   abs(now.width - last.width) < 0.5, abs(now.height - last.height) < 0.5 { settled = true }
+                still = settled ? still + 1 : 0
+                last = now
+                let waited = Date().timeIntervalSince(started)
+                if (waited >= minWait && still >= 4) || waited > 2.6 { break }
+                try? await Task.sleep(nanoseconds: 50_000_000)
+            }
+            guard !Task.isCancelled else { return }
+            shownIndex = index
+            // A moment for the new card to be measured and placed before it shows.
+            try? await Task.sleep(nanoseconds: 50_000_000)
+            guard !Task.isCancelled else { return }
+            withAnimation(.spring(response: 0.48, dampingFraction: 0.86)) { cardIn = 1 }
+        }
     }
 }
 
@@ -225,7 +347,7 @@ private struct WyrmTourRing: View {
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .stroke(Color.white.opacity(pulse ? 0 : 0.45), lineWidth: 2)
                 .frame(width: rect.width + (pulse ? 20 : 0), height: rect.height + (pulse ? 20 : 0))
-                .animation(.easeOut(duration: 1.4).repeatForever(autoreverses: false), value: pulse)
+                .animation(.easeOut(duration: 1.5).repeatForever(autoreverses: false), value: pulse)
         }
         .position(x: rect.midX, y: rect.midY)
         .allowsHitTesting(false)
@@ -238,42 +360,12 @@ private struct WyrmTourCardHeight: PreferenceKey {
     static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
 }
 
-/// Places the card once its height is known, so it never covers the lit window.
-private struct WyrmTourCardPlacement: ViewModifier {
-    let lit: CGRect?
-    let top: CGFloat
-    let bottom: CGFloat
-    let size: CGSize
-    @State private var height: CGFloat = 0
-
-    func body(content: Content) -> some View {
-        content
-            .onPreferenceChange(WyrmTourCardHeight.self) { height = $0 }
-            .position(x: size.width / 2, y: centerY)
-    }
-
-    private var centerY: CGFloat {
-        let h = max(height, 1)
-        guard let lit else { return size.height / 2 }
-        let gap: CGFloat = 14
-        let below = lit.maxY + gap
-        let above = lit.minY - gap - h
-        let roomBelow = bottom - below - h
-        let roomAbove = above - top
-        var y: CGFloat
-        if lit.midY < size.height / 2 && roomBelow >= 0 { y = below }
-        else if roomAbove >= 0 { y = above }
-        else if roomBelow >= 0 { y = below }
-        else { y = bottom - h }
-        y = min(max(y, top), max(top, bottom - h))
-        return y + h / 2
-    }
-}
-
 private struct WyrmTourCardBody: View {
     let step: WyrmTourStep
     let index: Int
     let total: Int
+    /// How far the welcome's W has drawn itself, 0 to 1.
+    let drawn: Double
     let onNext: () -> Void
     let onBack: () -> Void
     let onSkip: () -> Void
@@ -299,7 +391,12 @@ private struct WyrmTourCardBody: View {
 
     private var welcome: some View {
         VStack(spacing: 0) {
-            WyrmBrandMark(size: 58)
+            // The W draws itself as the welcome arrives.
+            WyrmBrandStroke()
+                .trim(from: 0, to: drawn)
+                .stroke(ATheme.ink, style: StrokeStyle(lineWidth: 58 * 0.16, lineCap: .round, lineJoin: .round))
+                .frame(width: 58, height: 58)
+                .animation(.easeInOut(duration: 1.0), value: drawn)
             Text(step.title).font(.wyrmDisplay(30)).foregroundColor(ATheme.ink)
                 .multilineTextAlignment(.center).padding(.top, 14)
             Text(step.body).font(.androidWyrm(14.5)).foregroundColor(ATheme.mute)

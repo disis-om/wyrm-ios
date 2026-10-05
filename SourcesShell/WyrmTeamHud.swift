@@ -102,13 +102,66 @@ final class WyrmTeamComposer: ObservableObject {
 struct WyrmArenaComposerBar: View {
     @ObservedObject var composer = WyrmTeamComposer.shared
     @ObservedObject var team: WyrmTeamStore
+    @ObservedObject private var keyboard = WyrmKeyboardController.shared
+    @ObservedObject private var orientation = WyrmPlayOrientation.shared
     @FocusState private var focused: Bool
 
     var body: some View {
+        Group {
+            if orientation.portrait {
+                upright
+            } else {
+                sideways
+            }
+        }
+        .onAppear {
+            // Sideways the keys are drawn in the arena's own canvas, as in the
+            // Ready Room (OM, 2026-10-06: no keyboard came up in a sideways
+            // match). Set before the field takes focus, which asks for them.
+            keyboard.embedded = !orientation.portrait
+            DispatchQueue.main.async { focused = true }
+        }
+        .onDisappear { keyboard.embedded = false }
+    }
+
+    /// Playing upright: the phone's own docked keys, the bar rising above them.
+    private var upright: some View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(0.001)
                 .ignoresSafeArea()
                 .onTapGesture { composer.close() }
+            field
+                .frame(maxWidth: 560)
+                .padding(.horizontal, 12).padding(.bottom, 10)
+        }
+    }
+
+    /// Playing sideways: the bar and the Wyrm keys inside the landscape canvas
+    /// the match is drawn in, the bar just above the keys.
+    private var sideways: some View {
+        WyrmLandscapeStage { size, safe in
+            ZStack(alignment: .bottom) {
+                Color.black.opacity(0.001)
+                    .onTapGesture { composer.close() }
+                VStack(spacing: 8) {
+                    field.frame(maxWidth: 560)
+                    if keyboard.focused && keyboard.embedded {
+                        WyrmKeyboardView(compact: true)
+                            .frame(width: min(size.width - safe.leading - safe.trailing - 24,
+                                              WyrmKeyboardController.landscapeWidth * keyboard.scale))
+                            .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
+                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 8)
+                .animation(.spring(response: 0.32, dampingFraction: 0.88), value: keyboard.focused)
+            }
+            .frame(width: size.width, height: size.height)
+        }
+    }
+
+    private var field: some View {
             HStack(spacing: 8) {
                 TextField("Message the team", text: $composer.draft)
                     .font(.androidWyrm(15))
@@ -129,10 +182,6 @@ struct WyrmArenaComposerBar: View {
             .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
             .background(Capsule().fill(ATheme.card.opacity(0.97)))
             .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
-            .frame(maxWidth: 560)
-            .padding(.horizontal, 12).padding(.bottom, 10)
-        }
-        .onAppear { focused = true }
     }
 
     private var blank: Bool { composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }

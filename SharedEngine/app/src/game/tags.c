@@ -208,6 +208,15 @@ void tags_set(int snake_id, int tag) {
 
 void tags_forget_all(void) { memset(slots, 0, sizeof(slots)); }
 
+/* The tag socket closed (OM, 2026-10-06: tags flickered once a second and
+   went straight in turns). It retries every second, and each close used to
+   wipe every rope, laying them out straight again each time. Only the tag
+   numbers the socket sent go; the ropes keep swinging, and a snake falls
+   back to its skin-block corner tag (yours to your own) meanwhile. */
+void tags_clear_network(void) {
+  for (int i = 0; i < TAG_SLOTS; ++i) slots[i].tag = -1;
+}
+
 void tags_tick(tenv* env) {
   (void)env;
   /* The ropes are advanced when their snakes are drawn, which is the only

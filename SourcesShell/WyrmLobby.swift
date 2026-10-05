@@ -101,7 +101,8 @@ struct WyrmReadyRoom: View {
                 // The phone stays portrait, so the keyboard is drawn here, in
                 // the landscape canvas, the way the player is holding it.
                 if keyboard.focused && keyboard.embedded {
-                    let width = min(size.width - safe.leading - safe.trailing - 24, 640 * keyboard.scale)
+                    // A phone-sized keyboard, not one stretched across the room (OM, 2026-10-06).
+                    let width = min(size.width - safe.leading - safe.trailing - 24, WyrmKeyboardController.landscapeWidth * keyboard.scale)
                     let height = keyboard.keysHeight(compact: true) + 20
                     // Dragged by its knob, but never off the canvas.
                     let limitX = max(0, (size.width - width) / 2 - 8)

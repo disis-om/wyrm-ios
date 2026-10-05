@@ -107,7 +107,8 @@ static void ntl_callback(struct mg_connection* c, int ev, void* ev_data) {
     ntl_conn = NULL;
     announced = false;
     retry_after_ms = SDL_GetTicks() + NTL_RETRY_MS;
-    tags_forget_all();
+    /* Not tags_forget_all: that laid every rope out again on each retry. */
+    tags_clear_network();
     (void)env;
   }
 }

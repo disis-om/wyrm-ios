@@ -37,6 +37,8 @@ void tags_set(int snake_id, int tag);
 
 /** Drops every rope. Called when the arena is left. */
 void tags_forget_all(void);
+/* The tag socket dropped: forget what it said, keep every rope swinging. */
+void tags_clear_network(void);
 
 /**
  * Draws one snake's tag, if it has one and the settings allow it.

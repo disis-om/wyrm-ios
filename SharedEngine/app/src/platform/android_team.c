@@ -506,6 +506,27 @@ static ImU32 team_colour(float r, float g, float b, float a) {
   return igColorConvertFloat4ToU32((ImVec4){r, g, b, a});
 }
 
+/* You are on your own team's list. Your place is your arrow, not a second
+   dot on top of it (OM, 2026-10-06): the same in-game name, ignoring case
+   and spaces at the ends, is you. */
+static bool team_member_is_me(tenv* env, const team_member* member) {
+  const char* a = env->usr->usrs.nickname;
+  const char* b = member->name;
+  while (*a == ' ') ++a;
+  while (*b == ' ') ++b;
+  size_t la = strlen(a), lb = strlen(b);
+  while (la > 0 && a[la - 1] == ' ') --la;
+  while (lb > 0 && b[lb - 1] == ' ') --lb;
+  if (la == 0 || la != lb) return false;
+  for (size_t i = 0; i < la; ++i) {
+    char x = a[i], y = b[i];
+    if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
+    if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
+    if (x != y) return false;
+  }
+  return true;
+}
+
 void android_team_draw_minimap(tenv* env, float left, float top,
                                float diameter) {
   int count = frame_member_count;
@@ -525,6 +546,7 @@ void android_team_draw_minimap(tenv* env, float left, float top,
   for (int i = 0; i < count; ++i) {
     if (!frame_members[i].present) continue;
     if (frame_members[i].x == 0 && frame_members[i].y == 0) continue;
+    if (team_member_is_me(env, frame_members + i)) continue;
 
     float nx = (frame_members[i].x - game->data.grd) / world_radius;
     float ny = (frame_members[i].y - game->data.grd) / world_radius;

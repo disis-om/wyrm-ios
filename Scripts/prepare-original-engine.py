@@ -3551,3 +3551,44 @@ static void draw_skinless_strip(tenv* env, snake* o, int bp, float cx, float cy,
 ]  # end SKINLESS_MESH_PAIRS
 _arrow_patch('app/src/game/redraw.c', SKINLESS_MESH_PAIRS)
 print('Skinless: own mesh, no folded loops')
+
+# Minimap marks (OM, 2026-10-06): a ringed death dot (circle in circle) and
+# your own arrow at half its size. Same text as Android game/ui_overlay.c.
+MINIMAP_MARKS_PAIRS = [
+    (
+        "  float radius = diameter * 0.024f;\n"
+        "  if (radius < 3.5f) radius = 3.5f;\n"
+        "  if (radius > 6.5f) radius = 6.5f;\n"
+        "  ImDrawList* draw = igGetForegroundDrawList_ViewportPtr(NULL);\n"
+        "  /* A dark ring so it survives a pale patch of map, then Wyrm's death red\n"
+        "     (the app's Blood, #FF4D4D), never the white of you or a teammate's green. */\n"
+        "  ImDrawList_AddCircleFilled(draw, point, radius + 2.0f,\n"
+        "                             igColorConvertFloat4ToU32((ImVec4){0, 0, 0, 0.70f}), 20);\n"
+        "  ImDrawList_AddCircleFilled(draw, point, radius,\n"
+        "                             igColorConvertFloat4ToU32((ImVec4){1.0f, 0.302f, 0.302f, 1.0f}), 20);\n",
+        "  /* A red dot with a red ring round it, a few pixels apart (OM, 2026-10-06:\n"
+        "     circle in circle), each over a dark edge so it survives a pale patch\n"
+        "     of map. Wyrm's death red (the app's Blood, #FF4D4D), never the white\n"
+        "     of you or a teammate's green. */\n"
+        "  float core = diameter * 0.016f;\n"
+        "  if (core < 2.4f) core = 2.4f;\n"
+        "  if (core > 4.0f) core = 4.0f;\n"
+        "  float ring = core + 3.2f;\n"
+        "  ImDrawList* draw = igGetForegroundDrawList_ViewportPtr(NULL);\n"
+        "  ImU32 shade = igColorConvertFloat4ToU32((ImVec4){0, 0, 0, 0.60f});\n"
+        "  ImU32 red = igColorConvertFloat4ToU32((ImVec4){1.0f, 0.302f, 0.302f, 1.0f});\n"
+        "  ImDrawList_AddCircle(draw, point, ring, shade, 28, 3.4f);\n"
+        "  ImDrawList_AddCircleFilled(draw, point, core + 1.2f, shade, 20);\n"
+        "  ImDrawList_AddCircle(draw, point, ring, red, 28, 1.6f);\n"
+        "  ImDrawList_AddCircleFilled(draw, point, core, red, 20);\n",
+    ),
+    (
+        "      float s = R * 0.085f;\n"
+        "      if (s < 4.0f) s = 4.0f;\n",
+        "      /* Half the size it was (OM, 2026-10-06). */\n"
+        "      float s = R * 0.0425f;\n"
+        "      if (s < 2.5f) s = 2.5f;\n",
+    ),
+]
+_arrow_patch('app/src/game/ui_overlay.c', MINIMAP_MARKS_PAIRS)
+print('Minimap: ringed death dot, half-size own arrow')

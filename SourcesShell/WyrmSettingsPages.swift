@@ -291,7 +291,6 @@ struct WyrmControlsContent: View {
 
         VStack(alignment: .leading, spacing: 0) {
             WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
-                .wyrmTourAnchor("controls.preview")
 
             // Play orientation (OM, 2026-10-01): the lobby, the match and the editor upright.
             WSSectionLabel("Play orientation")
@@ -783,7 +782,6 @@ struct WyrmArenaUIContent: View {
             WSCaption("These are the same saved values shown in Settings › Display. Changes stay synchronized.")
             VStack(spacing: 9) {
                 WSPrimaryButton(label: "Arrange arena UI") { engine.openLayoutEditor() }
-                    .wyrmTourAnchor("controls.arrange")
                 WSOutlineButton(label: "Reset arena positions") { engine.reset(8, message: "Arena positions reset") }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Leaderboard, stats, minimap, team roster and chat can each be placed independently in landscape.")

@@ -22,6 +22,8 @@ struct WyrmDesignMain: View {
     /// The app tour (OM, 2026-10-05): each step opens its place here.
     @ObservedObject private var tour = WyrmTour.shared
     @State private var tourWasActive = false
+    /// The page moves for the current tour step, one after the other.
+    @State private var tourMove: Task<Void, Never>?
 
     init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore,
          initialTab: WyrmDesignTab, initialRoute: WyrmDesignRoute? = nil) {
@@ -334,32 +336,63 @@ struct WyrmDesignMain: View {
         }
     }
 
-    /// Opens the current tour step's place: Home, Play › Controls (the
-    /// workspace picks its own tab) or the Settings tab. When the tour ends,
-    /// back to Home.
+    /// Opens the current tour step's place with the app's own page
+    /// animations, one after the other (OM, 2026-10-06: smooth, no jumps): an
+    /// open page slides back first, then the tab changes, then a page slides
+    /// in. Home, Play › Controls (the workspace picks its own tab) or the
+    /// Settings tab. When the tour ends, back to Home.
     private func applyTourPlace() {
+        tourMove?.cancel()
+        let pop = Animation.interactiveSpring(response: 0.38, dampingFraction: 0.88, blendDuration: 0.1)
+        let push = Animation.interactiveSpring(response: 0.44, dampingFraction: 0.84, blendDuration: 0.12)
+        let tabSwap = Animation.spring(response: 0.34, dampingFraction: 0.86)
+        let pageTime: UInt64 = 430_000_000
         guard let place = tour.current?.place else {
             if tourWasActive {
                 tourWasActive = false
-                withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() }
-                tab = .play
+                tourMove = Task { @MainActor in
+                    if !routes.isEmpty {
+                        withAnimation(pop) { routes.removeAll() }
+                        try? await Task.sleep(nanoseconds: pageTime)
+                    }
+                    if tab != .play { withAnimation(tabSwap) { tab = .play } }
+                }
             }
             return
         }
         tourWasActive = true
-        switch place {
-        case .home:
-            if !routes.isEmpty { withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() } }
-            if tab != .play { tab = .play }
-        case .controls, .buttons, .arenaUI:
-            if tab != .play { tab = .play }
-            if routes != [.playControls] {
-                withAnimation(.interactiveSpring(response: 0.44, dampingFraction: 0.84, blendDuration: 0.12)) { routes = [.playControls] }
+        tourMove = Task { @MainActor in
+            switch place {
+            case .home:
+                if !routes.isEmpty {
+                    withAnimation(pop) { routes.removeAll() }
+                    try? await Task.sleep(nanoseconds: pageTime)
+                }
+                if Task.isCancelled { return }
+                if tab != .play { withAnimation(tabSwap) { tab = .play } }
+            case .controls, .buttons, .arenaUI:
+                // Already there: the workspace slides to the step's tab by itself.
+                if tab == .play && routes == [.playControls] { return }
+                if !routes.isEmpty {
+                    withAnimation(pop) { routes.removeAll() }
+                    try? await Task.sleep(nanoseconds: pageTime)
+                }
+                if Task.isCancelled { return }
+                if tab != .play {
+                    withAnimation(tabSwap) { tab = .play }
+                    try? await Task.sleep(nanoseconds: pageTime)
+                }
+                if Task.isCancelled { return }
+                withAnimation(push) { routes = [.playControls] }
+            case .settings:
+                WyrmSettingsFocus.shared.query = ""
+                if !routes.isEmpty {
+                    withAnimation(pop) { routes.removeAll() }
+                    try? await Task.sleep(nanoseconds: pageTime)
+                }
+                if Task.isCancelled { return }
+                if tab != .settings { withAnimation(tabSwap) { tab = .settings } }
             }
-        case .settings:
-            WyrmSettingsFocus.shared.query = ""
-            if !routes.isEmpty { withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() } }
-            if tab != .settings { tab = .settings }
         }
     }
 
