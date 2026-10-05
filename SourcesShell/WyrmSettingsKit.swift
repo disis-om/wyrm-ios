@@ -72,6 +72,7 @@ struct WSScaffold<Content: View>: View {
                 .wyrmAdjustViewport()
                 .onAppear { reveal(proxy) }
                 .onChange(of: focus.pulse) { _ in reveal(proxy) }
+                .wyrmTourScroll(proxy)
             }
         }
         .foregroundColor(ATheme.ink)

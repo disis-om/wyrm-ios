@@ -586,6 +586,12 @@ struct WyrmHelpCenterPage: View {
                 WSValueRow(title: "Your reports", value: reportsSummary, first: true, badge: store.unseenReplies) { open(.supportReports) }
             }
 
+            WSSectionLabel("Getting started")
+            WSCard {
+                // Replays the app tour from its welcome (OM, 2026-10-05).
+                WSValueRow(title: "Replay the app tour", value: "", first: true) { WyrmTour.shared.start() }
+            }
+
             }
             Group {
             // OM, 2026-10-01: the "Always send" switches live here only (moved

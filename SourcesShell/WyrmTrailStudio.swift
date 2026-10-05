@@ -1010,13 +1010,18 @@ struct WyrmTrailStudio: View {
         .disabled(!ready)
     }
 
+    /// The studio's pages; Video stays out while `WyrmTrailsFeature.videoEnabled` is off (OM, 2026-10-05).
+    private var shownModes: [WyrmStudioMode] {
+        WyrmStudioMode.allCases.filter { $0 != .video || WyrmTrailsFeature.videoEnabled }
+    }
+
     private var modeBar: some View {
-        WSSegmented(options: WyrmStudioMode.allCases.map(\.rawValue),
-                    selected: WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0) { index in
-            let next = WyrmStudioMode.allCases[index]
+        WSSegmented(options: shownModes.map(\.rawValue),
+                    selected: shownModes.firstIndex(of: draft.mode) ?? 0) { index in
+            let next = shownModes[index]
             guard next != draft.mode else { return }
             UISelectionFeedbackGenerator().selectionChanged()
-            forward = index > (WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0)
+            forward = index > (shownModes.firstIndex(of: draft.mode) ?? 0)
             withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { draft.reset(for: next) }
             // One camera at a time: the one leaving stops before the next starts.
             if next != .photo { camera.stop() }

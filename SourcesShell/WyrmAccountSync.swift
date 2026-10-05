@@ -32,6 +32,7 @@ final class WyrmAccountSync: ObservableObject {
         // About the phone itself: kept.
         ("wyrm.crash.running", .keep),              // + runningVersion: crash detection
         ("wyrm.ios.update.prompted", .keep),
+        ("wyrm.ios.tour.", .keep),                  // the app tour was seen on this phone (OM, 2026-10-05)
         // Account caches and retired things: wiped, never uploaded.
         ("wyrm.ios.backup.", .wipe),                // manual backups, retired 2026-10-01
         ("wyrm.ios.update.backup-first", .wipe),

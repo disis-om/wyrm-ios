@@ -36,10 +36,15 @@ import AVFoundation
 /// trail alerts; the Social card still shows, looking as it did, and `.trails`
 /// opens `WyrmTrailsComingSoon`. `true` brings everything back.
 enum WyrmTrailsFeature {
-    /// ON for test builds only (OM, 2026-10-04). Set back to false before any
-    /// beta or stable release: releases ship the coming-soon placeholder until
-    /// Trails is final. Android: TRAILS_ENABLED.
+    /// ON, and released ON (OM, 2026-10-05: photos and everything else,
+    /// videos not yet). Android: TRAILS_ENABLED.
     static let enabled = true
+
+    /// Video trails (OM, 2026-10-05): off for now, so nobody can post a video.
+    /// `false` takes the Video page out of the studio's mode bar; the video
+    /// code, the backend route and playback of any video trail stay. Android:
+    /// TRAIL_VIDEO_ENABLED.
+    static let videoEnabled = false
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]

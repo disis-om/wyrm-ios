@@ -93,6 +93,7 @@ struct WyrmSettingsHub: View {
                 }
             }
         }
+        .wyrmTourScroll(proxy)
         .onChange(of: search.pulse) { _ in
             // Hub settings: the search just cleared, so scroll the row into view.
             guard search.target == "app.developer" else { return }
@@ -104,7 +105,21 @@ struct WyrmSettingsHub: View {
         .onAppear { notifications.refreshSystem() }
     }
 
+    /// The app tour lights these groups (OM, 2026-10-05).
+    private static let tourIDs = ["Arena": "settings.arena", "Playing help": "settings.help",
+                                  "Performance": "settings.performance", "Account": "settings.account",
+                                  "Help & feedback": "settings.support"]
+
+    @ViewBuilder
     private func group(_ title: String, _ rows: [(String, String, String, WyrmDesignRoute)]) -> some View {
+        if let id = Self.tourIDs[title] {
+            groupBody(title, rows).wyrmTourAnchor(id)
+        } else {
+            groupBody(title, rows)
+        }
+    }
+
+    private func groupBody(_ title: String, _ rows: [(String, String, String, WyrmDesignRoute)]) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             WSSectionLabel(title, top: 0)
             WSCard {
@@ -205,7 +220,7 @@ struct WyrmControlsWorkspace: View {
                    sectionTabs: AnyView(WSSegmented(options: WyrmControlsTab.allCases.map(\.label), selected: tab.rawValue, fontSize: 12.5) { next in
                        direction = next > tab.rawValue ? 1 : -1
                        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.26)) { tab = WyrmControlsTab(rawValue: next) ?? .controls }
-                   }.padding(.horizontal, 14).padding(.vertical, 10)),
+                   }.padding(.horizontal, 14).padding(.vertical, 10).wyrmTourAnchor("controls.tabs")),
                    onBack: close) {
             ZStack(alignment: .top) {
                 switch tab {
@@ -216,6 +231,21 @@ struct WyrmControlsWorkspace: View {
             }
         }
         .wyrmAdjustPreviewCard(engine: engine)
+        // The app tour picks the tab its step is about (OM, 2026-10-05).
+        .onReceive(WyrmTour.shared.$step) { _ in
+            DispatchQueue.main.async {
+                let wanted: WyrmControlsTab?
+                switch WyrmTour.shared.current?.place {
+                case .controls?: wanted = .controls
+                case .buttons?: wanted = .buttons
+                case .arenaUI?: wanted = .arenaUI
+                default: wanted = nil
+                }
+                guard let wanted, wanted != tab else { return }
+                direction = wanted.rawValue > tab.rawValue ? 1 : -1
+                withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.26)) { tab = wanted }
+            }
+        }
     }
 
     private var slide: AnyTransition {
@@ -261,6 +291,7 @@ struct WyrmControlsContent: View {
 
         VStack(alignment: .leading, spacing: 0) {
             WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
+                .wyrmTourAnchor("controls.preview")
 
             // Play orientation (OM, 2026-10-01): the lobby, the match and the editor upright.
             WSSectionLabel("Play orientation")
@@ -752,6 +783,7 @@ struct WyrmArenaUIContent: View {
             WSCaption("These are the same saved values shown in Settings › Display. Changes stay synchronized.")
             VStack(spacing: 9) {
                 WSPrimaryButton(label: "Arrange arena UI") { engine.openLayoutEditor() }
+                    .wyrmTourAnchor("controls.arrange")
                 WSOutlineButton(label: "Reset arena positions") { engine.reset(8, message: "Arena positions reset") }
             }.padding(.horizontal, 16).padding(.top, 22)
             WSCaption("Leaderboard, stats, minimap, team roster and chat can each be placed independently in landscape.")
@@ -1711,39 +1743,24 @@ struct WyrmBuildNotesPage: View {
         }
     }
 
-    /// Trails notes show only while Trails are on (`WyrmTrailsFeature`).
+    /// This release (0.18.38, OM 2026-10-05). Trails notes show only while Trails are on (`WyrmTrailsFeature`).
     static let notes: [String] = (WyrmTrailsFeature.enabled ? trailNotes : ["Trails are paused in this beta. They come back in a later build."]) + otherNotes
     private static let trailNotes: [String] = [
-        "Trails studio: camera and gallery, crop (with Free), text, drawing with the Beads brush, text-only and canvas trails. Deleting a trail scatters it like food.",
-        "Trails: share a photo with a caption in Social. Others can like it with a bead and reply.",
+        "Trails is open: post photos, text or a canvas, like with a bead and reply. Trails has its own tab; Alerts moved to the bell on Play.",
+        "Photo editor: swipe through looks, Adjust sliders, emoji stickers, and text with Glow and Line.",
+        "Video trails are coming later.",
     ]
     private static let otherNotes: [String] = [
-        "Wyrm beads show in the arena again: the game now refreshes its textures with every new build.",
-        "Wyrm beads: 54 now, 30 new (gems, metals, animal prints, neon, aurora, pixel and more), each in its own colours.",
-        "Wyrm accessories: one page with Hair, Ears and Glasses tabs, big pictures, and a colour slider for hair.",
-        "About follows your theme. The tab bar keeps the chosen tab readable in every theme.",
-        "Update prompts: a new build raises a card that opens Settings > Backup. Beta builds say they are betas, explain what that means, and link straight to the Beta updates switch. Beta updates are now on by default.",
-        "Team mode is paused: NTL services are switched off while arena drops are fixed. Saved teams stay on this iPhone.",
-        "Image arrows show their true colours in the arena (a red arrow no longer draws blue).",
-        "Dark themes: sign-in fields and the back button follow the theme, so their text never disappears.",
-        "The tab bar: the open tab is solid, the others fade with the theme.",
-        "Wyrm is listed as a game, so iOS Game Mode turns on while you play.",
-        "Settings search finds Beta updates and Back up before updating.",
-        "Update now: when a new build is ready, Settings > Backup shows it with a button. Back up before updating is a switch and on by default.",
-        "Team mode: settings sit behind the gear, several teams can be saved, the roster shows FPS, ping and leaderboard place, names no longer carry a code, and chat reads like Global chat with the same glass composer.",
-        "The keyboard sits on the bottom edge and composers stay above it.",
-        "Liquid Glass on every button. Image arrows keep their real colours in the arena.",
-        "The Ready Room is smaller and runs edge to edge; Home replaces Quick settings.",
-        "Colour wheel: the brightness knob turns only when held, and the two beads stand beside the wheel.",
-        "Developer logs show again, folded, with a jump to the newest line.",
-        "The tab bar lens now rises over the icons and bends them like the system glass, with a springier lift and a larger resting pill.",
-        "Build a Wyrm uses the 42 original beads only. While you build, only the beads you place show on an empty body; the repeat appears in a match.",
-        "Scores and kills from every online life are now sent to Wyrm, so the leaderboard and your profile move after each run. Runs made offline are kept and sent later.",
-        "Custom skins you build are shown to other Wyrm players in the same arena, and theirs are shown to you.",
-        "Your arena name follows your account when you change it on Play or in the Ready Room.",
-        "Edit profile can add, change or remove your photo, and shows how many renames are left this month.",
-        "Global chat is in Social: everyone in Wyrm, the last 24 hours, with a report option on each message.",
-        "Your own photo now loads correctly, and profiles opened from messages or leaderboards are fetched fresh.",
+        "Near Original: one switch on Home gives you slither's own minimap, leaderboard, joystick, boost and arrow.",
+        "Team Mode is back, with a team roster and team chat in the arena. Move, resize and recolour both; fold the chat away.",
+        "NTL tags show to everyone, even without a team, and swing exactly like NTL's.",
+        "Skinless and Spine snake looks in normal and assist; in assist you can hide your own tag and accessories.",
+        "Play feel: slither's own arrow movement, Look ahead, and a spring zoom bar.",
+        "Auto restart: an on-screen button that jumps you back in after you die, and turns itself off if the arena drops you.",
+        "Leaderboard: your row stands out, and you can search the Score and Kills boards.",
+        "Global chat shows how many new messages are waiting.",
+        "Fixed: a crash at launch on some iPhones, crashes when resizing the HUD, beads vanishing in Build a Wyrm, and a lost last bead in custom patterns.",
+        "Profiles no longer show badges or the Best/Kills/Beads chips. Something new is coming in their place.",
     ]
 }
 

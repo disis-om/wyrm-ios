@@ -19,6 +19,9 @@ struct WyrmDesignMain: View {
     /// an in-app banner while Wyrm is open (OM, 2026-09-29).
     @State private var banner: WyrmServiceAlert?
     @State private var bannerWork: DispatchWorkItem?
+    /// The app tour (OM, 2026-10-05): each step opens its place here.
+    @ObservedObject private var tour = WyrmTour.shared
+    @State private var tourWasActive = false
 
     init(engine: WyrmShellStore, account: WyrmAccountStore, services: WyrmServiceStore,
          initialTab: WyrmDesignTab, initialRoute: WyrmDesignRoute? = nil) {
@@ -87,6 +90,12 @@ struct WyrmDesignMain: View {
                         .zIndex(60)
                         .transition(.opacity)
                 }
+                // The app tour (OM, 2026-10-05), over everything on this page.
+                if tour.active {
+                    WyrmTourOverlay(safeTop: proxy.safeAreaInsets.top, safeBottom: proxy.safeAreaInsets.bottom)
+                        .zIndex(95)
+                        .transition(.opacity)
+                }
                 if !engine.toast.isEmpty {
                     Text(engine.toast)
                         .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.onInk).lineLimit(2)
@@ -105,6 +114,9 @@ struct WyrmDesignMain: View {
         .preferredColorScheme(theme.palette.dark || routes.last == .about ? .dark : .light)
         // Checked once a launch; a newer build raises the prompt above.
         .task { await updates.check() }
+        // The app tour: once after an install or an update, on the first quiet Home.
+        .task { await startTourWhenQuiet() }
+        .onReceive(tour.$step) { _ in DispatchQueue.main.async { applyTourPlace() } }
         // The live inbox (OM, 2026-10-01): new alerts, DMs and replies land at once.
         // A quiet look stays as a fallback: every 15 s on Alerts, every 45 s elsewhere.
         .task {
@@ -304,6 +316,53 @@ struct WyrmDesignMain: View {
         if let route = WyrmAlertRouting.route(for: alert) { open(route) } else { open(.alerts) }
     }
 
+    /// Waits for a quiet Home (signed in, no prompt, no match, nothing open),
+    /// then starts the tour if this phone has not seen it.
+    private func startTourWhenQuiet() async {
+        guard !ProcessInfo.processInfo.arguments.contains(where: { $0.hasPrefix("--smoke") }) else { return }
+        try? await Task.sleep(nanoseconds: 900_000_000)
+        while !Task.isCancelled && tour.pending && !tour.active {
+            let quiet = account.phase == .signedIn && routes.isEmpty && tab == .play
+                && updates.promptable == nil && WyrmCrashWatch.shared.prompt == nil
+                && WyrmDropWatch.shared.prompt == nil && engine.engineScreen == 0
+                && !engine.layoutEditorActive && !shareRun.isOpen && !WyrmAccountSync.shared.askingLogOut
+            if quiet {
+                withAnimation(.easeOut(duration: 0.25)) { tour.start() }
+                return
+            }
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+        }
+    }
+
+    /// Opens the current tour step's place: Home, Play › Controls (the
+    /// workspace picks its own tab) or the Settings tab. When the tour ends,
+    /// back to Home.
+    private func applyTourPlace() {
+        guard let place = tour.current?.place else {
+            if tourWasActive {
+                tourWasActive = false
+                withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() }
+                tab = .play
+            }
+            return
+        }
+        tourWasActive = true
+        switch place {
+        case .home:
+            if !routes.isEmpty { withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() } }
+            if tab != .play { tab = .play }
+        case .controls, .buttons, .arenaUI:
+            if tab != .play { tab = .play }
+            if routes != [.playControls] {
+                withAnimation(.interactiveSpring(response: 0.44, dampingFraction: 0.84, blendDuration: 0.12)) { routes = [.playControls] }
+            }
+        case .settings:
+            WyrmSettingsFocus.shared.query = ""
+            if !routes.isEmpty { withAnimation(.easeOut(duration: 0.22)) { routes.removeAll() } }
+            if tab != .settings { tab = .settings }
+        }
+    }
+
     private func open(_ value: WyrmDesignRoute) {
         // Trails are paused for the beta: no way into the feed, a trail or the studio.
         guard WyrmTrailsFeature.shows(value) else { return }
@@ -353,6 +412,7 @@ private struct WyrmPlayRoot: View {
     }
 
     var body: some View {
+        ScrollViewReader { tourProxy in
         ScrollView(showsIndicators: false) {
             VStack(spacing: 0) {
                 HStack(alignment: .bottom, spacing: 12) {
@@ -403,17 +463,22 @@ private struct WyrmPlayRoot: View {
                 WyrmPaperCard {
                     WyrmLoadoutRow(title: "Food", value: food, first: true, leading: AnyView(WyrmFoodWell())) { open(.playFood) }
                     WyrmLoadoutRow(title: "Controls", value: controls, leading: AnyView(WyrmLoadoutIcon(symbol: "gamecontroller"))) { open(.playControls) }
+                        .wyrmTourAnchor("home.controls")
                     WyrmLoadoutRow(title: "Mode", value: "", leading: AnyView(WyrmLoadoutIcon(symbol: "scope"))) { open(.playModes) }
                     WyrmNearOriginalRow()
+                        .wyrmTourAnchor("home.near")
                 }
 
                 WyrmSectionLabel("Rooms & team")
                 WyrmPaperCard {
                     WyrmListRow(title: "Voice rooms", detail: services.liveRooms.first?.name ?? "Own and community rooms", value: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
                     WyrmListRow(title: "Team mode", detail: "Original engine team layer", value: "Open", icon: "person.3.fill", tint: ATheme.live) { open(.team) }
+                        .wyrmTourAnchor("home.team")
                 }
                 Spacer().frame(height: 102)
             }
+        }
+        .wyrmTourScroll(tourProxy)
         }
         .onAppear { adoptEngineName(); if arena.isEmpty { arena = engine.arena } }
         .onChange(of: engine.nickname) { _ in if !nameFocused { adoptEngineName() } }
