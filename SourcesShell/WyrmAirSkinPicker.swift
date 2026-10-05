@@ -126,6 +126,14 @@ enum WyrmAirSkin {
         (0.40625, 0.15625, 0.6640625), (1, 1, 1), (0.5, 0.5, 0.99609375),
     ]
 
+    /// A colour group's engine colour as 0xRRGGBB (Modes snake preview, OM 2026-10-05).
+    static func groupRGB(_ group: Int) -> UInt32 {
+        guard palette.indices.contains(group) else { return 0x808080 }
+        let c = palette[group]
+        func byte(_ v: Double) -> UInt32 { UInt32(max(0, min(255, Int(v * 255)))) }
+        return byte(c.0) << 16 | byte(c.1) << 8 | byte(c.2)
+    }
+
     /// Android Wyrm's `nearestGroup`: green-weighted, dead groups excluded.
     static func nearestGroup(_ rgb: UInt32) -> Int {
         let r = Double((rgb >> 16) & 0xff) / 255, g = Double((rgb >> 8) & 0xff) / 255, b = Double(rgb & 0xff) / 255

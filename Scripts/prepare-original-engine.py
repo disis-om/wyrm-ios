@@ -3276,3 +3276,278 @@ AUTO_RESTART_VISIBLE_PAIRS = [
 ]  # end AUTO_RESTART_VISIBLE_PAIRS
 _arrow_patch('app/src/game/user_settings.c', AUTO_RESTART_VISIBLE_PAIRS)
 print('Auto restart: its key can be shown')
+
+# Skinless as its own mesh (OM, 2026-10-05: the strip folded when a loop
+# tightened). Same C as Wyrm Android's game/redraw.c, applied last.
+SKINLESS_MESH_PAIRS = [
+    (r'''/* One smooth run. Round caps are the plain discs' ends (NTL lineCap). */
+static void draw_skinless_run(ImDrawList* draw, ImVec2* buf, int n, ImU32 col,
+                              float width, int cap_start, int cap_end) {
+  float radius;
+  if (n < 1 || width <= 0.0f) return;
+  if (n >= 2) stroke_smooth(draw, buf, n, col, width);
+  radius = width * 0.5f;
+  if (cap_start) ImDrawList_AddCircleFilled(draw, buf[0], radius, col, 24);
+  if (cap_end && n >= 2)
+    ImDrawList_AddCircleFilled(draw, buf[n - 1], radius, col, 24);
+}
+''',
+     r'''/*
+ * Skinless is drawn as its own mesh (OM, 2026-10-05: the strip broke up and
+ * squished as a loop tightened). ImGui's thick stroke joins every bend with a
+ * mitre; once a bend is tighter than the strip is wide, the mitre flips and
+ * the strip folds over itself. Here the centre line is the same midpoint curve
+ * (NTL's quadraticCurveTo path), sampled densely; each sample gets a plain
+ * perpendicular (no mitre); the inside of a bend never reaches past that
+ * bend's own centre, so nothing folds; the ends are round (NTL's lineCap);
+ * and a 1 px fade on the outside edge stands in for ImGui's anti-aliasing.
+ */
+#define SKINLESS_RUN 1024
+#define SKINLESS_DENSE 8192
+#define SKINLESS_CAP_SEGMENTS 12
+static ImVec2 skinless_pts[SKINLESS_DENSE];
+
+static void skinless_push(ImVec2 p, int* m) {
+  if (*m > 0) {
+    float dx = p.x - skinless_pts[*m - 1].x;
+    float dy = p.y - skinless_pts[*m - 1].y;
+    if (dx * dx + dy * dy < 0.0001f) return;
+  }
+  if (*m < SKINLESS_DENSE) skinless_pts[(*m)++] = p;
+}
+
+static int skinless_pieces(float len, float step) {
+  int k = (int)ceilf(len / step);
+  if (k < 1) k = 1;
+  if (k > 24) k = 24;
+  return k;
+}
+
+/* The same curve stroke_smooth lays: start, quadratics through the midpoints,
+   straight to the end. */
+static int skinless_sample(const ImVec2* pts, int n, float step) {
+  int m = 0;
+  int i;
+  int s;
+  int k;
+  ImVec2 from = pts[0];
+  skinless_push(from, &m);
+  for (i = 1; i < n - 1; ++i) {
+    ImVec2 c = pts[i];
+    ImVec2 to = {(pts[i].x + pts[i + 1].x) * 0.5f,
+                 (pts[i].y + pts[i + 1].y) * 0.5f};
+    k = skinless_pieces(hypotf(c.x - from.x, c.y - from.y) +
+                            hypotf(to.x - c.x, to.y - c.y),
+                        step);
+    for (s = 1; s <= k; ++s) {
+      float t = (float)s / (float)k;
+      float u = 1.0f - t;
+      ImVec2 q = {u * u * from.x + 2.0f * u * t * c.x + t * t * to.x,
+                  u * u * from.y + 2.0f * u * t * c.y + t * t * to.y};
+      skinless_push(q, &m);
+    }
+    from = to;
+  }
+  if (n >= 2) {
+    ImVec2 to = pts[n - 1];
+    k = skinless_pieces(hypotf(to.x - from.x, to.y - from.y), step);
+    for (s = 1; s <= k; ++s) {
+      float t = (float)s / (float)k;
+      ImVec2 q = {from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t};
+      skinless_push(q, &m);
+    }
+  }
+  return m;
+}
+
+static ImVec2 skinless_unit(float x, float y) {
+  float len = sqrtf(x * x + y * y);
+  ImVec2 out = {0.0f, 0.0f};
+  if (len > 0.000001f) {
+    out.x = x / len;
+    out.y = y / len;
+  }
+  return out;
+}
+
+/* A round end: a half disc out of `end`, from the +normal rail round to the
+   -normal rail through `out`, with the same 1 px fade. */
+static void skinless_cap(ImDrawList* draw, ImVec2 uv, ImVec2 end, ImVec2 nrm,
+                         ImVec2 out, float r, ImU32 col, ImU32 clear) {
+  const int k = SKINLESS_CAP_SEGMENTS;
+  int i;
+  ImDrawIdx base;
+  ImDrawList_PrimReserve(draw, 9 * k, 1 + 2 * (k + 1));
+  base = (ImDrawIdx)draw->_VtxCurrentIdx;
+  ImDrawList_PrimWriteVtx(draw, end, uv, col);
+  for (i = 0; i <= k; ++i) {
+    float a = (float)PI * (float)i / (float)k;
+    float dx = nrm.x * cosf(a) + out.x * sinf(a);
+    float dy = nrm.y * cosf(a) + out.y * sinf(a);
+    ImDrawList_PrimWriteVtx(draw, (ImVec2){end.x + dx * r, end.y + dy * r}, uv,
+                            col);
+    ImDrawList_PrimWriteVtx(
+        draw, (ImVec2){end.x + dx * (r + 1.0f), end.y + dy * (r + 1.0f)}, uv,
+        clear);
+  }
+  for (i = 0; i < k; ++i) {
+    ImDrawIdx rim = (ImDrawIdx)(base + 1 + 2 * i);
+    ImDrawIdx next = (ImDrawIdx)(rim + 2);
+    ImDrawList_PrimWriteIdx(draw, base);
+    ImDrawList_PrimWriteIdx(draw, rim);
+    ImDrawList_PrimWriteIdx(draw, next);
+    ImDrawList_PrimWriteIdx(draw, rim);
+    ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(rim + 1));
+    ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(next + 1));
+    ImDrawList_PrimWriteIdx(draw, rim);
+    ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(next + 1));
+    ImDrawList_PrimWriteIdx(draw, next);
+  }
+}
+
+/* One run of the strip: `buf` is the on-screen body points, head first. */
+static void draw_skinless_run(ImDrawList* draw, ImVec2* buf, int n, ImU32 col,
+                              float width, int cap_start, int cap_end) {
+  float r = width * 0.5f;
+  ImU32 clear = col & 0x00FFFFFFu; /* same colour, alpha 0 (alpha is the top byte) */
+  ImVec2 uv;
+  ImVec2 first_n = {0.0f, 0.0f};
+  ImVec2 first_t = {0.0f, 0.0f};
+  ImVec2 last_n = {0.0f, 0.0f};
+  ImVec2 last_t = {0.0f, 0.0f};
+  int m;
+  int j;
+  ImDrawIdx base;
+  if (n < 1 || width <= 0.0f) return;
+  if (n == 1) {
+    if (cap_start || cap_end) ImDrawList_AddCircleFilled(draw, buf[0], r, col, 24);
+    return;
+  }
+  {
+    /* Samples about a third of the strip's half-width apart, spread wider on
+       a very long run so the whole run always fits the buffer. */
+    float length = 0.0f;
+    float step;
+    for (j = 1; j < n; ++j)
+      length += hypotf(buf[j].x - buf[j - 1].x, buf[j].y - buf[j - 1].y);
+    step = fmaxf(1.5f, r * 0.35f);
+    step = fmaxf(step, length / (float)(SKINLESS_DENSE - 2 * n - 64));
+    m = skinless_sample(buf, n, step);
+  }
+  if (m < 2) {
+    if (cap_start || cap_end) ImDrawList_AddCircleFilled(draw, buf[0], r, col, 24);
+    return;
+  }
+  igGetFontTexUvWhitePixel(&uv);
+
+  ImDrawList_PrimReserve(draw, 18 * (m - 1), 4 * m);
+  base = (ImDrawIdx)draw->_VtxCurrentIdx;
+  for (j = 0; j < m; ++j) {
+    ImVec2 p = skinless_pts[j];
+    ImVec2 a = j > 0 ? skinless_unit(p.x - skinless_pts[j - 1].x,
+                                     p.y - skinless_pts[j - 1].y)
+                     : skinless_unit(skinless_pts[1].x - p.x,
+                                     skinless_pts[1].y - p.y);
+    ImVec2 b = j < m - 1 ? skinless_unit(skinless_pts[j + 1].x - p.x,
+                                         skinless_pts[j + 1].y - p.y)
+                         : a;
+    ImVec2 t = skinless_unit(a.x + b.x, a.y + b.y);
+    ImVec2 nrm;
+    float off_l = r;
+    float off_r = r;
+    float fade_l = 1.0f;
+    float fade_r = 1.0f;
+    if (t.x == 0.0f && t.y == 0.0f) t = b;
+    nrm = (ImVec2){-t.y, t.x};
+    if (j > 0 && j < m - 1) {
+      float cross = a.x * b.y - a.y * b.x;
+      float dot = a.x * b.x + a.y * b.y;
+      float turn = fabsf(atan2f(cross, dot));
+      if (turn > 0.0001f) {
+        float la = hypotf(p.x - skinless_pts[j - 1].x, p.y - skinless_pts[j - 1].y);
+        float lb = hypotf(skinless_pts[j + 1].x - p.x, skinless_pts[j + 1].y - p.y);
+        float bend = 0.5f * (la + lb) / turn; /* this bend's radius */
+        /* The inside of the bend is the side the path turns to. */
+        if (bend < r) {
+          if (cross > 0.0f) {
+            off_l = bend;
+            fade_l = 0.0f;
+          } else {
+            off_r = bend;
+            fade_r = 0.0f;
+          }
+        }
+      }
+    }
+    if (j == 0) {
+      first_n = nrm;
+      first_t = t;
+    }
+    if (j == m - 1) {
+      last_n = nrm;
+      last_t = t;
+    }
+    ImDrawList_PrimWriteVtx(draw, (ImVec2){p.x + nrm.x * (off_l + fade_l),
+                                           p.y + nrm.y * (off_l + fade_l)},
+                            uv, clear);
+    ImDrawList_PrimWriteVtx(draw, (ImVec2){p.x + nrm.x * off_l, p.y + nrm.y * off_l},
+                            uv, col);
+    ImDrawList_PrimWriteVtx(draw, (ImVec2){p.x - nrm.x * off_r, p.y - nrm.y * off_r},
+                            uv, col);
+    ImDrawList_PrimWriteVtx(draw, (ImVec2){p.x - nrm.x * (off_r + fade_r),
+                                           p.y - nrm.y * (off_r + fade_r)},
+                            uv, clear);
+  }
+  for (j = 0; j < m - 1; ++j) {
+    ImDrawIdx s = (ImDrawIdx)(base + 4 * j);
+    ImDrawIdx e = (ImDrawIdx)(s + 4);
+    int q;
+    for (q = 0; q < 3; ++q) {
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(s + q));
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(s + q + 1));
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(e + q + 1));
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(s + q));
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(e + q + 1));
+      ImDrawList_PrimWriteIdx(draw, (ImDrawIdx)(e + q));
+    }
+  }
+  if (cap_start)
+    skinless_cap(draw, uv, skinless_pts[0], first_n,
+                 (ImVec2){-first_t.x, -first_t.y}, r, col, clear);
+  if (cap_end)
+    skinless_cap(draw, uv, skinless_pts[m - 1], last_n, last_t, r, col, clear);
+}
+'''),
+    (r'''   NTL's skinless transparency: .8 times the snake's own fade. Runs continue
+   past 160 points so a long snake is not cut short. */
+static void draw_skinless_strip(tenv* env, snake* o, int bp, float cx, float cy,
+                                float lsz, float alpha) {
+  game_data* gdata = &env->usr->gdata;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImVec2 buf[160];
+''',
+     r'''   NTL's skinless transparency: .8 times the snake's own fade. Runs continue
+   past SKINLESS_RUN points so a long snake is not cut short. */
+static void draw_skinless_strip(tenv* env, snake* o, int bp, float cx, float cy,
+                                float lsz, float alpha) {
+  game_data* gdata = &env->usr->gdata;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImVec2 buf[SKINLESS_RUN];
+'''),
+    (r'''    int cap_end;
+    if (live && n < 160) {
+      snake_screen_point(gdata, i, cx, cy, &buf[n]);
+      n += 1;
+      if (n < 160) continue;
+    }
+''',
+     r'''    int cap_end;
+    if (live && n < SKINLESS_RUN) {
+      snake_screen_point(gdata, i, cx, cy, &buf[n]);
+      n += 1;
+      if (n < SKINLESS_RUN) continue;
+    }
+'''),
+]  # end SKINLESS_MESH_PAIRS
+_arrow_patch('app/src/game/redraw.c', SKINLESS_MESH_PAIRS)
+print('Skinless: own mesh, no folded loops')

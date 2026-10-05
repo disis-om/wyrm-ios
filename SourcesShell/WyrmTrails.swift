@@ -1,5 +1,6 @@
 import SwiftUI
 import UIKit
+import AVFoundation
 
 /*
  * Trails (OM, 2026-09-28): photos with a caption from the Wyrm community,
@@ -13,7 +14,12 @@ import UIKit
  * re-encoded to JPEG (which also drops its location and camera metadata), plus
  * a small thumbnail. The player only ever sees "Preparing" and "Uploading".
  *
- * Speed: the feed pages 20 at a time; each photo shows its thumbnail at once
+ * Videos (OM, 2026-10-05): up to 30 s, made and compressed in the app
+ * (`WyrmTrailVideo.swift`); a video trail's `photo` is its poster, and the
+ * feed plays one clip at a time, the card most in view.
+ *
+ * Speed: the feed pages 10 at a time, Instagram-style, and asks for the next
+ * page three cards before the end (a profile grid pages 20); each photo shows its thumbnail at once
  * and swaps to the full image when it lands; decoded images are kept in memory
  * and the files on disk, and a like changes on screen before the server answers.
  * Backend: `Wyrm Android/backend/src/trails.mjs`.
@@ -90,9 +96,17 @@ struct WyrmTrailPhoto: Codable, Equatable {
     let height: Int
 }
 
+/// A video trail's clip: its address, size and length. Its `photo` is the poster.
+struct WyrmTrailVideo: Codable, Equatable {
+    let url: String
+    let width: Int
+    let height: Int
+    let durationMs: Int64
+}
+
 struct WyrmTrail: Codable, Identifiable, Equatable {
     let id: String
-    /// "photo" or "text" (a caption with no photo).
+    /// "photo", "text" (a caption with no photo) or "video".
     let kind: String?
     let caption: String
     let photo: WyrmTrailPhoto?
@@ -106,12 +120,17 @@ struct WyrmTrail: Codable, Identifiable, Equatable {
     /// The poster's look when they chose to share it (Try this skin); absent
     /// in older trails and older caches.
     let skin: WyrmTrailSkin?
+    /// A video trail's clip (OM, 2026-10-05); absent in photo and text trails
+    /// and in older caches.
+    let video: WyrmTrailVideo?
 
     /// Width over height, held between a tall 4:5 and a wide 1.91:1 so no
     /// photo takes over the feed or shrinks to a strip.
     var aspect: CGFloat {
-        guard let photo, photo.width > 0, photo.height > 0 else { return 1 }
-        return min(max(CGFloat(photo.width) / CGFloat(photo.height), 0.8), 1.91)
+        let width = video?.width ?? photo?.width ?? 0
+        let height = video?.height ?? photo?.height ?? 0
+        guard width > 0, height > 0 else { return 1 }
+        return min(max(CGFloat(width) / CGFloat(height), 0.8), 1.91)
     }
 }
 
@@ -174,7 +193,7 @@ final class WyrmTrailsClient {
     }
 
     private func send<T: Decodable>(_ path: String, method: String = "GET", json: [String: Any]? = nil,
-                                    jpeg: Data? = nil, query: [URLQueryItem] = [], token: String,
+                                    jpeg: Data? = nil, mp4: URL? = nil, query: [URLQueryItem] = [], token: String,
                                     progress: ((Double) -> Void)? = nil) async throws -> T {
         var components = URLComponents(string: Self.base + path)
         if !query.isEmpty { components?.queryItems = query }
@@ -189,6 +208,11 @@ final class WyrmTrailsClient {
             if let jpeg {
                 request.setValue("image/jpeg", forHTTPHeaderField: "Content-Type")
                 (data, response) = try await session.upload(for: request, from: jpeg,
+                                                            delegate: progress.map { UploadProgress(report: $0) })
+            } else if let mp4 {
+                // A video goes up from its file, never whole in memory.
+                request.setValue("video/mp4", forHTTPHeaderField: "Content-Type")
+                (data, response) = try await session.upload(for: request, fromFile: mp4,
                                                             delegate: progress.map { UploadProgress(report: $0) })
             } else {
                 if let json {
@@ -218,6 +242,9 @@ final class WyrmTrailsClient {
         switch code {
         case "IMAGE_TOO_LARGE": return "That photo is too large."
         case "UNSUPPORTED_IMAGE": return "That photo could not be read."
+        case "VIDEO_TOO_LONG": return "Videos can be up to 30 seconds."
+        case "VIDEO_TOO_LARGE": return "That video is too large."
+        case "UNSUPPORTED_VIDEO", "EMPTY_VIDEO": return "That video could not be read."
         case "STORAGE_FULL": return "Trails is full right now. Try again later."
         case "NOT_FOUND": return "This trail is no longer here."
         case "BLOCKED": return "You can't reply to this trail."
@@ -228,7 +255,9 @@ final class WyrmTrailsClient {
     }
 
     fileprivate func feed(cursor: String?, author: String?, token: String) async throws -> WyrmTrailPage {
-        var query = [URLQueryItem(name: "limit", value: "20")]
+        // The feed: 10 a page, so the server never sends the whole world at
+        // once (OM, 2026-10-05). A profile grid takes 20 (small thumbnails).
+        var query = [URLQueryItem(name: "limit", value: author == nil ? "10" : "20")]
         if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
         if let author { query.append(URLQueryItem(name: "author", value: author)) }
         return try await send("/v1/trails", query: query, token: token)
@@ -244,11 +273,19 @@ final class WyrmTrailsClient {
         return media.id
     }
 
+    /// A finished clip (`video/mp4`, at most 30 s, 16 MB).
+    fileprivate func uploadVideo(_ file: URL, token: String, progress: @escaping (Double) -> Void) async throws -> String {
+        let media: WyrmTrailMedia = try await send("/v1/trails/video", method: "PUT", mp4: file, token: token, progress: progress)
+        return media.id
+    }
+
     /// `skin` goes only with `shareSkin` on; the server keeps nothing otherwise.
+    /// A video trail sends its clip's `videoId` with its poster as the photo.
     fileprivate func create(caption: String, photoId: String?, thumbId: String?, skin: WyrmTrailSkin? = nil,
-                            shareSkin: Bool = false, token: String) async throws -> WyrmTrail {
+                            shareSkin: Bool = false, videoId: String? = nil, token: String) async throws -> WyrmTrail {
         var body: [String: Any] = ["caption": caption, "shareSkin": shareSkin && skin != nil]
         if let photoId, let thumbId { body["photoId"] = photoId; body["thumbId"] = thumbId }
+        if let videoId { body["videoId"] = videoId }
         if shareSkin, let skin { body["skin"] = skin.json }
         let envelope: WyrmTrailEnvelope = try await send("/v1/trails", method: "POST", json: body, token: token)
         return envelope.trail
@@ -419,6 +456,10 @@ final class WyrmTrailsStore: ObservableObject {
     /// The pending post's shared skin (Share run), kept for a retry.
     private var pendingSkin: WyrmTrailSkin?
     private var pendingShareSkin = false
+    /// A video post's "Try again": the whole export and upload once more.
+    private var pendingVideoRetry: (() -> Void)?
+    /// The clip being posted, whose own copy goes once it is posted or dropped.
+    private var pendingClip: WyrmTrailClip?
     @Published private(set) var comments: [String: [WyrmTrailComment]] = [:]
     @Published var toast = ""
 
@@ -521,7 +562,8 @@ final class WyrmTrailsStore: ObservableObject {
         loaded = false
         error = ""
         liking = []
-        if !posting.busy { posting = .idle; pendingImage = nil; pendingActive = false }
+        WyrmTrailFeedPlayer.shared.stop()
+        if !posting.busy { posting = .idle; pendingImage = nil; pendingActive = false; dropPendingVideo() }
     }
 
     private func persistFeed() {
@@ -538,7 +580,9 @@ final class WyrmTrailsStore: ObservableObject {
     }
 
     func loadMoreIfNeeded(after trail: WyrmTrail) async {
-        guard trail.id == trails.last?.id, !reachedEnd, !loadingMore, !loading, let cursor else { return }
+        // Three cards before the end, so the next page is there when the thumb gets there.
+        guard let at = trails.firstIndex(where: { $0.id == trail.id }), at >= trails.count - 3,
+              !reachedEnd, !loadingMore, !loading, let cursor else { return }
         loadingMore = true
         defer { loadingMore = false }
         do {
@@ -647,6 +691,74 @@ final class WyrmTrailsStore: ObservableObject {
         }
     }
 
+    /**
+     * A video trail (OM, 2026-10-05). The player is back in the feed at once;
+     * then, on the phone, the clip is trimmed and compressed
+     * (`WyrmTrailVideoExport`), sent, its poster sent as a photo and
+     * thumbnail, and the trail made. The pending card shows the poster and one
+     * progress for the whole way: the export is the first 45%, the clip the
+     * next 45%, the poster the rest. `overlays[tier]` is everything drawn on
+     * top, at each export size.
+     */
+    func postVideo(clip: WyrmTrailClip, startMs: Int64, endMs: Int64, muted: Bool, look: WyrmTrailLook,
+                   adjust: WyrmTrailAdjust, overlays: [UIImage?], poster: UIImage?, caption: String) async -> Bool {
+        guard !posting.busy else { return false }
+        let words = caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.86)) {
+            pendingImage = poster
+            pendingCaption = words
+            pendingActive = true
+        }
+        pendingSkin = nil
+        pendingShareSkin = false
+        pendingClip = clip
+        pendingVideoRetry = { [weak self] in
+            Task { _ = await self?.postVideo(clip: clip, startMs: startMs, endMs: endMs, muted: muted, look: look,
+                                             adjust: adjust, overlays: overlays, poster: poster, caption: caption) }
+        }
+        posting = .uploading(0)
+        var made: URL?
+        defer { if let made { try? FileManager.default.removeItem(at: made) } }
+        do {
+            let file = try await WyrmTrailVideoExport.export(clip, startMs: startMs, endMs: endMs, muted: muted, look: look,
+                                                             adjust: adjust, overlays: overlays) { value in
+                Task { @MainActor in if case .uploading = self.posting { self.posting = .uploading(value * 0.45) } }
+            }
+            made = file
+            let still = poster ?? WyrmTrailFrames.frame(clip, atMs: startMs, longest: 1440)
+            guard let still, let files = await WyrmTrailEncoder.prepare(still) else { throw WyrmTrailVideoError.unreadable }
+            posting = .uploading(0.45)
+            let token = token()
+            let videoId = try await WyrmTrailsClient.shared.uploadVideo(file, token: token) { value in
+                Task { @MainActor in if case .uploading = self.posting { self.posting = .uploading(0.45 + value * 0.45) } }
+            }
+            let thumbId = try await WyrmTrailsClient.shared.upload(files.thumb, token: token) { value in
+                Task { @MainActor in if case .uploading = self.posting { self.posting = .uploading(0.9 + value * 0.03) } }
+            }
+            let photoId = try await WyrmTrailsClient.shared.upload(files.full, token: token) { value in
+                Task { @MainActor in if case .uploading = self.posting { self.posting = .uploading(0.93 + value * 0.04) } }
+            }
+            let trail = try await WyrmTrailsClient.shared.create(caption: words, photoId: photoId, thumbId: thumbId,
+                                                                 videoId: videoId, token: token)
+            dropPendingVideo()
+            landed(trail)
+            return true
+        } catch is CancellationError {
+            posting = .failed("Posting stopped. Try again.")
+            return false
+        } catch {
+            posting = .failed(message(error))
+            return false
+        }
+    }
+
+    /// The pending video's retry and its own copy of the clip, gone.
+    private func dropPendingVideo() {
+        pendingVideoRetry = nil
+        pendingClip?.removeOwnedFile()
+        pendingClip = nil
+    }
+
     private func landed(_ trail: WyrmTrail) {
         withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
             trails.insert(trail, at: 0)
@@ -664,12 +776,18 @@ final class WyrmTrailsStore: ObservableObject {
 
     func retryPending() {
         guard pendingActive, !posting.busy else { return }
+        if let again = pendingVideoRetry {
+            posting = .idle
+            again()
+            return
+        }
         let image = pendingImage, caption = pendingCaption, skin = pendingSkin, share = pendingShareSkin
         Task { _ = await post(image: image, caption: caption, skin: skin, shareSkin: share) }
     }
 
     func discardPending() {
         guard !posting.busy else { return }
+        dropPendingVideo()
         withAnimation(.easeOut(duration: 0.2)) { pendingImage = nil; pendingActive = false; posting = .idle }
     }
 
@@ -731,6 +849,9 @@ final class WyrmTrailsStore: ObservableObject {
 
     private func message(_ error: Error) -> String {
         if case WyrmServiceError.message(let text) = error { return text }
+        if error is WyrmTrailVideoError || (error as NSError).domain == AVFoundationErrorDomain {
+            return "This phone could not prepare that video."
+        }
         return "Something went wrong. Try again."
     }
 }
@@ -826,6 +947,7 @@ struct WyrmTrailCard: View {
     let onOpen: () -> Void
     let onAuthor: () -> Void
     @ObservedObject var store = WyrmTrailsStore.shared
+    @ObservedObject private var feed = WyrmTrailFeedPlayer.shared
     @State private var burst = false
     @State private var confirmDelete = false
     @State private var reporting = false
@@ -861,7 +983,12 @@ struct WyrmTrailCard: View {
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 10)
 
             ZStack {
-                if let photo = trail.photo {
+                if let clip = trail.video, let photo = trail.photo {
+                    // A video: only the card most in view plays (the open trail always does).
+                    WyrmTrailVideoView(trailId: trail.id, video: clip, poster: photo.url, thumb: trail.thumbUrl ?? photo.url,
+                                       aspect: trail.aspect, active: expanded || feed.activeId == trail.id)
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                } else if let photo = trail.photo {
                     WyrmTrailImage(full: photo.url, thumb: trail.thumbUrl ?? photo.url, aspect: trail.aspect)
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
@@ -1184,6 +1311,8 @@ struct WyrmTrailsFeed: View {
     var close: (() -> Void)? = nil
     let open: (WyrmDesignRoute) -> Void
     @ObservedObject private var store = WyrmTrailsStore.shared
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var feedHeight: CGFloat = 0
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1205,6 +1334,10 @@ struct WyrmTrailsFeed: View {
                             ForEach(store.trails) { trail in
                                 WyrmTrailCard(trail: trail, onOpen: { open(.trail(trail.id)) },
                                               onAuthor: { open(.profile(trail.author.playerId)) })
+                                    .background(GeometryReader { proxy in
+                                        Color.clear.preference(key: WyrmTrailVideoSpots.self,
+                                                               value: trail.video == nil ? [:] : [trail.id: proxy.frame(in: .named("trailsFeed")).midY])
+                                    })
                                     .task { await store.loadMoreIfNeeded(after: trail) }
                             }
                             if store.loadingMore { ProgressView().padding(.vertical, 18) }
@@ -1220,11 +1353,29 @@ struct WyrmTrailsFeed: View {
                     }
                     .padding(.top, 6)
                 }
+                .coordinateSpace(name: "trailsFeed")
+                .background(GeometryReader { proxy in
+                    Color.clear.onAppear { feedHeight = proxy.size.height }.onChange(of: proxy.size.height) { feedHeight = $0 }
+                })
+                // One clip plays: the video card whose middle is nearest the middle of the feed (OM, 2026-10-05).
+                .onPreferenceChange(WyrmTrailVideoSpots.self) { spots in
+                    let middle = feedHeight / 2
+                    let best = spots.filter { $0.value >= 0 && $0.value <= feedHeight }
+                        .min { abs($0.value - middle) < abs($1.value - middle) }?.key
+                    if WyrmTrailFeedPlayer.shared.activeId != best { WyrmTrailFeedPlayer.shared.activeId = best }
+                }
                 .refreshable { await store.refresh() }
             }
         }
         .background(WyrmPaperBackground().ignoresSafeArea())
         .foregroundColor(ATheme.ink)
+        .onChange(of: scenePhase) { phase in
+            if phase == .active { WyrmTrailFeedPlayer.shared.resume() } else { WyrmTrailFeedPlayer.shared.pause() }
+        }
+        .onDisappear {
+            WyrmTrailFeedPlayer.shared.pause()
+            WyrmTrailFeedPlayer.shared.activeId = nil
+        }
         .onAppear { store.token = { [weak account] in account?.sessionToken ?? "" } }
         .task { if !store.loaded { await store.refresh() } }
         .overlay(alignment: .top) { WyrmTrailToast(store: store) }

@@ -51,9 +51,13 @@ assert "sid = me->ntl_id" in ntl_net_c
 assert overlay_c.index("android_team_begin_frame();") < overlay_c.index("if (usrs->hotkeys[HOTKEY_HUD].active)")
 
 assert "#define ROPE_POINTS 10" in tags_c
-assert "#define ROPE_STEP (1.0f / 60.0f)" in tags_c
+# NTL 9.68's two rope integrators (OM, 2026-10-05): the default path once a
+# drawn frame at mb 6.94, the clocked path in 16.667 ms steps, Zu angles.
+assert "#define NTL_DEFAULT_MB 6.94" in tags_c
+assert "#define ROPE_STEP_MS 16.667" in tags_c
 assert "#define ROPE_MAX_STEPS 4" in tags_c
-for literal in ("3.3332f", "0.08333f", "0.838f", "0.248f", "5.0f", "4.0f", "3.0f", "2.0f"):
+assert "static float ntl_angle(double dx, double dy)" in tags_c
+for literal in ("3.3332", "0.08333", "0.838", "0.248", "0.2 * mb * chain", "0.05 * mb", "5.0f", "4.0f", "3.0f", "2.0f"):
     assert literal in tags_c, literal
 
 assert "remaining engine boundary" not in ui

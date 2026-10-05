@@ -1099,10 +1099,22 @@ static void draw_sparkle(ImDrawList* draw, float cx, float cy, float t,
   }
 }
 
+/* 0: the old in-arena auto-respawn pill is off (OM, 2026-10-05). */
+#define WYRM_RESPAWN_PILL 0
+
 void android_team_draw_respawn_toggle(tenv* env) {
   respawn_button[2] = 0.0f;
   respawn_button[3] = 0.0f;
   if (!env) return;
+  /* The on-screen Auto restart key is the switch now and sits in the arena
+     itself (OM, 2026-10-05), so this old "TURN OFF AUTO" pill is never drawn.
+     A zero-sized button also means android_team_respawn_toggle_hit never
+     takes a touch. */
+  if (!WYRM_RESPAWN_PILL) {
+    respawn_arrive_at = 0;
+    respawn_leaving_at = 0;
+    return;
+  }
   tuser_data* usr = env->usr;
   user_settings* usrs = &usr->usrs;
 

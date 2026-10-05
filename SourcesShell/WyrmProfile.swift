@@ -149,7 +149,7 @@ struct WyrmProfilePage: View {
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 0) {
                         header
-                        badgeStrip
+                        // Badges are off the profile (OM, 2026-10-05; a new concept comes later).
                         if WyrmTrailsFeature.enabled {
                             gridHeader
                             gridBody
@@ -247,12 +247,7 @@ struct WyrmProfilePage: View {
                     Text("Add a line about how you play").font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.link)
                 }.buttonStyle(.plain).padding(.top, 4)
             }
-            HStack(spacing: 8) {
-                chip("trophy.fill", "Best", score.wyrmFormatted)
-                chip("bolt.fill", "Kills", kills.wyrmFormatted)
-                if WyrmTrailsFeature.enabled, let beads = book?.beads, beads > 0 { chip("circle.hexagongrid.fill", "Beads", Int64(beads).wyrmFormatted) }
-            }
-            .padding(.top, 12)
+            // Best / Kills / Beads chips are off the profile (OM, 2026-10-05).
             actions.padding(.top, 14)
         }
         .padding(.horizontal, 18)
@@ -639,6 +634,18 @@ struct WyrmTrailTile: View {
             .background(trail.photo == nil ? ATheme.ink : ATheme.well)
             .overlay(content)
             .clipped()
+            .overlay(alignment: .topTrailing) {
+                // A video trail: a play mark and its length, Instagram-style.
+                if let video = trail.video {
+                    HStack(spacing: 3) {
+                        Image(systemName: "play.fill").font(.system(size: 8, weight: .bold))
+                        Text(wyrmClipTime(video.durationMs)).font(.androidWyrm(10.5, .bold)).monospacedDigit()
+                    }
+                    .foregroundColor(.white)
+                    .shadow(color: Color.black.opacity(0.5), radius: 3)
+                    .padding(7)
+                }
+            }
             .overlay(alignment: .bottomLeading) {
                 if trail.likeCount > 0 {
                     HStack(spacing: 4) {

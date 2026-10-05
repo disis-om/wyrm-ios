@@ -819,7 +819,8 @@ struct WyrmModesPage: View {
             // Snake look (OM, 2026-10-05): the preview sits on this card, not a landscape page.
             WSSectionLabel("Snake")
             WSCard {
-                WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true)
+                WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true,
+                                     hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
                 if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
                 if let spine { WSTypedRow(setting: spine, engine: engine) }
                 if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
@@ -855,59 +856,168 @@ struct WyrmModesPage: View {
     }
 }
 
+/// The player's own snake as the arena draws it in each mode (OM, 2026-10-05:
+/// "asli skin ... jaisi arena me dikhegi vaisi"). Texture is the Skin tab's own
+/// bead drawing (the arena's sprites); Solid and Flat follow the engine's
+/// render modes 1 and 2 (`redraw.c`): Solid paints every bead in its pattern
+/// colour from the head back, Flat the first bead's colour; Skinless is one
+/// see-through stroke (.8) of the plain body's width in that first colour,
+/// round at both ends. The head (eyes, accessory, Wyrm look) is drawn in every
+/// mode, as in the arena; in assist with "Hide own tag and accessories" on,
+/// the accessory and the look are left off. Same as Android's SnakeBodyPreview.
 struct WyrmSnakeBodyPreview: View {
     let mode: Int
     let spine: Bool
+    var hideCosmetics = false
+    @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
+    @ObservedObject private var look = WyrmLookStore.shared
+
     var body: some View {
+        let skin = WyrmTrailSkin.current()
+        let custom = skin.wearsPattern
+        let groups = skin.wornGroups   // index 0 is the head, as the engine counts
+        let colors = skin.wornColors
+        let accessory = hideCosmetics ? -1 : skin.wornAccessory
+        let showLook = !hideCosmetics
         VStack(alignment: .leading, spacing: 8) {
             Text("Preview").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
             Canvas { context, canvas in
-                let radius: CGFloat = 11
-                let count = 14
-                var pts: [CGPoint] = []
-                for i in 0..<count {
-                    let t = CGFloat(i) / CGFloat(count - 1)
-                    pts.append(CGPoint(x: 18 + t * (canvas.width - 36),
-                                       y: canvas.height * 0.5 + sin(t * 3.4) * 10))
+                let total = 160
+                let span = 1 + CGFloat(total - 1) * (8.0 / 48.0) + 0.7
+                let scale = min(canvas.height * 0.34, (canvas.width - 28) / span)
+                let step = 8 * (scale / 48)
+                let left = (canvas.width - span * scale) / 2
+                let amp = canvas.height * 0.16
+                // Segment 0 is the tail (left), total - 1 the head (right).
+                func place(_ segment: Int) -> CGPoint {
+                    let along = CGFloat(segment) / CGFloat(total - 1)
+                    return CGPoint(x: left + scale * 0.5 + CGFloat(segment) * step,
+                                   y: canvas.height * 0.5 + amp * sin(along * 6.2831855 * 1.15))
                 }
-                let body = Color(.sRGB, red: 0.20, green: 0.78, blue: 0.36, opacity: 1)
-                let alt = Color(.sRGB, red: 0.10, green: 0.55, blue: 0.24, opacity: 1)
-                let stripe = Color(.sRGB, red: 0.55, green: 0.95, blue: 0.62, opacity: 1)
-                if mode == 3, pts.count >= 2 {
+                func heading(_ segment: Int) -> CGFloat {
+                    let a = place(max(0, segment - 1))
+                    let b = place(min(total - 1, segment + 1))
+                    return atan2(b.y - a.y, b.x - a.x)
+                }
+                // One bead's colour as the engine paints Solid/Flat/Skinless:
+                // a picked colour when there is one (Wyrm beads opaque), else
+                // the colour group's own.
+                func beadColour(_ codeIndex: Int) -> Color {
+                    let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
+                    if rgba != 0 {
+                        let alpha = WyrmBead.kind(of: rgba) != nil ? 1.0 : Double((rgba >> 24) & 0xff) / 255
+                        return Color(airRGB: rgba & 0xffffff).opacity(alpha)
+                    }
+                    let group = groups.isEmpty ? 7 : groups[codeIndex % groups.count]
+                    return Color(airRGB: WyrmAirSkin.groupRGB(group))
+                }
+                func bodyPath() -> Path {
                     var path = Path()
-                    path.move(to: pts[0])
-                    if pts.count > 2 {
-                        for i in 1..<(pts.count - 1) {
-                            let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2)
-                            path.addQuadCurve(to: mid, control: pts[i])
+                    path.move(to: place(0))
+                    for segment in 1..<total { path.addLine(to: place(segment)) }
+                    return path
+                }
+                let head = place(total - 1)
+
+                if mode == 3 {
+                    let rgba = colors.first ?? 0
+                    let group = groups.first ?? 7
+                    let rgb = rgba != 0 ? rgba & 0xffffff : WyrmAirSkin.groupRGB(group)
+                    context.stroke(bodyPath(), with: .color(Color(airRGB: rgb).opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: scale, lineCap: .round, lineJoin: .round))
+                } else if mode == 0 && textures.ready {
+                    for segment in 0..<total {
+                        let codeIndex = total - 1 - segment
+                        let group = groups.isEmpty ? 7 : groups[codeIndex % groups.count]
+                        if group < 0 { continue }
+                        let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
+                        let air = WyrmAirSkin.kind(of: rgba)
+                        let wyrm = WyrmBead.kind(of: rgba)
+                        guard let bead = wyrm.flatMap({ textures.wyrmBeads[$0] })
+                                ?? air.flatMap({ textures.airBeads[$0] })
+                                ?? textures.beads[rgba == 0 ? group : 40] else { continue }
+                        var inked = context
+                        if let wyrm {
+                            if WyrmBead.tinted[wyrm] { inked.addFilter(.colorMultiply(Color(airRGB: rgba & 0xffffff))) }
+                        } else if air != nil {
+                            inked.addFilter(.colorMultiply(Color(airRGB: WyrmAirSkin.bodyTint(rgba))))
+                        } else if rgba != 0 {
+                            inked.addFilter(.colorMultiply(Color(airRGB: rgba & 0xffffff)))
                         }
+                        let p = place(segment)
+                        // Heading right is the Skin preview's head row (turned 180).
+                        inked.translateBy(x: p.x, y: p.y)
+                        inked.rotate(by: .radians(Double(heading(segment)) + .pi))
+                        inked.draw(Image(decorative: bead, scale: 1),
+                                   in: CGRect(x: -scale * 0.5, y: -scale * 0.5, width: scale, height: scale))
                     }
-                    path.addLine(to: pts[pts.count - 1])
-                    context.stroke(path, with: .color(body.opacity(0.8)),
-                                   style: StrokeStyle(lineWidth: radius * 2, lineCap: .round, lineJoin: .round))
                 } else {
-                    for (i, p) in pts.enumerated() {
-                        let fill: Color
-                        switch mode {
-                        case 0: fill = i % 3 == 1 ? stripe : (i % 2 == 0 ? body : alt)
-                        case 2: fill = body
-                        default: fill = i % 2 == 0 ? body : alt
-                        }
-                        context.fill(Path(ellipseIn: CGRect(x: p.x - radius, y: p.y - radius, width: radius * 2, height: radius * 2)),
-                                     with: .color(fill))
+                    // Solid: each bead its own colour; Flat (and Texture before
+                    // the sprites load): Flat uses the first bead's.
+                    for segment in 0..<total {
+                        let codeIndex = total - 1 - segment
+                        let p = place(segment)
+                        context.fill(Path(ellipseIn: CGRect(x: p.x - scale * 0.5, y: p.y - scale * 0.5,
+                                                            width: scale, height: scale)),
+                                     with: .color(beadColour(mode == 2 ? 0 : codeIndex)))
                     }
                 }
-                if spine, pts.count >= 2 {
-                    var line = Path()
-                    line.move(to: pts[0])
-                    for p in pts.dropFirst() { line.addLine(to: p) }
-                    context.stroke(line, with: .color(.white), lineWidth: 2)
+                if spine {
+                    let line = bodyPath()
+                    context.stroke(line, with: .color(Color.black.opacity(0.35)),
+                                   style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round))
+                    context.stroke(line, with: .color(Color.white.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                }
+                // The head over everything, as the arena draws its eyes,
+                // accessory and look last.
+                if textures.ready {
+                    var h = context
+                    h.translateBy(x: head.x, y: head.y)
+                    h.rotate(by: .radians(Double(heading(total - 1))))
+                    let unit = scale / 29
+                    let iris = 12 * unit
+                    let pupil = (custom ? 7 : skin.preset == 63 ? 5 : 7) * unit
+                    let irisColor: Color = !custom && skin.preset == 63 ? .black :
+                        !custom && skin.preset == 64 ? Color(red: 1, green: 1, blue: 0.50196) :
+                        !custom && skin.preset == 25 ? Color(red: 1, green: 0.3373, blue: 0.0353) :
+                        !custom && skin.preset == 44 ? Color(red: 0.8314, green: 0.8314, blue: 0.8314) : .white
+                    let pupilColor: Color = !custom && skin.preset == 63 ? Color(white: 0.8) : .black
+                    if let eye = textures.beads[40] {
+                        let image = Image(decorative: eye, scale: 1)
+                        for side in 0..<2 {
+                            let ey = side == 0 ? -6 * unit - 0.5 : 6 * unit
+                            var irisContext = h
+                            irisContext.addFilter(.colorMultiply(irisColor))
+                            irisContext.draw(image, in: CGRect(x: 6 * unit - iris / 2, y: ey - iris / 2,
+                                                               width: iris, height: iris))
+                            var pupilContext = h
+                            pupilContext.addFilter(.colorMultiply(pupilColor))
+                            let py = side == 0 ? -6 * unit : 6 * unit
+                            pupilContext.draw(image, in: CGRect(x: 6 * unit + 0.5 + 2 * unit - pupil / 2,
+                                                                y: py - pupil / 2, width: pupil, height: pupil))
+                        }
+                    }
+                    if let item = WyrmSkinCatalog.accessories.first(where: { $0.id == accessory }),
+                       let image = textures.accessories[accessory] {
+                        let size = scale * CGFloat(item.scale)
+                        let cx = CGFloat(item.offset) * 6 * unit
+                        h.draw(Image(decorative: image, scale: 1),
+                               in: CGRect(x: cx - size / 2, y: -size / 2, width: size, height: size))
+                    }
+                    if showLook {
+                        WyrmLook.draw(in: h, cells: textures.looks, head: .zero, r: scale / 2,
+                                      hair: look.hair, hairRGB: look.hairRGB,
+                                      ears: look.ears, glasses: look.glasses)
+                    }
                 }
             }
             .frame(height: 88).background(ATheme.well)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-        }.padding(.horizontal, 14).padding(.vertical, 12)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .onAppear { textures.prepare() }
     }
 }
 

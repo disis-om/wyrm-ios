@@ -28,12 +28,15 @@
     <true/>
     <!-- A game, so iOS turns Game Mode on while Wyrm is in front: background
          work is held back and controller/AirPods latency drops, as on Android. -->
-    <!-- Trails: the camera and the photo library are opened only from the
-         Trails studio, when the player chooses to post. -->
+    <!-- Trails: the camera, the microphone and the photo library are opened
+         only from the Trails studio, when the player chooses to post. The
+         microphone records a video's sound (OM, 2026-10-05). -->
     <key>NSCameraUsageDescription</key>
-    <string>Wyrm uses the camera when you take a photo for a trail.</string>
+    <string>Wyrm uses the camera when you take a photo or record a video for a trail.</string>
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Wyrm records sound with the videos you make for a trail.</string>
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>Wyrm shows your photos so you can pick one for a trail.</string>
+    <string>Wyrm shows your photos and videos so you can pick one for a trail.</string>
     <key>LSApplicationCategoryType</key>
     <string>public.app-category.games</string>
     <key>CADisableMinimumFrameDurationOnPhone</key>

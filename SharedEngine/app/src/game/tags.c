@@ -36,17 +36,35 @@
 
 #define TWO_PI 6.28318530718f
 
-/* Points in the rope, and the length of one segment in snake-widths. */
+/* Points in the rope, and the length of one segment in snake-widths. Both are
+   the mod's; ten points is enough to look like rope and few enough to run a
+   hundred snakes' worth every frame. */
 #define ROPE_POINTS 10
 #define ROPE_SEGMENT 4.0f
 
 /*
- * NTL 9.68 measures elapsed time in 16.667 ms quanta and runs no more than four
- * catch-up steps. Keeping this literal matters: it makes a Wyrm tag lag and
- * settle exactly like the same `tg` value rendered by another NTL client.
+ * How the rope is stepped: NTL 9.68's own two integrators, as written in
+ * `legacy/ntl 9.68/main-mt.js` (N5), picked by Swing the way NTL picks them
+ * (OM, 2026-10-05: "same to same original NTL").
+ *
+ *   Swing 1, the default: one step per drawn frame with the constants NTL
+ *   uses at its default "Browser default" FPS setting (ri = 1000, so
+ *   mb = 6.94): push .2 mb, stiffness .005 mb, damping .05 mb, advance mb/17.
+ *
+ *   Swing above 1: 16.667 ms steps caught up to the clock, at most four a
+ *   frame and at most 250 ms owed, with push 3.3332 + .6668 s, stiffness
+ *   .08333 + .01667 s, damping .838 + .145 s (at most .985), advance 1; the
+ *   drawn rope is then eased .248 a frame towards the simulated one.
+ *
+ * Wyrm used to run the second set 240 times a second on Android (a stiff rope
+ * that stayed straight) and 60 times a second on iOS whatever the screen did
+ * (a rope that moved in jumps on a 120 Hz phone).
  */
-#define ROPE_STEP (1.0f / 60.0f)
+#define NTL_DEFAULT_MB 6.94
+/* NTL's clock, in its own units: milliseconds, in doubles. */
+#define ROPE_STEP_MS 16.667
 #define ROPE_MAX_STEPS 4
+#define ROPE_MAX_DEBT_MS 250.0
 
 /* How far behind the head the rope is pinned, and the height a bobble is
    allowed to reach when small tags are on — both in snake-widths. */
@@ -57,21 +75,9 @@
    player's own size setting is applied. */
 #define TAG_SCALE 0.285f
 
-/*
- * How much of the way the bobble turns towards the rope's direction each
- * frame. This one line is the difference between a tag that hangs and a tag
- * that is welded on.
- *
- * The mod applies it once a frame at its own sixty, so it is a rate rather than
- * a fraction and has to be raised to the frames elapsed. `TAG_TURN_FRAME` is
- * the length of the frame it belongs to — and it is written out here rather
- * than borrowed from `ROPE_STEP`, which is what it used to do. When the rope's
- * step went to 240 the turn silently came with it and the bobble started
- * snapping round at twice the speed it should, which on a springy rope tip is
- * seen as the tag flicking back and forth.
- */
-#define TAG_TURN 0.15f
-#define TAG_TURN_FRAME (1.0f / 60.0f)
+/* How much of the way the bobble turns towards the rope's last segment each
+   drawn frame: NTL's `EA += .15 * delta`, once a frame, as NTL does it. */
+#define TAG_TURN 0.15
 
 /* The mod drops a rope whose anchor has left the world it can see, so that it
    is laid out cleanly again when it comes back rather than dragged across the
@@ -110,20 +116,22 @@ typedef struct tag_slot {
   bool used;
   bool seeded;
   unsigned frame;    /* the frame this rope was last drawn in */
-  float angle;
+  double angle; /* the bobble's turn, NTL's `EA` (a JS number) */
   float x[ROPE_POINTS];
   float y[ROPE_POINTS];
   float vx[ROPE_POINTS];
   float vy[ROPE_POINTS];
-  float draw_x[ROPE_POINTS];
-  float draw_y[ROPE_POINTS];
+  double debt; /* ms owed to the simulation; below zero: one step owed */
+  /* The rope as drawn when Swing is above one (NTL's eased copy, which NTL
+     keeps in plain JS numbers, so doubles). */
+  double draw_x[ROPE_POINTS];
+  double draw_y[ROPE_POINTS];
   bool draw_seeded;
-  float debt; /* time owed to the simulation, in seconds */
 } tag_slot;
 
 static tag_slot slots[TAG_SLOTS];
 static double last_frame_time = 0.0;
-static float frame_delta = ROPE_STEP;
+static double frame_delta_ms = ROPE_STEP_MS;
 static unsigned frame_number = 0;
 
 int tags_count(void) { return TAG_COUNT; }
@@ -207,24 +215,11 @@ void tags_tick(tenv* env) {
      much time has passed since the last frame, measured once so that every
      rope in the frame is advanced by the same amount. */
   double now = igGetTime();
-  float delta = (float)(now - last_frame_time);
+  double delta_ms = (now - last_frame_time) * 1000.0;
   last_frame_time = now;
-  if (delta < 0.0f || delta > 0.25f) delta = ROPE_STEP;
-  frame_delta = delta;
+  if (delta_ms < 0.0 || delta_ms > ROPE_MAX_DEBT_MS) delta_ms = ROPE_STEP_MS;
+  frame_delta_ms = delta_ms;
   ++frame_number;
-}
-
-/**
- * The shortest way round from one angle to another.
- *
- * Without this a snake crossing the wrap point would send its tag the long way
- * round the circle — a full spin for one degree of turn.
- */
-static float angle_delta(float from, float to) {
-  float delta = fmodf(to - from, TWO_PI);
-  if (delta > (float)M_PI) delta -= TWO_PI;
-  if (delta < -(float)M_PI) delta += TWO_PI;
-  return delta;
 }
 
 /**
@@ -243,32 +238,58 @@ static float angle_delta(float from, float to) {
  * whatever the snake was doing — and since the pull only maintains whatever
  * direction the chain already has, east is where it would then stay.
  */
-static void rope_step(tag_slot* slot, float scale, float push, float stiffness,
-                      float advance, float damping, float segment,
-                      float fallback) {
+/*
+ * The angle of a link, the way NTL 9.68 takes it: from its 256 x 256 `Zu`
+ * table (atan2 of whole steps around 128), with the link scaled by 32, 16, 8
+ * or 1 by how short it is, and plain atan2 only for a link 127 or longer.
+ * A short link's angle is therefore stepped, and on a rope that swings freely
+ * those steps are part of how NTL's tag moves (OM, 2026-10-05: same as NTL).
+ * The table holds floats, as NTL's Float32Array does.
+ */
+static float ntl_angle(double dx, double dy) {
+  double s = (dx >= -4.0 && dy >= -4.0 && dx < 4.0 && dy < 4.0)       ? 32.0
+             : (dx >= -8.0 && dy >= -8.0 && dx < 8.0 && dy < 8.0)     ? 16.0
+             : (dx >= -16.0 && dy >= -16.0 && dx < 16.0 && dy < 16.0) ? 8.0
+             : (dx >= -127.0 && dy >= -127.0 && dx < 127.0 && dy < 127.0)
+                 ? 1.0
+                 : 0.0;
+  if (s == 0.0) return (float)atan2(dy, dx);
+  int qx = (int)(s * dx + 128.0) - 128;
+  int qy = (int)(s * dy + 128.0) - 128;
+  return (float)atan2((double)qy, (double)qx);
+}
+
+/* NTL keeps the rope in Float32Arrays and does every sum in doubles; so does
+   this, so the two land on the same floats (OM, 2026-10-05). */
+static void rope_step(tag_slot* slot, double scale, double push,
+                      double stiffness, double advance, double damping,
+                      double segment, float fallback, bool exact_limit) {
   for (int i = 1; i < ROPE_POINTS; ++i) {
-    float px = slot->x[i - 1];
-    float py = slot->y[i - 1];
-    float dx = slot->x[i] - px;
-    float dy = slot->y[i] - py;
-    float angle = (dx == 0.0f && dy == 0.0f) ? fallback : atan2f(dy, dx);
-    float tx = px + push * cosf(angle) * scale;
-    float ty = py + push * sinf(angle) * scale;
+    double px = slot->x[i - 1];
+    double py = slot->y[i - 1];
+    double dx = slot->x[i] - px;
+    double dy = slot->y[i] - py;
+    double angle = (dx == 0.0 && dy == 0.0) ? fallback : ntl_angle(dx, dy);
+    double tx = px + push * cos(angle) * scale;
+    double ty = py + push * sin(angle) * scale;
 
-    slot->vx[i] += stiffness * (tx - slot->x[i]);
-    slot->vy[i] += stiffness * (ty - slot->y[i]);
-    slot->x[i] += advance * slot->vx[i];
-    slot->y[i] += advance * slot->vy[i];
-    slot->vx[i] *= damping;
-    slot->vy[i] *= damping;
+    slot->vx[i] = (float)(slot->vx[i] + stiffness * (tx - slot->x[i]));
+    slot->vy[i] = (float)(slot->vy[i] + stiffness * (ty - slot->y[i]));
+    slot->x[i] = (float)(slot->x[i] + advance * slot->vx[i]);
+    slot->y[i] = (float)(slot->y[i] + advance * slot->vy[i]);
+    slot->vx[i] = (float)(slot->vx[i] * damping);
+    slot->vy[i] = (float)(slot->vy[i] * damping);
 
-    dx = slot->x[i] - px;
-    dy = slot->y[i] - py;
-    float distance = sqrtf(dx * dx + dy * dy);
-    if (distance > segment) {
-      float a = (dx == 0.0f && dy == 0.0f) ? fallback : atan2f(dy, dx);
-      slot->x[i] = px + segment * cosf(a);
-      slot->y[i] = py + segment * sinf(a);
+    dx = (double)slot->x[i] - slot->x[i - 1];
+    dy = (double)slot->y[i] - slot->y[i - 1];
+    if (sqrt(dx * dx + dy * dy) > segment) {
+      /* NTL's default path takes this one with plain atan2, its clocked path
+         from the table. */
+      double a = (dx == 0.0 && dy == 0.0) ? fallback
+                 : exact_limit            ? atan2(dy, dx)
+                                          : ntl_angle(dx, dy);
+      slot->x[i] = (float)(slot->x[i - 1] + segment * cos(a));
+      slot->y[i] = (float)(slot->y[i - 1] + segment * sin(a));
     }
   }
 }
@@ -285,8 +306,10 @@ static void rope_seed(tag_slot* slot, float ax, float ay, float angle,
     slot->vy[i] = 0.0f;
   }
   slot->seeded = true;
+  /* Below zero: the next clocked frame owes one whole step, as NTL's clock
+     starts 16.667 ms back on a fresh rope (`_tag_lt = now - 16.667`). */
+  slot->debt = -1.0f;
   slot->draw_seeded = false;
-  slot->debt = 0.0f;
 }
 
 /**
@@ -304,7 +327,11 @@ static bool rope_broken(const tag_slot* slot, float segment) {
   float dx = slot->x[ROPE_POINTS - 1] - slot->x[0];
   float dy = slot->y[ROPE_POINTS - 1] - slot->y[0];
   float span = (ROPE_POINTS - 1) * segment;
-  return dx * dx + dy * dy > span * span * 1.05f;
+  /* NTL never re-lays a rope on screen, and a near miss here laid this one
+     straight again mid-swing: only a broken number or a real jump counts
+     (OM, 2026-10-05). The step's own limit keeps every link in reach. */
+  if (!isfinite(dx) || !isfinite(dy)) return true;
+  return dx * dx + dy * dy > span * span * 9.0f;
 }
 
 /**
@@ -362,45 +389,9 @@ static void draw_tag(tenv* env, tag_slot* slot, const tag_entry* tag,
   slot->x[0] = anchor_x;
   slot->y[0] = anchor_y;
 
-  /*
-   * One integrator, stepped at a true sixty.
-   *
-   * The mod has two and picks between them on the swing setting, and the one it
-   * uses by default works its constants out from the frame time. That was copied
-   * faithfully and it was the wrong thing to copy: the mod derives them from its
-   * *configured* frame rate, which is around sixteen milliseconds whatever the
-   * screen is doing, and Wyrm was deriving them from the frame time it actually
-   * measured. On a 110Hz phone that is nine milliseconds, which gives a
-   * stiffness of 0.045 against 0.083 and a step of 0.53 against 0.98 — a rope
-   * roughly half as willing to follow, per second, as the one the mod runs.
-   *
-   * What that looks like is a tag that cannot keep up under boost: it stretches
-   * to the limit and hangs there, and the snake appears to be dragging
-   * something that has caught on the floor.
-   *
-   * So the frame rate is caught up to rather than fed in, always, and the drawn
-   * rope is eased towards the simulated one so that stepping at sixty does not
-   * judder on a screen running faster.
-   */
-  {
-    float push = (3.3332f + 0.6668f * loose) * chain;
-    float stiffness = 0.08333f + 0.01667f * loose;
-    float damping = 0.838f + 0.145f * loose;
-    if (damping > 0.985f) damping = 0.985f;
-
-    slot->debt += frame_delta;
-    int steps = 0;
-    while (slot->debt >= ROPE_STEP && steps < ROPE_MAX_STEPS) {
-      rope_step(slot, scale, push, stiffness, 1.0f, damping, segment,
-                head_angle);
-      slot->debt -= ROPE_STEP;
-      ++steps;
-    }
-    if (slot->debt > ROPE_STEP * ROPE_MAX_STEPS) slot->debt = 0.0f;
-  }
-
-  /* The preview hangs under its own weight and sways, because a rope that only
-     ever pointed backwards would tell the player nothing about how it moves. */
+  /* NTL's order (N5): the preview's weight first, then the step. The preview
+     always takes the default path, as NTL's skin chooser does. */
+  bool ntl_default = dangle || swing <= 1.0f;
   if (dangle) {
     float phase = frame_number / 23.0f;
     for (int i = 1; i < ROPE_POINTS; ++i) {
@@ -410,26 +401,63 @@ static void draw_tag(tenv* env, tag_slot* slot, const tag_entry* tag,
     }
   }
 
-  /* NTL 9.68 eases the visible rope by .248 when Swing is above one. The
-     physics arrays keep running at sixty; only the rendered path is softened. */
-  const float* rx = slot->x;
-  const float* ry = slot->y;
-  if (swing > 1.0f) {
+  if (ntl_default) {
+    /* Swing 1: one step for this frame, NTL's default constants. */
+    double mb = NTL_DEFAULT_MB;
+    rope_step(slot, scale, 0.2 * mb * chain, 0.005 * mb, mb / 17.0,
+              0.05 * mb, (double)ROPE_SEGMENT * chain * scale, head_angle,
+              true);
+    /* NTL forgets its clock on this path, so a later switch to Swing above 1
+       starts with one step owed. */
+    slot->debt = -1.0f;
+  } else {
+    /* Swing above 1: 16.667 ms steps caught up to the clock, as NTL does. */
+    double push = (3.3332 + 0.6668 * loose) * chain;
+    double stiffness = 0.08333 + 0.01667 * loose;
+    double damping = 0.838 + 0.145 * loose;
+    if (damping > 0.985) damping = 0.985;
+
+    if (slot->debt < 0.0)
+      slot->debt = ROPE_STEP_MS;
+    else
+      slot->debt += frame_delta_ms;
+    if (slot->debt > ROPE_MAX_DEBT_MS) slot->debt = ROPE_MAX_DEBT_MS;
+    int steps = (int)(slot->debt / ROPE_STEP_MS);
+    if (steps > ROPE_MAX_STEPS) steps = ROPE_MAX_STEPS;
+    for (int s = 0; s < steps; ++s)
+      rope_step(slot, scale, push, stiffness, 1.0, damping,
+                (double)ROPE_SEGMENT * chain * scale, head_angle, false);
+    slot->debt -= steps * ROPE_STEP_MS;
+  }
+
+  /* With Swing above 1 NTL draws an eased copy of the rope (.248 a frame);
+     the simulation itself is untouched by it. */
+  double rx[ROPE_POINTS];
+  double ry[ROPE_POINTS];
+  if (!ntl_default) {
     if (!slot->draw_seeded) {
-      memcpy(slot->draw_x, slot->x, sizeof(slot->draw_x));
-      memcpy(slot->draw_y, slot->y, sizeof(slot->draw_y));
+      for (int i = 0; i < ROPE_POINTS; ++i) {
+        slot->draw_x[i] = slot->x[i];
+        slot->draw_y[i] = slot->y[i];
+      }
       slot->draw_seeded = true;
     }
     for (int i = 1; i < ROPE_POINTS; ++i) {
-      slot->draw_x[i] += 0.248f * (slot->x[i] - slot->draw_x[i]);
-      slot->draw_y[i] += 0.248f * (slot->y[i] - slot->draw_y[i]);
+      slot->draw_x[i] += 0.248 * (slot->x[i] - slot->draw_x[i]);
+      slot->draw_y[i] += 0.248 * (slot->y[i] - slot->draw_y[i]);
     }
     slot->draw_x[0] = slot->x[0];
     slot->draw_y[0] = slot->y[0];
-    rx = slot->draw_x;
-    ry = slot->draw_y;
+    for (int i = 0; i < ROPE_POINTS; ++i) {
+      rx[i] = slot->draw_x[i];
+      ry[i] = slot->draw_y[i];
+    }
   } else {
     slot->draw_seeded = false;
+    for (int i = 0; i < ROPE_POINTS; ++i) {
+      rx[i] = slot->x[i];
+      ry[i] = slot->y[i];
+    }
   }
 
   float sx[ROPE_POINTS];
@@ -456,18 +484,20 @@ static void draw_tag(tenv* env, tag_slot* slot, const tag_entry* tag,
     ImDrawList_PathStroke(draw, trim, 0, widths[pass] * pixels);
   }
 
-  /* The bobble turns towards the direction of the rope's last segment, a
-     fraction of the way each frame — and "each frame" is the mod's sixty, not
-     this screen's hundred and ten. Applied raw it chases nearly twice as hard
-     on a fast phone, which lines the tag up with the rope sooner than it should
-     and takes the lag out of the one part of this that is meant to lag. */
-  float rope_angle = atan2f(sy[last] - sy[last - 1], sx[last] - sx[last - 1]);
-  float frames = frame_delta / TAG_TURN_FRAME;
-  if (frames < 0.1f) frames = 0.1f;
-  if (frames > 4.0f) frames = 4.0f;
-  float turn = 1.0f - powf(1.0f - TAG_TURN, frames);
-  slot->angle += turn * angle_delta(slot->angle, rope_angle);
-  slot->angle = fmodf(slot->angle, TWO_PI);
+  /* The bobble turns towards the rope's last segment, .15 of the way each
+     drawn frame, exactly as NTL turns it (`EA = (EA + .15 * d) % 2pi`). */
+  {
+    /* In world units, as NTL measures it; the screen is the same line. */
+    double d = atan2(ry[last] - ry[last - 1], rx[last] - rx[last - 1]) -
+               slot->angle;
+    const double he = 6.283185307179586;
+    if (d < 0.0 || d >= he) d = fmod(d, he);
+    if (d < -M_PI)
+      d += he;
+    else if (d > M_PI)
+      d -= he;
+    slot->angle = fmod(slot->angle + TAG_TURN * d, he);
+  }
 
   float size = TAG_SCALE * usrs->tag_scale;
   float height = tag->h * size * pixels;

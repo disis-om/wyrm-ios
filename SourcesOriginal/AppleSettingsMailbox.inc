@@ -74,8 +74,8 @@ const char* WyrmIOSHotkeysSnapshot(void) {
   text_builder builder = {buffer, 0, sizeof(buffer)};
   for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
     if (!mobile_hotkey_is_on_screen_button(action)) continue;
-    if (!WYRM_EXPERIMENTAL_ROPE_MODE && action == MOBILE_HOTKEY_ROPE_MODE)
-      continue;
+    /* Slot 14 is the Auto restart key (OM, 2026-10-05): listed like the rest,
+       as Android's hotkey snapshot does. */
     bool fixed_mode = action >= NUM_HOTKEYS || action == HOTKEY_RESTART ||
                       action == HOTKEY_QUIT;
     int mode = fixed_mode
