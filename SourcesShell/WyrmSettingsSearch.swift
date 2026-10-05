@@ -136,16 +136,6 @@ enum WyrmSettingsIndex {
                                value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
                                first: true) { engine.openBackgroundEditor() })
         })
-        // render_mode, spine and hide_cosmetics already arrive above: place()
-        // lists every labelled normal/assist row. This is only the preview.
-        result.append(WyrmSettingsEntry(id: "app.snake-preview", title: "See it in the arena",
-                                        detail: "Skinless draws every snake as a clear strip in its own colour. Spine is a thin white line down every snake.",
-                                        page: "Modes", route: .modes,
-                                        keywords: "snake look preview skinless spine texture solid flat render") {
-            AnyView(WSValueRow(title: "See it in the arena", value: "", first: true) {
-                engine.openSnakeLookPreview(assist: false)
-            })
-        })
         result += WyrmButtonsContent.allowed(engine.hotkeys).map { key in
             WyrmSettingsEntry(id: "hotkey.\(key.id)", title: "\(key.name) button", detail: "Show it in matches, and whether a press toggles or holds",
                               page: "On-screen buttons", route: .buttons, keywords: "hotkey key toggle hold") {
@@ -159,6 +149,12 @@ enum WyrmSettingsIndex {
             })
         }
         result += [
+            WyrmSettingsEntry(id: "app.look-ahead", title: "Look ahead",
+                              detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
+                              page: "Display", route: .display,
+                              keywords: "look ahead camera view follow slither boost") {
+                AnyView(WyrmLookAheadSearchRow())
+            },
             WyrmSettingsEntry(id: "app.play-orientation", title: "Play orientation",
                               detail: "Landscape or portrait: the lobby, the match and the layout editor",
                               page: "Controls", route: .controls,
@@ -242,6 +238,16 @@ private struct WyrmPlayOrientationSearchRow: View {
                     options: ["Landscape", "Portrait"], selected: orientation.portrait ? 1 : 0, first: true) { pick in
             orientation.switchTo(pick == 1, engine: engine)
         }
+    }
+}
+
+/// Look ahead, live in search results. The row itself is on Display.
+private struct WyrmLookAheadSearchRow: View {
+    @ObservedObject var playFeel = WyrmPlayFeelStore.shared
+    var body: some View {
+        WSBoolRow(title: "Look ahead",
+                  detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
+                  on: playFeel.lookAhead, first: true) { playFeel.setLookAhead($0) }
     }
 }
 

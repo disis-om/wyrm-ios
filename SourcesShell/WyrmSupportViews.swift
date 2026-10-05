@@ -533,7 +533,7 @@ private struct WyrmFAQ: Identifiable {
 
     static let all: [WyrmFAQ] = [
         WyrmFAQ(id: 0, question: "My snake spawned and then dropped out of the arena",
-                answer: "Another slither app on the same Wi-Fi (on a PC or another phone) can make the arena drop you. Close it, or switch to mobile data, and pick the arena again. Joining the same arena many times a minute also gets a short timeout; wait a minute and try once."),
+                answer: "Another slither app on the same Wi-Fi (on a PC or another phone) can make the arena drop you. Close it, or turn off Wi-Fi and try to play at least once on mobile data, then pick the arena again. Joining the same arena many times a minute also gets a short timeout; wait a minute and try once."),
         WyrmFAQ(id: 1, question: "How do I change my username or photo?",
                 answer: "Open your profile and tap Edit profile. You can rename twice a month. Tap your photo on your profile to change or remove it."),
         WyrmFAQ(id: 2, question: "My skin or beads look different in the arena",

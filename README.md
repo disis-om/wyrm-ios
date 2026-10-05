@@ -11,8 +11,17 @@
 
 ## Status
 
-- Released: **0.18.24 (build 91)** beta. Latest build: **0.18.31 (98)**, not
-  released. iOS **15 or newer**, iPhone first.
+- Released: **0.18.24 (build 91)** beta. Latest build: **0.18.35 (102)**, not
+  released and not installed. IPA
+  `dist/Wyrm-0.18.35-build-102-unsigned.ipa`, SHA-256
+  `c04b1d3d67cf372f08de72d5448e38d504a72cba2f26418361018eb12ebf7ed8`.
+  iOS **15 or newer**, iPhone first. Same snake look as Android 6.4.9:
+  Skinless, Spine, assist-only hide, a settings file that keeps old values,
+  and the engine's own preview. The tree after that build, not compiled and
+  not in this IPA, draws Skinless as the plain snake with a see-through skin,
+  puts the preview on the Modes Snake card, moves Look ahead to Settings ›
+  Display, and adds a zoom bar you can slide under Zoom bar style. Details:
+  `AGENTS.md`.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
   "beta" and announced only through `update/beta.json`; stable builds use
@@ -43,7 +52,7 @@
 - NTL 9.68-compatible Team mode: presence, a roster with FPS, ping and
   leaderboard place, and team chat. Several teams can be saved; only the
   selected one runs. Team credentials stay in the iOS Keychain. NTL tags are
-  switched off for now.
+  on (since 2026-10-04).
 - Settings rebuilt from the Android app: display, controls, on-screen
   buttons, arena UI, modes, bot, food, notifications, privacy, themes and
   backup. Changes go straight into the engine. Settings search included.

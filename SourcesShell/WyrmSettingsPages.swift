@@ -151,6 +151,8 @@ struct WyrmDisplayPage: View {
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @State var advanced = false
+    /// Look ahead (OM, 2026-10-05): lives on Display, not Controls.
+    @ObservedObject private var playFeel = WyrmPlayFeelStore.shared
     private static let basicIDs = ["general.snake_scores", "general.show_own_name", "general.minimap_size", "general.ui_font"]
 
     var body: some View {
@@ -164,6 +166,14 @@ struct WyrmDisplayPage: View {
             WSSectionLabel("Basic", top: 18)
                 .onAppear { if rest.contains(where: { WyrmSettingsFocus.shared.wants($0.id) }) { advanced = true } }
             WSCard { WSRows(rows: basic, engine: engine) }
+            // Look ahead (OM, 2026-10-05): moved off Controls. Same switch, both modes.
+            WSSectionLabel("Camera")
+            WSCard {
+                WSBoolRow(title: "Look ahead",
+                          detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
+                          on: playFeel.lookAhead, first: true) { playFeel.setLookAhead($0) }
+                    .wyrmSettingAnchor("app.look-ahead")
+            }
             if basic.isEmpty { WSCaption("These controls appear as soon as the engine has started.") }
             if !rest.isEmpty {
                 WSAdvancedFold(label: "Advanced", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
@@ -230,7 +240,7 @@ struct WyrmControlsContent: View {
     /// Home › Near Original (OM, 2026-10-02): slither's own joystick, boost and
     /// arrow; only the arrow's size stays the player's. Nothing stored changes.
     @ObservedObject var nearOriginal = WyrmNearOriginalStore.shared
-    /// Look ahead and the zoom bar's style (OM, 2026-10-05).
+    /// The zoom bar's style (OM, 2026-10-05). Look ahead lives on Display.
     @ObservedObject var playFeel = WyrmPlayFeelStore.shared
     @State var behaviourOpen = false
     @State var zoomOpen = false
@@ -318,15 +328,6 @@ struct WyrmControlsContent: View {
                 }
             }
 
-            // Look ahead (OM, 2026-10-05): slither's own; Near Original and Wyrm alike.
-            WSSectionLabel("Camera")
-            WSCard {
-                WSBoolRow(title: "Look ahead",
-                          detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
-                          on: playFeel.lookAhead, first: true) { playFeel.setLookAhead($0) }
-                    .wyrmSettingAnchor("app.look-ahead")
-            }
-
             if !zoomRows.isEmpty {
                 WSAdvancedFold(label: "Advanced · zoom bar", open: zoomOpen) { withAnimation(.easeInOut(duration: 0.25)) { zoomOpen.toggle() } }
                 if zoomOpen {
@@ -336,6 +337,10 @@ struct WyrmControlsContent: View {
                         // spring whose knob rests in the middle and springs back.
                         WSHairline()
                         VStack(alignment: .leading, spacing: 8) {
+                            // The bar itself, so Slider and Spring can be felt here (OM, 2026-10-05).
+                            WyrmZoomBarActionPreview(
+                                vertical: engine.setting("controls.zoom_orientation")?.index == 1,
+                                springStyle: playFeel.zoomSpring)
                             Text("Zoom bar style").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
                             WSSegmented(options: ["Slider", "Spring"], selected: playFeel.zoomSpring ? 1 : 0) {
                                 playFeel.setZoomSpring($0 == 1)
@@ -477,6 +482,143 @@ struct WyrmPaperBoost: View {
     }
 }
 
+/// Slider stays where you leave it. Spring returns to the middle, as in a match.
+struct WyrmZoomBarActionPreview: View {
+    let vertical: Bool
+    let springStyle: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var held: CGFloat = 0.45
+    @State private var pull: CGFloat = 0
+    @State private var dragging = false
+    @State private var springTask: Task<Void, Never>?
+
+    /// 0 is the minus end, 1 the plus end. A spring rests at half.
+    private var shown: CGFloat {
+        springStyle ? min(1, max(0, CGFloat(0.5) + pull * CGFloat(0.5))) : held
+    }
+
+    var body: some View {
+        let length: CGFloat = vertical ? 156 : 220
+        let thickness: CGFloat = 26
+        let travel = length - thickness
+        let along = vertical ? 1 - shown : shown
+        let knobAt = thickness / 2 + travel * along
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            VStack(spacing: 8) {
+                ZStack {
+                    Capsule().fill(ATheme.card)
+                    barFill(length: length, thickness: thickness, knobAt: knobAt)
+                    if springStyle { springMarks(length: length, thickness: thickness) }
+                    Circle().fill(ATheme.ink).frame(width: 18, height: 18)
+                        .offset(x: vertical ? 0 : knobAt - length / 2, y: vertical ? knobAt - length / 2 : 0)
+                }
+                .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(ATheme.ink, lineWidth: 1))
+                .frame(width: vertical ? 48 : length, height: vertical ? length : 48)
+                .contentShape(Rectangle())
+                .highPriorityGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            springTask?.cancel()
+                            dragging = true
+                            let pos = vertical ? value.location.y : value.location.x
+                            let t = min(1, max(0, vertical ? 1 - pos / length : pos / length))
+                            var step = Transaction()
+                            step.animation = nil
+                            withTransaction(step) {
+                                if springStyle { pull = (t - CGFloat(0.5)) * 2 }
+                                else { held = t }
+                            }
+                        }
+                        .onEnded { _ in
+                            dragging = false
+                            guard springStyle else { return }
+                            springTask?.cancel()
+                            if reduceMotion {
+                                pull = 0
+                                return
+                            }
+                            // Same return as the arena bar: each frame multiplies the pull by 0.72.
+                            springTask = Task { @MainActor in
+                                while abs(pull) > CGFloat(0.01) {
+                                    if Task.isCancelled { return }
+                                    try? await Task.sleep(nanoseconds: 16_000_000)
+                                    if Task.isCancelled { return }
+                                    pull *= CGFloat(0.72)
+                                }
+                                pull = 0
+                            }
+                        }
+                )
+                .accessibilityLabel("Zoom bar preview")
+                Text("Move the zoom bar to see its action.")
+                    .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 12)
+            .background(ATheme.well)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        }
+        .onDisappear { springTask?.cancel() }
+    }
+
+    /// The ink run: from the near end for a slider, from the middle for a spring.
+    @ViewBuilder private func barFill(length: CGFloat, thickness: CGFloat, knobAt: CGFloat) -> some View {
+        let mid = length / 2
+        if springStyle {
+            let from = min(mid, knobAt)
+            let span = max(1, abs(knobAt - mid))
+            Rectangle().fill(ATheme.track)
+                .frame(width: vertical ? thickness : span, height: vertical ? span : thickness)
+                .offset(x: vertical ? 0 : from - length / 2 + span / 2,
+                        y: vertical ? from - length / 2 + span / 2 : 0)
+        } else if vertical {
+            Rectangle().fill(ATheme.track)
+                .frame(width: thickness, height: max(1, length - knobAt))
+                .offset(y: knobAt / 2)
+        } else {
+            Rectangle().fill(ATheme.track)
+                .frame(width: max(1, knobAt), height: thickness)
+                .offset(x: knobAt / 2 - length / 2)
+        }
+    }
+
+    private func springMarks(length: CGFloat, thickness: CGFloat) -> some View {
+        let mark = thickness * 0.22
+        let inset = thickness * 1.1
+        return Canvas { context, _ in
+            func line(_ a: CGPoint, _ b: CGPoint) {
+                var path = Path()
+                path.move(to: a)
+                path.addLine(to: b)
+                context.stroke(path, with: .color(ATheme.ink), lineWidth: 2.5)
+            }
+            if vertical {
+                let x = thickness / 2
+                let plus = inset
+                let minus = length - inset
+                line(CGPoint(x: x - mark, y: plus), CGPoint(x: x + mark, y: plus))
+                line(CGPoint(x: x, y: plus - mark), CGPoint(x: x, y: plus + mark))
+                line(CGPoint(x: x - mark, y: minus), CGPoint(x: x + mark, y: minus))
+            } else {
+                let y = thickness / 2
+                let minus = inset
+                let plus = length - inset
+                line(CGPoint(x: minus - mark, y: y), CGPoint(x: minus + mark, y: y))
+                line(CGPoint(x: plus - mark, y: y), CGPoint(x: plus + mark, y: y))
+                line(CGPoint(x: plus, y: y - mark), CGPoint(x: plus, y: y + mark))
+            }
+        }
+        .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
+        .allowsHitTesting(false)
+    }
+}
+
 struct WyrmPaperZoomBar: View {
     let length: Double
     var vertical = false
@@ -524,7 +666,7 @@ struct WyrmButtonsPage: View {
 struct WyrmButtonsContent: View {
     @ObservedObject var engine: WyrmShellStore
     /// Same allowlist as the Android keys page and the engine.
-    static let order = [1, 2, 3, 4, 6, 7, 8, 9]
+    static let order = [1, 2, 3, 4, 6, 7, 8, 9, 14] // 14 = Auto restart (OM, 2026-10-05)
     static func allowed(_ keys: [EngineHotkey]) -> [EngineHotkey] { order.compactMap { id in keys.first { $0.id == id } } }
 
     var body: some View {
@@ -674,18 +816,15 @@ struct WyrmModesPage: View {
         let laser = ["general.laser_thickness", "general.laser_color"].compactMap { engine.setting($0) }
 
         VStack(alignment: .leading, spacing: 0) {
-            // Snake look (OM, 2026-10-05): the live arena shows the real snakes.
+            // Snake look (OM, 2026-10-05): the preview sits on this card, not a landscape page.
             WSSectionLabel("Snake")
             WSCard {
-                WSValueRow(title: "See it in the arena", value: "", first: true) {
-                    engine.openSnakeLookPreview(assist: visibleMode == 1)
-                }
-                .wyrmSettingAnchor("app.snake-preview")
+                WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true)
                 if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
                 if let spine { WSTypedRow(setting: spine, engine: engine) }
                 if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
             }
-            WSCaption("Skinless draws every snake as a clear strip in its own colour. Spine is a thin white line down every snake.")
+            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a thin white line down every snake.")
 
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
@@ -713,6 +852,62 @@ struct WyrmModesPage: View {
             WSAdvancedFold(label: "Advanced · helper lines", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
             if advanced { WSCard { WSRows(rows: laser + rest, engine: engine) } }
         }
+    }
+}
+
+struct WyrmSnakeBodyPreview: View {
+    let mode: Int
+    let spine: Bool
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            Canvas { context, canvas in
+                let radius: CGFloat = 11
+                let count = 14
+                var pts: [CGPoint] = []
+                for i in 0..<count {
+                    let t = CGFloat(i) / CGFloat(count - 1)
+                    pts.append(CGPoint(x: 18 + t * (canvas.width - 36),
+                                       y: canvas.height * 0.5 + sin(t * 3.4) * 10))
+                }
+                let body = Color(.sRGB, red: 0.20, green: 0.78, blue: 0.36, opacity: 1)
+                let alt = Color(.sRGB, red: 0.10, green: 0.55, blue: 0.24, opacity: 1)
+                let stripe = Color(.sRGB, red: 0.55, green: 0.95, blue: 0.62, opacity: 1)
+                if mode == 3, pts.count >= 2 {
+                    var path = Path()
+                    path.move(to: pts[0])
+                    if pts.count > 2 {
+                        for i in 1..<(pts.count - 1) {
+                            let mid = CGPoint(x: (pts[i].x + pts[i + 1].x) / 2, y: (pts[i].y + pts[i + 1].y) / 2)
+                            path.addQuadCurve(to: mid, control: pts[i])
+                        }
+                    }
+                    path.addLine(to: pts[pts.count - 1])
+                    context.stroke(path, with: .color(body.opacity(0.8)),
+                                   style: StrokeStyle(lineWidth: radius * 2, lineCap: .round, lineJoin: .round))
+                } else {
+                    for (i, p) in pts.enumerated() {
+                        let fill: Color
+                        switch mode {
+                        case 0: fill = i % 3 == 1 ? stripe : (i % 2 == 0 ? body : alt)
+                        case 2: fill = body
+                        default: fill = i % 2 == 0 ? body : alt
+                        }
+                        context.fill(Path(ellipseIn: CGRect(x: p.x - radius, y: p.y - radius, width: radius * 2, height: radius * 2)),
+                                     with: .color(fill))
+                    }
+                }
+                if spine, pts.count >= 2 {
+                    var line = Path()
+                    line.move(to: pts[0])
+                    for p in pts.dropFirst() { line.addLine(to: p) }
+                    context.stroke(line, with: .color(.white), lineWidth: 2)
+                }
+            }
+            .frame(height: 88).background(ATheme.well)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        }.padding(.horizontal, 14).padding(.vertical, 12)
     }
 }
 

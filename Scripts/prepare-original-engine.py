@@ -2935,20 +2935,67 @@ static float snake_line_dpi(tenv* env) {
   return dpi;
 }
 
+/* One smooth run. Round caps are the plain discs' ends (NTL lineCap). */
+static void draw_skinless_run(ImDrawList* draw, ImVec2* buf, int n, ImU32 col,
+                              float width, int cap_start, int cap_end) {
+  float radius;
+  if (n < 1 || width <= 0.0f) return;
+  if (n >= 2) stroke_smooth(draw, buf, n, col, width);
+  radius = width * 0.5f;
+  if (cap_start) ImDrawList_AddCircleFilled(draw, buf[0], radius, col, 24);
+  if (cap_end && n >= 2)
+    ImDrawList_AddCircleFilled(draw, buf[n - 1], radius, col, 24);
+}
+
+/* Skinless, like NTL's of() (OM, 2026-10-05). lsz is already half of 29*sc,
+   so a plain disc is 2 * lsz * gsc across and this stroke is that wide.
+   Round caps add that radius at each real end, which is the disc. Alpha is
+   NTL's skinless transparency: .8 times the snake's own fade. Runs continue
+   past 160 points so a long snake is not cut short. */
 static void draw_skinless_strip(tenv* env, snake* o, int bp, float cx, float cy,
                                 float lsz, float alpha) {
+  game_data* gdata = &env->usr->gdata;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImVec2 buf[160];
+  int n = 0;
+  int i;
+  int continued = 0;
   float red, green, blue;
-  float width = lsz * env->usr->gdata.data.gsc;
-  int boosting = o->tsp > o->fsp;
+  float width = 2.0f * lsz * gdata->data.gsc;
   ImU32 main_col;
   ImU32 glow_col;
+  int boosting = o->tsp > o->fsp;
   snake_strip_colour(env, o, &red, &green, &blue);
   main_col = igColorConvertFloat4ToU32((ImVec4){red, green, blue, 0.8f * alpha});
   glow_col = igColorConvertFloat4ToU32((ImVec4){red, green, blue, 0.22f * alpha});
-  if (boosting)
-    draw_body_line(env, bp, 1, cx, cy, glow_col, width * 1.65f, main_col, width);
-  else
-    draw_body_line(env, bp, 1, cx, cy, 0, 0.0f, main_col, width);
+  for (i = 0; i <= bp; ++i) {
+    int live = i < bp && gdata->data.pbu[i] >= 1;
+    int more;
+    int cap_start;
+    int cap_end;
+    if (live && n < 160) {
+      snake_screen_point(gdata, i, cx, cy, &buf[n]);
+      n += 1;
+      if (n < 160) continue;
+    }
+    if (n >= 1) {
+      more = live;
+      cap_start = !continued;
+      cap_end = !more;
+      if (boosting)
+        draw_skinless_run(draw, buf, n, glow_col, width * 1.08f, cap_start,
+                          cap_end);
+      draw_skinless_run(draw, buf, n, main_col, width, cap_start, cap_end);
+    }
+    if (live) {
+      buf[0] = buf[n > 0 ? n - 1 : 0];
+      n = 1;
+      continued = 1;
+    } else {
+      n = 0;
+      continued = 0;
+    }
+  }
 }
 
 static void draw_snake_spine(tenv* env, int bp, float cx, float cy, float alpha) {
@@ -3003,8 +3050,7 @@ void redraw(tenv* env) {
                 }
             }
           } else if (mode->render_mode == 3) {
-            /* Skinless (OM, 2026-10-05): one clear strip in the snake's own
-               colour. No body sprites and no snake shadows. */
+            /* Skinless: the plain body's width and length, skin see-through. */
             draw_skinless_strip(env, o, bp, mww2, mhh2, lsz, a);
           }
 
@@ -3210,3 +3256,23 @@ _arrow_patch('app/src/game/redraw.c', [
 '''),
 ])
 print('Skinless + spine + assist hide + settings ext')
+
+# Auto restart key can be shown (OM, 2026-10-05): the old rope-mode lock
+# hid slot 14 on every save. Same C as Wyrm Android, applied last.
+AUTO_RESTART_VISIBLE_PAIRS = [
+    (r'''  if (settings->rope_mode_visible) {
+    settings->rope_mode_visible = false;
+    changed = true;
+  }
+  return changed;
+}
+''',
+     r'''  /* Slot 14 is the Auto restart key now (OM, 2026-10-05). It used to be
+     forced hidden here for the old rope mode, which hid Auto restart on every
+     save; its visibility is the player's choice. */
+  return changed;
+}
+'''),
+]  # end AUTO_RESTART_VISIBLE_PAIRS
+_arrow_patch('app/src/game/user_settings.c', AUTO_RESTART_VISIBLE_PAIRS)
+print('Auto restart: its key can be shown')
