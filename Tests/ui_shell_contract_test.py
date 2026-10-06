@@ -108,7 +108,7 @@ checks = {
         and "WyrmKeyboardController.shared.install()" in LEGACY,
     "keyboard size, transparency and drag position persist": all(k in KEYBOARD for k in (
         "wyrm.ios.keyboard.scale", "wyrm.ios.keyboard.opacity", "wyrm.ios.keyboard.offset-x", "wyrm.ios.keyboard.offset-y")),
-    "the lobby draws its own sideways keyboard (not upright)": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.embedded = !WyrmPlayOrientation.shared.portrait" in LOBBY,
+    "the lobby draws its own sideways keyboard (not upright)": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.enterLandscapeHost(keyboardHost)" in LOBBY and "!landscapeHosts.isEmpty && !WyrmPlayOrientation.shared.portrait" in KEYBOARD,
     "routes leave the keyboard region so fields rise above it": ".ignoresSafeArea(.container)" in MAIN and "keyboard.focused ? 0 : 1" in MAIN,
     "chat composer and transcript are shared by global chat and DMs": "WyrmChatComposer(" in SOCIAL and "WyrmChatComposer(" in DETAILS
         and "WyrmChatTranscript(" in SOCIAL and "WyrmChatTranscript(" in DETAILS and "GlassEffectContainer(spacing: 14)" in CHAT,

@@ -68,6 +68,8 @@ struct WyrmReadyRoom: View {
     private var hasRun: Bool { lastRun != nil }
     @FocusState var nameFocused: Bool
     @ObservedObject var keyboard = WyrmKeyboardController.shared
+    /// This Ready Room's place in the keyboard's set of sideways canvases.
+    @State private var keyboardHost = UUID()
     /// The upright name card's bottom on screen, before any lift.
     @State private var uprightNameBottom: CGFloat = 0
 
@@ -122,8 +124,16 @@ struct WyrmReadyRoom: View {
         .foregroundColor(ATheme.ink)
         .onAppear {
             // The embedded keys are for the sideways canvas only; upright the
-            // phone's own docked keys are used (OM, 2026-10-02).
-            keyboard.embedded = !WyrmPlayOrientation.shared.portrait
+            // phone's own docked keys are used (OM, 2026-10-02). The keyboard
+            // decides that from Play orientation itself.
+            keyboard.enterLandscapeHost(keyboardHost)
+            // CI: the name field takes focus so a screenshot shows the keys.
+            if ProcessInfo.processInfo.arguments.contains("--smoke-lobby-keyboard") {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                    nameFocused = true
+                    NSLog("%@", "Wyrm smoke: lobby name focused, embedded=\(keyboard.embedded)")
+                }
+            }
             // Near Original: the arena's number labels the original minimap.
             WyrmNearOriginalStore.shared.setServer(arena?.number ?? 0)
             nickname = engine.nickname
@@ -135,7 +145,7 @@ struct WyrmReadyRoom: View {
         }
         .onDisappear {
             nameFocused = false
-            keyboard.embedded = false
+            keyboard.leaveLandscapeHost(keyboardHost)
         }
         .onChange(of: engine.engineScreen) { screen in if screen != WyrmShellStore.lobbyScreen { entering = false } }
         .onChange(of: engine.arenaRefusalSequence) { sequence in

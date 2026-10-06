@@ -3592,3 +3592,514 @@ MINIMAP_MARKS_PAIRS = [
 ]
 _arrow_patch('app/src/game/ui_overlay.c', MINIMAP_MARKS_PAIRS)
 print('Minimap: ringed death dot, half-size own arrow')
+
+# Eyes Back (OM, 2026-10-06): NTL VANCED's NTL_EB on an on-screen key.
+# One list of (old, new) pairs, applied to the Android engine in place and,
+# unchanged, to the generated iOS engine by prepare-original-engine.py.
+EYES_BACK_PAIRS = {
+  'app/src/constants.h': [
+    (r'''#define NUM_MOBILE_HOTKEYS 14
+#define NUM_MOBILE_ACTIONS 15
+''', r'''#define NUM_MOBILE_HOTKEYS 14
+/* Eyes Back (OM, 2026-10-06): NTL VANCED's eye flick on an on-screen key. Its
+   layout and look live in user_settings_ext, so no stored array grows. */
+#define MOBILE_HOTKEY_EYES_BACK 15
+#define NUM_MOBILE_ACTIONS 16
+/* hotkey_scale / hotkey_opacity in user.dat hold the first 15 actions only.
+   That size is part of the file layout and never changes; reach a key's size
+   and opacity through user_settings_key_scale / _opacity. */
+#define NUM_STORED_MOBILE_ACTIONS 15
+'''),
+  ],
+  'app/src/game/user_settings.h': [
+    (r'''  bool assist_hide_cosmetics; /* assist only (OM, 2026-10-05) */
+} user_settings_ext;''', r'''  bool assist_hide_cosmetics; /* assist only (OM, 2026-10-05) */
+  /* Eyes Back key (OM, 2026-10-06), on-screen action 15. The floats come
+     first so they start at offset 12: byte 11 was padding in every file
+     written before, and must never be read as a setting. */
+  float eyes_back_x;
+  float eyes_back_y;
+  float eyes_back_scale;
+  float eyes_back_opacity;
+  bool eyes_back_visible;
+} user_settings_ext;'''),
+    (r'''  float hotkey_scale[NUM_MOBILE_ACTIONS];
+  float hotkey_opacity[NUM_MOBILE_ACTIONS];''', r'''  float hotkey_scale[NUM_STORED_MOBILE_ACTIONS];
+  float hotkey_opacity[NUM_STORED_MOBILE_ACTIONS];'''),
+    (r'''bool user_settings_ext_fix(user_settings* settings, size_t bytes_read);
+''', r'''bool user_settings_ext_fix(user_settings* settings, size_t bytes_read);
+/* A key's own size and opacity: actions 0-14 in the stored arrays, Eyes Back
+   (15) in the ext block. NULL for an action that has none. */
+float* user_settings_key_scale(user_settings* settings, int action);
+float* user_settings_key_opacity(user_settings* settings, int action);
+'''),
+  ],
+  'app/src/game/user_settings.c': [
+    (r'''  for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+    settings->hotkey_scale[action] = settings->mobile_hotkeys.key_scale;
+    settings->hotkey_opacity[action] = settings->mobile_hotkeys.opacity;
+  }''', r'''  for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+    *user_settings_key_scale(settings, action) =
+        settings->mobile_hotkeys.key_scale;
+    *user_settings_key_opacity(settings, action) =
+        settings->mobile_hotkeys.opacity;
+  }'''),
+    (r'''  x->spine[0] = false;
+  x->spine[1] = false;
+  x->assist_hide_cosmetics = false;
+}
+''', r'''  x->spine[0] = false;
+  x->spine[1] = false;
+  x->assist_hide_cosmetics = false;
+  x->eyes_back_x = 0.50f;
+  x->eyes_back_y = 0.33f;
+  x->eyes_back_scale = 1.0f;
+  x->eyes_back_opacity = 0.82f;
+  x->eyes_back_visible = false;
+}
+
+float* user_settings_key_scale(user_settings* settings, int action) {
+  if (action >= 0 && action < NUM_STORED_MOBILE_ACTIONS)
+    return &settings->hotkey_scale[action];
+  if (action == MOBILE_HOTKEY_EYES_BACK) return &settings->ext.eyes_back_scale;
+  return NULL;
+}
+
+float* user_settings_key_opacity(user_settings* settings, int action) {
+  if (action >= 0 && action < NUM_STORED_MOBILE_ACTIONS)
+    return &settings->hotkey_opacity[action];
+  if (action == MOBILE_HOTKEY_EYES_BACK)
+    return &settings->ext.eyes_back_opacity;
+  return NULL;
+}
+
+/* A float this build did not find, or found out of range, takes the fallback. */
+static bool ext_take_float(float* field, int present, float lo, float hi,
+                           float fallback) {
+  if (present && isfinite(*field) && *field >= lo && *field <= hi) return false;
+  *field = fallback;
+  return true;
+}
+'''),
+    (r'''  size_t hide_at = offsetof(user_settings_ext, assist_hide_cosmetics);
+''', r'''  size_t hide_at = offsetof(user_settings_ext, assist_hide_cosmetics);
+  size_t eb_x_at = offsetof(user_settings_ext, eyes_back_x);
+  size_t eb_y_at = offsetof(user_settings_ext, eyes_back_y);
+  size_t eb_scale_at = offsetof(user_settings_ext, eyes_back_scale);
+  size_t eb_opacity_at = offsetof(user_settings_ext, eyes_back_opacity);
+  size_t eb_visible_at = offsetof(user_settings_ext, eyes_back_visible);
+'''),
+    (r'''  fixed |= ext_take_bool(&ext->assist_hide_cosmetics, written >= hide_at + 1);
+''', r'''  fixed |= ext_take_bool(&ext->assist_hide_cosmetics, written >= hide_at + 1);
+  fixed |= ext_take_float(&ext->eyes_back_x, written >= eb_x_at + 4, 0.0f,
+                          1.0f, 0.50f);
+  fixed |= ext_take_float(&ext->eyes_back_y, written >= eb_y_at + 4, 0.0f,
+                          1.0f, 0.33f);
+  fixed |= ext_take_float(&ext->eyes_back_scale, written >= eb_scale_at + 4,
+                          0.65f, 1.60f, settings->mobile_hotkeys.key_scale);
+  fixed |= ext_take_float(&ext->eyes_back_opacity,
+                          written >= eb_opacity_at + 4, 0.05f, 1.0f,
+                          settings->mobile_hotkeys.opacity);
+  fixed |= ext_take_bool(&ext->eyes_back_visible,
+                         written >= eb_visible_at + 1);
+'''),
+    (r'''  for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+    REPAIR_APPEARANCE(usr_settings->hotkey_scale[action], 0.65f, 1.60f,
+                      usr_settings->mobile_hotkeys.key_scale);
+    REPAIR_APPEARANCE(usr_settings->hotkey_opacity[action], 0.05f, 1.0f,
+                      usr_settings->mobile_hotkeys.opacity);
+  }''', r'''  for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action) {
+    float* key_scale = user_settings_key_scale(usr_settings, action);
+    float* key_opacity = user_settings_key_opacity(usr_settings, action);
+    REPAIR_APPEARANCE(*key_scale, 0.65f, 1.60f,
+                      usr_settings->mobile_hotkeys.key_scale);
+    REPAIR_APPEARANCE(*key_opacity, 0.05f, 1.0f,
+                      usr_settings->mobile_hotkeys.opacity);
+  }'''),
+  ],
+  'app/src/mobile/mobile_hotkeys.h': [
+    (r'''  float rope_mode_y_backup;
+} mobile_hotkeys_state;''', r'''  float rope_mode_y_backup;
+  bool eyes_back_visible_backup;
+  float eyes_back_x_backup;
+  float eyes_back_y_backup;
+} mobile_hotkeys_state;'''),
+  ],
+  'app/src/mobile/mobile_hotkeys.c': [
+    (r'''    "Boost",       "Turn left",  "Turn right", "Fullscreen", "Auto restart"};''',
+     r'''    "Boost",       "Turn left",  "Turn right", "Fullscreen", "Auto restart",
+    "Eyes back"};'''),
+    (r'''         /* Auto restart (OM, 2026-10-05) lives in the rope-mode slot. */
+         action == MOBILE_HOTKEY_ROPE_MODE;
+}''', r'''         /* Auto restart (OM, 2026-10-05) lives in the rope-mode slot. */
+         action == MOBILE_HOTKEY_ROPE_MODE ||
+         /* Eyes Back (OM, 2026-10-06). */
+         action == MOBILE_HOTKEY_EYES_BACK;
+}'''),
+    (r'''  float scale = button_scale(env) *
+                clampf_local(env->usr->usrs.hotkey_scale[action], 0.65f, 1.60f);''',
+     r'''  float* key_scale = user_settings_key_scale(&env->usr->usrs, action);
+  float scale = button_scale(env) *
+                clampf_local(key_scale ? *key_scale : 1.0f, 0.65f, 1.60f);'''),
+    (r'''  if (action >= NUM_HOTKEYS && action < NUM_MOBILE_ACTIONS)
+    return mobile_hotkeys_down(env, action) ||''', r'''  /* Eyes Back: lit while it is on (the key is a toggle). */
+  if (action == MOBILE_HOTKEY_EYES_BACK) {
+    extern bool eyes_back_active(void);
+    return eyes_back_active();
+  }
+  if (action >= NUM_HOTKEYS && action < NUM_MOBILE_ACTIONS)
+    return mobile_hotkeys_down(env, action) ||'''),
+    (r'''    float alpha = clampf_local(env->usr->usrs.hotkey_opacity[action], 0.05f, 1.0f);''',
+     r'''    float* key_opacity = user_settings_key_opacity(&env->usr->usrs, action);
+    float alpha =
+        clampf_local(key_opacity ? *key_opacity : 1.0f, 0.05f, 1.0f);'''),
+    (r'''  state->rope_mode_y_backup = env->usr->usrs.rope_mode_y;
+''', r'''  state->rope_mode_y_backup = env->usr->usrs.rope_mode_y;
+  state->eyes_back_visible_backup = env->usr->usrs.ext.eyes_back_visible;
+  state->eyes_back_x_backup = env->usr->usrs.ext.eyes_back_x;
+  state->eyes_back_y_backup = env->usr->usrs.ext.eyes_back_y;
+'''),
+    (r'''    env->usr->usrs.rope_mode_y = state->rope_mode_y_backup;
+  }''', r'''    env->usr->usrs.rope_mode_y = state->rope_mode_y_backup;
+    env->usr->usrs.ext.eyes_back_visible = state->eyes_back_visible_backup;
+    env->usr->usrs.ext.eyes_back_x = state->eyes_back_x_backup;
+    env->usr->usrs.ext.eyes_back_y = state->eyes_back_y_backup;
+  }'''),
+    (r'''  env->usr->usrs.rope_mode_x = 0.50f;
+  env->usr->usrs.rope_mode_y = 0.22f;
+}''', r'''  env->usr->usrs.rope_mode_x = 0.50f;
+  env->usr->usrs.rope_mode_y = 0.22f;
+  env->usr->usrs.ext.eyes_back_x = 0.50f;
+  env->usr->usrs.ext.eyes_back_y = 0.33f;
+}'''),
+    (r'''    if (visible) *visible = settings->rope_mode_visible;
+    if (x) *x = settings->rope_mode_x;
+    if (y) *y = settings->rope_mode_y;
+  }''', r'''    if (visible) *visible = settings->rope_mode_visible;
+    if (x) *x = settings->rope_mode_x;
+    if (y) *y = settings->rope_mode_y;
+  } else if (action == MOBILE_HOTKEY_EYES_BACK) {
+    if (visible) *visible = settings->ext.eyes_back_visible;
+    if (x) *x = settings->ext.eyes_back_x;
+    if (y) *y = settings->ext.eyes_back_y;
+  }'''),
+    (r'''    settings->rope_mode_visible = visible;
+    settings->rope_mode_x = x;
+    settings->rope_mode_y = y;
+  }''', r'''    settings->rope_mode_visible = visible;
+    settings->rope_mode_x = x;
+    settings->rope_mode_y = y;
+  } else if (action == MOBILE_HOTKEY_EYES_BACK) {
+    settings->ext.eyes_back_visible = visible;
+    settings->ext.eyes_back_x = x;
+    settings->ext.eyes_back_y = y;
+  }'''),
+  ],
+  'app/src/platform/android_settings.c': [
+    (r'''    KEY_APPEARANCE(9),
+#undef KEY_APPEARANCE
+''', r'''    KEY_APPEARANCE(9),
+#undef KEY_APPEARANCE
+    /* Eyes Back (OM, 2026-10-06): action 15's size and opacity live in the
+       ext block, under the same ids the layout editor builds for any key. */
+    {"layout.key_15_scale", "layout", "", "", SETTING_FLOAT, 0.65f, 1.60f,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.eyes_back_scale)},
+    {"layout.key_15_opacity", "layout", "", "", SETTING_FLOAT, 0.05f, 1.0f,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.eyes_back_opacity)},
+'''),
+    (r'''    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action)
+      settings->hotkey_scale[action] = settings->mobile_hotkeys.key_scale;
+  } else if (strcmp(id, "keys.opacity") == 0) {
+    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action)
+      settings->hotkey_opacity[action] = settings->mobile_hotkeys.opacity;''',
+     r'''    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action)
+      *user_settings_key_scale(settings, action) =
+          settings->mobile_hotkeys.key_scale;
+  } else if (strcmp(id, "keys.opacity") == 0) {
+    for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action)
+      *user_settings_key_opacity(settings, action) =
+          settings->mobile_hotkeys.opacity;'''),
+  ],
+  'app/src/platform/android_update.c': [
+    (r'''  for (int action = 0; action < NUM_MOBILE_ACTIONS; ++action)
+    if (!isfinite(settings->hotkey_scale[action]) ||''', r'''  if (!isfinite(settings->ext.eyes_back_scale) ||
+      settings->ext.eyes_back_scale < 0.65f ||
+      settings->ext.eyes_back_scale > 1.60f ||
+      !isfinite(settings->ext.eyes_back_opacity) ||
+      settings->ext.eyes_back_opacity < 0.05f ||
+      settings->ext.eyes_back_opacity > 1.0f)
+    return false;
+  for (int action = 0; action < NUM_STORED_MOBILE_ACTIONS; ++action)
+    if (!isfinite(settings->hotkey_scale[action]) ||'''),
+  ],
+  'app/src/network/callback.c': [
+    (r'''        o->fatg = GD_AFC;
+        o->ang = ang;
+      }''', r'''        o->fatg = GD_AFC;
+        o->ang = ang;
+        /* Eyes Back re-anchors its model on every heading the server reports. */
+        if (is_my_snake) {
+          extern void eyes_back_heading(float ang, float now);
+          eyes_back_heading(ang, gdata->data.ctm);
+        }
+      }'''),
+  ],
+  'app/src/game/oef.c': [
+    (r'''    float wx = cosf(o->eang) * 2.3f;  // o.pma = 2.3
+    float wy = sinf(o->eang) * 2.3f;  // o.pma = 2.3''', r'''    /* Eyes Back (OM, 2026-10-06): your own pupils follow the byte that went
+       out, so you see what every other player sees (NTL sets snake.J the
+       same way). Everyone else's eyes already follow what they sent. */
+    float eye_ang = o->eang;
+    if (o->id == gdata->data.snake_id) {
+      extern bool eyes_back_eye_angle(float* out);
+      float sent_ang;
+      if (eyes_back_eye_angle(&sent_ang)) eye_ang = sent_ang;
+    }
+    float wx = cosf(eye_ang) * 2.3f;  // o.pma = 2.3
+    float wy = sinf(eye_ang) * 2.3f;  // o.pma = 2.3'''),
+  ],
+  'app/src/game/input.c': [
+    (r'''#include "input.h"
+''', r'''#include "input.h"
+
+#include <math.h>
+#include <string.h>
+'''),
+    (r'''static void input_with_policy(tenv* env, bool team_protected,
+                              bool force_heading) {''', r'''/*
+ * Eyes Back (OM, 2026-10-06): NTL VANCED's NTL_EB, ported line for line.
+ *
+ * While it is on, the one heading byte Wyrm already sends is replaced by
+ * "straight behind the head, a few steps to one side", alternating sides:
+ * the manual left-right eye flick, automated. The server turns a snake
+ * toward the last heading it heard at a fixed rate, so a byte just short of
+ * 180 degrees on one side turns it that way; the share of left and right
+ * bytes (a sigma-delta duty cycle) steers toward where the player aims.
+ * Every client draws a snake's eyes toward what it last sent, so everyone
+ * sees the eyes looking back. Same one-byte packet, same 33 ms cadence:
+ * nothing new goes on the wire.
+ *
+ * The server heading is predicted as the server computes it: a command lands
+ * rtt/2 after it is sent and turns the snake toward its angle at
+ * mamu * scang * spang per 8 ms. Every heading the server reports re-anchors
+ * the model; the gap between report and prediction widens the margin so ping
+ * jitter cannot flip a side. NTL's numbers: 8 steps (of 251) from straight
+ * back, +4 while turning hard, an adaptive part of at most 22, re-anchor past
+ * 0.55 rad, a 2.5-tick band.
+ */
+#define EB_EPS 8.0f
+#define EB_TURN_MARGIN 4.0f
+#define EB_EPS_MAX 22.0f
+#define EB_SNAP 0.55f
+#define EB_BAND 2.5f
+#define EB_LOG_MAX 160
+
+typedef struct eb_cmd {
+  float te; /* when it reaches the server, client clock (ms) */
+  float w;  /* the angle sent (rad) */
+  float r;  /* the snake's turn rate then (rad/ms) */
+} eb_cmd;
+
+static struct {
+  bool on;
+  float err;
+  float last_t;
+  bool anchored;
+  float anchor_t;
+  float anchor_a;
+  eb_cmd log[EB_LOG_MAX];
+  int log_n;
+  float res_max;
+  bool holding;
+  float hold;
+  bool seen;
+  float last_seen;
+  const void* conn; /* the socket and snake the model belongs to */
+  int snake_id;
+  bool sent;
+  float sent_ang; /* the last byte sent, in radians: where the eyes look */
+  float rtt;
+} eb = {.rtt = 100.0f, .snake_id = -1};
+
+static float eb_norm(float a) {
+  a = fmodf(a, PI2);
+  if (a > PI)
+    a -= PI2;
+  else if (a < -PI)
+    a += PI2;
+  return a;
+}
+
+static void eb_reset(void) {
+  bool on = eb.on;
+  memset(&eb, 0, sizeof(eb));
+  eb.on = on;
+  eb.rtt = 100.0f;
+  eb.snake_id = -1;
+}
+
+static float eb_turn(float a, float w, float r, float ms) {
+  float d = eb_norm(w - a), mx = r * ms;
+  return a + (d > mx ? mx : d < -mx ? -mx : d);
+}
+
+/* The server's heading at client time tau: replay every command in effect
+   from the anchor, each turning toward its angle at full rate. */
+static float eb_heading_at(float tau) {
+  float a = eb.anchor_a, t = eb.anchor_t;
+  const eb_cmd* cmd = NULL;
+  int i = 0;
+  for (; i < eb.log_n && eb.log[i].te <= t; i++) cmd = &eb.log[i];
+  for (; i < eb.log_n && eb.log[i].te < tau; i++) {
+    if (cmd) a = eb_turn(a, cmd->w, cmd->r, eb.log[i].te - t);
+    t = eb.log[i].te;
+    cmd = &eb.log[i];
+  }
+  return cmd ? eb_turn(a, cmd->w, cmd->r, tau - t) : a;
+}
+
+/* A heading from the server, seen at client time now (it describes the
+   server about rtt/2 earlier): measure the model's error, then re-anchor. */
+static void eb_sample(float v, float now) {
+  float tau = now - eb.rtt / 2.0f;
+  if (eb.anchored) {
+    float res = fabsf(eb_norm(v - eb_heading_at(tau)));
+    eb.res_max = fmaxf(res, eb.res_max * 0.92f);
+    if (res > EB_SNAP) eb.log_n = 0; /* the model diverged: drop its turns */
+  }
+  eb.anchored = true;
+  eb.anchor_t = tau;
+  eb.anchor_a = v;
+}
+
+static void eb_log_drop_first(void) {
+  memmove(eb.log, eb.log + 1, sizeof(eb_cmd) * (size_t)(eb.log_n - 1));
+  eb.log_n--;
+}
+
+/* One send tick (about every 33 ms). Returns the 0-250 byte to send. */
+static int eb_tick(bool aiming, float target, const snake* s, float now,
+                   float rtt, float mamu) {
+  eb.rtt = rtt;
+  if (!eb.anchored) {
+    eb_sample(s->ang, now);
+    eb.seen = true;
+    eb.last_seen = s->ang;
+  }
+  float dt = eb.last_t != 0.0f ? now - eb.last_t : 33.0f;
+  eb.last_t = now;
+  if (dt > 200.0f) dt = 200.0f;
+  float te = now + rtt / 2.0f; /* when this byte reaches the server */
+  float r = mamu * s->scang * s->spang / 8.0f; /* rad per ms */
+  if (r < 1e-6f) r = 1e-6f;
+  float est = eb_heading_at(te); /* the server heading when it lands */
+  if (!aiming) {                 /* finger on the head: keep the heading */
+    if (!eb.holding) {
+      eb.holding = true;
+      eb.hold = est;
+    }
+    target = eb.hold;
+  } else
+    eb.holding = false;
+  float d = eb_norm(target - est);
+  float k = d / (r * dt * EB_BAND);
+  if (k > 1.0f)
+    k = 1.0f;
+  else if (k < -1.0f)
+    k = -1.0f;
+  eb.err += (1.0f + k) / 2.0f;
+  bool plus = eb.err >= 1.0f;
+  if (plus) eb.err -= 1.0f;
+  float eps = EB_EPS + fabsf(k) * EB_TURN_MARGIN +
+              fminf(EB_EPS_MAX, 1.3f * eb.res_max * 251.0f / PI2);
+  float base = 251.0f * fmodf(fmodf(est + PI, PI2) + PI2, PI2) / PI2;
+  int b = (int)floorf((plus ? base - eps : base + eps) + 0.5f);
+  b = ((b % 251) + 251) % 251;
+  if (eb.log_n == EB_LOG_MAX) eb_log_drop_first();
+  eb.log[eb.log_n++] = (eb_cmd){te, b * PI2 / 251.0f, r};
+  while (eb.log_n > 1 && eb.log[1].te < now - 2000.0f) eb_log_drop_first();
+  return b;
+}
+
+static void eb_send(game_data* gdata, struct mg_connection* connection,
+                    const snake* me, int xm, int ym) {
+  if (eb.conn != (const void*)connection || eb.snake_id != me->id) {
+    eb_reset();
+    eb.conn = connection;
+    eb.snake_id = me->id;
+  }
+  if (!(gdata->data.ctm - gdata->data.last_e_mtm > ARENA_AIM_MS)) return;
+  gdata->data.last_e_mtm = gdata->data.ctm;
+  gdata->data.lsxm = xm;
+  gdata->data.lsym = ym;
+  float d2 = (float)xm * xm + (float)ym * ym;
+  float rtt = gdata->data.ping > 0 ? (float)gdata->data.ping : 100.0f;
+  if (rtt > 600.0f) rtt = 600.0f;
+  int sang = eb_tick(d2 > 256.0f, atan2f((float)ym, (float)xm), me,
+                     gdata->data.ctm, rtt, gdata->data.mamu);
+  eb.sent = true;
+  eb.sent_ang = sang * PI2 / 251.0f;
+  if (sang != gdata->data.lsang) {
+    gdata->data.lsang = sang;
+    arena_send(connection, (uint8_t[]){sang & 255}, 1);
+  }
+}
+
+static void eyes_back_toggle(game_data* gdata) {
+  eb.on = !eb.on;
+  eb_reset();
+  /* Off: the real heading goes out on the next tick even if the stick has
+     not moved, or the snake would keep turning toward the last back byte. */
+  if (!eb.on) {
+    gdata->data.want_e = true;
+    gdata->data.lsang = -1;
+  }
+}
+
+bool eyes_back_active(void) { return eb.on; }
+
+bool eyes_back_eye_angle(float* out) {
+  if (!eb.on || !eb.sent) return false;
+  *out = eb.sent_ang;
+  return true;
+}
+
+/* Every heading the server reports for your own snake (callback.c). */
+void eyes_back_heading(float ang, float now) {
+  if (!eb.on || !eb.anchored) return;
+  if (eb.seen && ang == eb.last_seen) return;
+  eb.seen = true;
+  eb.last_seen = ang;
+  eb_sample(ang, now);
+}
+
+static void input_with_policy(tenv* env, bool team_protected,
+                              bool force_heading) {'''),
+    (r'''    me->eang = atan2f(ym, xm);
+    float ang;
+    if (gdata->data.want_e && gdata->data.ctm - gdata->data.last_e_mtm > ARENA_AIM_MS) {''',
+     r'''    me->eang = atan2f(ym, xm);
+    /* Eyes Back (OM, 2026-10-06) owns the heading byte while it is on. */
+    bool eyes_back = eb.on && gdata->data.protocol_version >= 5;
+    if (eyes_back) eb_send(gdata, connection, me, xm, ym);
+    float ang;
+    if (!eyes_back && gdata->data.want_e &&
+        gdata->data.ctm - gdata->data.last_e_mtm > ARENA_AIM_MS) {'''),
+    (r'''    usrs->auto_respawn = usrs->auto_respawn ? 0 : 1;
+    save_user_settings(usrs);
+  }
+''', r'''    usrs->auto_respawn = usrs->auto_respawn ? 0 : 1;
+    save_user_settings(usrs);
+  }
+
+  /* Eyes Back (OM, 2026-10-06): the on-screen key turns it on and off. It
+     stays on through deaths for the session, as NTL VANCED's does. */
+  if (mobile_hotkeys_pressed(env, MOBILE_HOTKEY_EYES_BACK))
+    eyes_back_toggle(gdata);
+'''),
+  ],
+}  # end EYES_BACK_PAIRS
+for _relative, _pairs in EYES_BACK_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+print('Eyes Back: on-screen key, NTL VANCED eye flick')

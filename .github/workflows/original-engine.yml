@@ -33,8 +33,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-1.0.0-build-107-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.0.0-build-107-simulator.app.zip
+          zip -qry Wyrm-1.0.1-build-108-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.0.1-build-108-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -159,6 +159,10 @@ jobs:
           grep -E 'drawable=[0-9]+x[0-9]+' original-artifacts/lobby-stderr.log
           python3 -c 'import re; s=open("original-artifacts/lobby-stderr.log").read(); assert any(int(w) > int(h) for w,h in re.findall(r"drawable=(\d+)x(\d+)", s)), "engine never received landscape-shaped drawable"'
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/lobby-keyboard-stdout.log" --stderr="$PWD/original-artifacts/lobby-keyboard-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-lobby --smoke-lobby-keyboard || true
+          sleep 10
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/lobby-keyboard.png || true
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
           xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
           sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png
@@ -175,6 +179,11 @@ jobs:
           grep 'leaderboard ready' original-artifacts/stderr.log
           python3 -c 'import re; s=open("original-artifacts/stderr.log").read(); m=re.findall(r"pixel canvas: imgui=(\d+)x(\d+) framebuffer=1\.00x1\.00 drawable=(\d+)x(\d+)",s); assert any(a==c and b==d and int(a)>int(b) for a,b,c,d in m), "AI canvas is not one landscape pixel space"'
           grep 'arena frame progress=120' original-artifacts/stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
+          xcrun simctl launch --stdout="$PWD/original-artifacts/composer-stdout.log" --stderr="$PWD/original-artifacts/composer-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai --smoke-team-composer || true
+          sleep 16
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/team-composer.png || true
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
       - name: Simulator original online arena smoke test
         run: |
           xcrun simctl terminate "$WYRM_SIMULATOR" com.omrajput.wyrmios

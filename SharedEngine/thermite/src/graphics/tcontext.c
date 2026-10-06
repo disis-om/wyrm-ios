@@ -904,6 +904,15 @@ bool tcontext_recreate_surface(tcontext* context, twindow* window, bool vsync) {
 
 bool tcontext_begin(tcontext* context) {
   context->last_present_succeeded = false;
+  /* No swapchain right now: a rebuild failed, or the surface was torn down
+     for a resume and is not back yet. Acquiring with a null swapchain is a
+     null dereference inside the driver (Android 7.0.0 crash report,
+     2026-10-06: vkAcquireNextImageKHR from tcontext_begin on Home). Skip
+     the frame and let the window's recovery rebuild it. */
+  if (context->swapchain == VK_NULL_HANDLE || context->image_count == 0) {
+    if (!context->surface_lost) context->swapchain_ok = false;
+    return false;
+  }
   tcontext_frame* fr = context->frames + context->current_frame;
   vkWaitForFences(context->device, 1, &fr->wait_fence, VK_TRUE, UINT64_MAX);
 

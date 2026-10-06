@@ -105,6 +105,8 @@ struct WyrmArenaComposerBar: View {
     @ObservedObject private var keyboard = WyrmKeyboardController.shared
     @ObservedObject private var orientation = WyrmPlayOrientation.shared
     @FocusState private var focused: Bool
+    /// This composer's place in the keyboard's set of sideways canvases.
+    @State private var keyboardHost = UUID()
 
     var body: some View {
         Group {
@@ -117,11 +119,30 @@ struct WyrmArenaComposerBar: View {
         .onAppear {
             // Sideways the keys are drawn in the arena's own canvas, as in the
             // Ready Room (OM, 2026-10-06: no keyboard came up in a sideways
-            // match). Set before the field takes focus, which asks for them.
-            keyboard.embedded = !orientation.portrait
+            // match). Registered before the field takes focus, which asks.
+            keyboard.enterLandscapeHost(keyboardHost)
+            // During a match the whole SwiftUI shell is hidden over the engine
+            // (Main.m apply_shell_visibility), so this bar was never on screen
+            // and its field could not take focus: no keyboard, in either
+            // orientation (OM, 2026-10-06). Shown, clear, while it is open.
+            WyrmIOSSetShellOverlay(true)
+            focusSoon()
+        }
+        .onDisappear {
+            keyboard.leaveLandscapeHost(keyboardHost)
+            WyrmIOSSetShellOverlay(false)
+        }
+    }
+
+    /// Once the shell is on screen (the overlay switch lands on the next main
+    /// loop turn), and again if the first try did not take.
+    private func focusSoon() {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { focused = true }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+            guard !keyboard.focused, composer.open else { return }
+            focused = false
             DispatchQueue.main.async { focused = true }
         }
-        .onDisappear { keyboard.embedded = false }
     }
 
     /// Playing upright: the phone's own docked keys, the bar rising above them.

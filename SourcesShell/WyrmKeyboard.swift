@@ -33,9 +33,16 @@ final class WyrmKeyboardController: ObservableObject {
     @Published private(set) var focused = false
     @Published var layout: Layout = .letters
     @Published var shift: Shift = .off
-    /// Set while the Ready Room or the arena's team composer is on screen
-    /// sideways: keys are drawn in its landscape canvas.
-    @Published var embedded = false
+    /// True while a sideways canvas that draws the keys itself (the Ready
+    /// Room, the arena's team composer) is on screen and play is sideways:
+    /// fields then get an empty input view and the canvas draws the keys.
+    /// It follows the set of such canvases on screen rather than a flag each
+    /// one set on appear and cleared on disappear, so a canvas leaving after
+    /// the next one arrived can no longer switch the keys back to the portrait
+    /// dock, and a field already typing swaps its keys at once (OM,
+    /// 2026-10-06: no sideways keys in the Ready Room or the arena).
+    @Published private(set) var embedded = false
+    private var landscapeHosts = Set<UUID>()
     /// The sideways keyboard's width at scale 1: the size of a phone's own
     /// keyboard, not stretched across the landscape (OM, 2026-10-06).
     static let landscapeWidth: CGFloat = 440
@@ -122,6 +129,25 @@ final class WyrmKeyboardController: ObservableObject {
 
     var returnIsAction: Bool { returnTitle != "return" }
     var wantsEmail: Bool { (target as? UITextInputTraits)?.keyboardType == .emailAddress }
+
+    func enterLandscapeHost(_ id: UUID) {
+        landscapeHosts.insert(id)
+        refreshEmbedded()
+    }
+
+    func leaveLandscapeHost(_ id: UUID) {
+        landscapeHosts.remove(id)
+        refreshEmbedded()
+    }
+
+    /// Also after Play orientation changes. UIKit asks a typing field for its
+    /// input view again, so the keys move between the dock and the canvas.
+    func refreshEmbedded() {
+        let want = !landscapeHosts.isEmpty && !WyrmPlayOrientation.shared.portrait
+        guard want != embedded else { return }
+        embedded = want
+        target?.reloadInputViews()
+    }
 
     // MARK: Installation
 

@@ -696,7 +696,7 @@ struct WyrmButtonsPage: View {
 struct WyrmButtonsContent: View {
     @ObservedObject var engine: WyrmShellStore
     /// Same allowlist as the Android keys page and the engine.
-    static let order = [1, 2, 3, 4, 6, 7, 8, 9, 14] // 14 = Auto restart (OM, 2026-10-05)
+    static let order = [1, 2, 3, 4, 6, 7, 8, 9, 14, 15] // 14 = Auto restart (OM, 2026-10-05), 15 = Eyes back (OM, 2026-10-06)
     static func allowed(_ keys: [EngineHotkey]) -> [EngineHotkey] { order.compactMap { id in keys.first { $0.id == id } } }
 
     var body: some View {

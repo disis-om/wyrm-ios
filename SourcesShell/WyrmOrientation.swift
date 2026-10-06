@@ -37,12 +37,14 @@ final class WyrmPlayOrientation: ObservableObject {
     func reloadFromDefaults() {
         portrait = UserDefaults.standard.bool(forKey: Self.portraitKey)
         publish()
+        WyrmKeyboardController.shared.refreshEmbedded()
     }
 
     private func setPortrait(_ value: Bool) {
         portrait = value
         UserDefaults.standard.set(value, forKey: Self.portraitKey)
         publish()
+        WyrmKeyboardController.shared.refreshEmbedded()
     }
 
     private func savedLayout(portrait upright: Bool) -> [String: Any]? {

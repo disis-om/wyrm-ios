@@ -61,6 +61,8 @@ struct WyrmDesignRoot: View {
     /// surface; the portrait shell underneath is kept alive but hidden.
     private var engineOverlay: Bool {
         engine.layoutEditorActive || engine.engineScreen == WyrmShellStore.lobbyScreen
+            // The arena's team composer: only the bar over the match (OM, 2026-10-06).
+            || (teamComposer.open && engine.engineScreen == 2)
     }
 
     var body: some View {
@@ -149,6 +151,19 @@ struct WyrmDesignRoot: View {
             Task {
                 await accountSync.save(token: token)
                 UIApplication.shared.endBackgroundTask(work)
+            }
+        }
+        // A match that ends with the team composer open closes it, so the
+        // shell is never left shown over a later screen.
+        .onChange(of: engine.engineScreen) { screen in
+            if screen != 2 && teamComposer.open { teamComposer.close() }
+        }
+        // CI: the team composer over an AI match, for a screenshot.
+        .onChange(of: engine.engineScreen) { screen in
+            guard screen == 2, arguments.contains("--smoke-team-composer") else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
+                withAnimation(.easeOut(duration: 0.18)) { teamComposer.open = true }
+                NSLog("Wyrm smoke: team composer opened")
             }
         }
         // A death picture that lands after Share run opened joins it.

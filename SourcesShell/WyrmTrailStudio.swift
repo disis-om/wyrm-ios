@@ -912,7 +912,8 @@ struct WyrmTrailStudio: View {
                 // Share run needs no camera or photos, only the skin's textures.
                 draft.textures = textures
                 textures.prepare()
-                WyrmKeyboardController.shared.embedded = false
+                // The Ready Room under Share run has left the keyboard's
+                // sideways canvases, so the studio types on the docked keys.
             } else {
                 camera.start()
                 gallery.load()
