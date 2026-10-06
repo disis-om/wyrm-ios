@@ -4103,3 +4103,91 @@ for _relative, _pairs in EYES_BACK_PAIRS.items():
     _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
                               n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
 print('Eyes Back: on-screen key, NTL VANCED eye flick')
+
+# GPU device lost (OM's iPhone, 2026-10-06): VK_ERROR_DEVICE_LOST after a
+# death froze the app for good (swapchain recovery retried every frame on a
+# dead device). One list of pairs: Android in place, iOS as a post-pass.
+GPU_LOST_PAIRS = {
+  'thermite/src/graphics/tcontext.h': [
+    ('''  bool surface_lost;
+''', '''  bool surface_lost;
+  /* VK_ERROR_DEVICE_LOST was seen: nothing more can be drawn this run. */
+  bool device_lost;
+'''),
+  ],
+  'thermite/src/graphics/tcontext.c': [
+    ('''void _tcontext_create_instance(tcontext* context) {''',
+     '''/* VK_ERROR_DEVICE_LOST (OM's iPhone, 2026-10-06, after a death on the way
+   back to the lobby): the device is gone for good, and nothing a swapchain
+   rebuild does can bring it back. Retrying every frame froze the app until it
+   was killed. Noted once; tcontext_begin then draws nothing, the window stops
+   its swapchain recovery, and the app asks the player to reopen Wyrm. */
+static void tcontext_device_lost(tcontext* context, const char* where) {
+  context->swapchain_ok = false;
+  if (context->device_lost) return;
+  context->device_lost = true;
+  TCONTEXT_LOG("Vlither: Vulkan device lost (%s); rendering stopped", where);
+}
+
+void _tcontext_create_instance(tcontext* context) {'''),
+    ('''    android_startup_failure(7, "Swapchain creation failed", detail);
+''', '''    android_startup_failure(7, "Swapchain creation failed", detail);
+    if (result == VK_ERROR_DEVICE_LOST) tcontext_device_lost(context, "swapchain");
+'''),
+    ('''bool tcontext_begin(tcontext* context) {
+  context->last_present_succeeded = false;
+''', '''bool tcontext_begin(tcontext* context) {
+  context->last_present_succeeded = false;
+  if (context->device_lost) return false;
+'''),
+    ('''  vkWaitForFences(context->device, 1, &fr->wait_fence, VK_TRUE, UINT64_MAX);
+''', '''  if (vkWaitForFences(context->device, 1, &fr->wait_fence, VK_TRUE,
+                      UINT64_MAX) == VK_ERROR_DEVICE_LOST) {
+    tcontext_device_lost(context, "fence wait");
+    return false;
+  }
+'''),
+    ('''  if (r == VK_ERROR_SURFACE_LOST_KHR) {
+    context->surface_lost = true;
+    context->swapchain_ok = false;
+    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during acquire");''',
+     '''  if (r == VK_ERROR_DEVICE_LOST) {
+    tcontext_device_lost(context, "acquire");
+    return false;
+  }
+  if (r == VK_ERROR_SURFACE_LOST_KHR) {
+    context->surface_lost = true;
+    context->swapchain_ok = false;
+    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during acquire");'''),
+    ('''  if (submit_result != VK_SUCCESS) {
+''', '''  if (submit_result == VK_ERROR_DEVICE_LOST)
+    tcontext_device_lost(context, "submit");
+  if (submit_result != VK_SUCCESS) {
+'''),
+    ('''  if (r == VK_ERROR_SURFACE_LOST_KHR) {
+    context->surface_lost = true;
+    context->swapchain_ok = false;
+    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during present");''',
+     '''  if (r == VK_ERROR_DEVICE_LOST) tcontext_device_lost(context, "present");
+  if (r == VK_ERROR_SURFACE_LOST_KHR) {
+    context->surface_lost = true;
+    context->swapchain_ok = false;
+    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during present");'''),
+  ],
+  'thermite/src/framework/twindow.c': [
+    ('''static void apply_pending_window_change(twindow* window) {
+#ifdef VLITHER_ANDROID
+''', '''static void apply_pending_window_change(twindow* window) {
+#ifdef VLITHER_ANDROID
+  /* A lost device cannot be rebuilt from here (tcontext_device_lost). */
+  if (window->env->ctx && window->env->ctx->device_lost) {
+    window->_refresh = false;
+    return;
+  }
+'''),
+  ],
+}  # end GPU_LOST_PAIRS
+for _relative, _pairs in GPU_LOST_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+print('GPU device lost: stop drawing, no endless swapchain retries')

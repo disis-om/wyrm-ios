@@ -31,6 +31,8 @@ void WyrmIOSSetEnginePresentation(bool enabled);
 /* SwiftUI draws the landscape Ready Room and the layout editor above the
    rotated engine surface; these let it drive the original home mailbox. */
 void WyrmIOSSetShellOverlay(bool enabled);
+/* True once the Vulkan device is lost: nothing more can be drawn this run. */
+bool WyrmIOSGraphicsLost(void);
 /* Play orientation (OM, 2026-10-01): upright play keeps the engine surface
    unrotated in the lobby, the match and the layout editor. Main thread. */
 void WyrmIOSSetPortraitPlay(bool portrait);

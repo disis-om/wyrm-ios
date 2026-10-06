@@ -316,6 +316,13 @@ static void publish_arena_port_availability(void) {
   }
 }
 
+/* VK_ERROR_DEVICE_LOST was seen (tcontext_device_lost, 2026-10-06): the
+   engine draws nothing more this run, and the shell asks the player to
+   reopen Wyrm instead of leaving a frozen screen. Main thread. */
+bool WyrmIOSGraphicsLost(void) {
+  return ready && engine.ctx && engine.ctx->device_lost;
+}
+
 static void frame(void* unused) {
   (void)unused;
   if (!ready) return;

@@ -63,6 +63,8 @@ struct WyrmDesignRoot: View {
         engine.layoutEditorActive || engine.engineScreen == WyrmShellStore.lobbyScreen
             // The arena's team composer: only the bar over the match (OM, 2026-10-06).
             || (teamComposer.open && engine.engineScreen == 2)
+            // The GPU was lost: only its card (OM, 2026-10-06).
+            || engine.graphicsLost
     }
 
     var body: some View {
@@ -108,6 +110,22 @@ struct WyrmDesignRoot: View {
             // Writing to the team from the arena (OM, 2026-10-04); the match plays on.
             if teamComposer.open && engine.engineScreen == 2 {
                 WyrmArenaComposerBar(team: team).zIndex(105)
+            }
+            // The GPU device was lost: the engine can draw nothing more this run.
+            if engine.graphicsLost {
+                let sideways = !playOrientation.portrait
+                    && (engine.engineScreen == 2 || engine.engineScreen == WyrmShellStore.lobbyScreen)
+                Group {
+                    if sideways {
+                        WyrmLandscapeStage { size, _ in
+                            WyrmGraphicsLostCard(onClose: closeAfterGraphicsLoss)
+                                .frame(width: size.width, height: size.height)
+                        }
+                    } else {
+                        WyrmGraphicsLostCard(onClose: closeAfterGraphicsLoss)
+                    }
+                }
+                .zIndex(130)
             }
             // Log out (OM, 2026-10-01): the question, the save, and a failed save's choices.
             if accountSync.askingLogOut {
@@ -223,6 +241,27 @@ struct WyrmDesignRoot: View {
         }
     }
 
+    /// After a lost GPU: the settings go to the account first (at most a few
+    /// seconds), then Wyrm closes so the player can open it again.
+    private func closeAfterGraphicsLoss() {
+        let token = account.sessionToken
+        let signedIn = account.phase == .signedIn
+        let sync = accountSync
+        Task { @MainActor in
+            if signedIn {
+                let save = Task { @MainActor in await sync.save(token: token) }
+                let limit = Task { @MainActor in
+                    try? await Task.sleep(nanoseconds: 4_000_000_000)
+                    save.cancel()
+                }
+                _ = await save.value
+                limit.cancel()
+            }
+            WyrmDiagnostics.record("closed after a lost GPU", category: "CRASH")
+            exit(0)
+        }
+    }
+
     /// Log out: settings to the account first; a failed save asks before anything is lost.
     private func logOut() {
         withAnimation(.easeOut(duration: 0.2)) { accountSync.askingLogOut = false }
@@ -317,6 +356,44 @@ private struct WyrmDesignLaunch: View {
         .ignoresSafeArea()
         .onAppear {
             withAnimation(.easeOut(duration: 0.55)) { visible = true }
+        }
+    }
+}
+
+/// The GPU device was lost (Vulkan VK_ERROR_DEVICE_LOST, OM 2026-10-06): the
+/// game can draw nothing more this run. Says so plainly, saves, closes Wyrm.
+struct WyrmGraphicsLostCard: View {
+    let onClose: () -> Void
+    @State private var closing = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.55).ignoresSafeArea()
+            VStack(alignment: .leading, spacing: 12) {
+                WyrmCapsLabel("Graphics stopped")
+                Text("Wyrm needs a restart")
+                    .font(.wyrmDisplay(26)).foregroundColor(ATheme.ink)
+                Text("Your iPhone stopped Wyrm's graphics, so the game cannot draw any more. Close Wyrm and open it again to keep playing. Your settings are saved first.")
+                    .font(.androidWyrm(14)).foregroundColor(ATheme.quiet)
+                    .fixedSize(horizontal: false, vertical: true)
+                Button {
+                    guard !closing else { return }
+                    closing = true
+                    onClose()
+                } label: {
+                    Text(closing ? "SAVING" : "CLOSE WYRM")
+                        .font(.androidWyrm(13, .bold)).tracking(1.2).foregroundColor(ATheme.onInk)
+                        .frame(maxWidth: .infinity).padding(.vertical, 14)
+                        .background(Capsule().fill(ATheme.ink))
+                }
+                .disabled(closing)
+                .padding(.top, 6)
+            }
+            .padding(22)
+            .frame(maxWidth: 380)
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .padding(24)
         }
     }
 }

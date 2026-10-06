@@ -96,6 +96,10 @@ final class WyrmShellStore: ObservableObject {
     /// The original engine's `screen` (0 home, 2 playing, 3 lobby), pushed by
     /// Main.m on every change so the Ready Room overlay appears with the lobby.
     @Published private(set) var engineScreen = 0
+    /// The GPU device was lost (Vulkan VK_ERROR_DEVICE_LOST): the engine can
+    /// draw nothing more this run, so the shell says so (OM, 2026-10-06: the
+    /// app froze after a death instead).
+    @Published private(set) var graphicsLost = false
     @Published private(set) var layoutEditorActive = false
     /// The same AI-arena stage, holding the background-size slider instead of the HUD (OM, 2026-10-01).
     @Published private(set) var backgroundEditor = false
@@ -146,8 +150,11 @@ final class WyrmShellStore: ObservableObject {
         }
         // The arena chat window's message box (OM, 2026-10-04): a tap opens the
         // composer within a fifth of a second.
-        composerTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
-            Task { @MainActor in WyrmTeamComposer.shared.takeEngineRequests() }
+        composerTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                WyrmTeamComposer.shared.takeEngineRequests()
+                self?.checkGraphics()
+            }
         }
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--smoke-settings-write") {
@@ -226,6 +233,14 @@ final class WyrmShellStore: ObservableObject {
             WyrmDiagnostics.record("play request not taken by the engine; Play enabled again", category: "ENGINE")
             self.finishArenaPlay()
         }
+    }
+
+    /// Once: the card over everything, shown even over a match.
+    private func checkGraphics() {
+        guard !graphicsLost, WyrmIOSGraphicsLost() else { return }
+        graphicsLost = true
+        WyrmDiagnostics.record("GPU device lost (Vulkan); asking the player to reopen Wyrm", category: "CRASH")
+        WyrmIOSSetShellOverlay(true)
     }
 
     func refresh() {
