@@ -4191,3 +4191,133 @@ for _relative, _pairs in GPU_LOST_PAIRS.items():
     _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
                               n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
 print('GPU device lost: stop drawing, no endless swapchain retries')
+
+# Wyrm's own tags (OM, 2026-10-07, packet change approved): 77 stickers after
+# NTL's 164 in the tag table, sent in the skin block's corner with Wyrm's own
+# kind byte and read back the same way. One list of pairs: Android in place,
+# iOS as a post-pass.
+WYRM_TAG_PAIRS = {
+  'app/src/game/tags.h': [
+    (r'''#include <stdbool.h>
+''', r'''#include <stdbool.h>
+
+#include "tag_count.h"
+'''),
+    (r'''int tags_ntl_id(int index);
+int tags_from_ntl_id(int ntl);
+''', r'''int tags_ntl_id(int index);
+int tags_from_ntl_id(int ntl);
+
+/**
+ * Wyrm's own tags (2026-10-07): the stickers after NTL's in the table. Their
+ * number (0..WYRM_TAG_COUNT-1) is what travels in the skin block's corner;
+ * they have no NTL number (tags_ntl_id says -1), so they never reach NTL's
+ * services. -1 when the index is not a Wyrm tag / the number is unknown.
+ */
+int tags_wyrm_id(int index);
+int tags_from_wyrm_id(int wyrm);
+'''),
+  ],
+  'app/src/game/tags.c': [
+    (r'''int tags_ntl_id(int index) {
+  return tags_valid(index) ? TAG_TABLE[index].ntl : -1;
+}
+''', r'''int tags_ntl_id(int index) {
+  /* Wyrm's own tags carry WYRM_TAG_BASE + their number here, not an NTL
+     number: they are never named to NTL (team poll, tag socket, corner). */
+  if (!tags_valid(index) || TAG_TABLE[index].ntl >= WYRM_TAG_BASE) return -1;
+  return TAG_TABLE[index].ntl;
+}
+
+int tags_wyrm_id(int index) {
+  if (!tags_valid(index) || TAG_TABLE[index].ntl < WYRM_TAG_BASE) return -1;
+  return TAG_TABLE[index].ntl - WYRM_TAG_BASE;
+}
+
+int tags_from_wyrm_id(int wyrm) {
+  if (wyrm < 0 || wyrm >= WYRM_TAG_COUNT) return -1;
+  return tags_from_ntl_id(WYRM_TAG_BASE + wyrm);
+}
+'''),
+  ],
+  'app/src/network/callback.c': [
+    (r'''/* The NTL tag number a received block's corner names, or -1. */''',
+     r'''/* Wyrm's own tags (OM, 2026-10-07): the same corner with Wyrm's kind byte.
+   Byte 0 is NTL's free mark, byte 1 is 87 ('W', a kind NTL reads as no tag,
+   so NTL and older Wyrm builds draw the snake from its runs as before),
+   byte 2 the preset or 255, bytes 3-5 stay 0, byte 6 the Wyrm tag number and
+   byte 7 that number XOR 0xA7, so a random header can never pass for a tag.
+   The block's size is unchanged. */
+#define WYRM_TAG_MARK 254
+#define WYRM_TAG_KIND 87
+#define WYRM_TAG_CHECK 0xA7
+
+/* The Wyrm tag number a received block's corner names, or -1. */
+static int wyrm_tag_from_corner(const uint8_t* corner) {
+  if (corner[0] != WYRM_TAG_MARK || corner[1] != WYRM_TAG_KIND) return -1;
+  if (corner[3] || corner[4] || corner[5]) return -1;
+  if (corner[7] != (uint8_t)(corner[6] ^ WYRM_TAG_CHECK)) return -1;
+  return corner[6] < WYRM_TAG_COUNT ? corner[6] : -1;
+}
+
+/* The NTL tag number a received block's corner names, or -1. */'''),
+    (r'''    bool tag_corner =
+        web_persona && ntl_tag_corner(worn_ntl, &tag_mark, &tag_kind, &tag_byte);
+    bool preset_block = false;
+    if (tag_corner && !skin_compressed &&
+        (usrs->default_skin >= NTL_PRESET_COUNT ||
+         !ntl_preset_wears(usrs->default_skin, worn_ntl))) {''',
+     r'''    bool tag_corner =
+        web_persona && ntl_tag_corner(worn_ntl, &tag_mark, &tag_kind, &tag_byte);
+    /* A Wyrm tag rides in the same corner with Wyrm's kind byte. A preset
+       always goes out as its runs then: no official antenna is a Wyrm tag. */
+    int worn_wyrm = tags_valid(usrs->tag_index) ? tags_wyrm_id(usrs->tag_index) : -1;
+    bool wyrm_corner = false;
+    if (!tag_corner && web_persona && worn_wyrm >= 0 && worn_wyrm < 256) {
+      tag_mark = WYRM_TAG_MARK;
+      tag_kind = WYRM_TAG_KIND;
+      tag_byte = (uint8_t)worn_wyrm;
+      tag_corner = true;
+      wyrm_corner = true;
+    }
+    bool preset_block = false;
+    if (tag_corner && !skin_compressed &&
+        (wyrm_corner || usrs->default_skin >= NTL_PRESET_COUNT ||
+         !ntl_preset_wears(usrs->default_skin, worn_ntl))) {'''),
+    (r'''        ba[corner + 6] = tag_byte;
+        ba[corner + 7] = 0;
+        SDL_Log("Wyrm arena: NTL tag %d in the skin corner (%s block, %d run bytes)",
+                worn_ntl, preset_block ? "preset" : "custom", skin_compressed_len);''',
+     r'''        ba[corner + 6] = tag_byte;
+        ba[corner + 7] = wyrm_corner ? (uint8_t)(tag_byte ^ WYRM_TAG_CHECK) : 0;
+        SDL_Log("Wyrm arena: %s tag %d in the skin corner (%s block, %d run bytes)",
+                wyrm_corner ? "Wyrm" : "NTL", wyrm_corner ? worn_wyrm : worn_ntl,
+                preset_block ? "preset" : "custom", skin_compressed_len);'''),
+    (r'''      int corner_tag = -1;
+      int corner_preset = -1;
+      if (skl >= 8 && m + 8 <= alen) {
+        corner_tag = ntl_tag_from_corner(a + m);
+        if ((a[m + 1] == NTL_TAG_FREE_KIND || a[m + 1] == NTL_TAG_PUBLIC_KIND) &&
+            a[m + 2] != 255)
+          corner_preset = a[m + 2];
+      }''', r'''      int corner_tag = -1;
+      int corner_wyrm = -1;
+      int corner_preset = -1;
+      if (skl >= 8 && m + 8 <= alen) {
+        corner_tag = ntl_tag_from_corner(a + m);
+        corner_wyrm = wyrm_tag_from_corner(a + m);
+        if ((a[m + 1] == NTL_TAG_FREE_KIND || a[m + 1] == NTL_TAG_PUBLIC_KIND ||
+             corner_wyrm >= 0) &&
+            a[m + 2] != 255)
+          corner_preset = a[m + 2];
+      }'''),
+    (r'''      o.skin_tag = corner_tag >= 0 ? tags_from_ntl_id(corner_tag) + 1 : 0;''',
+     r'''      o.skin_tag = corner_wyrm >= 0  ? tags_from_wyrm_id(corner_wyrm) + 1
+                   : corner_tag >= 0 ? tags_from_ntl_id(corner_tag) + 1
+                                     : 0;'''),
+  ],
+}  # end WYRM_TAG_PAIRS
+for _relative, _pairs in WYRM_TAG_PAIRS.items():
+    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
+                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+print("Wyrm tags: own stickers in the skin block's corner")

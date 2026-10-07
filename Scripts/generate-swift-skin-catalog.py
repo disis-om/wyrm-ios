@@ -43,7 +43,8 @@ tag_pattern = re.compile(
     r"\{([0-9.]+)f,\s*([0-9.]+)f,\s*([0-9.]+)f,\s*([0-9.]+)f\}\}"
 )
 tags = [match.groups() for match in tag_pattern.finditer(TAG_TABLE)]
-assert len(tags) == 164, len(tags)
+TAG_COUNT = int(re.search(r"#define TAG_COUNT (\d+)", (ROOT / "SharedEngine/app/src/game/tag_count.h").read_text()).group(1))
+assert len(tags) == TAG_COUNT, (len(tags), TAG_COUNT)
 
 background_pattern = re.compile(
     r'\{"([^"]+)",\s*"([^"]+)",\s*(NULL|"[^"]+")\s*,\s*'

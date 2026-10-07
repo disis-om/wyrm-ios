@@ -72,7 +72,9 @@ struct WyrmTrailSkin: Codable, Equatable {
             accessory: WyrmSkinCatalog.accessories.contains(where: { $0.id == accessory }) ? accessory : -1,
             look: Look(hair: look.hair, hairTone: look.hairTone.isFinite ? min(max(look.hairTone, 0), 1) : 0,
                        ears: look.ears, glasses: look.glasses),
-            tag: WyrmSkinCatalog.tags.indices.contains(tagIndex) ? WyrmSkinCatalog.tags[tagIndex].ntlID : nil)
+            // Wyrm's own tags have no number the Trails backend takes (0..65535).
+            tag: WyrmSkinCatalog.tags.indices.contains(tagIndex) && !WyrmSkinCatalog.isWyrmTag(WyrmSkinCatalog.tags[tagIndex].ntlID)
+                ? WyrmSkinCatalog.tags[tagIndex].ntlID : nil)
     }
 
     /// The body for the POST: plain JSON types, so JSONSerialization writes

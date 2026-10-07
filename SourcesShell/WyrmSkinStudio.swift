@@ -100,7 +100,10 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                         x: tag.minU, y: tag.minV,
                         width: tag.maxU - tag.minU, height: tag.maxV - tag.minV)
                     if let image = tagImages[tag.id] {
-                        tagThumbs[tag.id] = Self.removingSoftShadow(image)
+                        // Wyrm's own tags are stored turned to hang like
+                        // pendants: the picker shows them upright.
+                        let upright = WyrmSkinCatalog.isWyrmTag(tag.ntlID) ? (Self.turnedClockwise(image) ?? image) : image
+                        tagThumbs[tag.id] = Self.removingSoftShadow(upright)
                     }
                 }
 
@@ -215,6 +218,18 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     /// Picker cells use a crisp derivative of the original sprite. The atlas'
     /// soft game shadow belongs in the arena and hero preview, not in the asset
     /// catalogue where it made every icon look low-resolution and muddy.
+    /// The image turned a quarter clockwise (a Wyrm tag back upright).
+    private static func turnedClockwise(_ image: CGImage) -> CGImage? {
+        let w = image.width, h = image.height
+        guard let context = CGContext(data: nil, width: h, height: w, bitsPerComponent: 8, bytesPerRow: 0,
+                                      space: CGColorSpace(name: CGColorSpace.sRGB)!,
+                                      bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue) else { return nil }
+        context.translateBy(x: 0, y: CGFloat(w))
+        context.rotate(by: -.pi / 2)
+        context.draw(image, in: CGRect(x: 0, y: 0, width: w, height: h))
+        return context.makeImage()
+    }
+
     private static func removingSoftShadow(_ image: CGImage) -> CGImage {
         let width = image.width
         let height = image.height
@@ -510,7 +525,7 @@ struct WyrmSkinRoot: View {
                 if wyrmTagsDisabled {
                     WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
                 } else {
-                    studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { "#\($0.ntlID)" } ?? "None")
+                    studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { WyrmSkinCatalog.isWyrmTag($0.ntlID) ? "On" : "#\($0.ntlID)" } ?? "None")
                 }
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
@@ -803,21 +818,23 @@ struct WyrmSkinRoot: View {
                 skinSlider("Swing", value: $swing, range: 1...2, setting: "tags.swing")
                 skinSlider("Size", value: $tagScale, range: 0.4...2, setting: "tags.scale")
             }.padding(.horizontal, 20).padding(.bottom, 4)
-            WyrmSectionLabel("All original tags")
+            WyrmSectionLabel("All tags")
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 10)], spacing: 10) {
                 selectionTile(selected: tag < 0, label: "None") { tag = -1; apply(tag: -1) }
-                ForEach(WyrmSkinCatalog.tags) { item in
+                ForEach(WyrmSkinCatalog.tagPickerOrder) { item in
                     Button {
                         tag = item.id; apply(tag: item.id)
                     } label: {
                         ZStack(alignment: .bottomTrailing) {
                             RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92))
                             WyrmAtlasImage(image: textures.tagThumbnails[item.id]).padding(7)
-                            Text("\(item.ntlID)").font(.androidWyrm(7.5, .bold)).foregroundColor(ATheme.quiet).padding(6)
+                            if !WyrmSkinCatalog.isWyrmTag(item.ntlID) {
+                                Text("\(item.ntlID)").font(.androidWyrm(7.5, .bold)).foregroundColor(ATheme.quiet).padding(6)
+                            }
                             if tag == item.id { selectionCheck }
                         }.aspectRatio(1, contentMode: .fit)
                             .overlay(RoundedRectangle(cornerRadius: 15).stroke(tag == item.id ? ATheme.ink : ATheme.rule, lineWidth: tag == item.id ? 2 : 1))
-                    }.buttonStyle(.plain).accessibilityLabel("Tag \(item.ntlID)")
+                    }.buttonStyle(.plain).accessibilityLabel(WyrmSkinCatalog.isWyrmTag(item.ntlID) ? "Tag" : "Tag \(item.ntlID)")
                 }
             }.padding(.horizontal, 16)
         }
@@ -1268,4 +1285,15 @@ private extension UIColor {
 
 private extension Array {
     subscript(safe index: Int) -> Element? { indices.contains(index) ? self[index] : nil }
+}
+
+/// Wyrm's own tags (OM, 2026-10-07): after NTL's in the tag table, their
+/// `ntlID` is wyrmTagBase + their number (never an NTL number); the number
+/// travels in the skin block's corner. Stored turned 90 degrees on the sheet
+/// so they hang like pendants; pickers show them upright.
+extension WyrmSkinCatalog {
+    static let wyrmTagBase = 100000
+    static func isWyrmTag(_ ntlID: Int) -> Bool { ntlID >= wyrmTagBase }
+    /// Picker order: Wyrm's own first, then NTL's.
+    static let tagPickerOrder: [WyrmTagAsset] = tags.filter { isWyrmTag($0.ntlID) } + tags.filter { !isWyrmTag($0.ntlID) }
 }

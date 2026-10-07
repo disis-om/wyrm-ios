@@ -12,7 +12,10 @@ SWING = (ROOT / "SourcesShell/WyrmGravityTag.swift").read_text()
 
 checks = {
     "catalog has all 66 original presets": CATALOG.count("        [") == 66,
-    "catalog has all 164 original tags": len(re.findall(r"\.init\(id: \d+, width:", CATALOG)) == 164,
+    "catalog has the 164 NTL tags and Wyrm's 77": len(re.findall(r"\.init\(id: \d+, width:", CATALOG)) == 241
+        and len(re.findall(r"ntlID: 1000\d\d,", CATALOG)) == 77,
+    "Wyrm tags come first in the picker, without a number": "ForEach(WyrmSkinCatalog.tagPickerOrder)" in STUDIO
+        and "if !WyrmSkinCatalog.isWyrmTag(item.ntlID)" in STUDIO,
     "catalog has all 32 accessories": len(re.findall(r"\.init\(id: \d+, scale:", CATALOG)) == 32,
     # The original 22 plus Black and seven Wyrm floors (OM, 2026-10-01).
     "catalog has all 30 arena backgrounds": len(re.findall(r"\.init\(id: \d+, key:", CATALOG)) == 30,
