@@ -11,13 +11,8 @@
 
 ## Status
 
-- Released: **1.0.0 (build 107)** stable (2026-10-06); last beta 0.18.24 (91).
-  Latest build: **1.0.2 (110)** (2026-10-07), not released. IPA
-  `dist/Wyrm-1.0.2-build-110-unsigned.ipa`, SHA-256
-  `0777265f4abcd4ebd36bdd637c00316e893713a039fab1b6fdff70e41b48fd9e`. On top of
-  1.0.0: Eyes Back, the sideways keyboard + arena composer fix, the lost-GPU
-  restart card and Wyrm's own 77 sticker tags (same as Android 7.0.2).
-  iOS **15 or newer**, iPhone first. Details: `AGENTS.md`.
+- Current release: **1.0.0 (build 107)**, stable. iOS **15 or newer**, iPhone
+  first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
   "beta" and announced only through `update/beta.json`; stable builds use
@@ -29,38 +24,49 @@
 ## Features
 
 - Username/password sign-up and login with live username availability.
-  Signing out clears every account-scoped cache.
-- Play, Trails, Social, Skin and Settings tabs. Alerts opens from the bell on Play. On iOS 26 the tab bar, switches,
-  sliders, segmented controls and buttons are the system's own Liquid Glass; earlier
-  iOS versions get a draggable glass-style
-  tab bar.
-- The original Wyrm C gameplay and network engine, not a Swift rewrite.
-  The lobby and arena run in landscape inside a portrait app.
+  Every setting lives in the account, one copy per platform plus a shared copy
+  (skin, look, background, name and play options follow you between iPhone
+  and Android). Settings are saved on log out and restored during the log-in
+  animation; logging out clears the phone.
+- Play, Trails, Social, Skin and Settings tabs. Alerts opens from the bell on
+  Play. On iOS 26 the tab bar, switches, sliders, segmented controls and
+  buttons are the system's own Liquid Glass; earlier iOS versions get a
+  draggable glass-style tab bar.
+- The original Wyrm C gameplay and network engine, not a Swift rewrite. The
+  lobby and arena run in landscape (or upright, if chosen) inside a portrait
+  app.
 - One arena connection per Play. A refused or failed entry returns to the
   lobby with no automatic retry or server switch. Play can never stay stuck
   on "Entering".
-- Arena picker with the live directory, four-digit arena codes, recent and
-  saved custom IPv4 arenas. Latency probes run only while the picker is open,
-  and each arena is dialled at most once a minute.
-- Skin Studio: 66 presets, the 42 atlas beads, the slither.io Android colour
-  wheel, 32 accessories, 164 tags and 22 arena floors, with a 256-bead preview
-  drawn from the engine's own atlas.
-- NTL 9.68-compatible Team mode: presence, a roster with FPS, ping and
-  leaderboard place, and team chat. Several teams can be saved; only the
-  selected one runs. Team credentials stay in the iOS Keychain. NTL tags are
-  on (since 2026-10-04).
-- Settings rebuilt from the Android app: display, controls, on-screen
-  buttons, arena UI, modes, bot, food, notifications, privacy, themes and
-  backup. Changes go straight into the engine. Settings search included.
-- Layout editor over a bot-driven practice arena, eight themes, twenty-five
-  arrow skins, file-based backup and restore.
-- Wyrm's own keyboard, global chat and direct messages.
-- Leaderboards, profiles, avatars, follows, notifications and voice-room
-  control through the Wyrm backend.
-- Stable and beta update channels. Settings › Backup shows an "Update now"
-  card when a newer build is out, can back up first (on by default), and hands
-  the IPA to AltStore, SideStore, KSign or ESign. Beta builds are offered only
-  with "Beta updates" on.
+- Arena picker with the live directory, a lowest-ping pick, four-digit arena
+  codes, recent and saved custom IPv4 arenas. Latency probes run only while the
+  picker is open, and each arena is dialled at most once a minute.
+- Skin Studio: 66 presets, the atlas beads and Wyrm's own beads, the
+  slither.io colour wheel, accessories, Wyrm looks (hair, ears, glasses), 241
+  tags and 30 arena floors. Tags show to everyone in the arena: only the tag's
+  number travels in the skin block, and each player draws the chain, swing and
+  size with their own settings.
+- Modes: Wyrm, assist and Near Original (slither's own HUD and controls);
+  Texture, Solid, Flat and Skinless snake rendering, and Spine.
+- NTL 9.68-compatible Team mode: presence, an in-arena roster and team chat
+  window. Several teams can be saved; only the selected one runs. Team
+  credentials stay in the iOS Keychain.
+- Settings rebuilt from the Android app: display, controls, on-screen buttons
+  (including Auto restart and Eyes back), arena UI, modes, bot, food,
+  performance, notifications, privacy, themes and updates. Changes go straight
+  into the engine. Settings search included.
+- Layout editor over a bot-driven practice arena, eight themes, drawn and
+  image arrows.
+- Trails: photo, text and canvas posts with a story-style editor, looks,
+  stickers and replies.
+- Wyrm's own keyboard (sideways too), global chat and direct messages.
+- Leaderboards with search, profiles, avatars, follows, notifications and
+  voice-room control through the Wyrm backend.
+- Help & feedback: crash and arena-drop reports (sent only with your consent),
+  reports to Wyrm with replies, a FAQ and an app tour.
+- Stable and beta update channels. Settings › Updates shows an "Update now"
+  card when a newer build is out and hands the IPA to AltStore, SideStore,
+  KSign or ESign. Beta builds are offered only with "Beta updates" on.
 - Opt-in Developer Mode with bounded local diagnostics and share-sheet export.
 
 ## Architecture
