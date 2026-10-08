@@ -211,6 +211,19 @@ private extension Dictionary where Key == String, Value == Any {
     func int64(_ key: String) -> Int64 { (self[key] as? NSNumber)?.int64Value ?? Int64(string(key)) ?? 0 }
 }
 
+/// Set by any 429 from the rate limiter (it sends Retry-After). Until then the
+/// background refreshes (after a run) stay quiet and screens keep what they
+/// show; a player's own action still goes through (2026-10-08).
+@MainActor
+enum WyrmRateLimit {
+    private(set) static var quietUntil = Date.distantPast
+    static var quiet: Bool { Date() < quietUntil }
+    static func note(seconds: Int) {
+        guard seconds > 0 else { return }
+        quietUntil = max(quietUntil, Date().addingTimeInterval(TimeInterval(min(seconds, 600))))
+    }
+}
+
 private actor WyrmServiceClient {
     static let shared = WyrmServiceClient()
     private let base = "https://wyrm-api.77-245-76-86.sslip.io"
@@ -350,6 +363,12 @@ private actor WyrmServiceClient {
             guard 200..<300 ~= http.statusCode else {
                 WyrmDiagnostics.record("\(method) \(path) status=\(http.statusCode)", category: "NETWORK")
                 let payload = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
+                // The rate limiter (and only it) sends Retry-After: note the
+                // pause and say it in words instead of "Too Many Requests".
+                if http.statusCode == 429, let seconds = Int(http.value(forHTTPHeaderField: "Retry-After") ?? ""), seconds > 0 {
+                    await MainActor.run { WyrmRateLimit.note(seconds: seconds) }
+                    throw WyrmServiceError.message("Slow down a little and try again in a moment.")
+                }
                 throw WyrmServiceError.message(payload.string("error", fallback: "HTTP_\(http.statusCode)"))
             }
             WyrmDiagnostics.record("\(method) \(path) status=\(http.statusCode)", category: "NETWORK")
@@ -746,7 +765,7 @@ final class WyrmServiceStore: ObservableObject {
     func observeGameSync() {
         guard syncObservers.isEmpty else { return }
         syncObservers.append(NotificationCenter.default.addObserver(forName: WyrmGameSync.profileChanged, object: nil, queue: .main) { [weak self] _ in
-            Task { @MainActor in await self?.refreshLeaderboards() }
+            Task { @MainActor in await self?.refreshLeaderboardsAfterRun() }
         })
         syncObservers.append(NotificationCenter.default.addObserver(forName: WyrmGameSync.achievementsEarned, object: nil, queue: .main) { [weak self] _ in
             Task { @MainActor in await self?.refreshAlerts() }
@@ -757,6 +776,13 @@ final class WyrmServiceStore: ObservableObject {
     /// A pull never invalidates the signed-in session or clears already visible rows.
     func refreshSocial() async {
         guard !token.isEmpty else { return }
+        // A pull right after the last one only plays the spinner: this is
+        // seven requests, and repeated pulls hit the server's limit.
+        guard Date().timeIntervalSince(lastSocialPull) >= 10 else {
+            try? await Task.sleep(nanoseconds: 450_000_000)
+            return
+        }
+        lastSocialPull = Date()
         let revision = sessionRevision
         let currentToken = token
         let playerID = preparedPlayerID
@@ -781,7 +807,27 @@ final class WyrmServiceStore: ObservableObject {
     func setRead(_ alert: WyrmServiceAlert, read: Bool) async { await perform { try await WyrmServiceClient.shared.setRead(alert.id, read: read, token: self.token); await self.refreshAlerts() } }
     func delete(_ alert: WyrmServiceAlert) async { await perform { try await WyrmServiceClient.shared.deleteAlert(alert.id, token: self.token); await self.refreshAlerts() } }
 
-    func refreshLeaderboards() async { await perform { async let a = WyrmServiceClient.shared.leaderboard(sort: "score", token: self.token); async let b = WyrmServiceClient.shared.leaderboard(sort: "kills", token: self.token); let rows = try await (a, b); self.scoreLeaders = rows.0; self.killLeaders = rows.1 } }
+    /// After counted runs: only when the boards are older than 20 s and the
+    /// server has not asked for a pause, and never as an error on screen
+    /// (it used to show under Global chat when it failed). Auto restart can
+    /// end a run every few seconds.
+    func refreshLeaderboardsAfterRun() async {
+        guard !token.isEmpty, !WyrmRateLimit.quiet else { return }
+        if let at = leadersAt, Date().timeIntervalSince(at) < 20 { return }
+        let token = token
+        let revision = sessionRevision
+        async let a: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "score", token: token)
+        async let b: [WyrmServicePlayer]? = try? await WyrmServiceClient.shared.leaderboard(sort: "kills", token: token)
+        let rows = await (a, b)
+        guard revision == sessionRevision else { return }
+        if let score = rows.0 { scoreLeaders = score }
+        if let kills = rows.1 { killLeaders = kills }
+        if rows.0 != nil, rows.1 != nil { leadersAt = Date() }
+    }
+    private var leadersAt: Date?
+    private var lastSocialPull = Date.distantPast
+
+    func refreshLeaderboards() async { await perform { async let a = WyrmServiceClient.shared.leaderboard(sort: "score", token: self.token); async let b = WyrmServiceClient.shared.leaderboard(sort: "kills", token: self.token); let rows = try await (a, b); self.scoreLeaders = rows.0; self.killLeaders = rows.1; self.leadersAt = Date() } }
     func searchPeople(_ query: String) async { await perform { self.people = try await WyrmServiceClient.shared.search(query, token: self.token) } }
     func loadConnections(playerID: String, kind: String) async { await perform { self.people = try await WyrmServiceClient.shared.connections(playerID: playerID, kind: kind, token: self.token) } }
     func loadConnectionLists(playerID: String) async { await perform {
@@ -889,6 +935,8 @@ final class WyrmServiceStore: ObservableObject {
     }
 
     private func clearPublishedSession() {
+        leadersAt = nil
+        lastSocialPull = .distantPast
         alerts = []
         globalUnread = 0
         scoreLeaders = []

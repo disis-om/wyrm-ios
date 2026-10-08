@@ -124,28 +124,67 @@ final class WyrmGameSync {
             defer { uploading = false }
             var failures = 0
             var earned = false
-            while owner == playerID, let run = pendingRuns().first(where: { $0.playerId == owner }) {
+            var counted = false
+            // The whole outbox in requests of 25 (2026-10-08), not one per run.
+            while owner == playerID {
+                let chunk = Array(pendingRuns().filter { $0.playerId == owner }.prefix(Self.runBatch))
+                if chunk.isEmpty { break }
                 do {
-                    let response = try await call("/v1/me/stats", method: "POST",
-                                                  body: ["eventId": run.eventId, "score": run.score, "kills": run.kills])
-                    savePendingRuns(pendingRuns().filter { $0.eventId != run.eventId })
+                    if try await sendRuns(chunk) { earned = true }
                     failures = 0
-                    if let achievements = response["achievements"] as? [Any], !achievements.isEmpty { earned = true }
-                    WyrmDiagnostics.record("run receipt accepted score=\(run.score) kills=\(run.kills)", category: "STATS")
-                } catch WyrmSyncError.rejected(let status) where status == 400 {
-                    // A receipt the server can never accept must not block the rest.
-                    savePendingRuns(pendingRuns().filter { $0.eventId != run.eventId })
+                    counted = true
                 } catch WyrmSyncError.rejected(let status) where status == 401 {
                     break
                 } catch {
                     failures += 1
                     if failures >= 3 { break }
-                    try? await Task.sleep(nanoseconds: UInt64(5_000_000_000 * failures))
+                    // The server's Retry-After when it asked for a pause,
+                    // else 5 s, 10 s; jitter so phones do not return together.
+                    let wait = lastRetryAfter > 0 ? Double(lastRetryAfter) : 5.0 * Double(failures)
+                    try? await Task.sleep(nanoseconds: UInt64((wait + Double.random(in: 0...2)) * 1_000_000_000))
                 }
             }
-            NotificationCenter.default.post(name: Self.profileChanged, object: nil)
+            // Once for the whole outbox.
+            if counted { NotificationCenter.default.post(name: Self.profileChanged, object: nil) }
             if earned { NotificationCenter.default.post(name: Self.achievementsEarned, object: nil) }
         }
+    }
+
+    private static let runBatch = 25
+    /// False after a server answers 404 for the batch route: then one by one.
+    private var runBatchSupported = true
+
+    /// Sends one chunk; true when an achievement was earned. Runs the server
+    /// answered for leave the outbox; a run it can never accept (400) too.
+    private func sendRuns(_ chunk: [PendingRun]) async throws -> Bool {
+        if runBatchSupported, chunk.count > 1 {
+            do {
+                let runs = chunk.map { ["eventId": $0.eventId, "score": $0.score, "kills": $0.kills] as [String: Any] }
+                let response = try await call("/v1/me/stats/batch", method: "POST", body: ["runs": runs])
+                let done = Set(((response["results"] as? [[String: Any]]) ?? []).compactMap { $0["eventId"] as? String })
+                let gone = done.isEmpty ? Set(chunk.map(\.eventId)) : done
+                savePendingRuns(pendingRuns().filter { !gone.contains($0.eventId) })
+                WyrmDiagnostics.record("run receipts accepted batch=\(gone.count)", category: "STATS")
+                return !((response["achievements"] as? [Any]) ?? []).isEmpty
+            } catch WyrmSyncError.rejected(let status) where status == 404 || status == 400 {
+                if status == 404 { runBatchSupported = false }
+                // 400: one run in it can never be accepted; find it one by one below.
+            }
+        }
+        var earned = false
+        for run in chunk {
+            do {
+                let response = try await call("/v1/me/stats", method: "POST",
+                                              body: ["eventId": run.eventId, "score": run.score, "kills": run.kills])
+                savePendingRuns(pendingRuns().filter { $0.eventId != run.eventId })
+                if let achievements = response["achievements"] as? [Any], !achievements.isEmpty { earned = true }
+                WyrmDiagnostics.record("run receipt accepted score=\(run.score) kills=\(run.kills)", category: "STATS")
+            } catch WyrmSyncError.rejected(let status) where status == 400 {
+                // A receipt the server can never accept must not block the rest.
+                savePendingRuns(pendingRuns().filter { $0.eventId != run.eventId })
+            }
+        }
+        return earned
     }
 
     /// Five-hour repair pass from local totals; it never lowers server data.
@@ -180,12 +219,21 @@ final class WyrmGameSync {
     func syncIngameName(_ raw: String) {
         let name = raw.trimmingCharacters(in: .whitespaces)
         guard !token.isEmpty, name.range(of: "^[A-Za-z0-9_]{3,20}$", options: .regularExpression) != nil else { return }
+        // A name the account refused (another player owns it) is not sent on
+        // every Play again (2026-10-08); the arena still uses it as typed.
+        guard !refusedIngameNames.contains(name.lowercased()) else { return }
         Task {
-            if (try? await call("/v1/me", method: "PATCH", body: ["ingameName": name])) != nil {
+            do {
+                _ = try await call("/v1/me", method: "PATCH", body: ["ingameName": name])
                 NotificationCenter.default.post(name: Self.profileChanged, object: nil)
-            }
+            } catch WyrmSyncError.rejected(let status) where status == 409 || status == 400 || (status == 429 && lastRetryAfter == 0) {
+                refusedIngameNames.insert(name.lowercased())
+            } catch {}
         }
     }
+
+    /// Until the app restarts: names the account answered 409/400/NAME_CHANGE_LIMIT for.
+    private var refusedIngameNames = Set<String>()
 
     // MARK: - Arena skins
 
@@ -314,6 +362,8 @@ final class WyrmGameSync {
     // MARK: - Transport
 
     enum WyrmSyncError: Error { case rejected(Int), transport }
+    /// Seconds from the last answer's Retry-After (429 from the rate limiter), else 0.
+    private var lastRetryAfter = 0
 
     private func call(_ path: String, method: String, body: [String: Any], bearer: String? = nil) async throws -> [String: Any] {
         let token = bearer ?? self.token
@@ -331,6 +381,10 @@ final class WyrmGameSync {
         }
         let status = (response as? HTTPURLResponse)?.statusCode ?? 0
         WyrmDiagnostics.record("\(method) \(path) status=\(status)", category: "STATS")
+        // Only the rate limiter sends Retry-After (a NAME_CHANGE_LIMIT 429 has none).
+        lastRetryAfter = status == 429
+            ? min(600, max(0, Int((response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Retry-After") ?? "") ?? 0)) : 0
+        if lastRetryAfter > 0 { WyrmRateLimit.note(seconds: lastRetryAfter) }
         guard 200..<300 ~= status else { throw WyrmSyncError.rejected(status) }
         guard !data.isEmpty else { return [:] }
         return (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
