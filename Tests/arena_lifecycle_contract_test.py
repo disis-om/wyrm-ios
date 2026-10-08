@@ -18,16 +18,30 @@ game_data = (generated / "game" / "game_data.c").read_text(encoding="utf-8")
 loop = (generated / "game" / "loop.c").read_text(encoding="utf-8")
 server = (generated / "network" / "server.c").read_text(encoding="utf-8")
 callback = (generated / "network" / "callback.c").read_text(encoding="utf-8")
+protocol = (generated / "network" / "arena_protocol.h").read_text(encoding="utf-8")
 home = (generated / "platform" / "android_home.c").read_text(encoding="utf-8")
 
 checks = {
     "directory active flag": "bytes[offset] <= 26" in services,
-    "direct game-port TCP latency probe": "NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)" in services,
+    # The web client's ping since 2026-10-09: ws://ip:80/ptc with the page's
+    # Origin, through Network (ATS refuses a URLSession ws://); the game-port
+    # TCP dial stays only as the custom-address fallback.
+    "web ptc latency probe": 'URL(string: "ws://\\(arena.address):80/ptc")' in services
+        and 'setAdditionalHeaders([("Origin", "https://slither.io")])' in services
+        and "Data([112])" in services and "data.first == 112" in services,
+    "custom address keeps the TCP fallback": "NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)" in services
+        and "if arena.number == 0 { fallback() }" in services,
     "probe reports connect milliseconds": "DispatchTime.now().uptimeNanoseconds - probeStarted" in services and "elapsed / 1_000_000" in services,
-    "bounded probe timeout": "queue.asyncAfter(deadline: .now() + 1.5)" in services,
+    "bounded probe timeout": "private static let deadline = 2.5" in services and "queue.asyncAfter(deadline: .now() + Self.deadline)" in services,
     "directory refresh avoids fleet-wide game-port probes": "func refreshArenasLive() async" in services and "for arena in candidates { group.addTask" not in services,
-    "picker measures at most ten on demand": "func measurePickerArenas(preferredEndpoints:" in services and ".prefix(10)" in services and "await services.measurePickerArenas" in design,
-    "picker shows only active directory arenas": r"services.arenas.filter(\.active)" in design,
+    # Every listed machine is measured while the picker is open, eight at a
+    # time, one ping per IP (2026-10-09; it was the first ten, one by one).
+    "picker measures every machine, bounded": "func measurePickerArenas(preferredEndpoints:" in services
+        and "while next < min(8, machines.count)" in services and "seenMachines.insert($0.address)" in services
+        and "await services.measurePickerArenas" in design,
+    # The directory's first byte only weights the web client's own pick; every
+    # listed arena is shown (108 of 144 were hidden, e.g. 4817).
+    "picker shows every directory arena": r"services.arenas.filter(\.active)" not in design and "let live = services.arenas\n" in design,
     "picker ranks top ten and can expand": "Array(ranked.prefix(10))" in design and "See all" in design,
     "custom addresses are validated and stored": "static func custom(_ raw: String)" in services and "savedArenaEndpoints = entries.prefix(20)" in design,
     "recent joins are kept separately from saved addresses": "recentArenaEndpoints = recent.prefix(5)" in design,
@@ -38,8 +52,17 @@ checks = {
     "native refusal bridge": "WyrmIOSArenaRefusalSnapshot" in shell and "WyrmIOSPublishArenaRefusal" in home,
     "short silent life returns to lobby": "refused_short_life" in callback and "gdata->join_spawned = false" in callback and "gdata->curr_screen = LOBBY" in loop,
     "no death card before own spawn": "if (!refused_short_life && gdata->join_spawned)" in callback,
-    "Vlither five-second entry timeout": "SDL_GetTicks() - gdata->attempt_started_ms > 5000" in loop and "if (gdata->connection &&" in loop,
-    "one dial per Play request": "ios_retry_or_finish" not in loop and "gdata->rejoin_at_ms = SDL_GetTicks() + 50" not in loop and "gdata->join_attempts++" not in server,
+    # Vlither's TIMEOUT (5 s until a snake exists), shared with Android since
+    # 2026-10-09 through arena_protocol.h.
+    "Vlither five-second entry timeout": "ARENA_CONNECT_TIMEOUT_MS = 5000" in protocol and "SDL_GetTicks() - gdata->attempt_started_ms > ARENA_CONNECT_TIMEOUT_MS" in loop and "if (gdata->connection && !gdata->connection->is_closing &&" in loop,
+    # One dial per Play request. server_connect says no only while the last
+    # socket is still alive (nothing was dialled); a failed dial still returns
+    # true and ends the attempt. The 50 ms wait (Android's, iOS too since
+    # 2026-10-09) dials once that socket is gone, never after a failed dial.
+    "one dial per Play request": "ios_retry_or_finish" not in loop and "gdata->join_attempts++" not in server
+        and "if (gdata->connection) {" in server
+        and server[server.index("bool server_connect("):server.index("void server_poll(")].count("return false;") == 1
+        and "if (!gdata->connection && SDL_GetTicks() >= gdata->rejoin_at_ms)" in loop,
     "picker probes cancel before the native Play request": shell.index("WyrmArenaProbeGate.shared.beginPlay()") < shell.index("WyrmIOSRequestPlay(namePointer, addressPointer, false)") and "pending.forEach { $0.cancel() }" in services,
     "picker probes stay blocked until native socket is gone": "gdata->conn == DISCONNECTED && !gdata->connection" in main and "WyrmEngineArenaPortAvailable" in main and "guard arenaPortBusySeen else { return }" in shell,
     "Apple generated bridge has no JNI port callback": "void android_home_set_arena_port_available(bool available) {\n(void)available;\n}" in home,

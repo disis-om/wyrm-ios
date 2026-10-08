@@ -319,8 +319,9 @@ final class WyrmShellStore: ObservableObject {
     /// Writes a new in-game name into the engine (which persists it) and
     /// shows it everywhere immediately.
     func setNickname(_ raw: String) {
-        // As typed (at most 24), blank included: the arena shows it as is (OM).
-        let name = String(raw.prefix(24))
+        // As typed (at most 24 UTF-8 bytes, whole characters), blank included:
+        // the arena shows it as is (OM).
+        let name = Self.arenaNickname(raw)
         UserDefaults.standard.set(true, forKey: Self.nicknameChosenKey)
         guard name != nickname else { return }
         name.withCString { WyrmIOSSaveNickname($0) }
@@ -337,8 +338,24 @@ final class WyrmShellStore: ObservableObject {
 
     /// Holds a name the engine is about to apply, so the next snapshot cannot
     /// flash the old one back before the mailbox is drained.
+    /// The in-game name as the engine stores it: at most 24 UTF-8 bytes
+    /// (`MAX_NICKNAME_LEN`), whole characters only. Counting 24 characters let
+    /// a Hindi or emoji name reach the engine as up to ~96 bytes, which it cut
+    /// at byte 24, sometimes inside a character (2026-10-09).
+    static func arenaNickname(_ raw: String, maxBytes: Int = 24) -> String {
+        var out = ""
+        var bytes = 0
+        for character in raw {
+            let size = String(character).utf8.count
+            if bytes + size > maxBytes { break }
+            out.append(character)
+            bytes += size
+        }
+        return out
+    }
+
     private func adopt(_ raw: String) {
-        let name = String(raw.prefix(24))
+        let name = Self.arenaNickname(raw)
         nickname = name
         nicknameOverride = (name, Date().addingTimeInterval(3))
     }

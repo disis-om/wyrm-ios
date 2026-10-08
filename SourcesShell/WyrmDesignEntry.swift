@@ -174,13 +174,13 @@ struct WyrmDesignRoot: View {
         // A match that ends with the team composer open closes it, so the
         // shell is never left shown over a later screen.
         .onChange(of: engine.engineScreen) { screen in
-            if screen != 2 && teamComposer.open { teamComposer.close() }
+            if screen != 2 && teamComposer.open { teamComposer.closeNow() }
         }
         // CI: the team composer over an AI match, for a screenshot.
         .onChange(of: engine.engineScreen) { screen in
             guard screen == 2, arguments.contains("--smoke-team-composer") else { return }
             DispatchQueue.main.asyncAfter(deadline: .now() + 4) {
-                withAnimation(.easeOut(duration: 0.18)) { teamComposer.open = true }
+                teamComposer.present()
                 NSLog("Wyrm smoke: team composer opened")
             }
         }

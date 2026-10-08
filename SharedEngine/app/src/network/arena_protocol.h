@@ -7,11 +7,18 @@
 #include <math.h>
 #include <string.h>
 
-/* Slither.txt, supplied 2026-09-07. These are source-derived, not a claim of
- * live server acceptance. Keep the decoders independent of SDL for replay tests. */
-enum { ARENA_AIM_MS = 33, ARENA_TURN_MS = 50, ARENA_BOOST_MS = 50,
+/* The web client's own numbers (OM, 2026-10-09: Wyrm is the web client, 291,
+ * through and through). Its game script (`legacy/vlither-master/
+ * game1107241958.js`) and Vlither send the heading at most every 50 ms
+ * (`ctm-last_e_mtm>50`), a boost change every 150 ms (`ctm-last_accel_mtm>150`)
+ * and a key turn every 150 ms (`ctm-lkstm>150`). Until 2026-10-09 these were
+ * the AIR client's 33/50/50 while the join said "web".
+ * ARENA_CONNECT_TIMEOUT_MS is Vlither's TIMEOUT (5 s): an attempt that has not
+ * spawned a snake by then is given up. Keep the decoders independent of SDL
+ * for replay tests. */
+enum { ARENA_AIM_MS = 50, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 150,
        ARENA_PING_MS = 250, ARENA_LAG_MS = 750, ARENA_RETRY_MS = 3333,
-       ARENA_DEATH_WAIT_MS = 1600 };
+       ARENA_CONNECT_TIMEOUT_MS = 5000, ARENA_DEATH_WAIT_MS = 1600 };
 
 typedef struct arena_reader {
   const uint8_t *bytes;

@@ -12,7 +12,7 @@ struct WyrmDetailHost: View {
         switch route {
         case .leaderboard: WyrmLeaderboardDetail(services: services, close: close, open: open)
         case .messages: WyrmMessagesDetail(account: account, services: services, close: close, open: open)
-        case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close)
+        case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close, open: open)
         case .people(let kind): WyrmPeopleDetail(kind: kind, account: account, services: services, close: close, open: open)
             // The end of the new-follower trail: your connections, seen.
             .onAppear { if kind == "connections" { services.markKindsRead(["follow"]) } }
@@ -154,30 +154,64 @@ private struct WyrmMessagesDetail: View {
     }
 }
 
+/// A direct conversation laid out like Instagram's (OM, 2026-10-09): the
+/// other player's face and name in the bar, their profile card at the top of
+/// the thread (alone when nothing has been said yet), their face beside the
+/// last bubble of each of their runs, and the time between runs that are far
+/// apart. Wyrm's colours, not Instagram's.
 private struct WyrmThreadDetail: View {
     let playerID: String
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
     let close: () -> Void
+    let open: (WyrmDesignRoute) -> Void
     @State private var message = ""
     @State private var sending = false
     private var person: WyrmServicePlayer? { services.profiles[playerID] ?? services.conversations.first(where: { $0.player.id == playerID })?.player ?? services.people.first(where: { $0.id == playerID }) ?? services.followers.first(where: { $0.id == playerID }) ?? services.following.first(where: { $0.id == playerID }) }
     var body: some View {
-        WyrmDetailChrome(title: person?.displayName ?? "Message", onBack: close) {
+        ZStack {
+            WyrmPaperBackground()
             VStack(spacing: 0) {
+                header
+                Rectangle().fill(ATheme.rule).frame(height: 1)
                 WyrmChatTranscript(messages: services.messages, myID: account.player?.id, showsAuthors: false,
-                                   emptyTitle: "Quiet so far", emptyNote: "Say hello when you are ready.")
-                WyrmChatComposer(text: $message, placeholder: "Message \(person?.displayName ?? "")", limit: 1000,
+                                   peer: person, onPeer: { open(.profile(playerID)) })
+                WyrmChatComposer(text: $message, placeholder: "Message…", limit: 1000,
                                  sending: sending, onSend: send)
             }
-            // A thread is live while it is open, like Global chat.
-            .task {
-                while !Task.isCancelled {
-                    await services.loadThread(playerID: playerID)
-                    try? await Task.sleep(nanoseconds: 4_000_000_000)
-                }
+        }
+        .foregroundColor(ATheme.ink)
+        // A thread is live while it is open, like Global chat.
+        .task {
+            await services.loadPlayer(playerID)
+            while !Task.isCancelled {
+                await services.loadThread(playerID: playerID)
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
         }
+    }
+
+    /// Back, then the other player's face, name and handle (opens their profile).
+    private var header: some View {
+        HStack(spacing: 6) {
+            Button(action: close) {
+                Image(systemName: "chevron.left").font(.system(size: 19, weight: .semibold))
+                    .foregroundColor(ATheme.ink).frame(width: 36, height: 44)
+            }.buttonStyle(.plain)
+            Button { open(.profile(playerID)) } label: {
+                HStack(spacing: 10) {
+                    WyrmAvatar(initials: person?.initials ?? "W", size: 34, url: person?.avatarURL ?? "")
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(person?.displayName ?? "Message").font(.androidWyrm(15.5, .bold)).lineLimit(1)
+                        if let handle = person?.handle, !handle.isEmpty {
+                            Text(handle).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                        }
+                    }
+                }
+            }.buttonStyle(.plain)
+            Spacer()
+        }
+        .padding(.horizontal, 10).frame(height: 58).background(ATheme.paper)
     }
     private func send() {
         let body = message.trimmingCharacters(in: .whitespacesAndNewlines)

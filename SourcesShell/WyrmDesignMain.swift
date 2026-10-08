@@ -474,6 +474,9 @@ private struct WyrmPlayRoot: View {
                         HStack(spacing: 6) { Circle().fill(nearest == nil ? ATheme.quiet : ATheme.live).frame(width: 6, height: 6); Text(nearest == nil ? "ARENA DIRECTORY" : "LIVE ARENA").font(.androidWyrm(10.5, .bold)).tracking(0.8).foregroundColor(nearest == nil ? ATheme.quiet : ATheme.live) }
                         HStack(alignment: .bottom) {
                             Text(nearest.map { $0.number == 0 ? "Custom arena" : "Arena \($0.code)" } ?? "Pick a server").font(.androidWyrm(21, .bold)).lineLimit(1)
+                            if let nearest, nearest.number > 0 {
+                                WyrmArenaCountryBadge(country: services.countryCode(for: nearest.address)).padding(.bottom, 4)
+                            }
                             Spacer()
                             Text(nearest == nil ? "" : "\(nearest!.players) players").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
                         }.padding(.top, 11)
@@ -558,7 +561,7 @@ private struct WyrmPlayRoot: View {
 
     private func commitName() {
         // As typed (at most 24), blank included: the arena shows it as is (OM).
-        let clean = String(nickname.prefix(24))
+        let clean = WyrmShellStore.arenaNickname(nickname)
         nickname = clean
         guard clean != engine.nickname else { return }
         engine.setNickname(clean)
@@ -625,7 +628,10 @@ private struct WyrmArenaPicker: View {
     private var recent: [String] { recentArenaEndpoints.split(separator: ";").map(String.init) }
 
     private var filtered: [WyrmArena] {
-        let live = services.arenas.filter(\.active)
+        // Every listed arena (OM, 2026-10-09: 108 of 144, e.g. 4817, were
+        // hidden behind the directory's "active" byte, which the web client
+        // only uses to weight its automatic pick).
+        let live = services.arenas
         let matching = search.isEmpty ? live : live.filter {
             $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search)
         }
@@ -641,7 +647,7 @@ private struct WyrmArenaPicker: View {
     // already measured; no new probes.
     private var recentRows: [WyrmArena] {
         let rows = recent.compactMap { endpoint in
-            services.arenas.first(where: { $0.endpoint == endpoint && $0.active })
+            services.arenas.first(where: { $0.endpoint == endpoint })
                 ?? (saved.contains(endpoint) ? WyrmArena.custom(endpoint) : nil)
         }.filter { search.isEmpty || $0.endpoint.contains(search) || $0.title.localizedCaseInsensitiveContains(search) }
         return rows.enumerated().sorted { left, right in
@@ -659,7 +665,7 @@ private struct WyrmArenaPicker: View {
     /// custom address). Selecting it is a plain tap; nothing auto-joins.
     private var bestArena: WyrmArena? {
         guard search.isEmpty else { return nil }
-        return services.arenas.filter(\.active)
+        return services.arenas
             .compactMap { arena -> (WyrmArena, Int)? in
                 guard let ping = services.arenaLatencies[arena.id], ping > 0 else { return nil }
                 return (arena, ping)
@@ -728,7 +734,8 @@ private struct WyrmArenaPicker: View {
         .task {
             await services.refreshArenasLive()
             await services.measurePickerArenas(preferredEndpoints: [selection] + recent)
-            if let selected = WyrmArena.custom(selection), selected.number == 0 {
+            if let selected = WyrmArena.custom(selection),
+               !services.arenas.contains(where: { $0.endpoint == selected.endpoint }) {
                 customLatencies[selected.endpoint] = await services.measureCustomArena(selected.endpoint) ?? -1
             }
             while !Task.isCancelled {
@@ -750,6 +757,7 @@ private struct WyrmArenaPicker: View {
                 VStack(alignment: .leading, spacing: 3) {
                     HStack(spacing: 8) {
                         Text(arena.number == 0 ? "Custom arena" : "Arena \(arena.code)").font(.androidWyrm(15, .bold))
+                        if arena.number > 0 { WyrmArenaCountryBadge(country: services.countryCode(for: arena.address)) }
                         if let tag {
                             Text(tag).font(.androidWyrm(10, .bold)).foregroundColor(ATheme.live)
                                 .padding(.horizontal, 7).padding(.vertical, 2)

@@ -12,8 +12,9 @@ import re
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "SharedEngine"
 
-# The bounded custom-skin encoder for the join (arena drop fix, 2026-09-29);
-# the same C as Wyrm Android's network/callback.c.
+# Vlither's custom-skin encoder for the join, the code as the player made it
+# (OM, 2026-10-09; bounded since the 2026-09-29 arena drop fix); the same C as
+# Wyrm Android's network/callback.c.
 NEW_SKIN_ENCODER = r'''/*
  * How many (count, colour) runs a join may carry: NTL's limit. NTL cuts its
  * skin block to 300 bytes (`cb.slice(0,300)` in main-mt.js), which is the
@@ -30,11 +31,20 @@ static bool skin_colour_allowed(int cg) {
 }
 
 /*
- * The run list for the join: official colours only, one repeat of the
- * pattern, at most WYRM_JOIN_SKIN_MAX_RUNS runs. The arena repeats a pattern
- * along the body, so one repeat looks the same to everyone else; iOS hands
- * over its motif repeated to 256 beads, and this folds that back. Our own
- * snake still draws the whole design (see the own-snake block in 's').
+ * Vlither's run list for the join (OM, 2026-10-09): the skin code exactly as
+ * the player typed or built it, one (count, colour) pair per run of equal
+ * beads, in order. Nothing is folded, repeated or reordered: the arena repeats
+ * what it is sent along the body, so what the player made is what goes, and
+ * no bead of it is dropped. Both apps hand over the code as made (the preview
+ * alone shows it repeated).
+ *
+ * Two guards Vlither does not have:
+ * - only the colours the official client allows (any other bead is skipped);
+ * - at most WYRM_JOIN_SKIN_MAX_RUNS runs. Only a code whose beads change
+ *   colour more than 146 times reaches it; the rest of that code is not sent
+ *   (logged), because a ~500-byte block is refused by the arena.
+ * A run longer than 255 beads is split in two: Vlither's 8-bit counter
+ * wrapped to 0 on 256 equal beads.
  * Empty when nothing valid is left: the join then goes out as a preset one.
  */
 uint8_t* get_skin_compressed(tuser_data* usr) {
@@ -49,43 +59,21 @@ uint8_t* get_skin_compressed(tuser_data* usr) {
   }
   if (!count) return reduced;
 
-  /* The smallest period p with groups[i] == groups[i - p] for every i >= p.
-     Below 256 beads p must also divide the pattern: the arena repeats what
-     it is sent, so folding "abcdefga" to "abcdefg" dropped the last bead from
-     every repeat (OM, 2026-10-04; until then any p was taken). A full 256
-     (iOS hands over its motif repeated to 256) may end part-way through a
-     repeat, so there any p is still taken. */
-  int period = count;
-  for (int p = 1; p < count; p++) {
-    if (count % p != 0 && count != MAX_SKIN_CODE_LEN) continue;
-    bool repeats = true;
-    for (int i = p; i < count; i++) {
-      if (groups[i] != groups[i - p]) {
-        repeats = false;
-        break;
-      }
-    }
-    if (repeats) {
-      period = p;
-      break;
-    }
-  }
-
   int runs = 0;
   int i = 0;
-  while (i < period && runs < WYRM_JOIN_SKIN_MAX_RUNS) {
+  while (i < count && runs < WYRM_JOIN_SKIN_MAX_RUNS) {
     uint8_t cg = groups[i];
     int n = 1;
-    while (i + n < period && groups[i + n] == cg && n < UINT8_MAX) n++;
+    while (i + n < count && groups[i + n] == cg && n < UINT8_MAX) n++;
     uint8_t run = (uint8_t)n;
     tdarray_push(&reduced, &run);
     tdarray_push(&reduced, &cg);
     runs++;
     i += n;
   }
-  if (i < period)
-    SDL_Log("Wyrm arena: custom skin trimmed for the join — %d of %d beads "
-            "in one repeat, %d stripes", i, period, runs);
+  if (i < count)
+    SDL_Log("Wyrm arena: custom skin longer than the arena takes — %d of %d "
+            "beads sent, %d runs", i, count, runs);
   return reduced;
 }
 '''
@@ -1169,23 +1157,13 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
             body = body[:body.index('  JNIEnv*')]
             text = replace_body(text, name, body)
         text += (ROOT / 'SourcesOriginal' / 'HomeMailbox.inc').read_text()
-    if relative == "app/src/game/game_data.c":
-        # One explicit Play request may wait for the old socket to finish,
-        # but must never schedule a second dial after its first dial fails.
-        pending = 'gdata->rejoin_at_ms = server_connect(env) ? 0 : now + 50;'
-        assert text.count(pending) == 1
-        text = text.replace(pending, '''gdata->rejoin_at_ms = 0;
-  if (!server_connect(env)) game_fail_connection(gdata, "previous socket still closing");''')
+    # game_data.c / loop.c (OM, 2026-10-09): a Play while the last socket is
+    # still closing waits 50 ms and dials once that socket is gone, as on
+    # Android (server_connect returns false only for a live old socket, never
+    # for a failed dial). iOS used to fail the join at once and show a refusal.
     if relative == "app/src/game/loop.c":
-        pending = 'if (!server_connect(env)) gdata->rejoin_at_ms = SDL_GetTicks() + 50;'
-        assert text.count(pending) == 1
-        text = text.replace(pending, 'if (!server_connect(env)) game_fail_connection(gdata, "previous socket still closing");')
-        timeout_clock = 'SDL_GetTicks() - gdata->attempt_started_ms > ARENA_RETRY_MS'
-        assert text.count(timeout_clock) == 1
-        text = text.replace(timeout_clock, 'SDL_GetTicks() - gdata->attempt_started_ms > 5000')
-        connect_gate = 'if (!gdata->arena_ready && gdata->connection &&'
-        assert text.count(connect_gate) == 1
-        text = text.replace(connect_gate, 'if (gdata->connection &&')
+        # The 5 s spawn timeout (Vlither's TIMEOUT) is in the shared loop.c
+        # itself since 2026-10-09 (ARENA_CONNECT_TIMEOUT_MS), as on Android.
         timeout = '''          arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
               usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));
@@ -1275,10 +1253,11 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
         text = text.replace(skin_tail, '    if (skin_compressed) {\n      ba[m++] = 255;\n')
         own_look = '      o.cusk = skl != 0;\n'
         assert text.count(own_look) == 1
-        text = text.replace(own_look, own_look + """      /* Our own snake keeps the whole design we chose. The join carries at
-         most one bounded repeat of it, and `cusk_data` above holds the arena's
-         echo of that; drawn from the echo, our snake would show the trimmed
-         wire copy instead of the player's own look. */
+        text = text.replace(own_look, own_look + """      /* Our own snake keeps the whole design we chose. The join carries the
+         code as made (bounded, see get_skin_compressed), and `cusk_data`
+         above holds the arena's echo of that; drawn from the echo, a code
+         longer than the arena takes would show the trimmed wire copy instead
+         of the player's own look. */
       if (o.local_player && usrs->custom_skin) {
         o.cusk_len = 0;
         for (int k = 0; k < MAX_SKIN_CODE_LEN && usrs->skin_code[k]; k++) {
@@ -4321,3 +4300,220 @@ for _relative, _pairs in WYRM_TAG_PAIRS.items():
     _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
                               n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
 print("Wyrm tags: own stickers in the skin block's corner")
+
+
+# Spine width + AIR snake shadow (OM, 2026-10-09): the same text as Wyrm
+# Android's game/user_settings.h/.c, platform/android_settings.c, game/redraw.c.
+SPINE_SHADOW_HEADER_PAIRS = [
+    ('app/src/game/user_settings.h', r'''  float eyes_back_opacity;
+  bool eyes_back_visible;
+} user_settings_ext;''', r'''  float eyes_back_opacity;
+  bool eyes_back_visible;
+  /* Modes › Spine width (OM, 2026-10-09), normal and assist: 0 is the thin
+     line it always was, 1 is as wide as the snake. Starts at offset 32: bytes
+     29-31 were padding in every file written before. */
+  float spine_width[2];
+  /* Modes › Snake shadow (OM, 2026-10-09), normal and assist: the AIR
+     client's `ksmc_t` under every snake. */
+  bool snake_shadow[2];
+} user_settings_ext;'''),
+    ('app/src/game/user_settings.c', r'''  x->eyes_back_visible = false;
+}
+''', r'''  x->eyes_back_visible = false;
+  x->spine_width[0] = 0.0f;
+  x->spine_width[1] = 0.0f;
+  x->snake_shadow[0] = false;
+  x->snake_shadow[1] = false;
+}
+'''),
+    ('app/src/game/user_settings.c', r'''  size_t eb_visible_at = offsetof(user_settings_ext, eyes_back_visible);
+''', r'''  size_t eb_visible_at = offsetof(user_settings_ext, eyes_back_visible);
+  size_t spine_w_at = offsetof(user_settings_ext, spine_width);
+  size_t shadow_at = offsetof(user_settings_ext, snake_shadow);
+'''),
+    ('app/src/game/user_settings.c', r'''  fixed |= ext_take_bool(&ext->eyes_back_visible,
+                         written >= eb_visible_at + 1);
+''', r'''  fixed |= ext_take_bool(&ext->eyes_back_visible,
+                         written >= eb_visible_at + 1);
+  fixed |= ext_take_float(&ext->spine_width[0], written >= spine_w_at + 4,
+                          0.0f, 1.0f, 0.0f);
+  fixed |= ext_take_float(&ext->spine_width[1], written >= spine_w_at + 8,
+                          0.0f, 1.0f, 0.0f);
+  fixed |= ext_take_bool(&ext->snake_shadow[0], written >= shadow_at + 1);
+  fixed |= ext_take_bool(&ext->snake_shadow[1], written >= shadow_at + 2);
+'''),
+    ('app/src/platform/android_settings.c', r'''     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[1])},
+''', r'''     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[1])},
+    {"normal.spine_width", "normal", "Spine width",
+     "From a thin thread to as wide as the snake.", SETTING_FLOAT, 0, 1,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine_width[0])},
+    {"assist.spine_width", "assist", "Spine width",
+     "From a thin thread to as wide as the snake.", SETTING_FLOAT, 0, 1,
+     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine_width[1])},
+    {"normal.snake_shadow", "normal", "Snake shadow",
+     "The soft shadow the original app draws under every snake.",
+     SETTING_BOOL, 0, 1, NULL, OWNER_SETTINGS,
+     SETTINGS_FIELD(ext.snake_shadow[0])},
+    {"assist.snake_shadow", "assist", "Snake shadow",
+     "The soft shadow the original app draws under every snake.",
+     SETTING_BOOL, 0, 1, NULL, OWNER_SETTINGS,
+     SETTINGS_FIELD(ext.snake_shadow[1])},
+'''),
+]
+
+SPINE_SHADOW_REDRAW = 'app/src/game/redraw.c'
+
+SPINE_SHADOW_REDRAW_PAIRS = [
+    (r'''  float d = fabsf(*sx - ox) + fabsf(*sy - oy);
+  return fminf(1, d / 6);
+}
+''', r'''  float d = fabsf(*sx - ox) + fabsf(*sy - oy);
+  return fminf(1, d / 6);
+}
+
+/* Modes › Snake shadow (OM, 2026-10-09). The AIR client gives every snake
+ * `has_shadow` (setSkin) and draws `ksmc_t` beneath it (Main.as redraw): the
+ * head's first nine points fading out, then the tail's last four, then, as
+ * the body is drawn from the tail, one four points behind each body point,
+ * faded where the points bunch up. Same stamp, size and order as the wheel
+ * beads' shadow above, for every point of every snake. */
+static void air_snake_shadow_ends(tenv* env, int bp, float half, float a,
+                                  float mww2, float mhh2, float* sx,
+                                  float* sy) {
+  game_data* gdata = &env->usr->gdata;
+  for (int p = bp - 1 < 8 ? bp - 1 : 8; p >= 0; p--)
+    if (gdata->data.pbu[p] == 2)
+      apple_air_shadow(env, p, half, a * (1 - p / 9.0f), mww2, mhh2);
+  for (int n = 1; n <= 4; ++n) {
+    int p = bp - n;
+    if (p < 0 || gdata->data.pbu[p] != 2) continue;
+    float spacing = apple_air_spacing(env, p, sx, sy);
+    if (n == 1) spacing = 1;
+    apple_air_shadow(env, p, half, spacing * a * (p < 9 ? p / 9.0f : 1), mww2,
+                     mhh2);
+  }
+}
+
+static void air_snake_shadow_behind(tenv* env, int j, float half, float a,
+                                    float mww2, float mhh2, float* sx,
+                                    float* sy) {
+  game_data* gdata = &env->usr->gdata;
+  int p = j - 4;
+  if (p < 0 || gdata->data.pbu[p] != 2) return;
+  float spacing = apple_air_spacing(env, p, sx, sy);
+  apple_air_shadow(env, p, half, spacing * a * (p < 9 ? p / 9.0f : 1), mww2,
+                   mhh2);
+}
+'''),
+    (r'''static void draw_snake_spine(tenv* env, int bp, float cx, float cy, float alpha) {
+  float dpi = snake_line_dpi(env);
+  ImU32 dark = igColorConvertFloat4ToU32((ImVec4){0.0f, 0.0f, 0.0f, 0.35f * alpha});
+  ImU32 white = igColorConvertFloat4ToU32((ImVec4){1.0f, 1.0f, 1.0f, 0.8f * alpha});
+  draw_body_line(env, bp, 1, cx, cy, dark, 4.0f * dpi, white, 2.0f * dpi);
+}''', r'''/* A spine wider than the thread is drawn on the skinless mesh, so it does
+   not fold where the body coils tight (a thick ImGui polyline mitres). */
+static void draw_spine_mesh(tenv* env, int bp, float cx, float cy, ImU32 under,
+                            float under_w, ImU32 over, float over_w) {
+  game_data* gdata = &env->usr->gdata;
+  ImDrawList* draw = igGetWindowDrawList();
+  ImVec2 buf[SKINLESS_RUN];
+  int n = 0;
+  int i;
+  int continued = 0;
+  for (i = 1; i <= bp; ++i) {
+    int live = i < bp && gdata->data.pbu[i] >= 1;
+    if (live && n < SKINLESS_RUN) {
+      snake_screen_point(gdata, i, cx, cy, &buf[n]);
+      n += 1;
+      if (n < SKINLESS_RUN) continue;
+    }
+    if (n >= 1) {
+      draw_skinless_run(draw, buf, n, under, under_w, !continued, !live);
+      draw_skinless_run(draw, buf, n, over, over_w, !continued, !live);
+    }
+    if (live) {
+      buf[0] = buf[n > 0 ? n - 1 : 0];
+      n = 1;
+      continued = 1;
+    } else {
+      n = 0;
+      continued = 0;
+    }
+  }
+}
+
+/* Spine width (OM, 2026-10-09): 0 is the thin line it always was, 1 is as
+   wide as the body (`body_w`, the bead's diameter on screen). */
+static void draw_snake_spine(tenv* env, int bp, float cx, float cy, float alpha,
+                             float body_w, float width) {
+  float dpi = snake_line_dpi(env);
+  float thread = 2.0f * dpi;
+  float over_w;
+  ImU32 dark = igColorConvertFloat4ToU32((ImVec4){0.0f, 0.0f, 0.0f, 0.35f * alpha});
+  ImU32 white = igColorConvertFloat4ToU32((ImVec4){1.0f, 1.0f, 1.0f, 0.8f * alpha});
+  if (!(width > 0.0f) || body_w <= thread) {
+    draw_body_line(env, bp, 1, cx, cy, dark, 4.0f * dpi, white, 2.0f * dpi);
+    return;
+  }
+  if (width > 1.0f) width = 1.0f;
+  over_w = thread + (body_w - thread) * width;
+  draw_spine_mesh(env, bp, cx, cy, dark, over_w + 2.0f * dpi, white, over_w);
+}'''),
+    (r'''          float om = 0;
+          float mr = 0;
+''', r'''          /* Modes › Snake shadow (OM, 2026-10-09), normal and assist apart.
+             Not under a skinless strip, which is meant to be see-through. */
+          const bool air_shadow =
+              usrs->ext.snake_shadow[usrs->hotkeys[HOTKEY_ASSIST].active ? 1 : 0] &&
+              mode->render_mode != 3;
+          const float air_half =
+              gdata->data.gsc * lsz * APPLE_AIR_SHADOW_SCALE;
+          float air_sx = 31337357, air_sy = 31337357;
+
+          float om = 0;
+          float mr = 0;
+'''),
+    (r'''            if (spine_on) draw_snake_spine(env, bp, mww2, mhh2, a);''',
+     r'''            if (spine_on)
+              draw_snake_spine(env, bp, mww2, mhh2, a,
+                               2.0f * lsz * gdata->data.gsc,
+                               usrs->ext.spine_width[assist_on]);'''),
+]
+
+# Each render mode's "last four" pass, three of them.
+SPINE_SHADOW_ENDS_OLD = r'''            if (show_snake_shadows) {
+              // draw last 4 body parts' shadow:'''
+SPINE_SHADOW_ENDS_NEW = r'''            if (air_shadow)
+              air_snake_shadow_ends(env, bp, air_half, a, mww2, mhh2, &air_sx,
+                                    &air_sy);
+            else if (show_snake_shadows) {
+              // draw last 4 body parts' shadow:'''
+
+# Each body loop's "four points behind" stamp, six of them.
+SPINE_SHADOW_BEHIND = re.compile(r'^( *)(\} else )?if \(j >= 4 && show_snake_shadows\) \{$', re.M)
+
+
+def _spine_shadow_behind_sub(m):
+    ind, els = m.group(1), m.group(2) or ''
+    return (f'{ind}{els}if (air_shadow) {{\n'
+            f'{ind}  air_snake_shadow_behind(env, (int)j, air_half, a, mww2, mhh2,\n'
+            f'{ind}                          &air_sx, &air_sy);\n'
+            f'{ind}}} else if (j >= 4 && show_snake_shadows) {{')
+
+
+def _spine_shadow_patch_redraw(text):
+    for old, new in SPINE_SHADOW_REDRAW_PAIRS:
+        assert text.count(old) == 1, old[:70]
+        text = text.replace(old, new)
+    assert text.count(SPINE_SHADOW_ENDS_OLD) == 3
+    text = text.replace(SPINE_SHADOW_ENDS_OLD, SPINE_SHADOW_ENDS_NEW)
+    text, n = SPINE_SHADOW_BEHIND.subn(_spine_shadow_behind_sub, text)
+    assert n == 6, n
+    return text
+
+for _relative, _old, _new in SPINE_SHADOW_HEADER_PAIRS:
+    _arrow_patch(_relative, [(_old, _new)])
+_target = OUTPUT / SPINE_SHADOW_REDRAW
+_target.write_text(_spine_shadow_patch_redraw(_target.read_text(encoding="utf-8")),
+                   encoding="utf-8")
+print("Spine width + snake shadow (normal and assist)")

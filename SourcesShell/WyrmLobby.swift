@@ -217,7 +217,7 @@ struct WyrmReadyRoom: View {
                                 if nickname.isEmpty { Text("Wyrm Player").font(.wyrmDisplay(38)).foregroundColor(ATheme.quiet).allowsHitTesting(false) }
                             }
                             .onChange(of: nickname) { value in
-                                let clean = String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }.prefix(24))
+                                let clean = WyrmShellStore.arenaNickname(String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }))
                                 if clean != value { nickname = clean }
                             }
                             .onSubmit { saveName(); play() }
@@ -328,7 +328,7 @@ struct WyrmReadyRoom: View {
                                 if nickname.isEmpty { Text("Wyrm Player").font(.wyrmDisplay(36)).foregroundColor(ATheme.quiet).allowsHitTesting(false) }
                             }
                             .onChange(of: nickname) { value in
-                                let clean = String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }.prefix(24))
+                                let clean = WyrmShellStore.arenaNickname(String(value.filter { !$0.isASCII || !$0.asciiValue!.isControlCharacter }))
                                 if clean != value { nickname = clean }
                             }
                             .onSubmit { saveName(); play() }

@@ -222,10 +222,51 @@ void WyrmIOSSetPortraitPlay(bool portrait) {
   });
 }
 
+/* The shell over a match (the arena composer, the layout editor) comes and
+   goes with a short fade (OM, 2026-10-09: the lobby flickered when the arena
+   chat opened and again after Send). Un-hidden, SwiftUI's first frame can be
+   the last one it drew before the match (the Ready Room), so the view starts
+   invisible and fades in after two frames; going away it fades out before it
+   is hidden. A later call wins over a fade still running. Over the Ready Room
+   (LOBBY) the shell is needed anyway and changes at once. */
+static unsigned shell_overlay_generation;
+
 void WyrmIOSSetShellOverlay(bool enabled) {
   dispatch_async(dispatch_get_main_queue(), ^{
-    shell_overlay = enabled;
-    apply_shell_visibility();
+    UIView* shell = engine_container.shellController.view;
+    unsigned generation = ++shell_overlay_generation;
+    if (!shell || !engine_presentation || reported_screen == LOBBY) {
+      shell_overlay = enabled;
+      apply_shell_visibility();
+      if (shell) shell.alpha = 1;
+      return;
+    }
+    if (enabled) {
+      bool was_hidden = shell.hidden;
+      shell_overlay = true;
+      apply_shell_visibility();
+      if (was_hidden) {
+        shell.alpha = 0;
+        [UIView animateWithDuration:0.12 delay:0.05
+                            options:UIViewAnimationOptionBeginFromCurrentState |
+                                    UIViewAnimationOptionAllowUserInteraction
+                         animations:^{ shell.alpha = 1; } completion:nil];
+      } else {
+        shell.alpha = 1;
+      }
+      return;
+    }
+    if (!shell_overlay) return;
+    [UIView animateWithDuration:0.1 delay:0
+                        options:UIViewAnimationOptionBeginFromCurrentState
+                     animations:^{ shell.alpha = 0; }
+                     completion:^(BOOL finished) {
+      (void)finished;
+      if (generation != shell_overlay_generation) return;
+      shell_overlay = false;
+      apply_shell_visibility();
+      shell.alpha = 1;
+    }];
   });
 }
 

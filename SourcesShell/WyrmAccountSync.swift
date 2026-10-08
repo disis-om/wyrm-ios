@@ -144,6 +144,19 @@ final class WyrmAccountSync: ObservableObject {
         if let hide = engine?.setting("assist.hide_cosmetics") {
             doc["assistHideCosmetics"] = (hide.values.first ?? 0) >= 0.5
         }
+        // Spine width and snake shadow (OM, 2026-10-09), each mode apart.
+        if let width = engine?.setting("normal.spine_width"), let raw = width.values.first, raw.isFinite {
+            doc["spineWidthNormal"] = min(max(raw, 0), 1)
+        }
+        if let width = engine?.setting("assist.spine_width"), let raw = width.values.first, raw.isFinite {
+            doc["spineWidthAssist"] = min(max(raw, 0), 1)
+        }
+        if let shadow = engine?.setting("normal.snake_shadow") {
+            doc["snakeShadowNormal"] = (shadow.values.first ?? 0) >= 0.5
+        }
+        if let shadow = engine?.setting("assist.snake_shadow") {
+            doc["snakeShadowAssist"] = (shadow.values.first ?? 0) >= 0.5
+        }
         return doc
     }
 
@@ -293,6 +306,15 @@ final class WyrmAccountSync: ObservableObject {
         if let on = doc["spineNormal"] as? Bool { engine?.write(id: "normal.spine", values: [on ? 1 : 0]) }
         if let on = doc["spineAssist"] as? Bool { engine?.write(id: "assist.spine", values: [on ? 1 : 0]) }
         if let on = doc["assistHideCosmetics"] as? Bool { engine?.write(id: "assist.hide_cosmetics", values: [on ? 1 : 0]) }
+        // Spine width and snake shadow (OM, 2026-10-09); a missing key keeps the phone's.
+        if let raw = doc["spineWidthNormal"] as? NSNumber, raw.doubleValue.isFinite {
+            engine?.write(id: "normal.spine_width", values: [min(max(raw.doubleValue, 0), 1)])
+        }
+        if let raw = doc["spineWidthAssist"] as? NSNumber, raw.doubleValue.isFinite {
+            engine?.write(id: "assist.spine_width", values: [min(max(raw.doubleValue, 0), 1)])
+        }
+        if let on = doc["snakeShadowNormal"] as? Bool { engine?.write(id: "normal.snake_shadow", values: [on ? 1 : 0]) }
+        if let on = doc["snakeShadowAssist"] as? Bool { engine?.write(id: "assist.snake_shadow", values: [on ? 1 : 0]) }
         // Play feel (OM, 2026-10-05): each key on its own; a missing one keeps the phone's.
         if let custom = doc["arrowCustomMotion"] as? Bool { d.set(custom, forKey: WyrmPlayFeelStore.customArrowKey) }
         if let ahead = doc["lookAhead"] as? Bool { d.set(ahead, forKey: WyrmPlayFeelStore.lookAheadKey) }
@@ -317,9 +339,11 @@ final class WyrmAccountSync: ObservableObject {
         let base = WyrmSkinCatalog.presets.indices.contains(preset) ? WyrmSkinCatalog.presets[preset] : [7]
         let source = custom && !groups.isEmpty ? groups : base
         let colourSource = custom && !groups.isEmpty ? colours : []
+        // The code as made, not repeated (OM, 2026-10-09): the engine and the
+        // arena repeat it along the body.
         engine.applySkin(preset: preset,
-                         groups: (0..<256).map { source[$0 % source.count] },
-                         colors: (0..<256).map { colourSource.isEmpty ? 0 : colourSource[$0 % colourSource.count] },
+                         groups: source,
+                         colors: source.indices.map { $0 < colourSource.count ? colourSource[$0] : 0 },
                          custom: custom && !groups.isEmpty,
                          accessory: d.object(forKey: "wyrm.ios.skin.accessory-id") as? Int ?? -1,
                          tag: d.object(forKey: "wyrm.ios.skin.tag-id") as? Int ?? -1,

@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import SwiftUI
 
 struct WyrmServicePlayer: Identifiable, Equatable {
     let id: String
@@ -211,6 +212,27 @@ private extension Dictionary where Key == String, Value == Any {
     func int64(_ key: String) -> Int64 { (self[key] as? NSNumber)?.int64Value ?? Int64(string(key)) ?? 0 }
 }
 
+/// The arena machine's country (OM, 2026-10-09): a real flag picture (flagcdn,
+/// 160 px PNG) with rounded corners and a hairline edge, then its code. Draws
+/// nothing while the country is unknown; a quiet plate until the picture lands.
+struct WyrmArenaCountryBadge: View {
+    let country: String
+
+    var body: some View {
+        if country.count == 2, let url = URL(string: "https://flagcdn.com/w160/\(country.lowercased()).png") {
+            HStack(spacing: 5) {
+                AsyncImage(url: url) { phase in
+                    if let image = phase.image { image.resizable().scaledToFill() } else { ATheme.well }
+                }
+                .frame(width: 20, height: 14)
+                .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(ATheme.ink.opacity(0.14), lineWidth: 0.5))
+                Text(country).font(.androidWyrm(10.5, .bold)).tracking(0.6).foregroundColor(ATheme.quiet)
+            }
+        }
+    }
+}
+
 /// Set by any 429 from the rate limiter (it sends Retry-After). Until then the
 /// background refreshes (after a run) stay quiet and screens keep what they
 /// show; a player's own action still goes through (2026-10-08).
@@ -331,6 +353,36 @@ private actor WyrmServiceClient {
 
     func leaveVoice(roomID: String, token: String) async throws {
         _ = try await request("/v1/voice/rooms/\(roomID)/leave", method: "POST", token: token)
+    }
+
+    /// Each machine's country the way NTL asks for it (OM, 2026-10-09):
+    /// `https://ntl-slither.com/ss/flags.php?ips=a,b,...` (60 a call) answers
+    /// `{"ok":true,"flags":{"ip":"in"}}`; NTL also accepts "in.png" or a path
+    /// ending in it. Keyed by IPv4, lower-case two letters.
+    func arenaCountries(_ addresses: [String]) async -> [String: String] {
+        var found: [String: String] = [:]
+        var start = 0
+        while start < addresses.count {
+            let chunk = addresses[start..<min(start + 60, addresses.count)]
+            start += 60
+            var components = URLComponents(string: "https://ntl-slither.com/ss/flags.php")!
+            components.queryItems = [URLQueryItem(name: "ips", value: chunk.joined(separator: ","))]
+            guard let url = components.url else { continue }
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 12
+            guard let (data, response) = try? await session.data(for: request),
+                  (response as? HTTPURLResponse)?.statusCode == 200,
+                  let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any],
+                  json["ok"] as? Bool == true,
+                  let flags = json["flags"] as? [String: Any] else { continue }
+            for (ip, value) in flags {
+                guard let text = (value as? String)?.trimmingCharacters(in: .whitespaces).lowercased(),
+                      let match = text.range(of: "(?:^|/)([a-z]{2})(?:\\.png)?$", options: .regularExpression) else { continue }
+                let piece = text[match].replacingOccurrences(of: "/", with: "").replacingOccurrences(of: ".png", with: "")
+                if piece.count == 2 { found[ip] = piece }
+            }
+        }
+        return found
     }
 
     func arenas() async throws -> [WyrmArena] {
@@ -488,6 +540,15 @@ final class WyrmArenaProbeGate {
     }
 }
 
+/// The web client's own ping (OM, 2026-10-09): `ws://ip:80/ptc`, one byte
+/// 112 ('p') out, the same byte back, three round trips, the fastest kept
+/// (`game1107241958.js`, the `/ptc` sockets after `loadSos`). The server wants
+/// the page's Origin. Port 80, never the arena's game port, so a ping no
+/// longer counts towards the game port's per-IP connect limit, and arenas
+/// whose game port ignores a bare TCP dial still get a number. Network
+/// framework (not URLSession): App Transport Security would refuse a plain
+/// `ws://`. A custom address with no `/ptc` falls back to a TCP dial of its
+/// own port, the probe used before.
 fileprivate final class WyrmArenaProbeSession {
     private let arena: WyrmArena
     private let queue: DispatchQueue
@@ -495,7 +556,10 @@ fileprivate final class WyrmArenaProbeSession {
     private var connection: NWConnection?
     private var completion: ((Int?) -> Void)?
     private var probeStarted: UInt64 = 0
+    private var times: [Int] = []
     private var finished = false
+    private static let rounds = 3
+    private static let deadline = 2.5
 
     init(arena: WyrmArena, completion: @escaping (Int?) -> Void) {
         self.arena = arena
@@ -504,16 +568,70 @@ fileprivate final class WyrmArenaProbeSession {
     }
 
     func start() {
-        guard let port = NWEndpoint.Port(rawValue: UInt16(arena.port)) else { finish(nil); return }
         guard WyrmArenaProbeGate.shared.register(self) else { finish(nil); return }
-        let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
-        stateLock.lock()
-        guard !finished else {
-            stateLock.unlock()
-            WyrmArenaProbeGate.shared.unregister(self)
-            return
+        guard let url = URL(string: "ws://\(arena.address):80/ptc") else { fallback(); return }
+        let websocket = NWProtocolWebSocket.Options()
+        websocket.autoReplyPing = true
+        websocket.setAdditionalHeaders([("Origin", "https://slither.io")])
+        let parameters = NWParameters.tcp
+        parameters.defaultProtocolStack.applicationProtocols.insert(websocket, at: 0)
+        let connection = NWConnection(to: .url(url), using: parameters)
+        guard install(connection) else { return }
+        connection.stateUpdateHandler = { [self] state in
+            switch state {
+            case .ready: sendPing(on: connection)
+            case .failed, .cancelled: ptcEnded()
+            default: break
+            }
         }
+        connection.start(queue: queue)
+        queue.asyncAfter(deadline: .now() + Self.deadline) { [self] in finish(best) }
+    }
+
+    func cancel() { finish(nil) }
+
+    private var best: Int? { times.min().map { max(1, $0) } }
+
+    private func install(_ connection: NWConnection) -> Bool {
+        stateLock.lock()
+        defer { stateLock.unlock() }
+        guard !finished else { return false }
         self.connection = connection
+        return true
+    }
+
+    private func sendPing(on connection: NWConnection) {
+        probeStarted = DispatchTime.now().uptimeNanoseconds
+        let metadata = NWProtocolWebSocket.Metadata(opcode: .binary)
+        let context = NWConnection.ContentContext(identifier: "ptc", metadata: [metadata])
+        connection.send(content: Data([112]), contentContext: context, isComplete: true,
+                        completion: .contentProcessed { [self] error in
+            if error != nil { ptcEnded(); return }
+            connection.receiveMessage { [self] data, _, _, error in
+                guard error == nil, let data, data.count == 1, data.first == 112 else { ptcEnded(); return }
+                let elapsed = DispatchTime.now().uptimeNanoseconds - probeStarted
+                times.append(Int(elapsed / 1_000_000))
+                if times.count < Self.rounds { sendPing(on: connection) } else { finish(best) }
+            }
+        })
+    }
+
+    /// The ptc socket closed or failed: what it measured, else (custom only) a TCP dial.
+    private func ptcEnded() {
+        if let value = best { finish(value); return }
+        if arena.number == 0 { fallback() } else { finish(nil) }
+    }
+
+    private func fallback() {
+        guard let port = NWEndpoint.Port(rawValue: UInt16(arena.port)) else { finish(nil); return }
+        stateLock.lock()
+        let previous = connection
+        connection = nil
+        stateLock.unlock()
+        previous?.stateUpdateHandler = nil
+        previous?.cancel()
+        let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
+        guard install(connection) else { return }
         probeStarted = DispatchTime.now().uptimeNanoseconds
         connection.stateUpdateHandler = { [self] state in
             switch state {
@@ -525,11 +643,7 @@ fileprivate final class WyrmArenaProbeSession {
             }
         }
         connection.start(queue: queue)
-        stateLock.unlock()
-        queue.asyncAfter(deadline: .now() + 1.5) { [self] in finish(nil) }
     }
-
-    func cancel() { finish(nil) }
 
     private func finish(_ result: Int?) {
         stateLock.lock()
@@ -549,12 +663,14 @@ fileprivate final class WyrmArenaProbeSession {
 
 private enum WyrmArenaProbe {
     static func latency(to arena: WyrmArena) async -> Int? {
-        let recent = WyrmArenaProbeGate.shared.recent(arena.endpoint)
+        // One machine answers for every arena on it; a custom address for itself.
+        let key = arena.number == 0 ? arena.endpoint : arena.address
+        let recent = WyrmArenaProbeGate.shared.recent(key)
         if recent.hit { return recent.value }
         let value: Int? = await withCheckedContinuation { continuation in
             WyrmArenaProbeSession(arena: arena) { continuation.resume(returning: $0) }.start()
         }
-        WyrmArenaProbeGate.shared.remember(arena.endpoint, value)
+        WyrmArenaProbeGate.shared.remember(key, value)
         return value
     }
 }
@@ -594,6 +710,21 @@ final class WyrmServiceStore: ObservableObject {
     private var token = ""
     private var sessionRevision = UUID()
     private var arenaRefreshInFlight = false
+    /// IPv4 -> lower-case country code, from NTL's service (see arenaCountries).
+    @Published private(set) var arenaCountries: [String: String] = [:]
+    private var arenaCountriesAt = Date.distantPast
+
+    /// The upper-case country of the machine at `address`, or "".
+    func countryCode(for address: String) -> String { arenaCountries[address]?.uppercased() ?? "" }
+
+    private func refreshArenaCountries() async {
+        let missing = Array(Set(arenas.map(\.address)).filter { arenaCountries[$0] == nil })
+        guard !missing.isEmpty, Date().timeIntervalSince(arenaCountriesAt) >= 300 else { return }
+        arenaCountriesAt = Date()
+        let found = await WyrmServiceClient.shared.arenaCountries(missing)
+        if found.isEmpty { arenaCountriesAt = .distantPast; return }
+        arenaCountries.merge(found) { _, new in new }
+    }
 
     var unreadCount: Int { alerts.filter { !$0.read }.count }
     var liveRooms: [WyrmVoiceRoom] { voiceRooms.filter { $0.active && !$0.suspended } }
@@ -879,29 +1010,39 @@ final class WyrmServiceStore: ObservableObject {
             let rows = try await WyrmServiceClient.shared.arenas()
             installArenaDirectory(rows)
             lastRefresh = Date()
+            await refreshArenaCountries()
         } catch {
             WyrmDiagnostics.record("live arena refresh failed=\(error.localizedDescription)", category: "NETWORK")
         }
     }
 
-    /// The directory may refresh in the background, but game-port TCP probes
-    /// happen only while the user is looking at the picker. At most ten are
-    /// measured, one at a time; no fleet-wide connection burst runs alongside
-    /// an arena join.
+    /// Every listed arena gets a ping while the picker is open (OM, 2026-10-09;
+    /// it used to be the first ten "active" ones, one at a time). One `/ptc`
+    /// ping per machine on port 80, never the game port, up to eight machines
+    /// at once; the arenas the player already knows go first.
     func measurePickerArenas(preferredEndpoints: [String]) async {
-        var seen = Set<String>()
-        let preferred = preferredEndpoints.compactMap { endpoint in
-            arenas.first { $0.active && $0.endpoint == endpoint }
+        let preferred = preferredEndpoints.compactMap { endpoint in arenas.first { $0.endpoint == endpoint } }
+        var seenMachines = Set<String>()
+        let machines = (preferred + arenas).filter { seenMachines.insert($0.address).inserted }
+        await withTaskGroup(of: (String, Int).self) { group in
+            var next = 0
+            while next < min(8, machines.count) {
+                let arena = machines[next]
+                next += 1
+                group.addTask { (arena.address, await WyrmArenaProbe.latency(to: arena) ?? -1) }
+            }
+            while let result = await group.next() {
+                guard !Task.isCancelled else { group.cancelAll(); return }
+                for arena in arenas where arena.address == result.0 { arenaLatencies[arena.id] = result.1 }
+                refreshRecommendation()
+                if next < machines.count {
+                    let arena = machines[next]
+                    next += 1
+                    group.addTask { (arena.address, await WyrmArenaProbe.latency(to: arena) ?? -1) }
+                }
+            }
         }
-        let candidates = (preferred + arenas.filter(\.active))
-            .filter { seen.insert($0.endpoint).inserted }
-            .prefix(10)
-        for arena in candidates {
-            guard !Task.isCancelled else { return }
-            arenaLatencies[arena.id] = await WyrmArenaProbe.latency(to: arena) ?? -1
-            refreshRecommendation()
-        }
-        WyrmDiagnostics.record("picker probes finished sampled=\(candidates.count) total=\(arenas.count)", category: "NETWORK")
+        WyrmDiagnostics.record("picker probes finished machines=\(machines.count) arenas=\(arenas.count)", category: "NETWORK")
     }
 
     func measureCustomArena(_ endpoint: String) async -> Int? {
@@ -917,7 +1058,9 @@ final class WyrmServiceStore: ObservableObject {
     }
 
     private func refreshRecommendation() {
-        let candidates = arenas.filter(\.active)
+        // Every listed arena; the directory's first byte ("active") only
+        // weights the web client's own automatic pick, it hides nothing.
+        let candidates = arenas
         guard !candidates.isEmpty else { recommendedArena = nil; return }
         recommendedArena = candidates.min { a, b in
             let left = arenaLatencies[a.id].flatMap { $0 > 0 ? $0 : nil } ?? .max

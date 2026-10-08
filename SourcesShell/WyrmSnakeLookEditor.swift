@@ -12,6 +12,7 @@ struct WyrmSnakeLookEditor: View {
     private static let remembered = [
         "normal.render_mode", "assist.render_mode",
         "normal.spine", "assist.spine", "assist.hide_cosmetics",
+        "normal.spine_width", "assist.spine_width", "normal.snake_shadow", "assist.snake_shadow",
     ]
 
     init(engine: WyrmShellStore, close: @escaping () -> Void) {
@@ -29,6 +30,8 @@ struct WyrmSnakeLookEditor: View {
     }
 
     private var spineOn: Bool { engine.value("\(group).spine") >= 0.5 }
+    private var spineWidth: Double { min(max(engine.value("\(group).spine_width"), 0), 1) }
+    private var shadowOn: Bool { engine.value("\(group).snake_shadow") >= 0.5 }
     private var hideOn: Bool { engine.value("assist.hide_cosmetics") >= 0.5 }
 
     var body: some View {
@@ -71,6 +74,17 @@ struct WyrmSnakeLookEditor: View {
             WSBoolRow(title: "Spine", detail: "A thin white line down the middle of every snake.",
                       on: spineOn, first: true) { on in
                 engine.write(id: "\(group).spine", values: [on ? 1 : 0])
+            }
+            if spineOn {
+                WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth),
+                            detail: "From a thin thread to as wide as the snake",
+                            value: spineWidth, range: 0...1) { value in
+                    engine.write(id: "\(group).spine_width", values: [value])
+                }
+            }
+            WSBoolRow(title: "Snake shadow", detail: "The soft shadow the original app draws under every snake.",
+                      on: shadowOn) { on in
+                engine.write(id: "\(group).snake_shadow", values: [on ? 1 : 0])
             }
             if assist {
                 WSBoolRow(title: "Hide own tag and accessories",

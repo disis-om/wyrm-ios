@@ -156,11 +156,14 @@ void game_loop(tenv* env) {
           if (!server_connect(env)) gdata->rejoin_at_ms = SDL_GetTicks() + 50;
         } else if (!gdata->connection) gdata->closed = false;
       } else {
-        /* 'a' ends connecting in the reference, even before our snake exists.
-           Keep the loading presentation separate, but start keepalives now. */
-        if (!gdata->arena_ready && gdata->connection &&
-            !gdata->connection->is_closing &&
-            SDL_GetTicks() - gdata->attempt_started_ms > ARENA_RETRY_MS) {
+        /* 'a' ends connecting in the web client, even before our snake
+           exists: keepalives start then (input below). The attempt itself is
+           given up as Vlither gives it up (OM, 2026-10-09): no snake within
+           TIMEOUT, 5 s from the dial (`ARENA_CONNECT_TIMEOUT_MS`). Until
+           2026-10-09 Android stopped at 3.333 s and only before 'a'; iOS
+           already used Vlither's 5 s. */
+        if (gdata->connection && !gdata->connection->is_closing &&
+            SDL_GetTicks() - gdata->attempt_started_ms > ARENA_CONNECT_TIMEOUT_MS) {
           arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
               usrs->ipv4, (int)(arena_taint_remaining(usrs->ipv4) / 1000));
@@ -256,15 +259,6 @@ void game_loop(tenv* env) {
           android_home_notify_death(env);
           gdata->closed = false;
         } else {
-          if (gdata->last_life > SHORT_LIFE &&
-              usrs->arena_persona != gdata->persona) {
-            usrs->arena_persona = gdata->persona;
-            save_user_settings(usrs);
-            SDL_Log("Wyrm arena: '%s' played a full match — joining as it from "
-                    "now on",
-                    arena_persona_get(gdata->persona)->name);
-          }
-
           bool restarting = gdata->restart_req;
           game_data_reset(env);
 

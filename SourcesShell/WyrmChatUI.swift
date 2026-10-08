@@ -176,15 +176,29 @@ struct WyrmChatTranscript: View {
     var emptyNote = ""
     var onAuthor: ((String) -> Void)? = nil
     var onReport: ((WyrmChatItem) -> Void)? = nil
+    /// A direct conversation (Instagram's layout): the other player. Their
+    /// profile card heads the thread, their face sits beside the last bubble
+    /// of each of their runs, and times sit between runs far apart.
+    var peer: WyrmServicePlayer? = nil
+    var onPeer: (() -> Void)? = nil
+    private var direct: Bool { onPeer != nil }
 
     var body: some View {
         ScrollViewReader { reader in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    if messages.isEmpty {
+                    if direct {
+                        WyrmDirectIntro(peer: peer, onPeer: { onPeer?() })
+                            .padding(.top, messages.isEmpty ? 44 : 12)
+                            .padding(.bottom, 10)
+                    } else if messages.isEmpty {
                         WyrmPaperCard { WyrmEmptyPanel(title: emptyTitle, note: emptyNote) }.padding(.top, 18)
                     }
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                        if direct, let stamp = separator(message, previous: index > 0 ? messages[index - 1] : nil) {
+                            Text(stamp).font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.quiet)
+                                .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 4)
+                        }
                         row(message, previous: index > 0 ? messages[index - 1] : nil,
                             next: index + 1 < messages.count ? messages[index + 1] : nil)
                             .id(message.id)
@@ -217,14 +231,36 @@ struct WyrmChatTranscript: View {
 
     private func row(_ message: WyrmChatItem, previous: WyrmChatItem?, next: WyrmChatItem?) -> some View {
         let mine = message.authorID == myID
-        let startsGroup = previous?.authorID != message.authorID
-        let endsGroup = next?.authorID != message.authorID
-        return VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
+        let startsGroup = previous?.authorID != message.authorID || farApart(previous, message)
+        let endsGroup = next?.authorID != message.authorID || farApart(message, next)
+        return HStack(alignment: .bottom, spacing: 8) {
+            if direct && !mine {
+                // Their face beside the last bubble of their run, a gap elsewhere.
+                Group {
+                    if endsGroup {
+                        Button { onPeer?() } label: {
+                            WyrmAvatar(initials: peer?.initials ?? "W", size: 28, url: peer?.avatarURL ?? "")
+                        }.buttonStyle(.plain)
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 28, height: 28)
+            }
+            bubbleColumn(message, mine: mine, startsGroup: startsGroup, endsGroup: endsGroup)
+        }
+        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
+        .padding(.horizontal, direct ? 10 : 14)
+        .padding(.top, startsGroup ? 10 : 2)
+    }
+
+    private func bubbleColumn(_ message: WyrmChatItem, mine: Bool, startsGroup: Bool, endsGroup: Bool) -> some View {
+        VStack(alignment: mine ? .trailing : .leading, spacing: 3) {
             if showsAuthors && !mine && startsGroup {
                 Button { onAuthor?(message.authorID) } label: {
                     HStack(spacing: 6) {
-                        Text(initials(message.authorName)).font(.androidWyrm(8.5, .bold)).foregroundColor(ATheme.onInk)
-                            .frame(width: 18, height: 18).background(Circle().fill(ATheme.ink.opacity(0.8)))
+                        // The app's squircle face, as everywhere else (OM, 2026-10-09).
+                        WyrmAvatar(initials: initials(message.authorName), size: 18)
                         Text(message.authorUsername.isEmpty ? message.authorName : "\(message.authorName) · @\(message.authorUsername)")
                             .font(.androidWyrm(10.5, .semibold)).foregroundColor(ATheme.quiet)
                     }
@@ -241,13 +277,33 @@ struct WyrmChatTranscript: View {
                     Button { UIPasteboard.general.string = message.body } label: { Label("Copy", systemImage: "doc.on.doc") }
                     if !mine, let onReport { Button(role: .destructive) { onReport(message) } label: { Label("Report", systemImage: "flag") } }
                 }
-            if endsGroup, let time = time(message.createdAt) {
+            if !direct, endsGroup, let time = time(message.createdAt) {
                 Text(time).font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 6)
             }
         }
-        .frame(maxWidth: .infinity, alignment: mine ? .trailing : .leading)
-        .padding(.horizontal, 14)
-        .padding(.top, startsGroup ? 10 : 2)
+    }
+
+    private func date(_ raw: String) -> Date? { Self.parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) }
+
+    /// Runs far apart in time (an hour) are separate runs, as on Instagram.
+    private func farApart(_ first: WyrmChatItem?, _ second: WyrmChatItem?) -> Bool {
+        guard direct, let first, let second, let a = date(first.createdAt), let b = date(second.createdAt) else { return false }
+        return b.timeIntervalSince(a) > 3600
+    }
+
+    /// "Today 3:45 PM", "Yesterday 9:10 AM", "Mon 3:45 PM" or "12 Oct 3:45 PM"
+    /// above the first message and above one that comes an hour after the last.
+    private func separator(_ message: WyrmChatItem, previous: WyrmChatItem?) -> String? {
+        guard let when = date(message.createdAt) else { return nil }
+        if let previous, let before = date(previous.createdAt), when.timeIntervalSince(before) <= 3600 { return nil }
+        let calendar = Calendar.current
+        let clock = Self.clock.string(from: when)
+        if calendar.isDateInToday(when) { return "Today \(clock)" }
+        if calendar.isDateInYesterday(when) { return "Yesterday \(clock)" }
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: when), to: calendar.startOfDay(for: Date())).day ?? 99
+        let formatter = DateFormatter()
+        formatter.dateFormat = days < 7 ? "EEE" : "d MMM"
+        return "\(formatter.string(from: when)) \(clock)"
     }
 
     /// Rounder on the outside of a run, tighter where bubbles of one author meet.
@@ -275,6 +331,47 @@ struct WyrmChatTranscript: View {
     private func time(_ raw: String) -> String? {
         guard let date = Self.parser.date(from: raw) ?? ISO8601DateFormatter().date(from: raw) else { return nil }
         return Self.clock.string(from: date)
+    }
+}
+
+/// The other player at the head of a direct thread (Instagram's empty chat):
+/// face, name, handle, followers, whether you follow each other, View profile.
+struct WyrmDirectIntro: View {
+    let peer: WyrmServicePlayer?
+    let onPeer: () -> Void
+
+    var body: some View {
+        VStack(spacing: 5) {
+            WyrmAvatar(initials: peer?.initials ?? "W", size: 92, url: peer?.avatarURL ?? "")
+                .padding(.bottom, 6)
+            Text(peer?.displayName ?? "").font(.androidWyrm(18, .bold)).lineLimit(1)
+            if let handle = peer?.handle, !handle.isEmpty {
+                Text(handle).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+            }
+            if let peer {
+                Text("\(Self.count(peer.followerCount)) followers · Wyrm").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                if peer.isFollowing && peer.followsYou {
+                    Text("You follow each other on Wyrm").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                } else if peer.followsYou {
+                    Text("Follows you").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                }
+            }
+            Button(action: onPeer) {
+                Text("View profile").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.ink)
+                    .padding(.horizontal, 16).frame(height: 32)
+                    .background(Capsule().fill(ATheme.well))
+            }
+            .buttonStyle(.plain)
+            .padding(.top, 9)
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    static func count(_ value: Int64) -> String {
+        if value >= 1_000_000 { return String(format: "%.1fM", Double(value) / 1_000_000).replacingOccurrences(of: ".0M", with: "M") }
+        if value >= 10_000 { return "\(value / 1000)K" }
+        if value >= 1_000 { return String(format: "%.1fK", Double(value) / 1_000).replacingOccurrences(of: ".0K", with: "K") }
+        return "\(value)"
     }
 }
 

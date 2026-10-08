@@ -354,6 +354,17 @@ struct WyrmSkinRoot: View {
         return (0..<256).map { $0 < customGroups.count ? customColors[$0] : 0 }
     }
 
+    /// What goes to the engine (and from there into the join): the code as
+    /// the player made it, not repeated (OM, 2026-10-09). The arena and the
+    /// engine repeat it along the body; the preview above shows that repeat.
+    private var engineGroups: [Int] {
+        customEnabled && !customGroups.isEmpty ? customGroups : []
+    }
+
+    private var engineColors: [UInt32] {
+        customEnabled && !customGroups.isEmpty ? customColors : []
+    }
+
     private var activeColors: [UInt32] {
         let source = customEnabled && !customGroups.isEmpty ? customColors : []
         let repeated = (0..<256).map { source.isEmpty ? 0 : source[$0 % source.count] }
@@ -915,8 +926,8 @@ struct WyrmSkinRoot: View {
                        tag newTag: Int? = nil, background newBackground: Int? = nil) {
         engine.applySkin(
             preset: newPreset ?? preset,
-            groups: groups ?? activeGroups,
-            colors: colors ?? activeColors,
+            groups: groups ?? engineGroups,
+            colors: colors ?? engineColors,
             custom: custom ?? customEnabled,
             accessory: newAccessory ?? accessory,
             tag: newTag ?? tag,

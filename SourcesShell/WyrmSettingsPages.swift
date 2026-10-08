@@ -800,7 +800,7 @@ struct WyrmModesPage: View {
     private static let foodIDs: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "const_food_scale", "uniform_food_color", "food_color"]
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
     /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
-    private static let snakeIDs: Set<String> = ["render_mode", "spine", "hide_cosmetics"]
+    private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_width", "snake_shadow", "hide_cosmetics"]
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
@@ -842,6 +842,8 @@ struct WyrmModesPage: View {
         let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" && !Self.snakeIDs.contains(local(row)) }
         let renderMode = rows.first { local($0) == "render_mode" }
         let spine = rows.first { local($0) == "spine" }
+        let spineWidth = rows.first { local($0) == "spine_width" }
+        let shadow = rows.first { local($0) == "snake_shadow" }
         let hideCosmetics = rows.first { local($0) == "hide_cosmetics" }
         let laser = ["general.laser_thickness", "general.laser_color"].compactMap { engine.setting($0) }
 
@@ -850,12 +852,27 @@ struct WyrmModesPage: View {
             WSSectionLabel("Snake")
             WSCard {
                 WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true,
+                                     spineWidth: spineWidth?.number ?? 0,
+                                     shadow: shadow?.enabled == true,
                                      hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
                 if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
                 if let spine { WSTypedRow(setting: spine, engine: engine) }
+                // Spine width (OM, 2026-10-09): comes out from under the switch
+                // while the spine is on; each mode keeps its own.
+                if let spineWidth, spine?.enabled == true {
+                    WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth.number),
+                                detail: "From a thin thread to as wide as the snake",
+                                value: min(max(spineWidth.number, 0), 1), range: 0...1) { value in
+                        engine.write(id: spineWidth.id, values: [value])
+                    }
+                    .wyrmSettingAnchor(spineWidth.id)
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+                if let shadow { WSTypedRow(setting: shadow, engine: engine) }
                 if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
             }
-            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a thin white line down every snake.")
+            .animation(.easeInOut(duration: 0.22), value: spine?.enabled == true)
+            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake, from a thread to the snake's width. Snake shadow is the original app's shadow under every snake.")
 
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
@@ -886,6 +903,15 @@ struct WyrmModesPage: View {
     }
 }
 
+/// Spine width's value line (OM, 2026-10-09), the same words as Android's.
+enum WyrmSpineWidth {
+    static func label(_ value: Double) -> String {
+        if value <= 0.005 { return "Thread" }
+        if value >= 0.995 { return "Snake width" }
+        return "\(Int((value * 100).rounded()))%"
+    }
+}
+
 /// The player's own snake as the arena draws it in each mode (OM, 2026-10-05:
 /// "asli skin ... jaisi arena me dikhegi vaisi"). Texture is the Skin tab's own
 /// bead drawing (the arena's sprites); Solid and Flat follow the engine's
@@ -898,6 +924,8 @@ struct WyrmModesPage: View {
 struct WyrmSnakeBodyPreview: View {
     let mode: Int
     let spine: Bool
+    var spineWidth: Double = 0
+    var shadow = false
     var hideCosmetics = false
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
     @ObservedObject private var look = WyrmLookStore.shared
@@ -949,6 +977,33 @@ struct WyrmSnakeBodyPreview: View {
                 }
                 let head = place(total - 1)
 
+                // AIR's `ksmc_t` under every bead, as the arena draws it
+                // (redraw.c air_snake_shadow_*): a soft shadow a little below
+                // the bead and a dark rim round it. Not under Skinless.
+                if shadow && mode != 3 {
+                    let r = scale * 0.5
+                    let soft = Gradient(stops: [
+                        .init(color: .black.opacity(0.4), location: 0),
+                        .init(color: .black.opacity(0.4), location: 0.708),
+                        .init(color: .black.opacity(0.17), location: 0.8),
+                        .init(color: .black.opacity(0.06), location: 0.9),
+                        .init(color: .clear, location: 1),
+                    ])
+                    for segment in 0..<total {
+                        let p = place(segment)
+                        let c = CGPoint(x: p.x, y: p.y + r * 0.14)
+                        context.fill(Path(ellipseIn: CGRect(x: c.x - r * 1.5, y: c.y - r * 1.5,
+                                                            width: r * 3, height: r * 3)),
+                                     with: .radialGradient(soft, center: c, startRadius: 0, endRadius: r * 1.5))
+                    }
+                    for segment in 0..<total {
+                        let p = place(segment)
+                        context.fill(Path(ellipseIn: CGRect(x: p.x - r * 1.14, y: p.y - r * 1.14,
+                                                            width: r * 2.28, height: r * 2.28)),
+                                     with: .color(.black))
+                    }
+                }
+
                 if mode == 3 {
                     let rgba = colors.first ?? 0
                     let group = groups.first ?? 7
@@ -994,10 +1049,13 @@ struct WyrmSnakeBodyPreview: View {
                 }
                 if spine {
                     let line = bodyPath()
+                    // 0 is the thread it always was, 1 the body's width (redraw.c).
+                    let thread: CGFloat = 1.7
+                    let over = thread + max(scale - thread, 0) * CGFloat(min(max(spineWidth, 0), 1))
                     context.stroke(line, with: .color(Color.black.opacity(0.35)),
-                                   style: StrokeStyle(lineWidth: 3.4, lineCap: .round, lineJoin: .round))
+                                   style: StrokeStyle(lineWidth: over + thread, lineCap: .round, lineJoin: .round))
                     context.stroke(line, with: .color(Color.white.opacity(0.8)),
-                                   style: StrokeStyle(lineWidth: 1.7, lineCap: .round, lineJoin: .round))
+                                   style: StrokeStyle(lineWidth: over, lineCap: .round, lineJoin: .round))
                 }
                 // The head over everything, as the arena draws its eyes,
                 // accessory and look last.

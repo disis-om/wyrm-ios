@@ -84,17 +84,53 @@ final class WyrmTeamHudStore: ObservableObject {
 @MainActor
 final class WyrmTeamComposer: ObservableObject {
     static let shared = WyrmTeamComposer()
-    @Published var open = false
+    /// The bar and the shell overlay are on screen. Stays true until the bar
+    /// has slid away and the shell has faded out, so the portrait app under it
+    /// never shows for a frame (OM, 2026-10-09: the lobby flickered on Send).
+    @Published private(set) var open = false
+    /// The bar (and, sideways, the Wyrm keys) slid in from the bottom.
+    @Published private(set) var shown = false
     @Published var draft = ""
+    private var generation = 0
 
     func takeEngineRequests() {
-        if WyrmIOSTakeTeamComposerRequest() > 0, !open {
-            withAnimation(.easeOut(duration: 0.18)) { open = true }
+        if WyrmIOSTakeTeamComposerRequest() > 0, !open { present() }
+    }
+
+    /// In: the overlay first (it fades in over two frames), then the bar
+    /// slides up from the bottom with the keys.
+    func present() {
+        generation += 1
+        let mine = generation
+        open = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.07) { [weak self] in
+            guard let self, self.generation == mine, self.open else { return }
+            withAnimation(.spring(response: 0.36, dampingFraction: 0.9)) { self.shown = true }
         }
     }
 
+    /// Out: the bar and keys slide down, the shell fades out, and only then
+    /// does the bar leave the tree.
     func close() {
-        withAnimation(.easeOut(duration: 0.18)) { open = false }
+        guard open else { return }
+        generation += 1
+        let mine = generation
+        withAnimation(.easeIn(duration: 0.22)) { shown = false }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.23) {
+            WyrmIOSSetShellOverlay(false)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.14) { [weak self] in
+                guard let self, self.generation == mine else { return }
+                self.open = false
+            }
+        }
+    }
+
+    /// The match ended under the bar: gone at once, no slide.
+    func closeNow() {
+        generation += 1
+        shown = false
+        open = false
+        WyrmIOSSetShellOverlay(false)
     }
 }
 
@@ -124,22 +160,25 @@ struct WyrmArenaComposerBar: View {
             // During a match the whole SwiftUI shell is hidden over the engine
             // (Main.m apply_shell_visibility), so this bar was never on screen
             // and its field could not take focus: no keyboard, in either
-            // orientation (OM, 2026-10-06). Shown, clear, while it is open.
+            // orientation (OM, 2026-10-06). Shown, clear, while it is open;
+            // Main.m fades it in so no stale frame shows (2026-10-09).
             WyrmIOSSetShellOverlay(true)
-            focusSoon()
         }
         .onDisappear {
             keyboard.leaveLandscapeHost(keyboardHost)
             WyrmIOSSetShellOverlay(false)
         }
+        // The keys follow the bar: up with it, down with it.
+        .onChange(of: composer.shown) { shown in
+            if shown { focusSoon() } else { focused = false }
+        }
     }
 
-    /// Once the shell is on screen (the overlay switch lands on the next main
-    /// loop turn), and again if the first try did not take.
+    /// As the bar starts to rise, and once more if the first try did not take.
     private func focusSoon() {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) { focused = true }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
-            guard !keyboard.focused, composer.open else { return }
+        focused = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            guard !keyboard.focused, composer.shown else { return }
             focused = false
             DispatchQueue.main.async { focused = true }
         }
@@ -154,6 +193,9 @@ struct WyrmArenaComposerBar: View {
             field
                 .frame(maxWidth: 560)
                 .padding(.horizontal, 12).padding(.bottom, 10)
+                // Rises with the phone's keys and sinks with them (2026-10-09).
+                .offset(y: composer.shown ? 0 : 140)
+                .opacity(composer.shown ? 1 : 0)
         }
     }
 
@@ -166,17 +208,18 @@ struct WyrmArenaComposerBar: View {
                     .onTapGesture { composer.close() }
                 VStack(spacing: 8) {
                     field.frame(maxWidth: 560)
-                    if keyboard.focused && keyboard.embedded {
+                    if keyboard.embedded && (keyboard.focused || composer.shown) {
                         WyrmKeyboardView(compact: true)
                             .frame(width: min(size.width - safe.leading - safe.trailing - 24,
                                               WyrmKeyboardController.landscapeWidth * keyboard.scale))
                             .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
                     }
                 }
                 .padding(.horizontal, 12)
                 .padding(.bottom, 8)
-                .animation(.spring(response: 0.32, dampingFraction: 0.88), value: keyboard.focused)
+                // Bar and keys as one sheet: up from the bottom of the arena,
+                // and back down into it after Send (2026-10-09).
+                .offset(y: composer.shown ? 0 : size.height)
             }
             .frame(width: size.width, height: size.height)
         }
