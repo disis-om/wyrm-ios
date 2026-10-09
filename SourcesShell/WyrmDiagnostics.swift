@@ -18,6 +18,9 @@ final class WyrmDiagnostics: ObservableObject {
     private let directoryURL: URL
     private let appURL: URL
     private let engineURL: URL
+    /// The launch before this one (2026-10-09): what a crash report needs.
+    private let previousAppURL: URL
+    private let previousEngineURL: URL
 
     private init() {
         let support = (try? FileManager.default.url(for: .applicationSupportDirectory,
@@ -27,7 +30,12 @@ final class WyrmDiagnostics: ObservableObject {
         directoryURL = support.appendingPathComponent("WyrmDiagnostics", isDirectory: true)
         appURL = directoryURL.appendingPathComponent("app.log")
         engineURL = directoryURL.appendingPathComponent("engine.log")
+        previousAppURL = directoryURL.appendingPathComponent("app.previous.log")
+        previousEngineURL = directoryURL.appendingPathComponent("engine.previous.log")
         try? FileManager.default.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+        // Kept before this launch's first line (Main.m does the engine's).
+        try? FileManager.default.removeItem(at: previousAppURL)
+        try? FileManager.default.copyItem(at: appURL, to: previousAppURL)
         Self.appendLine("diagnostics store opened", category: "APP", to: appURL)
         refresh()
     }
@@ -70,7 +78,7 @@ final class WyrmDiagnostics: ObservableObject {
     /// The last lines of the app and engine logs, newest last, for a support
     /// report. Already free of tokens, passwords and message bodies; the
     /// report redacts again before it leaves the phone.
-    func recentLog(maxBytes: Int = 60_000) -> String {
+    func recentLog(maxBytes: Int = 60_000, previousLaunch: Bool = false) -> String {
         let half = maxBytes / 2
         func tail(_ url: URL) -> String {
             guard let data = try? Data(contentsOf: url), !data.isEmpty else { return "" }
@@ -80,8 +88,10 @@ final class WyrmDiagnostics: ObservableObject {
             }
             return String(decoding: slice, as: UTF8.self)
         }
-        let app = tail(appURL), engine = tail(engineURL)
-        return "--- APP / NETWORK ---\n\(app.isEmpty ? "(empty)" : app)\n--- ENGINE ---\n\(engine.isEmpty ? "(empty)" : engine)"
+        let app = tail(previousLaunch ? previousAppURL : appURL)
+        let engine = tail(previousLaunch ? previousEngineURL : engineURL)
+        let heading = previousLaunch ? " (the launch before this one)" : ""
+        return "--- APP / NETWORK\(heading) ---\n\(app.isEmpty ? "(empty)" : app)\n--- ENGINE\(heading) ---\n\(engine.isEmpty ? "(empty)" : engine)"
     }
 
     /// For an arena-drop report, taken at the drop: the arena, network and

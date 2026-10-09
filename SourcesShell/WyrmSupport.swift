@@ -398,7 +398,9 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
         context["crashCause"] = record.cause
         context["crashedBuild"] = record.build
         context["crashedAt"] = ISO8601DateFormatter().string(from: record.at)
-        let logs = await Task.detached(priority: .utility) { WyrmDiagnostics.shared.recentLog() }.value
+        // The crash happened in the launch before this one: its logs, not this
+        // launch's startup (2026-10-09).
+        let logs = await Task.detached(priority: .utility) { WyrmDiagnostics.shared.recentLog(previousLaunch: true) }.value
         let stack = record.stack.isEmpty ? record.title : record.stack
         do {
             _ = try await WyrmSupportClient.submit(kind: "crash", message: note.trimmingCharacters(in: .whitespacesAndNewlines),

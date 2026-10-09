@@ -504,6 +504,13 @@ static int engine_main(int argc, char** argv) {
     NSURL* diagnostics = [base URLByAppendingPathComponent:@"WyrmDiagnostics" isDirectory:YES];
     [files createDirectoryAtURL:diagnostics withIntermediateDirectories:YES attributes:nil error:nil];
     wyrm_engine_log_path = [diagnostics.path stringByAppendingPathComponent:@"engine.log"];
+    /* The last launch's engine log, kept before this launch writes a line, for
+       a crash report (2026-10-09: an iPhone XR report carried only the
+       relaunch's startup lines, which crowded the crash out of the tail). */
+    NSString* previous_engine_log = [diagnostics.path stringByAppendingPathComponent:@"engine.previous.log"];
+    [files removeItemAtPath:previous_engine_log error:nil];
+    if ([files fileExistsAtPath:wyrm_engine_log_path])
+      [files copyItemAtPath:wyrm_engine_log_path toPath:previous_engine_log error:nil];
     SDL_SetLogOutputFunction(wyrm_log_output, NULL);
     NSURL* app = [base URLByAppendingPathComponent:@"OriginalEngine-27/app" isDirectory:YES];
     NSError* error = nil;
