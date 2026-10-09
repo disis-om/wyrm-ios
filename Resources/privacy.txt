@@ -1,6 +1,6 @@
 # Wyrm — Privacy
 
-Last updated 25 September 2026. Wyrm is made by OM Rajput. This is the iPhone
+Last updated 9 October 2026. Wyrm is made by OM Rajput. This is the iPhone
 edition of the same document the Android app carries; the parts that differ are
 the ones about how you sign in and where secrets are kept.
 
@@ -58,17 +58,29 @@ and it lives in the iPhone **Keychain**, not in ordinary app storage.
   operator dashboard never see it.
 - Voice rooms keep creator, membership, moderation and call-duration metadata.
   Wyrm does not store the audio, record it or transcribe it.
+- **Your settings.** Controls, layout, colours, sizes, themes, your skin and
+  look, and your notification choices are saved to your account when the app
+  goes to the background and when you log out, so they come back when you log
+  in on any phone. iPhone and Android each keep their own copy; your skin and
+  look are shared between them. They are deleted with your account.
+- **When you play, while Wyrm is open on your screen.** The app tells the
+  server what you are doing as it changes: on the menus, in the Ready Room,
+  playing in an arena (with that arena's address), playing with AI, or idle
+  after two minutes without a touch. It stops when the app goes to the
+  background. Each finished run also carries how long it lasted and the arena.
+  This is how friends see that you are online and where you play, and how the
+  operator sees how many people play and for how long. It is deleted after 90
+  days, and with your account.
 
 ### What stays on your phone and never leaves it
 
-- Every game setting: controls, layout, colours, sizes, your skin and theme.
 - Your Team Mode credentials, if you use Team Mode. These are held in the iOS
   Keychain and are sent only to the team service they belong to, never to
   Wyrm's server.
 - Developer logs, only if you turn Developer Mode on. They expire after seven
   days and leave the phone only if you share them yourself.
-- A backup file, only if you make one. It holds settings, buttons, skin, theme
-  and notification choices — never your password, session or Team credentials.
+- Logging out removes your settings, messages and Team credentials from the
+  phone, so nothing of your account is left there for the next person.
 
 ---
 
@@ -92,7 +104,8 @@ account with an analytics dashboard attached.
 ## What Wyrm does not do
 
 - No advertising, and no advertising identifiers.
-- No analytics or crash-reporting service. Nothing counts your sessions.
+- No analytics or crash-reporting service from anyone else. Wyrm's own server
+  keeps when you play (described above), and nothing else about your sessions.
 - No location or contacts, and no photo library scanning. The app asks for a
   photo only when you pick one, and only that photo.
 - No voice recording and no transcription.
@@ -101,7 +114,10 @@ account with an analytics dashboard attached.
 ## Other players see
 
 Your display name, your username, your in-game name, your avatar, your bio, your
-best score and your kills, and anything you posted in global chat. Your email
+best score and your kills, and anything you posted in global chat. Friends (players who follow you and whom you follow
+back) see whether you are on Wyrm right now and which arena you play in or last
+played in. Settings › Privacy › **Show my activity to friends** turns that
+off; while it is off you do not see theirs either. Your email
 address is never shown to another player.
 
 ## Deleting your account

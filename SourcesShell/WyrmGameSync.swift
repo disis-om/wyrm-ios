@@ -66,7 +66,20 @@ final class WyrmGameSync {
 
     // MARK: - Finished runs
 
-    private struct PendingRun: Codable { let eventId: String; let playerId: String; let score: Int; let kills: Int }
+    /// `durationMs` and `arena` since 2026-10-09 (optional, so older outboxes still decode).
+    private struct PendingRun: Codable {
+        let eventId: String; let playerId: String; let score: Int; let kills: Int
+        var durationMs: Int? = nil
+        var arena: String? = nil
+
+        /// The body /v1/me/stats takes; length and arena only when known.
+        var body: [String: Any] {
+            var body: [String: Any] = ["eventId": eventId, "score": score, "kills": kills]
+            if let durationMs, durationMs >= 0 { body["durationMs"] = min(durationMs, 24 * 3_600_000) }
+            if let arena, !arena.isEmpty { body["arena"] = arena }
+            return body
+        }
+    }
     private static let outboxKey = "wyrm.ios.runs.pending"
     private var uploading = false
     private var reconcileTask: Task<Void, Never>?
@@ -86,7 +99,10 @@ final class WyrmGameSync {
             WyrmDiagnostics.record("run finished score=\(score) kills=\(kills) account=\(playerID.isEmpty ? "none" : "signed-in")", category: "STATS")
             guard !playerID.isEmpty else { continue }
             var outbox = pendingRuns()
-            outbox.append(PendingRun(eventId: UUID().uuidString.lowercased(), playerId: playerID, score: score, kills: kills))
+            // How long it lasted and where (2026-10-09), for the Observatory.
+            outbox.append(PendingRun(eventId: UUID().uuidString.lowercased(), playerId: playerID, score: score, kills: kills,
+                                     durationMs: parts.count == 3 ? Int(seconds * 1000) : nil,
+                                     arena: WyrmPresence.shared.runArena))
             savePendingRuns(Array(outbox.suffix(200)))
         }
         flushRuns()
@@ -159,7 +175,7 @@ final class WyrmGameSync {
     private func sendRuns(_ chunk: [PendingRun]) async throws -> Bool {
         if runBatchSupported, chunk.count > 1 {
             do {
-                let runs = chunk.map { ["eventId": $0.eventId, "score": $0.score, "kills": $0.kills] as [String: Any] }
+                let runs = chunk.map(\.body)
                 let response = try await call("/v1/me/stats/batch", method: "POST", body: ["runs": runs])
                 let done = Set(((response["results"] as? [[String: Any]]) ?? []).compactMap { $0["eventId"] as? String })
                 let gone = done.isEmpty ? Set(chunk.map(\.eventId)) : done
@@ -174,8 +190,7 @@ final class WyrmGameSync {
         var earned = false
         for run in chunk {
             do {
-                let response = try await call("/v1/me/stats", method: "POST",
-                                              body: ["eventId": run.eventId, "score": run.score, "kills": run.kills])
+                let response = try await call("/v1/me/stats", method: "POST", body: run.body)
                 savePendingRuns(pendingRuns().filter { $0.eventId != run.eventId })
                 if let achievements = response["achievements"] as? [Any], !achievements.isEmpty { earned = true }
                 WyrmDiagnostics.record("run receipt accepted score=\(run.score) kills=\(run.kills)", category: "STATS")

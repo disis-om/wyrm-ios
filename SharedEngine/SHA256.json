@@ -126,7 +126,7 @@
   "app/src/mobile/mobile_hotkeys.h": "3a155a7d9ba95794c29b6abeeea230138420ddd267da1d7e0a31734c99dd86f5",
   "app/src/network/arena_persona.c": "cbb74db87b0c4b7290f90f2708f09d5126189c43bad71a0d0e6137e1b78fa40c",
   "app/src/network/arena_persona.h": "f5cd846543896e8550cd46f20491527210ba2a60a4ba6f61ad53c9e2d2a21ef3",
-  "app/src/network/arena_protocol.h": "ad161e7c48411cd3394762831533c11634c08ae4014878eefd727c82d9a1bb7c",
+  "app/src/network/arena_protocol.h": "cbb9ccd5d0b164565beec8ac309ea2a89f12aff22993fdd190983faddb22351e",
   "app/src/network/arena_taint.c": "a2f2bd64a3f6b7269982e604281999dd43edde1101464fd578d6e99c1c9353c1",
   "app/src/network/arena_taint.h": "b108771e8cdaf69882cb325e89bb9f6befeae34683b4a5ca8c51dfb8b52914d6",
   "app/src/network/arena_trace.c": "1ff0beebd8cfce267cb0686108f9d040e0331aef6f30e7ffcf9ed565fab6964a",

@@ -284,7 +284,22 @@ struct WyrmAvatar: View {
     let initials: String
     var size: CGFloat = 38
     var url = ""
+    /// A friend with Wyrm open (2026-10-09): a green dot on the corner.
+    var online = false
     var body: some View {
+        face.overlay(alignment: .bottomTrailing) {
+            if online {
+                let dot = min(16, max(9, size * 0.27))
+                Circle().fill(ATheme.live)
+                    .frame(width: dot * 0.68, height: dot * 0.68)
+                    .frame(width: dot, height: dot)
+                    .background(Circle().fill(ATheme.card))
+                    .offset(x: dot * 0.18, y: dot * 0.18)
+            }
+        }
+    }
+
+    private var face: some View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(ATheme.ink)
             Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(ATheme.onInk)

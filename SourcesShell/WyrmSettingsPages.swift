@@ -852,7 +852,7 @@ struct WyrmModesPage: View {
             WSSectionLabel("Snake")
             WSCard {
                 WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true,
-                                     spineWidth: spineWidth?.number ?? 0,
+                                     spineWidth: spineWidth?.number ?? 0.1,
                                      shadow: shadow?.enabled == true,
                                      hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
                 if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
@@ -861,7 +861,7 @@ struct WyrmModesPage: View {
                 // while the spine is on; each mode keeps its own.
                 if let spineWidth, spine?.enabled == true {
                     WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth.number),
-                                detail: "From a thin thread to as wide as the snake",
+                                detail: "0 hides it; full is as wide as the snake",
                                 value: min(max(spineWidth.number, 0), 1), range: 0...1) { value in
                         engine.write(id: spineWidth.id, values: [value])
                     }
@@ -872,7 +872,7 @@ struct WyrmModesPage: View {
                 if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
             }
             .animation(.easeInOut(duration: 0.22), value: spine?.enabled == true)
-            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake, from a thread to the snake's width. Snake shadow is the original app's shadow under every snake.")
+            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake; its width goes from hidden to the snake's own. Snake shadow is the original app's shadow under every snake.")
 
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
@@ -906,7 +906,7 @@ struct WyrmModesPage: View {
 /// Spine width's value line (OM, 2026-10-09), the same words as Android's.
 enum WyrmSpineWidth {
     static func label(_ value: Double) -> String {
-        if value <= 0.005 { return "Thread" }
+        if value <= 0.005 { return "Hidden" }
         if value >= 0.995 { return "Snake width" }
         return "\(Int((value * 100).rounded()))%"
     }
@@ -924,7 +924,7 @@ enum WyrmSpineWidth {
 struct WyrmSnakeBodyPreview: View {
     let mode: Int
     let spine: Bool
-    var spineWidth: Double = 0
+    var spineWidth: Double = 0.1
     var shadow = false
     var hideCosmetics = false
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
@@ -1049,13 +1049,15 @@ struct WyrmSnakeBodyPreview: View {
                 }
                 if spine {
                     let line = bodyPath()
-                    // 0 is the thread it always was, 1 the body's width (redraw.c).
-                    let thread: CGFloat = 1.7
-                    let over = thread + max(scale - thread, 0) * CGFloat(min(max(spineWidth, 0), 1))
-                    context.stroke(line, with: .color(Color.black.opacity(0.35)),
-                                   style: StrokeStyle(lineWidth: over + thread, lineCap: .round, lineJoin: .round))
-                    context.stroke(line, with: .color(Color.white.opacity(0.8)),
-                                   style: StrokeStyle(lineWidth: over, lineCap: .round, lineJoin: .round))
+                    // A share of the body's width: 0 hides it, 1 is the body (redraw.c).
+                    let over = scale * CGFloat(min(max(spineWidth, 0), 1))
+                    let edge = min(over, 1.7)
+                    if over > 0 {
+                        context.stroke(line, with: .color(Color.black.opacity(0.35)),
+                                       style: StrokeStyle(lineWidth: over + edge, lineCap: .round, lineJoin: .round))
+                        context.stroke(line, with: .color(Color.white.opacity(0.8)),
+                                       style: StrokeStyle(lineWidth: over, lineCap: .round, lineJoin: .round))
+                    }
                 }
                 // The head over everything, as the arena draws its eyes,
                 // accessory and look last.
@@ -1549,20 +1551,32 @@ struct WyrmPrivacyPage: View {
     var parent = "Settings"
     let close: () -> Void
     @State var blocks: [WyrmPolicyBlock] = []
+    @ObservedObject private var presence = WyrmPresence.shared
     var body: some View {
         WSScaffold(title: "Privacy", parent: parent, onBack: close) {
+            // Signed in: friends' activity sharing (2026-10-09). Off hides yours and theirs.
+            if !presence.token.isEmpty {
+                WSSectionLabel("Activity", top: 18)
+                WSCard {
+                    WSBoolRow(title: "Show my activity to friends",
+                              detail: "Friends who follow you back see when you are on Wyrm and which arena you play in. Off, you don't see theirs either.",
+                              on: presence.sharing, first: true) { on in presence.setSharing(on) }
+                        .wyrmSettingAnchor("app.share-activity")
+                }
+            }
             WSSectionLabel("What Wyrm keeps", top: 18)
             WSCard {
                 WSValueRow(title: "Stored on this phone", value: "Team ID, auth key, all settings", first: true)
-                WSValueRow(title: "Stored on the server", value: "Name, username, photo, bio, scores")
+                WSValueRow(title: "Stored on the server", value: "Name, username, photo, bio, scores, when you play")
                 WSValueRow(title: "Chat retention", value: "Global 24 hours · direct until deleted")
-                WSValueRow(title: "Analytics", value: "None · local logs only")
+                WSValueRow(title: "Analytics", value: "Crash reports, when you play")
             }
             WSSectionLabel("The policy")
             VStack(alignment: .leading, spacing: 0) { ForEach(blocks.indices, id: \.self) { blockView(blocks[$0]) } }
                 .padding(.horizontal, 20)
         }
         .onAppear { if blocks.isEmpty { blocks = WyrmPolicyBlock.parse(WyrmPolicyBlock.load()) } }
+        .task { await presence.refresh(force: true) }
     }
 
     @ViewBuilder private func blockView(_ block: WyrmPolicyBlock) -> some View {

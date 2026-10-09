@@ -412,6 +412,7 @@ final class WyrmShellStore: ObservableObject {
         guard !address.isEmpty, !arenaPlayPending else { return }
         armArenaGate()
         adopt(name)
+        WyrmPresence.shared.willPlay(online: address)
         WyrmDiagnostics.record("online play requested address=selected", category: "ENGINE")
         name.withCString { namePointer in
             address.withCString { addressPointer in WyrmIOSRequestPlay(namePointer, addressPointer, false) }
@@ -422,6 +423,7 @@ final class WyrmShellStore: ObservableObject {
         guard !arenaPlayPending else { return }
         armArenaGate()
         adopt(name)
+        WyrmPresence.shared.willPlay(online: nil)
         WyrmDiagnostics.record("offline practice requested", category: "ENGINE")
         name.withCString { namePointer in
             "".withCString { empty in WyrmIOSRequestPlay(namePointer, empty, true) }

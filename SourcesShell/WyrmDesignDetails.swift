@@ -118,6 +118,7 @@ private struct WyrmLeaderboardDetail: View {
 private struct WyrmMessagesDetail: View {
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
+    @ObservedObject private var presence = WyrmPresence.shared
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     var body: some View {
@@ -127,8 +128,28 @@ private struct WyrmMessagesDetail: View {
                     WyrmSectionLabel("Conversations")
                     WyrmPaperCard {
                         if services.conversations.isEmpty { WyrmEmptyPanel(title: "No messages yet", note: "Mutual follows can start a private conversation.") }
+                        // Instagram's inbox (2026-10-09): their face (green dot while
+                        // Wyrm is open), name, the last message or the arena they play in.
                         ForEach(services.conversations) { row in
-                            WyrmListRow(title: row.player.displayName, detail: row.lastMessage.isEmpty ? "No messages yet" : row.lastMessage, icon: "person.crop.circle.fill", tint: ATheme.link, badge: row.unreadCount) { open(.thread(row.player.id)) }
+                            let activity = presence.of(row.player.id)
+                            let unread = row.unreadCount > 0
+                            Button { open(.thread(row.player.id)) } label: {
+                                HStack(spacing: 12) {
+                                    WyrmAvatar(initials: row.player.initials, size: 44, url: row.player.avatarURL, online: activity?.online == true)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(row.player.displayName).font(.androidWyrm(15, unread ? .bold : .semibold)).lineLimit(1)
+                                        if activity?.playing == true {
+                                            WyrmFriendActivityLine(activity: activity)
+                                        } else {
+                                            Text(row.lastMessage.isEmpty ? "No messages yet" : row.lastMessage)
+                                                .font(.androidWyrm(12.5, unread ? .semibold : .regular))
+                                                .foregroundColor(unread ? ATheme.ink : ATheme.quiet).lineLimit(1)
+                                        }
+                                    }
+                                    Spacer(minLength: 6)
+                                    if unread { WyrmCountBadge(count: row.unreadCount) }
+                                }.foregroundColor(ATheme.ink).padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 64)
+                            }.buttonStyle(.plain)
                         }
                     }
                     if !services.messageCandidates.isEmpty {
@@ -137,8 +158,9 @@ private struct WyrmMessagesDetail: View {
                             ForEach(services.messageCandidates) { person in
                                 Button { open(.thread(person.id)) } label: {
                                     HStack(spacing: 12) {
-                                        WyrmAvatar(initials: person.initials, size: 35, url: person.avatarURL)
-                                        VStack(alignment: .leading, spacing: 2) { Text(person.displayName).font(.androidWyrm(14.5, .semibold)); Text(person.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
+                                        let activity = presence.of(person.id)
+                                        WyrmAvatar(initials: person.initials, size: 35, url: person.avatarURL, online: activity?.online == true)
+                                        WyrmPersonText(name: person.displayName, handle: person.handle, activity: activity)
                                         Spacer(); Image(systemName: "message.fill").foregroundColor(ATheme.link)
                                     }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 56)
                                 }.buttonStyle(.plain)
@@ -148,8 +170,15 @@ private struct WyrmMessagesDetail: View {
                     Spacer().frame(height: 24)
                 }
             }
-            .task { if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
-            .refreshable { await services.refreshConversations(); if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
+            .task {
+                await presence.refresh()
+                if let id = account.player?.id { await services.loadConnectionLists(playerID: id) }
+            }
+            .refreshable {
+                await services.refreshConversations()
+                await presence.refresh(force: true)
+                if let id = account.player?.id { await services.loadConnectionLists(playerID: id) }
+            }
         }
     }
 }
@@ -163,6 +192,7 @@ private struct WyrmThreadDetail: View {
     let playerID: String
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
+    @ObservedObject private var presence = WyrmPresence.shared
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @State private var message = ""
@@ -184,8 +214,12 @@ private struct WyrmThreadDetail: View {
         // A thread is live while it is open, like Global chat.
         .task {
             await services.loadPlayer(playerID)
+            var beat = 0
             while !Task.isCancelled {
                 await services.loadThread(playerID: playerID)
+                // The other player's activity, every ~30 s while the thread is open.
+                if beat % 8 == 0 { await presence.refresh() }
+                beat += 1
                 try? await Task.sleep(nanoseconds: 4_000_000_000)
             }
         }
@@ -200,10 +234,13 @@ private struct WyrmThreadDetail: View {
             }.buttonStyle(.plain)
             Button { open(.profile(playerID)) } label: {
                 HStack(spacing: 10) {
-                    WyrmAvatar(initials: person?.initials ?? "W", size: 34, url: person?.avatarURL ?? "")
+                    let activity = presence.of(playerID)
+                    WyrmAvatar(initials: person?.initials ?? "W", size: 34, url: person?.avatarURL ?? "", online: activity?.online == true)
                     VStack(alignment: .leading, spacing: 1) {
                         Text(person?.displayName ?? "Message").font(.androidWyrm(15.5, .bold)).lineLimit(1)
-                        if let handle = person?.handle, !handle.isEmpty {
+                        if let activity, activity.online || activity.lastArena != nil {
+                            WyrmFriendActivityLine(activity: activity)
+                        } else if let handle = person?.handle, !handle.isEmpty {
                             Text(handle).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
                         }
                     }
@@ -219,6 +256,23 @@ private struct WyrmThreadDetail: View {
         message = ""
         sending = true
         Task { await services.sendDirect(playerID: playerID, body: String(body.prefix(1000))); sending = false }
+    }
+}
+
+/// A name, then a friend's activity when there is one, else the handle (2026-10-09).
+private struct WyrmPersonText: View {
+    let name: String
+    let handle: String
+    let activity: WyrmFriendActivity?
+    var body: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(name).font(.androidWyrm(14.5, .semibold)).lineLimit(1)
+            if let activity, activity.online || activity.lastArena != nil {
+                WyrmFriendActivityLine(activity: activity, size: 11)
+            } else if !handle.isEmpty {
+                Text(handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+            }
+        }
     }
 }
 
@@ -258,6 +312,7 @@ private struct WyrmPeopleDetail: View {
 private struct WyrmConnectionsDetail: View {
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
+    @ObservedObject private var presence = WyrmPresence.shared
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @State private var page = 0
@@ -273,7 +328,10 @@ private struct WyrmConnectionsDetail: View {
                     connectionList(services.following, empty: "Not following anyone yet").tag(1)
                 }.tabViewStyle(.page(indexDisplayMode: .never))
             }
-            .task { if let id = account.player?.id { await services.loadConnectionLists(playerID: id) } }
+            .task {
+                await presence.refresh()
+                if let id = account.player?.id { await services.loadConnectionLists(playerID: id) }
+            }
         }
     }
     private func segment(_ title: String, index: Int, count: Int) -> some View {
@@ -284,7 +342,7 @@ private struct WyrmConnectionsDetail: View {
     private func connectionList(_ rows: [WyrmServicePlayer], empty: String) -> some View {
         ScrollView(showsIndicators: false) { VStack(spacing: 0) { WyrmPaperCard {
             if rows.isEmpty { WyrmEmptyPanel(title: empty, note: "Connections update from your Wyrm account.") }
-            ForEach(rows) { person in Button { open(.profile(person.id)) } label: { HStack(spacing: 12) { WyrmAvatar(initials: person.initials, size: 36, url: person.avatarURL); VStack(alignment: .leading, spacing: 2) { Text(person.displayName).font(.androidWyrm(14.5, .semibold)); Text(person.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }; Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58) }.buttonStyle(.plain) }
+            ForEach(rows) { person in Button { open(.profile(person.id)) } label: { HStack(spacing: 12) { WyrmAvatar(initials: person.initials, size: 36, url: person.avatarURL, online: presence.of(person.id)?.online == true); WyrmPersonText(name: person.displayName, handle: person.handle, activity: presence.of(person.id)); Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 58) }.buttonStyle(.plain) }
         }; Spacer().frame(height: 24) } }
     }
 }

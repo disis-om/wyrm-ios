@@ -123,6 +123,7 @@ struct WyrmDesignMain: View {
         // A quiet look stays as a fallback: every 15 s on Alerts, every 45 s elsewhere.
         .task {
             WyrmLiveInbox.shared.onInbox = { kind in Task { await handleInbox(kind) } }
+            startPresence()
             WyrmLiveInbox.shared.start(token: account.sessionToken)
             var quiet = 0
             while !Task.isCancelled {
@@ -132,8 +133,9 @@ struct WyrmDesignMain: View {
                 if routes.last == .alerts || quiet % 3 == 0 { await pollAlerts() }
             }
         }
-        .onDisappear { WyrmLiveInbox.shared.stop() }
+        .onDisappear { WyrmLiveInbox.shared.stop(); WyrmPresence.shared.stop() }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)) { _ in
+            startPresence()
             WyrmLiveInbox.shared.start(token: account.sessionToken)
             Task {
                 await pollAlerts()
@@ -143,6 +145,7 @@ struct WyrmDesignMain: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
             WyrmLiveInbox.shared.stop()
+            WyrmPresence.shared.stop()
         }
         // Where the player is, for a crash or problem report.
         .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
@@ -292,6 +295,18 @@ struct WyrmDesignMain: View {
         }
     }
 
+    /// Presence (2026-10-09): the session, arena names and flags, Join, then the
+    /// state on the live socket. Android twin: WyrmOverlay.startLiveInbox.
+    private func startPresence() {
+        let presence = WyrmPresence.shared
+        presence.token = account.sessionToken
+        presence.arenaName = { endpoint in services.arenas.first(where: { $0.endpoint == endpoint })?.title ?? endpoint }
+        WyrmPresenceCountries.shared.directory = { address in services.countryCode(for: address) }
+        presence.onJoin = { address in engine.enterLobby(name: engine.nickname, address: address) }
+        guard !account.sessionToken.isEmpty else { return }
+        presence.start()
+    }
+
     private func pollAlerts() async {
         guard UIApplication.shared.applicationState == .active, engine.engineScreen == 0 else { return }
         if routes.last != .globalChat { await services.refreshGlobalUnread() }
@@ -424,12 +439,18 @@ private struct WyrmPlayRoot: View {
     @State private var lastHandledRefusal: UInt64 = 0
     @AppStorage("wyrm.ios.arena.recent") private var recentArenaEndpoints = ""
     @AppStorage("wyrm.ios.arena.saved") private var savedArenaEndpoints = ""
+    /// The arena the player chose (OM, 2026-10-09: Home showed the lowest-ping
+    /// arena on every launch instead). Only the picker and a Play on what Home
+    /// shows change it; an event, invite or friend's Join does not. Synced with
+    /// the account (`wyrm.ios.arena.`).
+    @AppStorage("wyrm.ios.arena.chosen") private var chosenArena = ""
 
     private var nearest: WyrmArena? {
-        if userSelectedArena,
-           let selected = services.arenas.first(where: { $0.endpoint == arena }) { return selected }
-        if userSelectedArena, savedArenaEndpoints.split(separator: ";").contains(Substring(arena)),
-           let selected = WyrmArena.custom(arena) { return selected }
+        let pick = userSelectedArena ? arena : chosenArena
+        if !pick.isEmpty {
+            if let selected = services.arenas.first(where: { $0.endpoint == pick }) { return selected }
+            if let selected = WyrmArena.custom(pick) { return selected }
+        }
         return services.recommendedArena
     }
     /// Android's `playControlsLabel`: steering style and hand, e.g. "Joystick · Right".
@@ -531,14 +552,15 @@ private struct WyrmPlayRoot: View {
         .task { await services.refreshArenasLive() }
         .fullScreenCover(isPresented: $showArenas) {
             WyrmArenaPicker(services: services, selection: Binding(
-                get: { userSelectedArena ? arena : services.recommendedArena?.endpoint ?? "" },
-                set: { arena = $0; userSelectedArena = true }))
+                get: { userSelectedArena ? arena : (chosenArena.isEmpty ? services.recommendedArena?.endpoint ?? "" : chosenArena) },
+                set: { arena = $0; userSelectedArena = true; chosenArena = $0 }))
         }
     }
 
     private func enterOriginalLobby() {
         guard let selected = nearest else { return }
         arena = selected.endpoint
+        chosenArena = selected.endpoint
         var recent = recentArenaEndpoints.split(separator: ";").map(String.init)
         recent.removeAll { $0 == selected.endpoint }
         recent.insert(selected.endpoint, at: 0)

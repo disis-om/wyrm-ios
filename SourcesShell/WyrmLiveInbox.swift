@@ -17,6 +17,19 @@ final class WyrmLiveInbox {
     private var failures = 0
     private var pending: Set<String> = []
     private var burst: Task<Void, Never>?
+    /// The last presence said (2026-10-09), said again after every reconnect.
+    private var presence: String?
+
+    /// What the player is doing (backend presence.mjs). Sent when it changes;
+    /// a reconnect repeats the last one.
+    func setPresence(state: String, arena: String?) {
+        var body: [String: Any] = ["type": "presence", "state": state, "platform": "ios"]
+        if state == "playing", let arena, !arena.isEmpty { body["arena"] = arena }
+        guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]),
+              let json = String(data: data, encoding: .utf8), json != presence else { return }
+        presence = json
+        task?.send(.string(json)) { _ in }
+    }
 
     func start(token: String) {
         guard !token.isEmpty else { return }
@@ -66,6 +79,7 @@ final class WyrmLiveInbox {
               let type = event["type"] as? String else { return }
         switch type {
         case "live.ready":
+            if let presence { task?.send(.string(presence)) { _ in } }
             onInbox("")
         case "inbox":
             // A burst (a broadcast, several follows) becomes one refresh per kind.

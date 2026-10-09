@@ -30,7 +30,7 @@ struct WyrmSnakeLookEditor: View {
     }
 
     private var spineOn: Bool { engine.value("\(group).spine") >= 0.5 }
-    private var spineWidth: Double { min(max(engine.value("\(group).spine_width"), 0), 1) }
+    private var spineWidth: Double { min(max(engine.value("\(group).spine_width", 0.1), 0), 1) }
     private var shadowOn: Bool { engine.value("\(group).snake_shadow") >= 0.5 }
     private var hideOn: Bool { engine.value("assist.hide_cosmetics") >= 0.5 }
 
@@ -77,7 +77,7 @@ struct WyrmSnakeLookEditor: View {
             }
             if spineOn {
                 WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth),
-                            detail: "From a thin thread to as wide as the snake",
+                            detail: "0 hides it; full is as wide as the snake",
                             value: spineWidth, range: 0...1) { value in
                     engine.write(id: "\(group).spine_width", values: [value])
                 }

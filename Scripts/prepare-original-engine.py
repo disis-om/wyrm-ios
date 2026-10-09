@@ -4007,7 +4007,7 @@ static void eb_send(game_data* gdata, struct mg_connection* connection,
     eb.conn = connection;
     eb.snake_id = me->id;
   }
-  if (!(gdata->data.ctm - gdata->data.last_e_mtm > ARENA_AIM_MS)) return;
+  if (!(gdata->data.ctm - gdata->data.last_e_mtm > ARENA_EYES_BACK_MS)) return;
   gdata->data.last_e_mtm = gdata->data.ctm;
   gdata->data.lsxm = xm;
   gdata->data.lsym = ym;
@@ -4309,9 +4309,10 @@ SPINE_SHADOW_HEADER_PAIRS = [
   bool eyes_back_visible;
 } user_settings_ext;''', r'''  float eyes_back_opacity;
   bool eyes_back_visible;
-  /* Modes › Spine width (OM, 2026-10-09), normal and assist: 0 is the thin
-     line it always was, 1 is as wide as the snake. Starts at offset 32: bytes
-     29-31 were padding in every file written before. */
+  /* Modes › Spine width (OM, 2026-10-09), normal and assist: a share of the
+     snake's width, 0 hides the spine, 1 is as wide as the snake (default
+     0.1, a thin line). Starts at offset 32: bytes 29-31 were padding in
+     every file written before. */
   float spine_width[2];
   /* Modes › Snake shadow (OM, 2026-10-09), normal and assist: the AIR
      client's `ksmc_t` under every snake. */
@@ -4320,8 +4321,8 @@ SPINE_SHADOW_HEADER_PAIRS = [
     ('app/src/game/user_settings.c', r'''  x->eyes_back_visible = false;
 }
 ''', r'''  x->eyes_back_visible = false;
-  x->spine_width[0] = 0.0f;
-  x->spine_width[1] = 0.0f;
+  x->spine_width[0] = 0.1f;
+  x->spine_width[1] = 0.1f;
   x->snake_shadow[0] = false;
   x->snake_shadow[1] = false;
 }
@@ -4336,19 +4337,19 @@ SPINE_SHADOW_HEADER_PAIRS = [
 ''', r'''  fixed |= ext_take_bool(&ext->eyes_back_visible,
                          written >= eb_visible_at + 1);
   fixed |= ext_take_float(&ext->spine_width[0], written >= spine_w_at + 4,
-                          0.0f, 1.0f, 0.0f);
+                          0.0f, 1.0f, 0.1f);
   fixed |= ext_take_float(&ext->spine_width[1], written >= spine_w_at + 8,
-                          0.0f, 1.0f, 0.0f);
+                          0.0f, 1.0f, 0.1f);
   fixed |= ext_take_bool(&ext->snake_shadow[0], written >= shadow_at + 1);
   fixed |= ext_take_bool(&ext->snake_shadow[1], written >= shadow_at + 2);
 '''),
     ('app/src/platform/android_settings.c', r'''     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[1])},
 ''', r'''     NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine[1])},
     {"normal.spine_width", "normal", "Spine width",
-     "From a thin thread to as wide as the snake.", SETTING_FLOAT, 0, 1,
+     "0 hides it; full is as wide as the snake.", SETTING_FLOAT, 0, 1,
      NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine_width[0])},
     {"assist.spine_width", "assist", "Spine width",
-     "From a thin thread to as wide as the snake.", SETTING_FLOAT, 0, 1,
+     "0 hides it; full is as wide as the snake.", SETTING_FLOAT, 0, 1,
      NULL, OWNER_SETTINGS, SETTINGS_FIELD(ext.spine_width[1])},
     {"normal.snake_shadow", "normal", "Snake shadow",
      "The soft shadow the original app draws under every snake.",
@@ -4442,22 +4443,26 @@ static void draw_spine_mesh(tenv* env, int bp, float cx, float cy, ImU32 under,
   }
 }
 
-/* Spine width (OM, 2026-10-09): 0 is the thin line it always was, 1 is as
-   wide as the body (`body_w`, the bead's diameter on screen). */
+/* Spine width (OM, 2026-10-09): the slider is a share of the body's width
+   (`body_w`, the bead's diameter on screen): 0 draws nothing, 1 is as wide as
+   the snake, smooth in between. The dark edge is 2 dpi, or as wide as the
+   white line when that is thinner, so a hairline stays a hairline. Up to
+   2 dpi the anti-aliased ImGui line draws it; wider, the skinless mesh. */
 static void draw_snake_spine(tenv* env, int bp, float cx, float cy, float alpha,
                              float body_w, float width) {
   float dpi = snake_line_dpi(env);
-  float thread = 2.0f * dpi;
   float over_w;
+  float edge;
   ImU32 dark = igColorConvertFloat4ToU32((ImVec4){0.0f, 0.0f, 0.0f, 0.35f * alpha});
   ImU32 white = igColorConvertFloat4ToU32((ImVec4){1.0f, 1.0f, 1.0f, 0.8f * alpha});
-  if (!(width > 0.0f) || body_w <= thread) {
-    draw_body_line(env, bp, 1, cx, cy, dark, 4.0f * dpi, white, 2.0f * dpi);
-    return;
-  }
+  if (!(width > 0.0f) || !(body_w > 0.0f)) return;
   if (width > 1.0f) width = 1.0f;
-  over_w = thread + (body_w - thread) * width;
-  draw_spine_mesh(env, bp, cx, cy, dark, over_w + 2.0f * dpi, white, over_w);
+  over_w = body_w * width;
+  edge = over_w < 2.0f * dpi ? over_w : 2.0f * dpi;
+  if (over_w <= 2.0f * dpi)
+    draw_body_line(env, bp, 1, cx, cy, dark, over_w + edge, white, over_w);
+  else
+    draw_spine_mesh(env, bp, cx, cy, dark, over_w + edge, white, over_w);
 }'''),
     (r'''          float om = 0;
           float mr = 0;
@@ -4517,3 +4522,114 @@ _target = OUTPUT / SPINE_SHADOW_REDRAW
 _target.write_text(_spine_shadow_patch_redraw(_target.read_text(encoding="utf-8")),
                    encoding="utf-8")
 print("Spine width + snake shadow (normal and assist)")
+
+
+# Minimap (OM, 2026-10-09): the same text as Wyrm Android's game/ui_overlay.c and game/redraw.c.
+MINIMAP_SMOOTH_PAIRS = {
+    'app/src/game/ui_overlay.c': [
+        ('''  /* The cells: eased values in six steps, one rect per run of a step. */
+  int mmsz = gdata->data.mmsz;
+  if (mmsz > MAX_MINIMAP_SIZE) mmsz = MAX_MINIMAP_SIZE;
+  if (mmsz > 0) {
+    float span = R * 0.9f * 2.0f;
+    float cell = span / mmsz;
+    float ox = c.x - R * 0.9f;
+    float oy = c.y - R * 0.9f;
+    for (int y = 0; y < mmsz; ++y) {
+      const float* row = gdata->data.mm_data_follow + y * MAX_MINIMAP_SIZE;
+      int x = 0;
+      while (x < mmsz) {
+        int level = (int)(row[x] * 6.0f + 0.5f);
+        if (level <= 0) { ++x; continue; }
+        if (level > 6) level = 6;
+        int start = x;
+        while (x < mmsz) {
+          int next = (int)(row[x] * 6.0f + 0.5f);
+          if (next > 6) next = 6;
+          if (next != level) break;
+          ++x;
+        }
+        ImDrawList_AddRectFilled(
+            draw, (ImVec2){ox + start * cell, oy + y * cell},
+            (ImVec2){ox + x * cell, oy + (y + 1) * cell},
+            igColorConvertFloat4ToU32((ImVec4){1, 1, 1, 0.62f * level / 6.0f}), 0, 0);
+      }
+    }
+  }''', '''  /* The cells (OM, 2026-10-09: snakes glide across the map instead of
+     jumping). A cell's eased value (mm_data_follow, 0-255) is its opacity,
+     smoothstepped, and it is drawn as a soft round blob a little wider than
+     the cell, so the cell fading out and its neighbour fading in overlap into
+     one mark that moves. The six steps before read the 0-255 value as 0-1: a
+     new cell showed at full at once and an old one hung on, then vanished. */
+  int mmsz = gdata->data.mmsz;
+  if (mmsz > MAX_MINIMAP_SIZE) mmsz = MAX_MINIMAP_SIZE;
+  if (mmsz > 0) {
+    float span = R * 0.9f * 2.0f;
+    float cell = span / mmsz;
+    float ox = c.x - R * 0.9f;
+    float oy = c.y - R * 0.9f;
+    float blob = cell * 0.82f;
+    if (blob < 1.2f) blob = 1.2f;
+    for (int y = 0; y < mmsz; ++y) {
+      const float* row = gdata->data.mm_data_follow + y * MAX_MINIMAP_SIZE;
+      for (int x = 0; x < mmsz; ++x) {
+        float v = row[x] / 255.0f;
+        if (v <= 0.02f) continue;
+        if (v > 1.0f) v = 1.0f;
+        v = v * v * (3.0f - 2.0f * v);
+        ImDrawList_AddCircleFilled(
+            draw, (ImVec2){ox + (x + 0.5f) * cell, oy + (y + 0.5f) * cell}, blob,
+            igColorConvertFloat4ToU32((ImVec4){1, 1, 1, 0.62f * v}), 10);
+      }
+    }
+  }'''),
+        ('''  float ring = core + 3.2f;''',
+         '''  /* A clear gap between the dot and the ring (OM, 2026-10-09). */
+  float ring = core + 6.0f;'''),
+        ('''      /* Half the size it was (OM, 2026-10-06). */
+      float s = R * 0.0425f;
+      if (s < 2.5f) s = 2.5f;''',
+         '''      /* Half the size it was (OM, 2026-10-06), then 30% bigger (2026-10-09). */
+      float s = R * 0.05525f;
+      if (s < 3.25f) s = 3.25f;'''),
+    ],
+    'app/src/game/redraw.c': [
+        ('''  lerp_minimap_float(gdata->data.mm_data_follow, gdata->data.mm_data,
+                     gdata->data.mmsz, 0.05f * gdata->data.vfr);''',
+         '''  /* About half a second to cross-fade a minimap cell (was ~0.3 s), so a
+     snake's mark glides to its new cells (OM, 2026-10-09). */
+  lerp_minimap_float(gdata->data.mm_data_follow, gdata->data.mm_data,
+                     gdata->data.mmsz, 0.035f * gdata->data.vfr);'''),
+    ],
+}
+
+
+for _relative, _pairs in MINIMAP_SMOOTH_PAIRS.items():
+    _target = OUTPUT / _relative
+    _text = _target.read_text(encoding="utf-8")
+    for _old, _new in _pairs:
+        if _text.count(_old) != 1:
+            raise SystemExit(f"minimap smooth: anchor x{_text.count(_old)} in {_relative}: {_old[:60]!r}")
+        _text = _text.replace(_old, _new)
+    _target.write_text(_text, encoding="utf-8")
+print("Minimap: cells glide, wider death ring, own mark 30% bigger")
+
+
+# Auto restart's key size and opacity (OM, 2026-10-09): the same row as Wyrm
+# Android's platform/android_settings.c; without it the long-press sliders
+# wrote to an id the table did not have.
+KEY14_PAIRS = [('''    KEY_APPEARANCE(9),
+#undef KEY_APPEARANCE
+''', '''    KEY_APPEARANCE(9),
+    /* Auto restart (OM, 2026-10-09: its size and opacity sliders did nothing). */
+    KEY_APPEARANCE(14),
+#undef KEY_APPEARANCE
+''')]
+_target = OUTPUT / "app/src/platform/android_settings.c"
+_text = _target.read_text(encoding="utf-8")
+for _old, _new in KEY14_PAIRS:
+    if _text.count(_old) != 1:
+        raise SystemExit(f"key 14: anchor x{_text.count(_old)}")
+    _text = _text.replace(_old, _new)
+_target.write_text(_text, encoding="utf-8")
+print("Auto restart key: size and opacity rows")

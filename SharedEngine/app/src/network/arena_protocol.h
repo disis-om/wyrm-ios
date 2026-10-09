@@ -13,10 +13,14 @@
  * (`ctm-last_e_mtm>50`), a boost change every 150 ms (`ctm-last_accel_mtm>150`)
  * and a key turn every 150 ms (`ctm-lkstm>150`). Until 2026-10-09 these were
  * the AIR client's 33/50/50 while the join said "web".
+ * ARENA_EYES_BACK_MS is the one exception: while the Eyes Back key is on, the
+ * heading goes out on NTL's own tick (`33<ab-qc` in NTL 9.68 / NTL VANCED
+ * main-mt.js, the send gate NTL_EB.tick runs under), because its sigma-delta
+ * steering is tuned to that rate; still only when the byte changes.
  * ARENA_CONNECT_TIMEOUT_MS is Vlither's TIMEOUT (5 s): an attempt that has not
  * spawned a snake by then is given up. Keep the decoders independent of SDL
  * for replay tests. */
-enum { ARENA_AIM_MS = 50, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 150,
+enum { ARENA_AIM_MS = 50, ARENA_EYES_BACK_MS = 33, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 150,
        ARENA_PING_MS = 250, ARENA_LAG_MS = 750, ARENA_RETRY_MS = 3333,
        ARENA_CONNECT_TIMEOUT_MS = 5000, ARENA_DEATH_WAIT_MS = 1600 };
 

@@ -175,6 +175,7 @@ struct WyrmDesignRoot: View {
         // shell is never left shown over a later screen.
         .onChange(of: engine.engineScreen) { screen in
             if screen != 2 && teamComposer.open { teamComposer.closeNow() }
+            WyrmPresence.shared.engineScreen(screen)
         }
         // CI: the team composer over an AI match, for a screenshot.
         .onChange(of: engine.engineScreen) { screen in
@@ -223,6 +224,8 @@ struct WyrmDesignRoot: View {
                 accountSync.resume(token: account.sessionToken, playerID: account.player?.id ?? "")
             case .signingOut:
                 WyrmLiveInbox.shared.stop()
+                WyrmPresence.shared.stop()
+                WyrmPresence.shared.reset()
                 WyrmGameSync.shared.deactivate()
                 services.resetSession()
                 WyrmTrailsStore.shared.reset()

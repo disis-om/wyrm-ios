@@ -46,7 +46,10 @@ checks = {
     "custom addresses are validated and stored": "static func custom(_ raw: String)" in services and "savedArenaEndpoints = entries.prefix(20)" in design,
     "recent joins are kept separately from saved addresses": "recentArenaEndpoints = recent.prefix(5)" in design,
     "lowest measured latency is recommended": "if left != right { return left < right }" in services,
-    "explicit choice overrides automatic recommendation": "if userSelectedArena" in design and "return services.recommendedArena" in design,
+    # The chosen arena (this session's pick, else the saved one) beats the
+    # lowest-ping recommendation, across launches too (2026-10-09).
+    "explicit choice overrides automatic recommendation": "let pick = userSelectedArena ? arena : chosenArena" in design
+        and '@AppStorage("wyrm.ios.arena.chosen")' in design and "return services.recommendedArena" in design,
     "two-second directory-only picker refresh": "Task.sleep(nanoseconds: 2_000_000_000)" in design,
     "no Swift alternate-server failover": "failoverArena(refused:" not in design and "engine.playOnline" not in design,
     "native refusal bridge": "WyrmIOSArenaRefusalSnapshot" in shell and "WyrmIOSPublishArenaRefusal" in home,

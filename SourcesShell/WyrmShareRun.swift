@@ -30,6 +30,9 @@ import UIKit
 /// bead's own palette colour; the top byte keeps Wyrm and AIR bead tags). The
 /// looks are `WyrmLookStore`'s, whose hair colour is already a 0...1 tone.
 struct WyrmTrailSkin: Codable, Equatable {
+    /// NTL's tags by NTL's number, Wyrm's own as 100000 + their number
+    /// (0-255), the same rule as the backend and Android (2026-10-09).
+    static func validTag(_ tag: Int) -> Bool { (0...65535).contains(tag) || (100_000...100_255).contains(tag) }
     struct Look: Codable, Equatable {
         var hair: Int
         var hairTone: Double
@@ -72,9 +75,8 @@ struct WyrmTrailSkin: Codable, Equatable {
             accessory: WyrmSkinCatalog.accessories.contains(where: { $0.id == accessory }) ? accessory : -1,
             look: Look(hair: look.hair, hairTone: look.hairTone.isFinite ? min(max(look.hairTone, 0), 1) : 0,
                        ears: look.ears, glasses: look.glasses),
-            // Wyrm's own tags have no number the Trails backend takes (0..65535).
-            tag: WyrmSkinCatalog.tags.indices.contains(tagIndex) && !WyrmSkinCatalog.isWyrmTag(WyrmSkinCatalog.tags[tagIndex].ntlID)
-                ? WyrmSkinCatalog.tags[tagIndex].ntlID : nil)
+            // NTL's tags by NTL's number, Wyrm's own as 100000 + theirs (2026-10-09).
+            tag: WyrmSkinCatalog.tags.indices.contains(tagIndex) ? WyrmSkinCatalog.tags[tagIndex].ntlID : nil)
     }
 
     /// The body for the POST: plain JSON types, so JSONSerialization writes
@@ -84,7 +86,7 @@ struct WyrmTrailSkin: Codable, Equatable {
                                    "accessory": accessory,
                                    "look": ["hair": look.hair, "hairTone": look.hairTone, "ears": look.ears,
                                             "glasses": look.glasses]]
-        if let tag, (0...65535).contains(tag) { body["tag"] = tag }
+        if let tag, Self.validTag(tag) { body["tag"] = tag }
         return body
     }
 
@@ -149,7 +151,7 @@ extension WyrmTrailSkin {
         colours = Array(((try? c.decodeIfPresent([String].self, forKey: .colours)) ?? []).prefix(256))
         accessory = (try? c.decodeIfPresent(Int.self, forKey: .accessory)) ?? -1
         look = (try? c.decodeIfPresent(Look.self, forKey: .look)) ?? Look(hair: -1, hairTone: 0, ears: -1, glasses: -1)
-        tag = (try? c.decodeIfPresent(Int.self, forKey: .tag)).flatMap { (0...65535).contains($0) ? $0 : nil }
+        tag = (try? c.decodeIfPresent(Int.self, forKey: .tag)).flatMap { Self.validTag($0) ? $0 : nil }
     }
 }
 
