@@ -271,7 +271,7 @@ final class WyrmPresenceCountries: ObservableObject {
         if let found = known[address] { return found }
         if !address.isEmpty, asked.insert(address).inserted {
             Task {
-                let found = await WyrmServiceClient.shared.arenaCountries([address])
+                let found = await WyrmServiceStore.lookupCountries([address])
                 if let code = found[address] { known[address] = code.uppercased() }
             }
         }

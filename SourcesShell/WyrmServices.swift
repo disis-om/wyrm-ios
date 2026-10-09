@@ -714,6 +714,11 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var arenaCountries: [String: String] = [:]
     private var arenaCountriesAt = Date.distantPast
 
+    /// NTL's country lookup for addresses outside the directory (friends' arenas, 2026-10-09).
+    static func lookupCountries(_ addresses: [String]) async -> [String: String] {
+        await WyrmServiceClient.shared.arenaCountries(addresses)
+    }
+
     /// The upper-case country of the machine at `address`, or "".
     func countryCode(for address: String) -> String { arenaCountries[address]?.uppercased() ?? "" }
 
