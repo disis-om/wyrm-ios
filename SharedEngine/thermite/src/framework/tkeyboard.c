@@ -3,7 +3,7 @@
 #include "../util/tdarray.h"
 #include "twindow.h"
 
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
 void key_callback(GLFWwindow* window, int key, int scancode, int action,
                   int mods) {
   tenv* env = glfwGetWindowUserPointer(window);
@@ -20,7 +20,7 @@ void char_callback(GLFWwindow* window, unsigned int codepoint) {
 #endif
 
 tkeyboard* tkeyboard_create(twindow* window) {
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
   glfwSetKeyCallback(window->handle, key_callback);
   glfwSetCharCallback(window->handle, char_callback);
 #endif

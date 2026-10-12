@@ -5,7 +5,7 @@
 #include "./imgui/imgui_internal.h"
 #include "cimgui.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include "imgui/imgui_impl_sdl3.h"
 #include <SDL3/SDL.h>
 #else
@@ -15,7 +15,7 @@
 
 #include "cimgui_impl.h"
 
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
 CIMGUI_API bool igImplGlfw_InitForVulkan(GLFWwindow* window,bool install_callbacks)
 {
 	return ImGui_ImplGlfw_InitForVulkan(window, install_callbacks);

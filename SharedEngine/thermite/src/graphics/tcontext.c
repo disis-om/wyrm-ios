@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL_vulkan.h>
 #include "platform/android_startup.h"
 #define TCONTEXT_LOG(...) SDL_Log(__VA_ARGS__)
@@ -12,7 +12,7 @@
 #endif
 
 void _tcontext_create_instance(tcontext* context) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   Uint32 instance_ext_count = 0;
   const char* const* instance_ext_names =
       SDL_Vulkan_GetInstanceExtensions(&instance_ext_count);
@@ -44,8 +44,8 @@ void _tcontext_create_instance(tcontext* context) {
           .enabledExtensionCount = instance_ext_count,
           .ppEnabledExtensionNames = instance_ext_names},
       NULL, &context->instance);
-  TCONTEXT_LOG("Vlither: vkCreateInstance=%d", (int)result);
-#ifdef VLITHER_ANDROID
+  TCONTEXT_LOG("Wyrm: vkCreateInstance=%d", (int)result);
+#ifdef WYRM_SDL_JNI
   if (result == VK_SUCCESS) {
     android_startup_stage(4, "Vulkan instance created",
                           "Android Vulkan extensions were accepted");
@@ -59,14 +59,14 @@ void _tcontext_create_instance(tcontext* context) {
 
 bool _tcontext_create_surface(tcontext* context, twindow* window) {
   context->surface = VK_NULL_HANDLE;
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (!SDL_Vulkan_CreateSurface(window->handle, context->instance, NULL,
                                 &context->surface)) {
-    SDL_Log("Vlither: Vulkan surface creation failed: %s", SDL_GetError());
+    SDL_Log("Wyrm: Vulkan surface creation failed: %s", SDL_GetError());
     android_startup_failure(4, "Vulkan surface failed", SDL_GetError());
     return false;
   }
-  TCONTEXT_LOG("Vlither: Vulkan surface ready");
+  TCONTEXT_LOG("Wyrm: Vulkan surface ready");
 #else
   if (glfwCreateWindowSurface(context->instance, window->handle, NULL,
                               &context->surface) != VK_SUCCESS)
@@ -79,11 +79,11 @@ int _tcontext_select_device(tcontext* context) {
   uint32_t device_count = 0;
   VkResult result =
       vkEnumeratePhysicalDevices(context->instance, &device_count, NULL);
-  TCONTEXT_LOG("Vlither: physical device query=%d count=%u", (int)result,
+  TCONTEXT_LOG("Wyrm: physical device query=%d count=%u", (int)result,
                device_count);
   if (result != VK_SUCCESS || device_count == 0)
   {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
     char detail[96];
     snprintf(detail, sizeof(detail),
              "vkEnumeratePhysicalDevices returned %d with %u devices",
@@ -104,7 +104,7 @@ int _tcontext_select_device(tcontext* context) {
   } score;
   score* scores = calloc(device_count, sizeof(score));
   result = vkEnumeratePhysicalDevices(context->instance, &device_count, devices);
-  TCONTEXT_LOG("Vlither: physical device enumeration=%d", (int)result);
+  TCONTEXT_LOG("Wyrm: physical device enumeration=%d", (int)result);
   if (result != VK_SUCCESS) {
     free(scores);
     free(devices);
@@ -121,12 +121,12 @@ int _tcontext_select_device(tcontext* context) {
 
     VkPhysicalDeviceProperties properties = {0};
     vkGetPhysicalDeviceProperties(devices[i], &properties);
-    TCONTEXT_LOG("Vlither: probing GPU[%u]=%s", i, properties.deviceName);
+    TCONTEXT_LOG("Wyrm: probing GPU[%u]=%s", i, properties.deviceName);
 
     uint32_t format_count = 0;
     result = vkGetPhysicalDeviceSurfaceFormatsKHR(
         devices[i], context->surface, &format_count, NULL);
-    TCONTEXT_LOG("Vlither: surface format query=%d count=%u", (int)result,
+    TCONTEXT_LOG("Wyrm: surface format query=%d count=%u", (int)result,
                  format_count);
     if (result != VK_SUCCESS || format_count == 0)
       continue;
@@ -153,7 +153,7 @@ int _tcontext_select_device(tcontext* context) {
     uint32_t present_mode_count = 0;
     result = vkGetPhysicalDeviceSurfacePresentModesKHR(
         devices[i], context->surface, &present_mode_count, NULL);
-    TCONTEXT_LOG("Vlither: present mode query=%d count=%u", (int)result,
+    TCONTEXT_LOG("Wyrm: present mode query=%d count=%u", (int)result,
                  present_mode_count);
     if (result != VK_SUCCESS || present_mode_count == 0) {
       free(formats);
@@ -179,7 +179,7 @@ int _tcontext_select_device(tcontext* context) {
     uint32_t queue_family_count = 0;
     vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &queue_family_count,
                                              NULL);
-    TCONTEXT_LOG("Vlither: queue family count=%u", queue_family_count);
+    TCONTEXT_LOG("Wyrm: queue family count=%u", queue_family_count);
     VkQueueFamilyProperties* queue_family_proprties =
         calloc(queue_family_count, sizeof(VkQueueFamilyProperties));
     vkGetPhysicalDeviceQueueFamilyProperties(devices[i], &queue_family_count,
@@ -202,7 +202,7 @@ int _tcontext_select_device(tcontext* context) {
     uint32_t extension_count = 0;
     result = vkEnumerateDeviceExtensionProperties(devices[i], NULL,
                                                   &extension_count, NULL);
-    TCONTEXT_LOG("Vlither: extension query=%d count=%u", (int)result,
+    TCONTEXT_LOG("Wyrm: extension query=%d count=%u", (int)result,
                  extension_count);
     VkExtensionProperties* extensions =
         calloc(extension_count, sizeof(VkExtensionProperties));
@@ -250,7 +250,7 @@ int _tcontext_select_device(tcontext* context) {
     printf("No GPU found.\n");
     free(scores);
     free(devices);
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
     android_startup_failure(
         5, "No compatible Vulkan configuration",
         "No GPU exposed a graphics/present queue, surface format and swapchain");
@@ -265,11 +265,11 @@ int _tcontext_select_device(tcontext* context) {
   VkPhysicalDeviceProperties properties;
   context->ph_device = devices[selected_device];
   vkGetPhysicalDeviceProperties(context->ph_device, &properties);
-  TCONTEXT_LOG("Vlither: selected GPU=%s API=%u.%u.%u", properties.deviceName,
+  TCONTEXT_LOG("Wyrm: selected GPU=%s API=%u.%u.%u", properties.deviceName,
                VK_API_VERSION_MAJOR(properties.apiVersion),
                VK_API_VERSION_MINOR(properties.apiVersion),
                VK_API_VERSION_PATCH(properties.apiVersion));
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   char api_version[32];
   char gpu_detail[160];
   snprintf(api_version, sizeof(api_version), "%u.%u.%u",
@@ -318,8 +318,8 @@ void _tcontext_create_device(tcontext* context) {
           .ppEnabledExtensionNames =
               (const char*[]){VK_KHR_SWAPCHAIN_EXTENSION_NAME}},
       NULL, &context->device);
-  TCONTEXT_LOG("Vlither: vkCreateDevice=%d", (int)result);
-#ifdef VLITHER_ANDROID
+  TCONTEXT_LOG("Wyrm: vkCreateDevice=%d", (int)result);
+#ifdef WYRM_SDL_JNI
   if (result == VK_SUCCESS) {
     android_startup_stage(6, "Logical render device ready",
                           "Graphics queue and VK_KHR_swapchain are available");
@@ -346,7 +346,7 @@ void _tcontext_create_swapchain(tcontext* context, bool vsync) {
     context->min_image_count = capabilities.maxImageCount;
 
   VkPresentModeKHR selected_present_mode = VK_PRESENT_MODE_FIFO_KHR;
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
   if (!vsync) {
     uint32_t count = 0;
     if (vkGetPhysicalDeviceSurfacePresentModesKHR(
@@ -375,7 +375,7 @@ void _tcontext_create_swapchain(tcontext* context, bool vsync) {
    * This used to be hard-wired to FIFO on the reasoning that FIFO is the one
    * mode every Android Vulkan implementation must support. That is true and it
    * was the wrong conclusion: it is a reason to keep FIFO as the fallback, not
-   * a reason to refuse IMMEDIATE on a device that advertises it. Vlither runs
+   * a reason to refuse IMMEDIATE on a device that advertises it. The reference client runs
    * the same engine on the same phones and picks IMMEDIATE whenever
    * `supports_immediate` is set, which is where its uncapped frame rate comes
    * from — the renderer was never the thing holding Wyrm to the display's
@@ -409,10 +409,10 @@ void _tcontext_create_swapchain(tcontext* context, bool vsync) {
   // the surface supports it so the compositor does not rotate our landscape
   // render target a second time.
   VkSurfaceTransformFlagBitsKHR pre_transform = capabilities.currentTransform;
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (capabilities.supportedTransforms & VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR)
     pre_transform = VK_SURFACE_TRANSFORM_IDENTITY_BIT_KHR;
-  TCONTEXT_LOG("Vlither: surface transform current=%u selected=%u supported=%u",
+  TCONTEXT_LOG("Wyrm: surface transform current=%u selected=%u supported=%u",
                (uint32_t)capabilities.currentTransform,
                (uint32_t)pre_transform,
                (uint32_t)capabilities.supportedTransforms);
@@ -440,11 +440,11 @@ void _tcontext_create_swapchain(tcontext* context, bool vsync) {
           .clipped = VK_TRUE,
           .oldSwapchain = context->old_swapchain},
       NULL, &context->swapchain);
-  TCONTEXT_LOG("Vlither: vkCreateSwapchainKHR=%d size=%ux%u images=%u mode=%d",
+  TCONTEXT_LOG("Wyrm: vkCreateSwapchainKHR=%d size=%ux%u images=%u mode=%d",
                (int)result, capabilities.currentExtent.width,
                capabilities.currentExtent.height, context->min_image_count,
                (int)selected_present_mode);
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (result == VK_SUCCESS) {
     char detail[128];
     snprintf(detail, sizeof(detail), "%u x %u · %u images · FIFO presentation",
@@ -520,7 +520,7 @@ void _tcontext_create_renderpass(tcontext* context) {
                                     VK_ACCESS_COLOR_ATTACHMENT_READ_BIT,
                    .dependencyFlags = 0}}},
       NULL, &context->renderpass);
-  TCONTEXT_LOG("Vlither: vkCreateRenderPass=%d", (int)result);
+  TCONTEXT_LOG("Wyrm: vkCreateRenderPass=%d", (int)result);
 }
 
 void _tcontext_create_views(tcontext* context) {
@@ -591,7 +591,7 @@ static void _tcontext_create_render_completes(tcontext* context) {
             .flags = 0},
         NULL, &context->render_completes[i]);
     if (result != VK_SUCCESS) {
-      TCONTEXT_LOG("Vlither: render semaphore creation failed at %u: %d", i,
+      TCONTEXT_LOG("Wyrm: render semaphore creation failed at %u: %d", i,
                    (int)result);
     }
   }
@@ -701,7 +701,7 @@ VkShaderModule tcontext_create_shader(tcontext* context, const char* filename) {
                            .pCode = content,
                        },
                        NULL, &module);
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (shader_result != VK_SUCCESS) {
     char detail[256];
     snprintf(detail, sizeof(detail), "%s · vkCreateShaderModule returned %d",
@@ -758,13 +758,13 @@ tcontext* tcontext_create(twindow* window, bool vsync, int fif) {
   if (context->swapchain == VK_NULL_HANDLE) return NULL;
   _tcontext_create_renderpass(context);
   _tcontext_create_views(context);
-  TCONTEXT_LOG("Vlither: swapchain views ready (%u)", context->image_count);
+  TCONTEXT_LOG("Wyrm: swapchain views ready (%u)", context->image_count);
   _tcontext_create_frames(context);
-  TCONTEXT_LOG("Vlither: frame resources ready");
+  TCONTEXT_LOG("Wyrm: frame resources ready");
   _tcontext_create_allocator(context);
-  TCONTEXT_LOG("Vlither: VMA allocator ready");
+  TCONTEXT_LOG("Wyrm: VMA allocator ready");
   _tcontext_create_descriptor_pool(context);
-  TCONTEXT_LOG("Vlither: descriptor pool ready");
+  TCONTEXT_LOG("Wyrm: descriptor pool ready");
   return context;
 }
 
@@ -841,12 +841,12 @@ static void _tcontext_destroy_swapchain_resources(tcontext* context) {
 }
 
 bool tcontext_recreate_surface(tcontext* context, twindow* window, bool vsync) {
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
   tcontext_resize(context, window->size, vsync);
   return context->swapchain_ok;
 #else
   if (!context || !window || !window->handle) return false;
-  TCONTEXT_LOG("Vlither: rebuilding Android Vulkan surface after resume");
+  TCONTEXT_LOG("Wyrm: rebuilding Android Vulkan surface after resume");
   tcontext_wait_idle(context);
   _tcontext_destroy_swapchain_resources(context);
   if (context->surface != VK_NULL_HANDLE) {
@@ -859,7 +859,7 @@ bool tcontext_recreate_surface(tcontext* context, twindow* window, bool vsync) {
   if (vkGetPhysicalDeviceSurfaceSupportKHR(
           context->ph_device, context->queue_family, context->surface,
           &present_supported) != VK_SUCCESS || !present_supported) {
-    TCONTEXT_LOG("Vlither: recreated surface is not supported by graphics queue");
+    TCONTEXT_LOG("Wyrm: recreated surface is not supported by graphics queue");
     return false;
   }
 
@@ -883,7 +883,7 @@ bool tcontext_recreate_surface(tcontext* context, twindow* window, bool vsync) {
   }
   free(formats);
   if (!format_supported) {
-    TCONTEXT_LOG("Vlither: recreated surface changed to an incompatible format");
+    TCONTEXT_LOG("Wyrm: recreated surface changed to an incompatible format");
     return false;
   }
 
@@ -896,7 +896,7 @@ bool tcontext_recreate_surface(tcontext* context, twindow* window, bool vsync) {
   context->current_image = 0;
   context->surface_lost = false;
   context->swapchain_ok = true;
-  TCONTEXT_LOG("Vlither: Android Vulkan surface restored (%dx%d, %u images)",
+  TCONTEXT_LOG("Wyrm: Android Vulkan surface restored (%dx%d, %u images)",
                context->size[0], context->size[1], context->image_count);
   return true;
 #endif
@@ -927,12 +927,12 @@ bool tcontext_begin(tcontext* context) {
   if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during acquire");
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during acquire");
     return false;
   }
   if ((r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) ||
       context->current_image >= context->image_count) {
-    TCONTEXT_LOG("Vlither: vkAcquireNextImageKHR failed: %d image=%u/%u",
+    TCONTEXT_LOG("Wyrm: vkAcquireNextImageKHR failed: %d image=%u/%u",
                  (int)r, context->current_image, context->image_count);
     return false;
   }
@@ -995,7 +995,7 @@ void tcontext_end(tcontext* context) {
                           &context->render_completes[context->current_image]},
       fr->wait_fence);
   if (submit_result != VK_SUCCESS) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
     char detail[96];
     snprintf(detail, sizeof(detail), "vkQueueSubmit returned %d",
              (int)submit_result);
@@ -1020,7 +1020,7 @@ void tcontext_end(tcontext* context) {
   if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during present");
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during present");
   } else if (r == VK_ERROR_OUT_OF_DATE_KHR) {
     context->swapchain_ok = false;
   } else if (r == VK_SUBOPTIMAL_KHR) {
@@ -1031,7 +1031,7 @@ void tcontext_end(tcontext* context) {
   }
   context->last_present_succeeded =
       (r == VK_SUCCESS || r == VK_SUBOPTIMAL_KHR);
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (!context->last_present_succeeded && r != VK_ERROR_SURFACE_LOST_KHR &&
       r != VK_ERROR_OUT_OF_DATE_KHR) {
     char detail[96];

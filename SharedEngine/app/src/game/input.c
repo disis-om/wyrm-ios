@@ -103,7 +103,7 @@ static void input_with_policy(tenv* env, bool team_protected,
     // SDL turns Android touches into compatibility mouse events so ImGui stays
     // touchable. Never treat that synthetic left mouse as gameplay boost: the
     // mobile controls layer owns boost using an explicit finger ID.
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
     gdata->data.wmd =
         team_protected
             ? (usrs->hotkeys[HOTKEY_BOT].active && gdata->bot.output.accel)

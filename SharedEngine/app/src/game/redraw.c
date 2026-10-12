@@ -794,7 +794,7 @@ void redraw(tenv* env) {
 
         if (!rope_mode) {
           bool show_snake_shadows = mode->show_shadows;
-#if defined(VLITHER_ANDROID)
+#if defined(WYRM_SDL_JNI)
           // Dense private servers can put hundreds of tiny remote snakes in the
           // viewport. Their four atlas-based desktop shadow stamps overlap into
           // opaque black capsules on mobile GPUs. Keep the useful local-player

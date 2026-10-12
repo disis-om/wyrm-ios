@@ -12,7 +12,7 @@ import re
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "SharedEngine"
 
-# Vlither's custom-skin encoder for the join, the code as the player made it
+# The reference client's custom-skin encoder for the join, the code as the player made it
 # (OM, 2026-10-09; bounded since the 2026-09-29 arena drop fix); the same C as
 # Wyrm Android's network/callback.c.
 NEW_SKIN_ENCODER = r'''/*
@@ -31,19 +31,19 @@ static bool skin_colour_allowed(int cg) {
 }
 
 /*
- * Vlither's run list for the join (OM, 2026-10-09): the skin code exactly as
+ * The reference client's run list for the join (OM, 2026-10-09): the skin code exactly as
  * the player typed or built it, one (count, colour) pair per run of equal
  * beads, in order. Nothing is folded, repeated or reordered: the arena repeats
  * what it is sent along the body, so what the player made is what goes, and
  * no bead of it is dropped. Both apps hand over the code as made (the preview
  * alone shows it repeated).
  *
- * Two guards Vlither does not have:
+ * Two guards the reference client does not have:
  * - only the colours the official client allows (any other bead is skipped);
  * - at most WYRM_JOIN_SKIN_MAX_RUNS runs. Only a code whose beads change
  *   colour more than 146 times reaches it; the rest of that code is not sent
  *   (logged), because a ~500-byte block is refused by the arena.
- * A run longer than 255 beads is split in two: Vlither's 8-bit counter
+ * A run longer than 255 beads is split in two: the reference client's 8-bit counter
  * wrapped to 0 on 256 equal beads.
  * Empty when nothing valid is left: the join then goes out as a preset one.
  */
@@ -94,7 +94,7 @@ for relative in manifest:
     destination.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(SOURCE / relative, destination)
 
-# VLITHER_ANDROID currently selects both SDL and JNI. Select SDL on Apple
+# WYRM_SDL_JNI currently selects both SDL and JNI. Select SDL on Apple
 # in non-service files only; Android service files retain their existing
 # non-Android fallback until a real Apple service adapter replaces each one.
 changed = []
@@ -121,7 +121,7 @@ def replace_body(text, name, body):
 # Performance (OM, 2026-10-01; Wyrm Android's main.c has the same gate): the
 # engine draws only where it can be seen (lobby, match, skin editor, the Skin
 # postcard). Under the opaque SwiftUI pages it draws a few settle frames and
-# then stops, while every poll in trender keeps running. The old Vlither
+# then stops, while every poll in trender keeps running. The old engine
 # background for screens that no longer exist goes too.
 RENDER_GATE = r"""
 /*
@@ -557,7 +557,7 @@ WEB_PERSONA_H = r'''#ifndef ARENA_PERSONA_H
 
 /*
  * Which slither client Wyrm claims to be on the wire: the web client only
- * (`game1107241958.js`, version 291), byte for byte as Vlither sends it.
+ * (`game1107241958.js`, version 291), byte for byte as the reference client sends it.
  *
  * Wyrm used to carry a second identity, the Android AIR client (version 294,
  * its own fingerprint, a CRC32 challenge answer and a settings `c` packet),
@@ -589,7 +589,7 @@ const arena_persona* arena_persona_get(int index);
 WEB_PERSONA_C = r'''#include "arena_persona.h"
 
 /* The web client's identity: `client_version` and `cpw` in game1107241958.js,
-   the same as Vlither's CLIENT_VERSION and `cwa`. */
+   the same as the reference client's CLIENT_VERSION and `cwa`. */
 static const arena_persona web = {.name = "web",
                                   .version = 291,
                                   .fingerprint = {54, 206, 204, 169, 97, 178,
@@ -1055,7 +1055,7 @@ for path in sorted(OUTPUT.rglob("*")):
     text = path.read_text(encoding="utf-8-sig")
     original = text
     if not relative.startswith("app/src/platform/"):
-        text = text.replace("VLITHER_ANDROID", "WYRM_MOBILE")
+        text = text.replace("WYRM_SDL_JNI", "WYRM_MOBILE")
     if relative == "app/src/game/redraw.c":
         text = text.replace("__ANDROID__", "WYRM_MOBILE")
         # Same text as Android's redraw.c (OM, 2026-10-04, drop test): colour
@@ -1118,13 +1118,13 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
 #endif
 #else''')
     if relative == "app/src/platform/android_startup.c":
-        text = text.replace('VLITHER_ANDROID', 'WYRM_MOBILE')
+        text = text.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')
     if relative == "app/src/platform/android_home.c":
         # Preserve the original mailboxes, join admission and death state machine.
         # Only JNI publication and JNI exports are replaced by Apple-facing C calls.
         text = '#include "WyrmOriginalAdapter.h"\n' + text
         text = text[:text.index('JNIEXPORT void JNICALL')]
-        text = text.replace('#ifdef VLITHER_ANDROID', '').replace('#include <jni.h>', '')
+        text = text.replace('#ifdef WYRM_SDL_JNI', '').replace('#include <jni.h>', '')
         for name in ('get_activity', 'clear_exception'):
             start, end = function_span(text, name)
             start = text.rfind('\n', 0, text.rfind('static ', 0, start)) + 1
@@ -1162,7 +1162,7 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
     # Android (server_connect returns false only for a live old socket, never
     # for a failed dial). iOS used to fail the join at once and show a refusal.
     if relative == "app/src/game/loop.c":
-        # The 5 s spawn timeout (Vlither's TIMEOUT) is in the shared loop.c
+        # The 5 s spawn timeout (the reference client's TIMEOUT) is in the shared loop.c
         # itself since 2026-10-09 (ARENA_CONNECT_TIMEOUT_MS), as on Android.
         timeout = '''          arena_taint_mark(usrs->ipv4);
           android_home_arena_refused(
@@ -1184,7 +1184,7 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
           gdata->conn = DISCONNECTED;
           gdata->curr_screen = LOBBY;'''
         assert text.count(failed) == 1
-        text = text.replace(failed, '''          /* Vlither ends this connection attempt here. On iOS the native
+        text = text.replace(failed, '''          /* The reference client ends this connection attempt here. On iOS the native
              landscape lobby is the equivalent of its title screen. */
           android_home_arena_refused(usrs->ipv4, 0);
           game_data_reset(env);
@@ -1427,8 +1427,8 @@ static uint32_t built_skin_rgba(tenv* env, snake* o, int index) {
         # mailbox are engine code, not Android UI code. Compile that exact
         # implementation on Apple and replace only its JNI publication edge
         # with a narrow C ABI consumed by Swift.
-        text = text.replace('#ifdef VLITHER_ANDROID',
-                            '#if defined(VLITHER_ANDROID) || defined(WYRM_IOS)', 1)
+        text = text.replace('#ifdef WYRM_SDL_JNI',
+                            '#if defined(WYRM_SDL_JNI) || defined(WYRM_IOS)', 1)
         text = text.replace('#include <jni.h>',
                             '#ifdef __ANDROID__\n#include <jni.h>\n#endif', 1)
         jni_start = text.index('JNIEXPORT jstring JNICALL')
@@ -1654,8 +1654,8 @@ bool ai_mode_is_editor(void) { return editor_session; }"""),
 # display-link callback (8.3 ms per frame at 120 Hz). The arena socket is plain
 # ws://, so once the WebSocket is open the poll waits 0 ms; while connecting it
 # keeps 5 ms. No packet, timing or keepalive change. Logs a 10 s measurement.
-NET_POLL_OLD = "void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n  /* Vlither blocks 5ms here on Android and 0ms elsewhere. A non-blocking poll\n     is fine over plaintext, where a frame's worth of bytes is already sitting\n     in the socket; a TLS record has to be assembled before there is anything to\n     hand up, and starving that is how a working connection reads as a dead\n     one. */\n#ifdef WYRM_MOBILE\n  mg_mgr_poll(&gdata->network_manager, 5);\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}"
-NET_POLL_NEW = 'void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n#ifdef WYRM_MOBILE\n  /* Phase 3 G (OM, 2026-10-01). Vlither blocked 5 ms here on every frame; its\n     reason was TLS, but the arena socket is plain `ws://` now (see\n     server_connect), so there is no record to assemble. While the socket is\n     still connecting, upgrading or answering the challenge (until the arena\'s\n     \'a\') the 5 ms stays exactly as it was, so entry is untouched; once \'a\'\n     has come the poll only drains what is already there (0 ms), so a\n     frame that finds the socket empty no longer loses up to 5 ms, and ping\n     (counted in frame time) stops carrying that wait. No packet, timing or\n     keepalive changed. Rollback: set WYRM_NET_POLL_OPEN_MS to 5. */\n#ifndef WYRM_NET_POLL_OPEN_MS\n#define WYRM_NET_POLL_OPEN_MS 0\n#endif\n  struct mg_connection* arena = gdata->connection;\n  int wait_ms = (arena && arena->is_websocket && gdata->arena_ready &&\n                 !gdata->closed)\n                    ? WYRM_NET_POLL_OPEN_MS : 5;\n  Uint64 started = SDL_GetTicksNS();\n  mg_mgr_poll(&gdata->network_manager, wait_ms);\n  Uint64 ended = SDL_GetTicksNS();\n\n  /* Measurement for OM\'s before/after check: every 10 s while a WebSocket is\n     open, how long the poll took and how far apart the frames were. */\n  static Uint64 window_start, last_call, poll_sum, poll_max, gap_sum, gap_max;\n  static unsigned frames;\n  if (arena && arena->is_websocket) {\n    if (!window_start) window_start = started;\n    Uint64 took = ended - started;\n    poll_sum += took;\n    if (took > poll_max) poll_max = took;\n    if (last_call) {\n      Uint64 gap = started - last_call;\n      gap_sum += gap;\n      if (gap > gap_max) gap_max = gap;\n    }\n    frames++;\n    if (ended - window_start >= 10000000000ULL && frames > 1) {\n      SDL_Log("Wyrm net poll: wait %d ms, poll avg %.2f ms max %.2f ms, "\n              "frame avg %.2f ms max %.2f ms over %u frames",\n              wait_ms, poll_sum / 1e6 / frames, poll_max / 1e6,\n              gap_sum / 1e6 / (frames - 1), gap_max / 1e6, frames);\n      window_start = ended;\n      poll_sum = poll_max = gap_sum = gap_max = 0;\n      frames = 0;\n    }\n    last_call = started;\n  } else {\n    window_start = last_call = 0;\n    poll_sum = poll_max = gap_sum = gap_max = 0;\n    frames = 0;\n  }\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}'
+NET_POLL_OLD = "void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n  /* The reference client blocks 5ms here on Android and 0ms elsewhere. A non-blocking poll\n     is fine over plaintext, where a frame's worth of bytes is already sitting\n     in the socket; a TLS record has to be assembled before there is anything to\n     hand up, and starving that is how a working connection reads as a dead\n     one. */\n#ifdef WYRM_MOBILE\n  mg_mgr_poll(&gdata->network_manager, 5);\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}"
+NET_POLL_NEW = 'void server_poll(tenv* env) {\n  tuser_data* usr = env->usr;\n  game_data* gdata = &usr->gdata;\n\n#ifdef WYRM_MOBILE\n  /* Phase 3 G (OM, 2026-10-01). The reference client blocked 5 ms here on every frame; its\n     reason was TLS, but the arena socket is plain `ws://` now (see\n     server_connect), so there is no record to assemble. While the socket is\n     still connecting, upgrading or answering the challenge (until the arena\'s\n     \'a\') the 5 ms stays exactly as it was, so entry is untouched; once \'a\'\n     has come the poll only drains what is already there (0 ms), so a\n     frame that finds the socket empty no longer loses up to 5 ms, and ping\n     (counted in frame time) stops carrying that wait. No packet, timing or\n     keepalive changed. Rollback: set WYRM_NET_POLL_OPEN_MS to 5. */\n#ifndef WYRM_NET_POLL_OPEN_MS\n#define WYRM_NET_POLL_OPEN_MS 0\n#endif\n  struct mg_connection* arena = gdata->connection;\n  int wait_ms = (arena && arena->is_websocket && gdata->arena_ready &&\n                 !gdata->closed)\n                    ? WYRM_NET_POLL_OPEN_MS : 5;\n  Uint64 started = SDL_GetTicksNS();\n  mg_mgr_poll(&gdata->network_manager, wait_ms);\n  Uint64 ended = SDL_GetTicksNS();\n\n  /* Measurement for OM\'s before/after check: every 10 s while a WebSocket is\n     open, how long the poll took and how far apart the frames were. */\n  static Uint64 window_start, last_call, poll_sum, poll_max, gap_sum, gap_max;\n  static unsigned frames;\n  if (arena && arena->is_websocket) {\n    if (!window_start) window_start = started;\n    Uint64 took = ended - started;\n    poll_sum += took;\n    if (took > poll_max) poll_max = took;\n    if (last_call) {\n      Uint64 gap = started - last_call;\n      gap_sum += gap;\n      if (gap > gap_max) gap_max = gap;\n    }\n    frames++;\n    if (ended - window_start >= 10000000000ULL && frames > 1) {\n      SDL_Log("Wyrm net poll: wait %d ms, poll avg %.2f ms max %.2f ms, "\n              "frame avg %.2f ms max %.2f ms over %u frames",\n              wait_ms, poll_sum / 1e6 / frames, poll_max / 1e6,\n              gap_sum / 1e6 / (frames - 1), gap_max / 1e6, frames);\n      window_start = ended;\n      poll_sum = poll_max = gap_sum = gap_max = 0;\n      frames = 0;\n    }\n    last_call = started;\n  } else {\n    window_start = last_call = 0;\n    poll_sum = poll_max = gap_sum = gap_max = 0;\n    frames = 0;\n  }\n#else\n  mg_mgr_poll(&gdata->network_manager, 0);\n#endif\n}'
 _target = OUTPUT / "app/src/network/server.c"
 _text = _target.read_text(encoding="utf-8")
 _nl = "\r\n" if "\r\n" in _text else "\n"
@@ -1701,7 +1701,7 @@ print("Performance chip applied")
 # mobile/mobile_controls.c has the same C). After the main pass, so the
 # platform macro is already WYRM_MOBILE here.
 JOYSTICK_KNOB_PAIRS = [
-    ("""#ifdef VLITHER_ANDROID
+    ("""#ifdef WYRM_SDL_JNI
 static void update_joystick(tenv* env, float x, float y) {""",
      """/*
  * The joystick knob follows the snake (OM, 2026-10-01).
@@ -1722,7 +1722,7 @@ static bool joystick_heading(tenv* env, float* hx, float* hy) {
   return true;
 }
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 static void update_joystick(tenv* env, float x, float y) {"""),
     ("""    } else if (cfg->joystick_mode == MOBILE_JOYSTICK_DYNAMIC &&
                !state->joystick_down && in_joystick_half) {
@@ -1768,7 +1768,7 @@ static void update_joystick(tenv* env, float x, float y) {"""),
 ]
 
 _arrow_patch("app/src/mobile/mobile_controls.c",
-             [(old.replace("VLITHER_ANDROID", "WYRM_MOBILE"), new.replace("VLITHER_ANDROID", "WYRM_MOBILE"))
+             [(old.replace("WYRM_SDL_JNI", "WYRM_MOBILE"), new.replace("WYRM_SDL_JNI", "WYRM_MOBILE"))
               for old, new in JOYSTICK_KNOB_PAIRS])
 print("Joystick knob follows the snake")
 
@@ -2252,8 +2252,8 @@ void mobile_controls_look_ahead_offset(tenv* env, float* x, float* y);
   ],
 }  # end PLAY_FEEL_PAIRS
 for _relative, _pairs in PLAY_FEEL_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 print('Play feel: original arrow motion, look ahead, arrow shadow, spring zoom')
 
 # Your own leaderboard row (OM, 2026-10-05), Wyrm and Near Original: the
@@ -2449,8 +2449,8 @@ static bool auto_restart_closing = false;
   ],
 }  # end AUTO_RESTART_PAIRS
 for _relative, _pairs in AUTO_RESTART_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 print('Auto restart: on-screen toggle, a kill restarts at once')
 
 SKINLESS_SPINE_PAIRS = {
@@ -3217,8 +3217,8 @@ void redraw(tenv* env) {
   ],
 }  # end SKINLESS_SPINE_PAIRS
 for _relative, _pairs in SKINLESS_SPINE_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 _arrow_patch('app/src/game/redraw.c', [
     (r'''          if (o->id == gdata->data.snake_id) {
             extern void wyrm_look_draw(tenv* env, float hx, float hy, float fang,
@@ -4079,8 +4079,8 @@ static void input_with_policy(tenv* env, bool team_protected,
   ],
 }  # end EYES_BACK_PAIRS
 for _relative, _pairs in EYES_BACK_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 print('Eyes Back: on-screen key, NTL VANCED eye flick')
 
 # GPU device lost (OM's iPhone, 2026-10-06): VK_ERROR_DEVICE_LOST after a
@@ -4105,7 +4105,7 @@ static void tcontext_device_lost(tcontext* context, const char* where) {
   context->swapchain_ok = false;
   if (context->device_lost) return;
   context->device_lost = true;
-  TCONTEXT_LOG("Vlither: Vulkan device lost (%s); rendering stopped", where);
+  TCONTEXT_LOG("Wyrm: Vulkan device lost (%s); rendering stopped", where);
 }
 
 void _tcontext_create_instance(tcontext* context) {'''),
@@ -4129,7 +4129,7 @@ void _tcontext_create_instance(tcontext* context) {'''),
     ('''  if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during acquire");''',
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during acquire");''',
      '''  if (r == VK_ERROR_DEVICE_LOST) {
     tcontext_device_lost(context, "acquire");
     return false;
@@ -4137,7 +4137,7 @@ void _tcontext_create_instance(tcontext* context) {'''),
   if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during acquire");'''),
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during acquire");'''),
     ('''  if (submit_result != VK_SUCCESS) {
 ''', '''  if (submit_result == VK_ERROR_DEVICE_LOST)
     tcontext_device_lost(context, "submit");
@@ -4146,18 +4146,18 @@ void _tcontext_create_instance(tcontext* context) {'''),
     ('''  if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during present");''',
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during present");''',
      '''  if (r == VK_ERROR_DEVICE_LOST) tcontext_device_lost(context, "present");
   if (r == VK_ERROR_SURFACE_LOST_KHR) {
     context->surface_lost = true;
     context->swapchain_ok = false;
-    TCONTEXT_LOG("Vlither: Android Vulkan surface was lost during present");'''),
+    TCONTEXT_LOG("Wyrm: Android Vulkan surface was lost during present");'''),
   ],
   'thermite/src/framework/twindow.c': [
     ('''static void apply_pending_window_change(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 ''', '''static void apply_pending_window_change(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   /* A lost device cannot be rebuilt from here (tcontext_device_lost). */
   if (window->env->ctx && window->env->ctx->device_lost) {
     window->_refresh = false;
@@ -4167,8 +4167,8 @@ void _tcontext_create_instance(tcontext* context) {'''),
   ],
 }  # end GPU_LOST_PAIRS
 for _relative, _pairs in GPU_LOST_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 print('GPU device lost: stop drawing, no endless swapchain retries')
 
 # Wyrm's own tags (OM, 2026-10-07, packet change approved): 77 stickers after
@@ -4297,8 +4297,8 @@ static int wyrm_tag_from_corner(const uint8_t* corner) {
   ],
 }  # end WYRM_TAG_PAIRS
 for _relative, _pairs in WYRM_TAG_PAIRS.items():
-    _arrow_patch(_relative, [(o.replace('VLITHER_ANDROID', 'WYRM_MOBILE'),
-                              n.replace('VLITHER_ANDROID', 'WYRM_MOBILE')) for o, n in _pairs])
+    _arrow_patch(_relative, [(o.replace('WYRM_SDL_JNI', 'WYRM_MOBILE'),
+                              n.replace('WYRM_SDL_JNI', 'WYRM_MOBILE')) for o, n in _pairs])
 print("Wyrm tags: own stickers in the skin block's corner")
 
 
@@ -4660,10 +4660,20 @@ _target.write_text(_text, encoding="utf-8")
 print("Stats panel: text colour")
 
 
-# Engine changes of 2026-10-12 (OM, from Vlither-android 4.7.7): ping like
+# Engine changes of 2026-10-12 (OM, from the reference client): ping like
 # NTL, a draining network poll, the lost-pong retry, the bot's border guard,
 # the arena floor uploaded in the background, and IPv6 arenas. The pairs are
 # the same text Wyrm Android's tree got (Scripts/engine_sync_2026_10_12.py).
 import engine_sync_2026_10_12 as _sync_1012
 _sync_1012.apply(OUTPUT, label="engine 2026-10-12 (iOS)")
 print("Engine 2026-10-12: ping, drain, bot border, async floor, IPv6")
+
+
+# Stutter fixes of 2026-10-12 (OM, "same as the reference client"): vsync always,
+# names in one batch, a light spine, per-snake extras only on screen. The
+# pairs are the same text Wyrm Android's tree got
+# (Scripts/engine_stutter_2026_10_12.py); the Android-only frame pacing in
+# main.c is skipped here.
+import engine_stutter_2026_10_12 as _stutter_1012
+_stutter_1012.apply(OUTPUT, label="engine stutter 2026-10-12 (iOS)", ios=True)
+print("Engine stutter 2026-10-12: vsync always, names batched, light spine, extras on screen")

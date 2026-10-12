@@ -9,7 +9,7 @@
  * logging and no longer crosses into Java.
  */
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 
 void android_startup_stage(int stage, const char* title, const char* detail) {

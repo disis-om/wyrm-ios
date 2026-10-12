@@ -47,7 +47,7 @@ void tlaunch(tenv* env) {
 
   env->config.vsync = usrs->vsync;
   env->config.fullscreen = false;
-  env->config.title = "Vlither";
+  env->config.title = "Wyrm";
 }
 
 void tinit(tenv* env) {

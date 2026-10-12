@@ -7,7 +7,7 @@
 #include <stdlib.h>
 #include <string.h>
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_system.h>
 #include <jni.h>
@@ -30,14 +30,14 @@ static void copy_text(char* destination, size_t capacity, const char* value) {
 static bool get_activity(JNIEnv** out_env, jclass* out_class) {
   *out_env = (JNIEnv*)SDL_GetAndroidJNIEnv();
   if (!*out_env) {
-    SDL_Log("Vlither updater: JNI environment unavailable");
+    SDL_Log("Wyrm updater: JNI environment unavailable");
     return false;
   }
   JNIEnv* env = *out_env;
   *out_class = (*env)->FindClass(env, "com/wyrm/omrajput/WyrmActivity");
   if (!*out_class) {
     (*env)->ExceptionClear(env);
-    SDL_Log("Vlither updater: activity class unavailable");
+    SDL_Log("Wyrm updater: activity class unavailable");
     return false;
   }
   return true;
@@ -51,7 +51,7 @@ static void call_static_void(const char* method_name) {
       (*env)->GetStaticMethodID(env, activity_class, method_name, "()V");
   if (!method) {
     (*env)->ExceptionClear(env);
-    SDL_Log("Vlither updater: Java method %s unavailable", method_name);
+    SDL_Log("Wyrm updater: Java method %s unavailable", method_name);
     (*env)->DeleteLocalRef(env, activity_class);
     return;
   }

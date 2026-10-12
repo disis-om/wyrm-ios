@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #endif
 
@@ -12,7 +12,7 @@ static bool paste_clipboard_text(char* buffer, size_t buffer_size,
                                  void* user_data) {
   if (!buffer || buffer_size == 0) return false;
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   char* clipboard = SDL_GetClipboardText();
   if (!clipboard || !clipboard[0]) {
     if (clipboard) SDL_free(clipboard);
@@ -44,7 +44,7 @@ static bool paste_clipboard_text(char* buffer, size_t buffer_size,
     written = length;
   }
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_free(clipboard);
 #endif
   return written > 0;

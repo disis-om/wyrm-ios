@@ -1,4 +1,4 @@
-"""Engine changes of 2026-10-12 (OM), taken from Vlither-android 4.7.7.
+"""Engine changes of 2026-10-12 (OM), taken from the reference client.
 
 One source for both apps: Wyrm Android's engine tree gets these pairs once
 (`python engine_sync_2026_10_12.py "<Wyrm Android>"`), and
@@ -45,7 +45,7 @@ def pairs(relative, *items):
 pairs("app/src/game/game_data.h",
       ("    float pings[PING_SAMPLE_COUNT];\n",
        """    float pings[PING_SAMPLE_COUNT];
-    /* Ping the way NTL shows it (OM, 2026-10-12, from Vlither-android):
+    /* Ping the way NTL shows it (OM, 2026-10-12, from the reference client):
        game/oef.c ping_mark_*. Timed on a high-resolution clock (ctm moves once
        a frame), the shown number updated once a second, and the worst round
        trip of the last 10 s. */
@@ -83,7 +83,7 @@ pairs("app/src/game/oef.h",
       ("void oef(tenv* env);\n",
        """void oef(tenv* env);
 
-/* Ping (OM, 2026-10-12, from Vlither-android): the ping sent, the pong
+/* Ping (OM, 2026-10-12, from the reference client): the ping sent, the pong
    received, and the end of each frame's network poll. */
 void ping_mark_sent(tenv* env);
 void ping_mark_received(tenv* env);
@@ -92,7 +92,7 @@ void ping_poll_done(tenv* env);
 
 pairs("app/src/game/oef.c",
       ("void time_step(tenv* env) {\n",
-       """/* Ping (OM, 2026-10-12, from Vlither-android 4.7.7, as NTL does it). The
+       """/* Ping (OM, 2026-10-12, from the reference client, as NTL does it). The
    arena socket is read once a frame, so a pong is seen up to a frame late,
    and a long frame (a texture, a stall) made a good network look hundreds of
    ms late. The round trip is bracketed instead: the pong was not there when
@@ -166,7 +166,7 @@ void time_step(tenv* env) {
       ("""  if (gdata->data.lagging) {
     gdata->data.lag_mult = arena_lag_step(gdata->data.lag_mult, true);
 """,
-       """  /* 3 (OM, 2026-10-12, from Vlither-android): a lost pong left `wfpr` set
+       """  /* 3 (OM, 2026-10-12, from the reference client): a lost pong left `wfpr` set
      for good, and input() never pinged again; on mobile data a silent socket
      is what a carrier's NAT drops. After 3 s (four times the 750 ms lag mark)
      the next ping goes out; a pong for the lost one is not timed. */
@@ -236,7 +236,7 @@ pairs("app/src/game/redraw.c",
 
 pairs("app/src/network/server.c",
       ("void server_poll(tenv* env) {\n",
-       """/* 2 (OM, 2026-10-12, from Vlither-android): Mongoose reads a socket once a
+       """/* 2 (OM, 2026-10-12, from the reference client): Mongoose reads a socket once a
    poll, so a burst the arena queued behind a slow frame waited for the next
    frames. After a poll that read something, up to three more 0 ms polls
    catch up; an idle socket costs one poll as before, and nothing sleeps
@@ -278,7 +278,7 @@ pairs("app/src/game/sbot.c",
 
 /* During a shrink the renderer eases flux_grd over several frames, but the
    server's border (real_flux_grd) has already moved: the bot obeys the smaller
-   (OM, 2026-10-12, from Vlither-android). */
+   (OM, 2026-10-12, from the reference client). */
 static inline float safe_border_radius(const game_data* gdata) {
   float smoothed = gdata->data.flux_grd;
   float server = gdata->data.real_flux_grd;
@@ -340,7 +340,7 @@ static inline float safe_border_radius(const game_data* gdata) {
 """),
       ("""void sbot_go(tenv* env) {
 """,
-       """/* Border safety outranks every stage (OM, 2026-10-12, from Vlither-android):
+       """/* Border safety outranks every stage (OM, 2026-10-12, from the reference client):
    check_collision() ran only outside self-circle stage 2, so a coiling snake
    could follow its own body into the wall. This predictive guard breaks the
    food or coil state early and turns towards a safe point inward. */
@@ -409,7 +409,7 @@ void sbot_go(tenv* env) {
 # ------------------------------------------------- 5 floor upload, async
 
 ASYNC_UPLOAD_C = r'''/* A texture uploading in the background (OM, 2026-10-12, from
-   Vlither-android): the same copy and mip chain as create_mipmap_texture(),
+   the reference client): the same copy and mip chain as create_mipmap_texture(),
    recorded on a command buffer of its own and submitted on a fence of its
    own, so nothing waits on the GPU. texture_upload_poll() finishes it once
    the fence has signalled. Engine thread only (the command pool and the
@@ -692,7 +692,7 @@ pairs("app/src/rendering/renderer.h",
   struct bg_swap* bg_swap;
 """))
 
-BG_SWAP_C = r'''/* 5 (OM, 2026-10-12, from Vlither-android): the arena floor changes without
+BG_SWAP_C = r'''/* 5 (OM, 2026-10-12, from the reference client): the arena floor changes without
    a hitch. The PNG decodes on a worker thread, the GPU copy runs on its own
    fence (texture_upload_*), and each frame in flight takes the new floor in
    its descriptor set once its last use of the old one has finished: the
@@ -951,7 +951,7 @@ pairs("app/src/network/server.c",
 """,
        """bool server_address_is_valid(const char* address) {
   if (!address || !address[0]) return false;
-  /* IPv6 (OM, 2026-10-12, as Vlither-android): "[2001:db8::1]:444". Hex
+  /* IPv6 (OM, 2026-10-12, as the reference client): "[2001:db8::1]:444". Hex
      digits and colons (a dotted IPv4 tail allowed) inside the brackets, then
      a port. Mongoose is built with MG_ENABLE_IPV6. */
   if (address[0] == '[') {

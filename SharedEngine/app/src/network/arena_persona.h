@@ -42,7 +42,7 @@ typedef struct arena_persona {
  * On `148.113.20.151`, the web identity answered the challenge, was admitted,
  * and played a full seventeen-second match. The AIR identity answered the same
  * challenge on the same arena and the server sent literally nothing back before
- * hanging up — one inbound packet, the challenge itself. Vlither, which does
+ * hanging up — one inbound packet, the challenge itself. The reference client, which does
  * work on these arenas, carries the web fingerprint and does not contain the
  * AIR one at all.
  *

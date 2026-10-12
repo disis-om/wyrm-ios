@@ -55,9 +55,9 @@ checks = {
     "native refusal bridge": "WyrmIOSArenaRefusalSnapshot" in shell and "WyrmIOSPublishArenaRefusal" in home,
     "short silent life returns to lobby": "refused_short_life" in callback and "gdata->join_spawned = false" in callback and "gdata->curr_screen = LOBBY" in loop,
     "no death card before own spawn": "if (!refused_short_life && gdata->join_spawned)" in callback,
-    # Vlither's TIMEOUT (5 s until a snake exists), shared with Android since
+    # The reference client's TIMEOUT (5 s until a snake exists), shared with Android since
     # 2026-10-09 through arena_protocol.h.
-    "Vlither five-second entry timeout": "ARENA_CONNECT_TIMEOUT_MS = 5000" in protocol and "SDL_GetTicks() - gdata->attempt_started_ms > ARENA_CONNECT_TIMEOUT_MS" in loop and "if (gdata->connection && !gdata->connection->is_closing &&" in loop,
+    "The reference client five-second entry timeout": "ARENA_CONNECT_TIMEOUT_MS = 5000" in protocol and "SDL_GetTicks() - gdata->attempt_started_ms > ARENA_CONNECT_TIMEOUT_MS" in loop and "if (gdata->connection && !gdata->connection->is_closing &&" in loop,
     # One dial per Play request. server_connect says no only while the last
     # socket is still alive (nothing was dialled); a failed dial still returns
     # true and ends the attempt. The 50 ms wait (Android's, iOS too since

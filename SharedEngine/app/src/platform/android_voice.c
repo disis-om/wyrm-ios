@@ -1,6 +1,6 @@
 #include "android_voice.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <jni.h>
 #include <math.h>
 #include <SDL3/SDL.h>

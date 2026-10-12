@@ -7,7 +7,7 @@
 #include "../game/arena_theme.h"
 #include "../user.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #endif
 
@@ -75,7 +75,7 @@ bool mobile_hotkeys_pressed(tenv* env, int action) {
   return pressed;
 }
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 bool mobile_hotkeys_process_event(tenv* env, const void* raw_event) {
   const SDL_Event* event = raw_event;
   if (event->type == SDL_EVENT_WILL_ENTER_BACKGROUND ||
@@ -150,7 +150,7 @@ static bool action_active(tenv* env, int action) {
 }
 
 void mobile_hotkeys_draw_gameplay(tenv* env) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (env->usr->gdata.curr_screen != PLAYING ||
       (env->usr->gdata.conn != CONNECTED &&
        env->usr->gdata.conn != AI_CONNECTED))

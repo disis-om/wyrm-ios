@@ -9,7 +9,7 @@
 #include "mobile/mobile_controls.h"
 #include "ui/ui_theme.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 
 static tenv* android_env;
@@ -135,7 +135,7 @@ void imgui_init(tenv* env) {
                            .Subpass = 0,
                            .MSAASamples = VK_SAMPLE_COUNT_1_BIT},
       .UseDynamicRendering = false});
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_env = env;
   ui_touch_active = false;
   SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -206,7 +206,7 @@ void imgui_init(tenv* env) {
 
 void imgui_prerender() {
   igImplVulkan_NewFrame();
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   igImplSDL3_NewFrame();
 #else
   igImplGlfw_NewFrame();
@@ -219,7 +219,7 @@ void imgui_render(VkCommandBuffer cmd) {
 }
 
 void imgui_destroy() {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   igImplSDL3_Shutdown();
 #else
   igImplGlfw_Shutdown();

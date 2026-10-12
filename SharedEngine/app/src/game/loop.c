@@ -158,10 +158,10 @@ void game_loop(tenv* env) {
       } else {
         /* 'a' ends connecting in the web client, even before our snake
            exists: keepalives start then (input below). The attempt itself is
-           given up as Vlither gives it up (OM, 2026-10-09): no snake within
+           given up as the reference client gives it up (OM, 2026-10-09): no snake within
            TIMEOUT, 5 s from the dial (`ARENA_CONNECT_TIMEOUT_MS`). Until
            2026-10-09 Android stopped at 3.333 s and only before 'a'; iOS
-           already used Vlither's 5 s. */
+           already used the reference client's 5 s. */
         if (gdata->connection && !gdata->connection->is_closing &&
             SDL_GetTicks() - gdata->attempt_started_ms > ARENA_CONNECT_TIMEOUT_MS) {
           arena_taint_mark(usrs->ipv4);

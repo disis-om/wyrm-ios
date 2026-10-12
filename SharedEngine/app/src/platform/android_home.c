@@ -5,7 +5,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <jni.h>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_system.h>

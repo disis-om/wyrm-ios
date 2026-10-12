@@ -3,9 +3,9 @@
 #include <stdio.h>
 #include <string.h>
 
-#if defined(VLITHER_ANDROID) || defined(WYRM_IOS)
+#if defined(WYRM_SDL_JNI) || defined(WYRM_IOS)
 #include <SDL3/SDL.h>
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <jni.h>
 #include <SDL3/SDL_system.h>
 #endif
@@ -759,7 +759,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
  * underneath it. See `android_team_release_chat`.
  */
 static void notify_java_chat(bool shown) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   JNIEnv* jni = (JNIEnv*)SDL_GetAndroidJNIEnv();
   if (!jni) return;
   jclass activity = (*jni)->FindClass(jni, "com/wyrm/omrajput/WyrmActivity");
@@ -1392,7 +1392,7 @@ void android_team_draw_chat_help(tenv* env) {
                              NULL, 0, NULL);
 }
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 JNIEXPORT void JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeCloseTeamChat(JNIEnv* env,
                                                          jclass clazz,
@@ -1412,7 +1412,7 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeCloseTeamChat(JNIEnv* env,
  * literal `_GAME_MENU_` when not in a match, which is what the team service
  * expects and what tells the others you are not on the map.
  */
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 JNIEXPORT jstring JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeTeamPresence(JNIEnv* env,
                                                         jclass clazz) {
@@ -1490,7 +1490,7 @@ int WyrmIOSTakeTeamComposerRequest(void) {
 }
 
 /** One line per member: name, x, y, score, rank, bot, in-this-arena. */
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 JNIEXPORT void JNICALL
 Java_com_wyrm_omrajput_WyrmActivity_nativeSetTeamMembers(JNIEnv* env,
                                                           jclass clazz,

@@ -2,7 +2,7 @@
 
 #include "../game/backgrounds.h"
 #include "../user.h"
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include "../platform/android_startup.h"
 #endif
 
@@ -104,7 +104,7 @@ renderer* renderer_create(tenv* env) {
   tcontext* ctx = env->ctx;
   tuser_data* usr = env->usr;
   renderer* r = calloc(1, sizeof(renderer));
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_startup_stage(8, "Uploading arena textures",
                         "Preparing background, sprite atlas and brand assets");
 #endif
@@ -163,18 +163,18 @@ renderer* renderer_create(tenv* env) {
   const background_def* bg = &BACKGROUNDS[r->background];
   r->bg_tex = create_mipmap_texture(
       ctx, bg->path ? bg->path : "app/res/textures/background_4k.png");
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_startup_texture("background", r->bg_tex->size[0], r->bg_tex->size[1],
                           1, 4);
 #endif
   r->tex_atlas = create_mipmap_texture(ctx, "app/res/textures/tex_atlas_8k.png");
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_startup_texture("atlas", r->tex_atlas->size[0], r->tex_atlas->size[1],
                           2, 4);
 #endif
   r->logo_tex =
-      create_mipmap_texture(ctx, "app/res/textures/vlither_enhanced_logo.png");
-#ifdef VLITHER_ANDROID
+      create_mipmap_texture(ctx, "app/res/textures/wyrm_logo.png");
+#ifdef WYRM_SDL_JNI
   android_startup_texture("logo", r->logo_tex->size[0], r->logo_tex->size[1],
                           3, 4);
 #endif
@@ -183,7 +183,7 @@ renderer* renderer_create(tenv* env) {
       VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
   r->home_icons_tex =
       create_mipmap_texture(ctx, "app/res/textures/home_navigation_icons.png");
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_startup_texture("home-icons", r->home_icons_tex->size[0],
                           r->home_icons_tex->size[1], 4, 4);
 #endif
@@ -393,7 +393,7 @@ renderer* renderer_create(tenv* env) {
   r->astr = bp_renderer_create(ctx, 2, r->pipeline_layout, r->render_pass);
   r->cr = spr_renderer_create(ctx, 1, r->pipeline_layout, env->ctx->renderpass);
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   android_startup_stage(9, "Graphics pipelines assembled",
                         "Arena, sprites, food, minimap and UI pipelines are ready");
 #endif

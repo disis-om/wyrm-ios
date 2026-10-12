@@ -4,7 +4,7 @@
 #include "../core/tenv.h"
 #include "../util/tdarray.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #include "platform/android_startup.h"
 
@@ -131,7 +131,7 @@ void twindow_request_refresh(twindow* twindow) {
   twindow->_refresh = true;
 }
 
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
 void window_resize_callback(GLFWwindow* window, int width, int height) {
   tenv* env = glfwGetWindowUserPointer(window);
   env->wnd->size[0] = width;
@@ -154,9 +154,9 @@ twindow* twindow_create(tenv* env, trender_func render_func,
   window->_closed = false;
   window->_event_func = NULL;
   window->env = env;
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) {
-    SDL_Log("Vlither: SDL_Init failed: %s", SDL_GetError());
+    SDL_Log("Wyrm: SDL_Init failed: %s", SDL_GetError());
     free(window);
     return NULL;
   }
@@ -166,7 +166,7 @@ twindow* twindow_create(tenv* env, trender_func render_func,
       env->config.title, 1280, 720,
       SDL_WINDOW_VULKAN | SDL_WINDOW_FULLSCREEN | SDL_WINDOW_HIGH_PIXEL_DENSITY);
   if (!window->handle) {
-    SDL_Log("Vlither: SDL_CreateWindow failed: %s", SDL_GetError());
+    SDL_Log("Wyrm: SDL_CreateWindow failed: %s", SDL_GetError());
     free(window);
     return NULL;
   }
@@ -237,7 +237,7 @@ twindow* twindow_create(tenv* env, trender_func render_func,
 }
 
 static void apply_pending_window_change(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   /* Android destroys and replaces the native SurfaceView while the SDL
      window object survives. Rebuild only Vulkan's surface-facing resources;
      ImGui and the raw-finger input backend remain bound to the same SDL
@@ -312,7 +312,7 @@ static void apply_pending_window_change(twindow* window) {
 }
 
 void twindow_poll_input(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_Event event;
   while (SDL_PollEvent(&event))
     process_android_event(window, &event);
@@ -322,7 +322,7 @@ void twindow_poll_input(twindow* window) {
   apply_pending_window_change(window);
 }
 void twindow_wait_input(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_Event event;
   /* A timeout guarantees that surface recovery is retried after Android has
      created the replacement SurfaceView even if no later input event arrives. */
@@ -335,7 +335,7 @@ void twindow_wait_input(twindow* window) {
 }
 
 void twindow_toggle_fullscreen(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_SetWindowFullscreen(window->handle, true);
   window->env->config.fullscreen = true;
 #else
@@ -360,7 +360,7 @@ void twindow_toggle_fullscreen(twindow* window) {
 }
 
 bool twindow_key_down(twindow* window, int key) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_Scancode scancode = sdl_scancode_from_key(key);
   const bool* state = SDL_GetKeyboardState(NULL);
   return scancode != SDL_SCANCODE_UNKNOWN && state[scancode];
@@ -370,7 +370,7 @@ bool twindow_key_down(twindow* window, int key) {
 }
 
 bool twindow_button_down(twindow* window, int button) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_MouseButtonFlags state = SDL_GetMouseState(NULL, NULL);
   Uint8 sdl_button = button == GLFW_MOUSE_BUTTON_LEFT
                          ? SDL_BUTTON_LEFT
@@ -383,7 +383,7 @@ bool twindow_button_down(twindow* window, int button) {
 }
 
 bool twindow_closed(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   return window->_closed;
 #else
   return glfwWindowShouldClose(window->handle);
@@ -395,7 +395,7 @@ void twindow_set_event_handler(twindow* window, tevent_func event_func) {
 }
 
 void twindow_destroy(twindow* window) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_DestroyWindow(window->handle);
   SDL_Quit();
 #else

@@ -7,7 +7,7 @@ typedef struct GLFWmonitor GLFWmonitor;
 struct GLFWwindow;
 struct GLFWmonitor;
 #endif //CIMGUI_DEFINE_ENUMS_AND_STRUCTS
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 CIMGUI_API bool igImplSDL3_InitForVulkan(void* window);
 CIMGUI_API void igImplSDL3_Shutdown(void);
 CIMGUI_API void igImplSDL3_NewFrame(void);

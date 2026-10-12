@@ -3,7 +3,7 @@
 
 #include "tenv.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL_main.h>
 #endif
 

@@ -11,7 +11,7 @@
 #include "mobile_hotkeys.h"
 #include "../user.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #endif
 
@@ -113,7 +113,7 @@ static void process_ui_scroll_touch(mobile_controls_state* state,
 
 void mobile_controls_init(tenv* env) {
   memset(&env->usr->mobile_controls, 0, sizeof(env->usr->mobile_controls));
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   /* UI and gameplay consume SDL finger events directly. Do not ask SDL to
      generate duplicate mouse events for each touch. */
   SDL_SetHint(SDL_HINT_TOUCH_MOUSE_EVENTS, "0");
@@ -157,7 +157,7 @@ void mobile_controls_finish_editor(tenv* env, bool save) {
   if (save) save_user_settings(&env->usr->usrs);
 }
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 static void update_joystick(tenv* env, float x, float y) {
   mobile_controls_state* state = &env->usr->mobile_controls;
   mobile_control_settings* cfg = &env->usr->usrs.mobile_controls;
@@ -578,7 +578,7 @@ void mobile_controls_update(tenv* env) {
 }
 
 bool mobile_controls_get_aim(tenv* env, int* x, int* y) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   mobile_controls_state* state = &env->usr->mobile_controls;
   if (!state->aim_valid) return false;
   *x = (int)(state->joystick_axis[0] * 1000.0f);
@@ -593,7 +593,7 @@ bool mobile_controls_get_aim(tenv* env, int* x, int* y) {
 }
 
 bool mobile_controls_boost_down(tenv* env) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   return env->usr->mobile_controls.boost_down;
 #else
   (void)env;
@@ -630,7 +630,7 @@ static bool arrow_geometry(tenv* env, float* ax, float* ay, float* dx,
 }
 
 bool mobile_controls_get_arrow_position(tenv* env, float* x, float* y) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   float dx, dy, length, width;
   return x && y && arrow_geometry(env, x, y, &dx, &dy, &length, &width);
 #else
@@ -857,7 +857,7 @@ static void draw_zoom(tenv* env, ImDrawList* dl, bool editor) {
 }
 
 void mobile_controls_draw_gameplay(tenv* env) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (env->usr->gdata.curr_screen != PLAYING ||
       (env->usr->gdata.conn != CONNECTED &&
        env->usr->gdata.conn != AI_CONNECTED))

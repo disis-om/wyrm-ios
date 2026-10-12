@@ -12,7 +12,7 @@
 #include "../user.h"
 #include "ui_theme.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #endif
 
@@ -25,7 +25,7 @@ static ImU32 lobby_rgba(unsigned char r, unsigned char g, unsigned char b,
 
 /* 6.1.1 Compose is in dp/sp. ImGui is pixels. One dp on this phone is ~2.75px. */
 static float lobby_dp(tenv* env) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   if (env->wnd && env->wnd->handle) {
     float s = SDL_GetWindowDisplayScale(env->wnd->handle);
     if (s >= 1.0f) return s;

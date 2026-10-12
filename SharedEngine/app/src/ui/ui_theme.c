@@ -6,7 +6,7 @@
 #include "../constants.h"
 #include "../user.h"
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 #endif
 
@@ -263,7 +263,7 @@ ui_panel_layout ui_theme_panel_layout(tenv* env, float desired_width,
 ui_safe_area ui_theme_safe_area(tenv* env) {
   ui_safe_area safe = {0, 0, (float)env->ctx->size[0],
                        (float)env->ctx->size[1]};
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_Rect area;
   if (env->wnd && env->wnd->handle &&
       SDL_GetWindowSafeArea(env->wnd->handle, &area)) {

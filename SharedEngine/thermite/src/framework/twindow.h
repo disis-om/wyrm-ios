@@ -1,7 +1,7 @@
 #ifndef TWINDOW_H
 #define TWINDOW_H
 
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include <SDL3/SDL.h>
 
 /* Keep the desktop key-code contract so settings remain portable. */
@@ -70,7 +70,7 @@ typedef void (*tresize_func)(tenv* env);
 typedef bool (*tevent_func)(const void* event);
 
 typedef struct twindow {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   SDL_Window* handle;
 #else
   GLFWwindow* handle;

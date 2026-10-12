@@ -93,10 +93,10 @@ bool server_connect(tenv* env) {
     return true;
   }
 
-  /* Two immediate polls, from Vlither. A TLS handshake needs poll cycles
+  /* Two immediate polls, from the reference client. A TLS handshake needs poll cycles
      before the game loop's own first poll comes round, and the connect
      otherwise spends a frame doing nothing. */
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   mg_mgr_poll(&gdata->network_manager, 5);
   mg_mgr_poll(&gdata->network_manager, 5);
 #endif
@@ -107,12 +107,12 @@ void server_poll(tenv* env) {
   tuser_data* usr = env->usr;
   game_data* gdata = &usr->gdata;
 
-  /* Vlither blocks 5ms here on Android and 0ms elsewhere. A non-blocking poll
+  /* The reference client blocks 5ms here on Android and 0ms elsewhere. A non-blocking poll
      is fine over plaintext, where a frame's worth of bytes is already sitting
      in the socket; a TLS record has to be assembled before there is anything to
      hand up, and starving that is how a working connection reads as a dead
      one. */
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   mg_mgr_poll(&gdata->network_manager, 5);
 #else
   mg_mgr_poll(&gdata->network_manager, 0);

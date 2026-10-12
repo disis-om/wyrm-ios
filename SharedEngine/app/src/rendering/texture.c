@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
 #include "../platform/android_startup.h"
 #endif
 
@@ -15,7 +15,7 @@ static const char* texture_display_name(const char* filename) {
 }
 
 static void texture_startup_step(const char* filename, const char* action) {
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   char title[128];
   char detail[256];
   const char* name = texture_display_name(filename);
@@ -29,8 +29,8 @@ static void texture_startup_step(const char* filename, const char* action) {
 }
 
 static void texture_terminal_failure(const char* title, const char* detail) {
-  SDL_Log("Vlither: %s: %s", title, detail);
-#ifdef VLITHER_ANDROID
+  SDL_Log("Wyrm: %s: %s", title, detail);
+#ifdef WYRM_SDL_JNI
   android_startup_failure(8, title, detail);
   // Keep the Java diagnostic surface alive. Returning an incomplete Vulkan
   // image would only turn the useful error screen into a native crash.
@@ -58,7 +58,7 @@ texture* create_mipmap_texture(tcontext* ctx, const char* filename) {
   };
   bool using_fallback = false;
   if (!data || w <= 0 || h <= 0) {
-    SDL_Log("Vlither: texture decode failed for %s: %s; using fallback",
+    SDL_Log("Wyrm: texture decode failed for %s: %s; using fallback",
             filename, stbi_failure_reason());
     data = fallback;
     w = 2;
@@ -67,7 +67,7 @@ texture* create_mipmap_texture(tcontext* ctx, const char* filename) {
     using_fallback = true;
   }
   texture_startup_step(filename, "image decoded");
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   VkPhysicalDeviceProperties gpu_properties = {0};
   vkGetPhysicalDeviceProperties(ctx->ph_device, &gpu_properties);
   if ((uint32_t)w > gpu_properties.limits.maxImageDimension2D ||
@@ -86,7 +86,7 @@ texture* create_mipmap_texture(tcontext* ctx, const char* filename) {
   }
 #endif
   bool generate_mipmaps = strstr(filename, "tex_atlas") == NULL;
-#ifdef VLITHER_ANDROID
+#ifdef WYRM_SDL_JNI
   // Several Android Mali drivers terminate the device when asked to blit a
   // freshly uploaded image through a full mip chain. Keep the original source
   // resolution, but use a single sampled level on Mali so the upload remains
@@ -109,7 +109,7 @@ texture* create_mipmap_texture(tcontext* ctx, const char* filename) {
         VK_FORMAT_FEATURE_BLIT_DST_BIT |
         VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT;
     if ((format_properties.optimalTilingFeatures & required) != required) {
-      SDL_Log("Vlither: linear mip blits unavailable for %s; using base level",
+      SDL_Log("Wyrm: linear mip blits unavailable for %s; using base level",
               filename);
       mip_levels = 1;
     }

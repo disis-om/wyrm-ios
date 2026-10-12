@@ -8,8 +8,7 @@
 #include <string.h>
 
 /* The web client's own numbers (OM, 2026-10-09: Wyrm is the web client, 291,
- * through and through). Its game script (`legacy/vlither-master/
- * game1107241958.js`) and Vlither send the heading at most every 50 ms
+ * through and through). Its game script (`game1107241958.js`) and the reference client send the heading at most every 50 ms
  * (`ctm-last_e_mtm>50`), a boost change every 150 ms (`ctm-last_accel_mtm>150`)
  * and a key turn every 150 ms (`ctm-lkstm>150`). Until 2026-10-09 these were
  * the AIR client's 33/50/50 while the join said "web".
@@ -22,7 +21,7 @@
  * button; on a touch boost key it held a quick tap's release (and the next
  * press) back up to 150 ms, so boost felt late. Only a boost change is sent,
  * so this adds packets only while the key is being tapped. Revert: 150.
- * ARENA_CONNECT_TIMEOUT_MS is Vlither's TIMEOUT (5 s): an attempt that has not
+ * ARENA_CONNECT_TIMEOUT_MS is the reference client's TIMEOUT (5 s): an attempt that has not
  * spawned a snake by then is given up. Keep the decoders independent of SDL
  * for replay tests. */
 enum { ARENA_AIM_MS = 50, ARENA_EYES_BACK_MS = 33, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 50,

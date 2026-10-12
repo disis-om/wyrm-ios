@@ -3,7 +3,7 @@
 #include "../util/tdarray.h"
 #include "twindow.h"
 
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
 void mouse_button_callback(GLFWwindow* window, int button, int action,
                            int mods) {
   tenv* env = glfwGetWindowUserPointer(window);
@@ -26,7 +26,7 @@ void mouse_wheel_callback(GLFWwindow* window, double x, double y) {
 #endif
 
 tmouse* tmouse_create(twindow* window) {
-#ifndef VLITHER_ANDROID
+#ifndef WYRM_SDL_JNI
   glfwSetMouseButtonCallback(window->handle, mouse_button_callback);
   glfwSetCursorPosCallback(window->handle, mouse_pos_callback);
   glfwSetScrollCallback(window->handle, mouse_wheel_callback);
