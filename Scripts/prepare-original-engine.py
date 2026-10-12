@@ -4677,3 +4677,12 @@ print("Engine 2026-10-12: ping, drain, bot border, async floor, IPv6")
 import engine_stutter_2026_10_12 as _stutter_1012
 _stutter_1012.apply(OUTPUT, label="engine stutter 2026-10-12 (iOS)", ios=True)
 print("Engine stutter 2026-10-12: vsync always, names batched, light spine, extras on screen")
+
+
+# Skin Studio, engine side (OM, 2026-10-12): the player's own atlas on the
+# sprite shader's binding 4, its background swap, the own snake's Studio
+# beads, colours and eyes. Same text as Wyrm Android's tree
+# (Scripts/engine_skin_studio_2026_10_12.py); nothing calls it on iOS yet.
+import engine_skin_studio_2026_10_12 as _studio_1012
+_studio_1012.apply(OUTPUT, label="engine skin studio 2026-10-12 (iOS)", ios=True)
+print("Engine Skin Studio 2026-10-12: atlas binding 4, own snake beads + eyes")
