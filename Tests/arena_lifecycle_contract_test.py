@@ -29,7 +29,7 @@ checks = {
     "web ptc latency probe": 'URL(string: "ws://\\(arena.address):80/ptc")' in services
         and 'setAdditionalHeaders([("Origin", "https://slither.io")])' in services
         and "Data([112])" in services and "data.first == 112" in services,
-    "custom address keeps the TCP fallback": "NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)" in services
+    "custom address keeps the TCP fallback": "NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)" in services
         and "if arena.number == 0 { fallback() }" in services,
     "probe reports connect milliseconds": "DispatchTime.now().uptimeNanoseconds - probeStarted" in services and "elapsed / 1_000_000" in services,
     "bounded probe timeout": "private static let deadline = 2.5" in services and "queue.asyncAfter(deadline: .now() + Self.deadline)" in services,
@@ -71,7 +71,7 @@ checks = {
     "Apple generated bridge has no JNI port callback": "void android_home_set_arena_port_available(bool available) {\n(void)available;\n}" in home,
     "same-frame failed join still publishes busy edge": main.count("publish_arena_port_availability();") == 2,
     "zero-second terminal refusal reaches Swift": "seconds < 0" in mailbox and "apple_refusal_sequence++" in mailbox,
-    "failure is reported without alternate attempt": "android_home_arena_refused(usrs->ipv4, 0)" in loop and "failoverArena(refused:" not in design,
+    "failure is reported without alternate attempt": "android_home_arena_refused(user_settings_arena(usrs), 0)" in loop and "failoverArena(refused:" not in design,
     "manual join respects previous socket close": "last_connect_ms + min_interval_ms" in game_data and "gdata->rejoin_at_ms = due" in game_data,
     "socket failures report their actual phase": all(phrase in callback for phrase in (
         "TCP connected", "WebSocket upgraded", "WebSocket close frame",

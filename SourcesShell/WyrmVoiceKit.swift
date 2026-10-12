@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// Voice chat is hidden on every app (OM, 2026-10-12): its rows, alerts,
+/// badges and notification choice are not shown, so nobody can reach it. The
+/// code stays; `true` brings voice back. Android: `VOICE_ENABLED`.
+enum WyrmVoiceFeature {
+    static let enabled = false
+}
+
 /*
  * Voice rooms, redesigned (OM, 2026-09-30: "kisi professional app ka ho").
  * The pieces the voice pages share, drawn as Android draws them

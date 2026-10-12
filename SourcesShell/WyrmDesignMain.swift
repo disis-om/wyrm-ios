@@ -178,7 +178,7 @@ struct WyrmDesignMain: View {
     /// The Social trail: unread DMs, voice invites, new followers, new global chat.
     private var socialBadge: Int {
         let dms = services.conversations.reduce(0) { $0 + $1.unreadCount }
-        let kinds: Set<String> = ["voice_invite", "follow"]
+        let kinds: Set<String> = WyrmVoiceFeature.enabled ? ["voice_invite", "follow"] : ["follow"]
         return dms + services.alerts.filter { !$0.read && kinds.contains($0.kind) }.count + services.globalUnread
     }
 
@@ -528,7 +528,9 @@ private struct WyrmPlayRoot: View {
 
                 WyrmSectionLabel("Rooms & team")
                 WyrmPaperCard {
-                    WyrmListRow(title: "Voice rooms", detail: services.liveRooms.first?.name ?? "Own and community rooms", value: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
+                    if WyrmVoiceFeature.enabled {
+                        WyrmListRow(title: "Voice rooms", detail: services.liveRooms.first?.name ?? "Own and community rooms", value: "\(services.liveRooms.count) live", icon: "mic.fill", tint: ATheme.live) { open(.voice) }
+                    }
                     WyrmListRow(title: "Team mode", detail: "Original engine team layer", value: "Open", icon: "person.3.fill", tint: ATheme.live) { open(.team) }
                         .wyrmTourAnchor("home.team")
                 }
@@ -716,11 +718,11 @@ private struct WyrmArenaPicker: View {
                     LazyVStack(spacing: 9, pinnedViews: []) {
                         if showAdd {
                             HStack(spacing: 8) {
-                                TextField("IPv4 address:port", text: $customAddress)
+                                TextField("IP address:port", text: $customAddress)
                                     .keyboardType(.numbersAndPunctuation).textInputAutocapitalization(.never).disableAutocorrection(true)
                                 Button("Save") { saveCustom() }.font(.androidWyrm(13, .bold))
                             }.font(.androidWyrm(13)).padding(14).background(ATheme.card).cornerRadius(14)
-                            if addressError { Text("Enter a valid IPv4 address and port (1–65535).")
+                            if addressError { Text("Enter an IPv4 address or [IPv6] address and a port (1–65535).")
                                 .font(.androidWyrm(11)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
                         }
                         if let best = bestArena {
@@ -839,8 +841,10 @@ private struct WyrmSocialRoot: View {
                                 detail: services.globalUnread > 0 ? "\(services.globalUnread) new · last 24 hours" : "Everyone in Wyrm · last 24 hours",
                                 icon: "bubble.left.and.bubble.right.fill", tint: ATheme.link,
                                 badge: services.globalUnread) { open(.globalChat) }
-                    WyrmListRow(title: "Voice rooms", detail: unread(["voice_invite"]) > 0 ? "\(unread(["voice_invite"])) invitation(s) · \(services.liveRooms.count) live" : "\(services.liveRooms.count) live",
-                                icon: "mic.fill", tint: ATheme.live, badge: unread(["voice_invite"])) { open(.voice) }
+                    if WyrmVoiceFeature.enabled {
+                        WyrmListRow(title: "Voice rooms", detail: unread(["voice_invite"]) > 0 ? "\(unread(["voice_invite"])) invitation(s) · \(services.liveRooms.count) live" : "\(services.liveRooms.count) live",
+                                    icon: "mic.fill", tint: ATheme.live, badge: unread(["voice_invite"])) { open(.voice) }
+                    }
                     WyrmListRow(title: "Connections", detail: unread(["follow"]) > 0 ? "\(unread(["follow"])) new · \(account.player?.followerCount ?? 0) followers" : "\(account.player?.followerCount ?? 0) followers · \(account.player?.followingCount ?? 0) following",
                                 icon: "person.2", badge: unread(["follow"])) { open(.people("connections")) }
                     WyrmListRow(title: "Your profile", detail: account.player?.handle ?? "", icon: "person.crop.circle.fill") { open(.profile("")) }

@@ -99,6 +99,9 @@ void android_team_set_chat(const char* packed);
 void android_team_set_hud_style(const float* values, int count);
 /** The stats panel's BACK, 0..1 (its plate only; text keeps OPACITY). */
 float android_team_stats_panel(void);
+/** The stats text colour (OM, 2026-10-11): the chosen one, else the theme's
+    [role] (an arena_theme_role), at [alpha]. An ImU32. */
+unsigned int android_team_stats_colour(int role, float alpha);
 bool android_team_hud_touch(tenv* env, int type, unsigned long long finger,
                             float x, float y);
 

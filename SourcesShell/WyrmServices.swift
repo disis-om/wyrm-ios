@@ -162,7 +162,28 @@ struct WyrmArena: Identifiable, Equatable {
     var title: String { "Arena \(code)" }
 
     static func custom(_ raw: String) -> WyrmArena? {
-        let parts = raw.trimmingCharacters(in: .whitespacesAndNewlines).split(separator: ":", omittingEmptySubsequences: false)
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        // IPv6 (OM, 2026-10-12): "[2001:db8::1]:444", "[2001:db8::1]" or a bare
+        // "2001:db8::1" (port 444). The engine checks it again before dialling.
+        if trimmed.hasPrefix("[") || trimmed.filter({ $0 == ":" }).count >= 2 {
+            var host = trimmed
+            var port = 444
+            if trimmed.hasPrefix("[") {
+                guard let close = trimmed.firstIndex(of: "]") else { return nil }
+                host = String(trimmed[trimmed.index(after: trimmed.startIndex)..<close])
+                let rest = trimmed[trimmed.index(after: close)...]
+                if !rest.isEmpty {
+                    guard rest.hasPrefix(":"), let value = Int(rest.dropFirst()) else { return nil }
+                    port = value
+                }
+            }
+            let allowed = Set("0123456789abcdefABCDEF:.")
+            guard (2...45).contains(host.count), host.filter({ $0 == ":" }).count >= 2,
+                  host.allSatisfy({ allowed.contains($0) }), (1...65535).contains(port) else { return nil }
+            return WyrmArena(active: true, address: "[\(host)]", port: port,
+                             players: 0, number: 0, cluster: 0)
+        }
+        let parts = trimmed.split(separator: ":", omittingEmptySubsequences: false)
         guard parts.count == 1 || parts.count == 2 else { return nil }
         let octets = parts[0].split(separator: ".", omittingEmptySubsequences: false)
         guard octets.count == 4, octets.allSatisfy({ UInt8($0) != nil }),
@@ -361,6 +382,8 @@ private actor WyrmServiceClient {
     /// ending in it. Keyed by IPv4, lower-case two letters.
     func arenaCountries(_ addresses: [String]) async -> [String: String] {
         var found: [String: String] = [:]
+        // NTL's flag service knows IPv4 machines only.
+        let addresses = addresses.filter { !$0.hasPrefix("[") }
         var start = 0
         while start < addresses.count {
             let chunk = addresses[start..<min(start + 60, addresses.count)]
@@ -630,7 +653,9 @@ fileprivate final class WyrmArenaProbeSession {
         stateLock.unlock()
         previous?.stateUpdateHandler = nil
         previous?.cancel()
-        let connection = NWConnection(host: NWEndpoint.Host(arena.address), port: port, using: .tcp)
+        // An IPv6 arena's address carries its URL brackets; the host has none.
+        let host = arena.address.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+        let connection = NWConnection(host: NWEndpoint.Host(host), port: port, using: .tcp)
         guard install(connection) else { return }
         probeStarted = DispatchTime.now().uptimeNanoseconds
         connection.stateUpdateHandler = { [self] state in

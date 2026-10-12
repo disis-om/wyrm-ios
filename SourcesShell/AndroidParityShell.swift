@@ -211,7 +211,9 @@ private struct AndroidSocialPage: View {
                 AndroidGroupedCard {
                     AndroidDoubleRow(icon: "chart.bar.fill", tint: Color(red: 0.61, green: 0.48, blue: 0.24), well: Color(red: 0.96, green: 0.93, blue: 0.89), title: "Leaderboard", detail: "Score and kills", first: true) {}
                     AndroidDoubleRow(icon: "message.fill", tint: Color(red: 0.23, green: 0.37, blue: 0.66), well: Color(red: 0.89, green: 0.91, blue: 0.97), title: "Messages", detail: "No conversations yet") {}
-                    AndroidDoubleRow(icon: "waveform", tint: ATheme.live, well: Color(red: 0.90, green: 0.94, blue: 0.91), title: "Voice rooms", detail: "No room joined") {}
+                    if WyrmVoiceFeature.enabled {
+                        AndroidDoubleRow(icon: "waveform", tint: ATheme.live, well: Color(red: 0.90, green: 0.94, blue: 0.91), title: "Voice rooms", detail: "No room joined") {}
+                    }
                     AndroidDoubleRow(icon: "person.2.fill", title: "Followers", detail: "\(account.player?.followerCount ?? 0) follow you · \(account.player?.followingCount ?? 0) followed") {}
                     AndroidDoubleRow(icon: "person.crop.circle", tint: Color(red: 0.23, green: 0.37, blue: 0.66), well: Color(red: 0.89, green: 0.91, blue: 0.97), title: "Your profile", detail: account.player?.displayName ?? "Wyrm player", action: openProfile)
                 }

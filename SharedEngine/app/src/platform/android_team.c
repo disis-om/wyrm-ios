@@ -119,11 +119,12 @@ enum {
   STYLE_TEAM_PANEL,
   STYLE_CHAT_PANEL,
   STYLE_STATS_PANEL, /* the stats panel's plate (OM, 2026-10-05) */
+  STYLE_STATS_TEXT,  /* the stats panel's text colour, 0 = theme (OM, 2026-10-11) */
   STYLE_COUNT
 };
 static float hud_style[STYLE_COUNT] = {1.0f,   1.0f, 340.0f, 210.0f, 0.0f, 0.0f,
                                        400.0f, 270.0f, 0.0f, 0.0f,   1.0f, 1.0f,
-                                       1.0f};
+                                       1.0f,   0.0f};
 
 #define TEAM_CHAT_MAX 80
 typedef struct team_chat_line {
@@ -290,6 +291,14 @@ void android_team_set_hud_style(const float* values, int count) {
    0..1; the text keeps its own OPACITY. Drawn by ui_overlay.c. */
 float android_team_stats_panel(void) {
   return hud_clamp(hud_style[STYLE_STATS_PANEL], 0.0f, 1.0f);
+}
+
+/* The stats panel's text (OM, 2026-10-11): one of the nine colours the roster
+   and chat offer (0 keeps the theme's [role], as before), for the server line,
+   the labels and the values. */
+unsigned int android_team_stats_colour(int role, float alpha) {
+  return hud_text_colour((int)hud_style[STYLE_STATS_TEXT],
+                         (arena_theme_role)role, alpha);
 }
 
 void android_team_set_chat(const char* packed) {
@@ -527,6 +536,46 @@ static bool team_member_is_me(tenv* env, const team_member* member) {
   return true;
 }
 
+/* Is this teammate in the arena this player is in, right now?
+ *
+ * The app decides `present` when its poll goes out, from where the engine was
+ * at that moment. A poll taken while this player was dead or between lives
+ * said "menu", so every teammate fell off the map for a whole poll (4 s) after
+ * each respawn; iOS also wanted a non-zero NTL snake id, which a Wyrm player
+ * without packet S never has. The member's arena travels with the row (field
+ * 10), so the map compares it with the arena being played, every frame. Same
+ * address written two ways ("ws://", "/slither", case, spaces) is the same
+ * arena. (OM, 2026-10-09: teammates came and went on the minimap.) */
+static size_t arena_key(const char* in, char* out, size_t cap) {
+  if (!in || !out || cap == 0) return 0;
+  while (*in == ' ') ++in;
+  const char* p = in;
+  const char* scheme = strstr(p, "://");
+  if (scheme) p = scheme + 3;
+  size_t n = 0;
+  for (; *p && *p != '/' && n + 1 < cap; ++p) {
+    char c = *p;
+    if (c == ' ') continue;
+    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
+    out[n++] = c;
+  }
+  out[n] = '\0';
+  return n;
+}
+
+static bool team_member_here(tenv* env, const team_member* member) {
+  /* The member's own arena decides whenever it is known (OM, 2026-10-11:
+     teammates in other arenas showed on the map). `present` is the app's
+     answer from its last poll, up to 4 s old: it said "here" for a teammate
+     who had since moved, or while this player had moved, so it is only the
+     answer for a row that carries no arena. */
+  if (!member->server[0]) return member->present;
+  char a[64], b[64];
+  if (!arena_key(member->server, a, sizeof(a))) return false;
+  if (!arena_key(env->usr->usrs.ipv4, b, sizeof(b))) return false;
+  return strcmp(a, b) == 0;
+}
+
 void android_team_draw_minimap(tenv* env, float left, float top,
                                float diameter) {
   int count = frame_member_count;
@@ -544,7 +593,7 @@ void android_team_draw_minimap(tenv* env, float left, float top,
 
   ImDrawList* draw = igGetForegroundDrawList_ViewportPtr(NULL);
   for (int i = 0; i < count; ++i) {
-    if (!frame_members[i].present) continue;
+    if (!team_member_here(env, frame_members + i)) continue;
     if (frame_members[i].x == 0 && frame_members[i].y == 0) continue;
     if (team_member_is_me(env, frame_members + i)) continue;
 
@@ -633,7 +682,7 @@ float android_team_draw_roster_centered(tenv* env, float centre_x,
     const char* name = preview ? "Player name" : frame_members[i].name;
     const char* owner = preview ? "Key name" : frame_members[i].owner;
     const char* server = preview ? "IP address" : frame_members[i].server;
-    bool present = preview ? true : frame_members[i].present;
+    bool present = preview ? true : team_member_here(env, frame_members + i);
     char score_text[16];
     if (preview)
       snprintf(score_text, sizeof(score_text), "Score");
@@ -1457,6 +1506,8 @@ Java_com_wyrm_omrajput_WyrmActivity_nativeSetTeamMembers(JNIEnv* env,
 
 #else
 
+#include "../game/arena_theme.h"
+
 void android_team_bind_env(tenv* env) { (void)env; }
 void android_team_poll(tenv* env) { (void)env; }
 void android_team_begin_frame(void) {}
@@ -1482,6 +1533,9 @@ void android_team_set_chat_centre(float centre_x, float centre_y) {
 }
 bool android_team_chat_open(void) { return false; }
 float android_team_stats_panel(void) { return 1.0f; }
+unsigned int android_team_stats_colour(int role, float alpha) {
+  return arena_theme_colour((arena_theme_role)role, alpha);
+}
 void android_team_set_chat(const char* packed) { (void)packed; }
 void android_team_set_hud_style(const float* values, int count) {
   (void)values;

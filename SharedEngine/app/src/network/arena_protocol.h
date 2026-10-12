@@ -17,10 +17,15 @@
  * heading goes out on NTL's own tick (`33<ab-qc` in NTL 9.68 / NTL VANCED
  * main-mt.js, the send gate NTL_EB.tick runs under), because its sigma-delta
  * steering is tuned to that rate; still only when the byte changes.
+ * ARENA_BOOST_MS is the second exception (OM, 2026-10-09): 50 ms, the AIR
+ * app's boost gate and Wyrm's own until 7.0.4. The web's 150 ms is for a mouse
+ * button; on a touch boost key it held a quick tap's release (and the next
+ * press) back up to 150 ms, so boost felt late. Only a boost change is sent,
+ * so this adds packets only while the key is being tapped. Revert: 150.
  * ARENA_CONNECT_TIMEOUT_MS is Vlither's TIMEOUT (5 s): an attempt that has not
  * spawned a snake by then is given up. Keep the decoders independent of SDL
  * for replay tests. */
-enum { ARENA_AIM_MS = 50, ARENA_EYES_BACK_MS = 33, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 150,
+enum { ARENA_AIM_MS = 50, ARENA_EYES_BACK_MS = 33, ARENA_TURN_MS = 150, ARENA_BOOST_MS = 50,
        ARENA_PING_MS = 250, ARENA_LAG_MS = 750, ARENA_RETRY_MS = 3333,
        ARENA_CONNECT_TIMEOUT_MS = 5000, ARENA_DEATH_WAIT_MS = 1600 };
 

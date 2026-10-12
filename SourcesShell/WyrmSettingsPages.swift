@@ -1461,6 +1461,8 @@ final class WyrmNotificationPrefs: ObservableObject {
     /// The in-app feed honours the same choices; unknown kinds always show.
     func allows(_ kind: String) -> Bool {
         guard WyrmTrailsFeature.shows(alertKind: kind) else { return false }
+        // Voice hidden (OM, 2026-10-12): its invitations neither show nor count.
+        guard WyrmVoiceFeature.enabled || !kind.hasPrefix("voice_") else { return false }
         return !Self.knownKinds.contains(kind) || isEnabled(kind)
     }
 
@@ -1493,7 +1495,9 @@ struct WyrmNotificationSettingsPage: View {
     @ObservedObject var prefs = WyrmNotificationPrefs.shared
     /// The groups shown here and in settings search. The Trails group stays
     /// out while Trails are paused (`WyrmTrailsFeature`).
-    static let groups: [(String, [(String, String, String)])] = allGroups.filter { WyrmTrailsFeature.enabled || $0.0 != "Trails" }
+    static let groups: [(String, [(String, String, String)])] = allGroups
+        .filter { WyrmTrailsFeature.enabled || $0.0 != "Trails" }
+        .map { group in (group.0, group.1.filter { WyrmVoiceFeature.enabled || $0.0 != "voice_invite" }) }
     private static let allGroups: [(String, [(String, String, String)])] = [
         ("People", [("invite", "Arena invites", "Someone sends you a server and key."),
                     ("dm", "Direct messages", "New thread or reply."),
@@ -1969,7 +1973,9 @@ struct WyrmLayoutEditor: View {
                   Options(id: "stats", title: "STATS", sliders: [Slider(label: "SIZE", id: "layout.stats_scale", range: 0.65...1.60),
                                                                 Slider(label: "OPACITY", id: "layout.stats_opacity", range: 0.05...1),
                                                                 // BACK (OM, 2026-10-05): the plate only.
-                                                                teamHudSlider("BACK", "stats_panel")]),
+                                                                teamHudSlider("BACK", "stats_panel")],
+                          // TEXT (OM, 2026-10-11): the server line, labels and values.
+                          colours: [ColourRow(label: "TEXT", key: "stats_text")]),
                   fallback: HUD.stats.fallback) {
                 panel("STATS\nSCORE   9503\nKILLS      4\nRANK    8 / 46\nPING    64 ms\nFPS     61",
                       CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale), opacity: engine.value("layout.stats_opacity", 1))

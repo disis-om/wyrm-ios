@@ -344,14 +344,15 @@ static void apple_publish_drop(tenv* env, const char* reason, int death_code, do
   snprintf(apple_drop_snapshot, sizeof(apple_drop_snapshot),
            "%llu\tdropReason=%s\tdeathPacket=%d\tdialToSpawnMs=%lld"
            "\tcloseCode=%u\tcloseReason=%s\terrorText=%s"
-           "\tlifeSec=%.1f\tscore=%d\tlength=%d\tkills=%d\tpingMs=%d\tlagging=%d"
+           "\tlifeSec=%.1f\tscore=%d\tlength=%d\tkills=%d\tpingMs=%d\tpingPeakMs=%d\tlagging=%d"
            "\tfps=%d\tlastPacketAgoMs=%llu\tconnectsLastMin=%d\tpersona=%s"
            "\tprotocol=%d\tarena=%s",
            (unsigned long long)apple_drop_sequence,
            reason, death_code, dial_to_spawn, apple_close_code,
            apple_close_reason, apple_error_text, life,
            score < 0 ? 0 : score, length, kills < 0 ? 0 : kills,
-           gdata->data.ping, gdata->data.lagging ? 1 : 0, gdata->data.fps,
+           gdata->data.ping, gdata->data.ping_peak, gdata->data.lagging ? 1 : 0,
+           gdata->data.fps,
            (unsigned long long)silent, connects,
            persona && persona->name ? persona->name : "",
            gdata->data.protocol_version, usr->usrs.ipv4);

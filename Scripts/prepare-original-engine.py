@@ -4633,3 +4633,37 @@ for _old, _new in KEY14_PAIRS:
     _text = _text.replace(_old, _new)
 _target.write_text(_text, encoding="utf-8")
 print("Auto restart key: size and opacity rows")
+# The stats panel's text colour (OM, 2026-10-11): the same text as Wyrm
+# Android's game/ui_overlay.c. android_team_stats_colour (SharedEngine
+# android_team.c) answers the chosen colour, or the theme's as before.
+STATS_COLOUR_PAIRS = [
+    ("""                             (ImVec2){right - value_size.x, y},
+                             arena_theme_colour(ARENA_THEME_INK, alpha), value,""",
+     """                             (ImVec2){right - value_size.x, y},
+                             android_team_stats_colour(ARENA_THEME_INK, alpha), value,"""),
+    ("""      arena_theme_colour(ARENA_THEME_QUIET, 0.92f * alpha), label, NULL, 0,""",
+     """      android_team_stats_colour(ARENA_THEME_QUIET, 0.92f * alpha), label, NULL, 0,"""),
+    ("""                                 arena_theme_colour(ARENA_THEME_QUIET,
+                                                    0.78f * stats_alpha),
+                                 usrs->ipv4, NULL, 0,""",
+     """                                 android_team_stats_colour(ARENA_THEME_QUIET,
+                                                           0.78f * stats_alpha),
+                                 usrs->ipv4, NULL, 0,"""),
+]
+_target = OUTPUT / "app/src/game/ui_overlay.c"
+_text = _target.read_text(encoding="utf-8")
+for _old, _new in STATS_COLOUR_PAIRS:
+    if _text.count(_old) != 1:
+        raise SystemExit(f"stats colour: anchor x{_text.count(_old)}: {_old[:60]!r}")
+    _text = _text.replace(_old, _new)
+_target.write_text(_text, encoding="utf-8")
+print("Stats panel: text colour")
+
+
+# Engine changes of 2026-10-12 (OM, from Vlither-android 4.7.7): ping like
+# NTL, a draining network poll, the lost-pong retry, the bot's border guard,
+# the arena floor uploaded in the background, and IPv6 arenas. The pairs are
+# the same text Wyrm Android's tree got (Scripts/engine_sync_2026_10_12.py).
+import engine_sync_2026_10_12 as _sync_1012
+_sync_1012.apply(OUTPUT, label="engine 2026-10-12 (iOS)")
+print("Engine 2026-10-12: ping, drain, bot border, async floor, IPv6")

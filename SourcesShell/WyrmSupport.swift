@@ -714,7 +714,7 @@ final class WyrmDropWatch: ObservableObject {
     private static let autoPerHour = 6
     /// The snapshot fields the engine writes, in the report's order.
     private static let engineKeys = ["dropReason", "deathPacket", "dialToSpawnMs", "closeCode", "closeReason", "errorText", "lifeSec", "score",
-                                     "length", "kills", "pingMs", "lagging", "fps", "lastPacketAgoMs",
+                                     "length", "kills", "pingMs", "pingPeakMs", "lagging", "fps", "lastPacketAgoMs",
                                      "connectsLastMin", "persona", "protocol", "arena",
                                      // Pre-spawn reports: where the handshake died and what the join carried.
                                      "phase", "msSinceDial", "joinSent", "joinBytes", "customSkin", "skinBytes",
