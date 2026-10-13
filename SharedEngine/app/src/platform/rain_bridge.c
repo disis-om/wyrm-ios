@@ -13,6 +13,8 @@ static SDL_Mutex* rain_mutex;
 static SDL_AtomicInt rain_init_state;
 static bool rain_enabled, rain_requested;
 static int rain_rotation;
+// Rain key taps (OM, 2026-10-14): the app opens its panel when this grows.
+static int rain_open_count;
 static struct mg_connection* rain_connection;
 static uint64_t rain_generation, rain_turn_at, rain_updated_at;
 static char rain_join[RAIN_JOIN_MAX * 2 + 1];
@@ -35,6 +37,23 @@ void wyrm_rain_rotate(int direction) {
   SDL_LockMutex(rain_mutex);
   rain_rotation = rain_enabled && direction >= -1 && direction <= 1 ? direction : 0;
   SDL_UnlockMutex(rain_mutex);
+}
+bool wyrm_rain_enabled(void) {
+  if (!rain_mutex) return false;
+  SDL_LockMutex(rain_mutex); bool on = rain_enabled;
+  SDL_UnlockMutex(rain_mutex); return on;
+}
+void wyrm_rain_key_press(void) {
+  if (!rain_mutex) return;
+  SDL_LockMutex(rain_mutex); if (rain_enabled) ++rain_open_count;
+  SDL_UnlockMutex(rain_mutex);
+}
+// Names go to the UI as JSON: printable ASCII only, quotes and backslashes out.
+static void rain_name(char* out, size_t capacity, const char* name) {
+  size_t n = 0;
+  for (const unsigned char* c = (const unsigned char*)name; *c && n + 1 < capacity; c++)
+    if (*c >= 32 && *c < 127 && *c != '"' && *c != '\\') out[n++] = (char)*c;
+  out[n] = 0;
 }
 bool wyrm_rain_rotating(void) {
   if (!rain_mutex) return false;
@@ -84,9 +103,9 @@ void wyrm_rain_tick(tenv* env) {
     float ang = alive ? me->ang : 0;
     if (!isfinite(x) || !isfinite(y) || !isfinite(ang)) { x = y = ang = 0; alive = false; }
     int n = snprintf(rain_snapshot, sizeof(rain_snapshot),
-      "{\"alive\":%s,\"generation\":%llu,\"arena\":\"%s\",\"x\":%.3f,\"y\":%.3f,\"angle\":%.6f,\"zoom\":%.6f,\"join\":\"%s\",\"targets\":[",
+      "{\"alive\":%s,\"generation\":%llu,\"arena\":\"%s\",\"x\":%.3f,\"y\":%.3f,\"angle\":%.6f,\"zoom\":%.6f,\"open\":%d,\"join\":\"%s\",\"targets\":[",
       alive ? "true" : "false", (unsigned long long)rain_generation, arena, x, y, ang,
-      isfinite(g->data.gsc) && g->data.gsc > 0 ? g->data.gsc : 1,
+      isfinite(g->data.gsc) && g->data.gsc > 0 ? g->data.gsc : 1, rain_open_count,
       alive && g->connection == rain_connection ? rain_join : "");
     // Nearest sixteen visible snakes, bounded work only when a reader asks.
     snake* nearest[16] = {0}; float distances[16];
@@ -104,8 +123,9 @@ void wyrm_rain_tick(tenv* env) {
     for (int i = 0; i < 16 && nearest[i] && n > 0 && n < (int)sizeof(rain_snapshot) - 100; i++) {
       snake* target = nearest[i];
       int id = me->ntl_id != me->id ? target->ntl_id & 1023 : target->id;
+      char name[MAX_NICKNAME_LEN + 1]; rain_name(name, sizeof(name), target->nk);
       n += snprintf(rain_snapshot + n, sizeof(rain_snapshot) - n,
-        "%s{\"id\":%d,\"x\":%.0f,\"y\":%.0f}", i ? "," : "", id, target->xx, target->yy);
+        "%s{\"id\":%d,\"name\":\"%s\",\"x\":%.0f,\"y\":%.0f}", i ? "," : "", id, name, target->xx, target->yy);
     }
     if (n > 0 && n < (int)sizeof(rain_snapshot) - 3) strcpy(rain_snapshot + n, "]}");
     else strcpy(rain_snapshot, "{}");
@@ -139,4 +159,6 @@ void wyrm_rain_read(char* out, size_t n) { if (out && n) out[0] = 0; }
 void wyrm_rain_enable(bool on) { (void)on; }
 void wyrm_rain_rotate(int d) { (void)d; }
 bool wyrm_rain_rotating(void) { return false; }
+bool wyrm_rain_enabled(void) { return false; }
+void wyrm_rain_key_press(void) {}
 #endif

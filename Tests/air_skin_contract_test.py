@@ -48,7 +48,7 @@ checks = {
     # Studio wiring.
     "pattern toggle swaps the bead grid for the wheel": "WyrmAirWheelToggle(showingWheel: showingWheel, enabled: !WyrmBead.builtBeadsOff)" in STUDIO and "if showingWheel {" in STUDIO and "airWheelPanel" in STUDIO,
     # Wheel and Wyrm beads switched off (OM, 2026-10-04): nothing new is built.
-    "wheel and Wyrm beads cannot add beads while off": STUDIO.count("guard !WyrmBead.builtBeadsOff, groups.count < 256") == 2,
+    "wheel and Wyrm beads cannot add beads while off": STUDIO.count("guard !WyrmBead.builtBeadsOff, groups.count < maxBeads") == 2,
     "exactly AIR's first two beads are offered": "ForEach(0..<2, id: \\.self) { kind in" in PICKER and "beads: textures.airBeads" in STUDIO,
     "wheel bead keeps exact RGB and a nearest group": "WyrmAirSkin.nearestGroup(rgb)" in STUDIO and "WyrmAirSkin.marker(kind: kind) | rgb" in STUDIO,
     "wheel state persists": all(k in STUDIO for k in ("air-pointer-x", "air-pointer-y", "air-bezel", "air-rgb")),

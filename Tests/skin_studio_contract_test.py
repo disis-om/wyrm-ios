@@ -37,7 +37,7 @@ checks = {
     # NTL 9.68's chooser rope (OM, 2026-10-05): pull .3 back, sway .14, default
     # path, bobble .15, one step per drawn frame; no device gravity.
     "tag swings like NTL's chooser without reading device gravity": "CMMotionManager" not in SWING and "0..<10" in SWING and "- 0.3 * u" in SWING and "0.14 * u * cos(Double(frame) / 23" in SWING and "let mb = 6.94" in SWING and "0.15 * d" in SWING and "TimelineView(.animation" in SWING,
-    "skin code supports original 256 slots": "prefix(256)" in CATALOG and "/ 256 beads" in STUDIO,
+    "skin code supports original 256 slots": "prefix(256)" in CATALOG and "/ \(maxBeads) beads" in STUDIO and "var maxBeads = 256" in STUDIO,
     "building shows only placed beads; the engine wears the repeat": "customGroups[$0] : -1" in STUDIO and "if group < 0 { continue }" in STUDIO and "return (0..<256).map { source[$0 % source.count] }" in STUDIO,
     "partial code repeats after leaving pattern editor": "source[$0 % source.count]" in STUDIO and "editingPattern = false; apply()" in STUDIO,
     "preset strip draws no beads beyond its native 128-slot row": "let count = min(128, max(1," in STUDIO,

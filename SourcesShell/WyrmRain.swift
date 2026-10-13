@@ -5,9 +5,11 @@ import UIKit
 import CryptoKit
 
 struct WyrmRainCharacter: Codable, Identifiable {
+    /// Every new character is "wyrm.bot", the first one too (OM, 2026-10-14).
+    static let defaultName = "wyrm.bot"
     var id = UUID().uuidString
-    var label = "My snake"
-    var name = "SnakeyRain"
+    var label = defaultName
+    var name = defaultName
     var skin = "uuuuuuuauuuuuuaauuuuuaaauuuuaaaauuuaaaaauuaaaaaauaaaaaaauuaaaaaauuuaaaaauuuuaaaauuuuuaaauuuuuuaa"
     var tag = "12"
     var cosmetic = 11
@@ -82,8 +84,13 @@ struct WyrmRainReader {
 final class WyrmRain: ObservableObject {
     static let shared = WyrmRain()
     static let settingsKey = "wyrm.ios.rain.settings"
-    static let defaults: [String: Double] = ["maxBots":1000,"size":2000,"separation":800,"finalAng":90,"rOC":0.5,"rotationDir":1,"period":2000,"amplitude":45,"ranRate":1000,"evolveTime":30,"evolveBots":1]
-    static let ranges: [(String, ClosedRange<Double>)] = [("maxBots",1...1000),("size",100...3000),("separation",0...3000),("finalAng",0...90),("rOC",0...1),("rotationDir",0...1),("period",100...10000),("amplitude",0...62),("ranRate",100...5000),("evolveTime",10...300),("evolveBots",1...5)]
+    static let defaults: [String: Double] = ["maxBots":1000,"size":2000,"separation":800,"finalAng":90,"rOC":0.5,"rotationDir":1,"period":2000,"amplitude":45,"ranRate":1000,"evolveTime":30,"evolveBots":1,"panelSize":1,"panelOpacity":1,"panelBack":0.94]
+    /// The last three are the arena panel's own look (OM, 2026-10-14): never sent to Rain.
+    static let ranges: [(String, ClosedRange<Double>)] = [("maxBots",1...1000),("size",100...3000),("separation",0...3000),("finalAng",0...90),("rOC",0...1),("rotationDir",0...1),("period",100...10000),("amplitude",0...62),("ranRate",100...5000),("evolveTime",10...300),("evolveBots",1...5),("panelSize",0.7...1.3),("panelOpacity",0.3...1),("panelBack",0...1)]
+    static let maxCharacters = 100
+    /// Rain 6.36's factory account, shared by everyone.
+    static let publicUser = "snakeyuser"
+    static let publicPassword = "wormfood"
     static let defaultKeys = ["boost":"x","follow":"1","random":"2","straight":"3","copy":"4","mouse":"5","rain":"6","tornado":"7","circle":"F1","target":"F2","heart":"F3","wigwag":"F4","startAndStopBots":"=","rotateLeft":"a","rotateRight":"d"]
     static let modes = ["Follow","Unfollow","Random","Straight","Copy","Follow pointer","Hold pointer","Rain","Tornado","Circle CW","Circle CCW","Target","Heart","Wigwag"]
     @Published private(set) var config = defaults
@@ -97,12 +104,15 @@ final class WyrmRain: ObservableObject {
     @Published private(set) var count = 0
     @Published private(set) var status = "Public account"
     @Published private(set) var personal = false
-    @Published private(set) var username = "snakeyuser"
-    @Published private(set) var password = "wormfood"
+    @Published private(set) var username = WyrmRain.publicUser
+    @Published private(set) var password = WyrmRain.publicPassword
     @Published private(set) var rotation = 0
     @Published private(set) var evolveEnabled = false
     @Published private(set) var rotationEnabled = true
     @Published private(set) var snapshot: [String: Any] = [:]
+    /// Grows on each tap of the arena's Rain key (engine `open` count): the panel opens or closes.
+    @Published private(set) var panelRequests = 0
+    private var lastOpen = -1
     private var socket: URLSessionWebSocketTask?
     private var poll: Task<Void, Never>?
     private var reader: Task<Void, Never>?
@@ -114,8 +124,6 @@ final class WyrmRain: ObservableObject {
     private var alive = false
     private var granted = 1000
     private var lastUI = Date.distantPast
-    private var pointerAt = Date.distantPast
-    private var pingAt = Date.distantPast
     private let session = URLSession(configuration: .ephemeral)
     private init() {
         loadCredentials(); reload()
@@ -150,7 +158,8 @@ final class WyrmRain: ObservableObject {
         if let on = d["evolveEnabled"] as? Bool { evolveEnabled = on }
         if let on = d["rotationEnabled"] as? Bool { rotationEnabled = on }
         if let raw = d["keys"] as? [String: String] { for (key, value) in raw where Self.defaultKeys[key] != nil { keys[key] = String(value.prefix(30)) } }
-        if let raw = d["characters"] as? [[String: Any]], !raw.isEmpty {
+        // An empty list is the player's choice.
+        if let raw = d["characters"] as? [[String: Any]] {
             var seen = Set<String>(); characters = raw.prefix(100).map(WyrmRainCharacter.from).filter { seen.insert($0.id).inserted }
         }
         loadBotSecrets()
@@ -195,25 +204,16 @@ final class WyrmRain: ObservableObject {
         if key == "evolveEnabled" { evolveEnabled = on } else if key == "rotationEnabled" { rotationEnabled = on; if !on { rotate(0) } }
         save(); sendSettings()
     }
-    func setKey(_ key: String, _ value: String) { keys[key] = String(value.prefix(30)); save() }
     func update(_ bot: WyrmRainCharacter) { characters = characters.map { $0.id == bot.id ? WyrmRainCharacter.from(bot.dictionary) : $0 }; save(); sendCharacters() }
-    func add() { if characters.count < 100 { var bot = WyrmRainCharacter(); bot.label = "Snake \(characters.count + 1)"; characters.append(bot); save(); sendCharacters() } }
-    func remove(_ id: String) { if characters.count > 1 { characters.removeAll { $0.id == id }; save(); sendCharacters() } }
+    /// Adds a "wyrm.bot" character and returns it (nil at Rain's 100).
+    @discardableResult func add() -> WyrmRainCharacter? {
+        guard characters.count < Self.maxCharacters else { return nil }
+        let bot = WyrmRainCharacter(); characters.append(bot); save(); sendCharacters(); return bot
+    }
+    func remove(_ ids: Set<String>) { characters.removeAll { ids.contains($0.id) }; save(); sendCharacters() }
     func move(_ id: String, _ delta: Int) { guard let index = characters.firstIndex(where: { $0.id == id }), characters.indices.contains(index + delta) else { return }; characters.insert(characters.remove(at: index), at: index + delta); save(); sendCharacters() }
     func all(_ on: Bool) { for i in characters.indices { characters[i].enabled = on }; save(); sendCharacters() }
     func reset() { config = Self.defaults; keys = Self.defaultKeys; characters = [WyrmRainCharacter()]; evolveEnabled = false; rotationEnabled = true; save(); sendSettings(); sendCharacters() }
-    func export() -> String { (try? JSONSerialization.data(withJSONObject: document, options: [.prettyPrinted, .sortedKeys])).flatMap { String(data: $0, encoding: .utf8) } ?? "{}" }
-    func importSettings(_ text: String) -> Bool {
-        guard text.utf8.count <= 400000 else { return false }
-        let bytes = text.data(using: .utf8) ?? Data()
-        let value = (try? JSONSerialization.jsonObject(with: bytes)) ?? Data(base64Encoded: text).flatMap { try? JSONSerialization.jsonObject(with: $0) }
-        if let d = value as? [String: Any], (d["v"] as? NSNumber)?.intValue == 1 { restore(d); sendSettings(); sendCharacters(); return true }
-        if let a = value as? [Any], a.count >= 4, var d = a[3] as? [String: Any], let profiles = a[2] as? [[String: Any]] {
-            d["characters"] = profiles.map { raw -> [String: Any] in var bot = raw; bot["label"] = raw["nickname"] ?? "My snake"; bot["enabled"] = !(raw["disabled"] as? Bool ?? false); return bot }
-            d["keys"] = a[1]; d["enabled"] = enabled; restore(d); sendSettings(); sendCharacters(); return true
-        }
-        return false
-    }
     private var authQuery: [String: Any] { [kSecClass as String:kSecClassGenericPassword, kSecAttrService as String:"com.wyrm.rain", kSecAttrAccount as String:"personal"] }
     private func loadCredentials() {
         var query = authQuery; query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
@@ -224,8 +224,8 @@ final class WyrmRain: ObservableObject {
     }
     func credentials(_ user: String, _ pass: String, personal: Bool) {
         disconnect(); self.personal = personal
-        username = personal ? String(user.trimmingCharacters(in: .whitespacesAndNewlines).prefix(128)) : "snakeyuser"
-        password = personal ? String(pass.prefix(256)) : "wormfood"
+        username = personal ? String(user.trimmingCharacters(in: .whitespacesAndNewlines).prefix(128)) : Self.publicUser
+        password = personal ? String(pass.prefix(256)) : Self.publicPassword
         SecItemDelete(authQuery as CFDictionary)
         if personal, let data = try? JSONSerialization.data(withJSONObject:["user":username,"pass":password]) {
             var query = authQuery; query[kSecValueData as String] = data; query[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
@@ -236,7 +236,7 @@ final class WyrmRain: ObservableObject {
     func clearAccount() {
         enable(false); SecItemDelete(authQuery as CFDictionary)
         var tags = authQuery; tags[kSecAttrAccount as String] = "bot-tags"; SecItemDelete(tags as CFDictionary)
-        personal = false; username = "snakeyuser"; password = "wormfood"; characters = [WyrmRainCharacter()]; config = Self.defaults
+        personal = false; username = Self.publicUser; password = Self.publicPassword; characters = [WyrmRainCharacter()]; config = Self.defaults
     }
     func connect() {
         guard enabled, socket == nil else { return }
@@ -287,6 +287,9 @@ final class WyrmRain: ObservableObject {
         let bytes = Data(String(cString:chars).utf8)
         let d = (try? JSONSerialization.jsonObject(with:bytes)) as? [String:Any] ?? [:]
         let live = d["alive"] as? Bool ?? false; let seq = (d["generation"] as? NSNumber)?.intValue ?? 0
+        if let open = (d["open"] as? NSNumber)?.intValue, open >= 0 {
+            if lastOpen >= 0 && open > lastOpen { panelRequests += 1 }; lastOpen = open
+        }
         if alive && (!live || seq != sentJoin) && running { stop() }; alive = live
         if connected && live && seq != sentJoin, let hex = d["join"] as? String, !hex.isEmpty, hex.count % 2 == 0 {
             var join = Data(); var cursor = hex.startIndex
@@ -298,6 +301,7 @@ final class WyrmRain: ObservableObject {
     }
     func start() {
         guard connected else { connect(); status = "Wait for Rain login, then tap Start"; return }
+        guard characters.contains(where: \.enabled) else { status = "Add a character first"; return }
         guard snapshot["alive"] as? Bool == true, let address = snapshot["arena"] as? String, let colon = address.lastIndex(of:":") else { status = "Join an arena before starting Rain"; return }
         var wire = WyrmRainWire(114); wire.text(String(address[..<colon]).trimmingCharacters(in:CharacterSet(charactersIn:"[]"))); wire.text(String(address[address.index(after:colon)...])); send(wire.data)
     }
@@ -310,12 +314,6 @@ final class WyrmRain: ObservableObject {
     }
     func target(_ d: [String: Any]) {
         var w = WyrmRainWire(116); w.short((d["id"] as? NSNumber)?.intValue ?? 0); w.short(WyrmRainWire.coord((d["x"] as? NSNumber)?.doubleValue ?? 0)); w.short(WyrmRainWire.coord((d["y"] as? NSNumber)?.doubleValue ?? 0)); send(w.data); setMode(12)
-    }
-    func pointer(_ point: CGPoint, _ size: CGSize) {
-        guard [5,6].contains(mode), Date().timeIntervalSince(pointerAt) >= 0.1, size.width > 0, size.height > 0 else { return }; pointerAt = Date()
-        var w = WyrmRainWire(109)
-        for v in [Double(point.x),Double(point.y),Double(size.width),Double(size.height),Double(size.width),Double(size.height),(snapshot["zoom"] as? NSNumber)?.doubleValue ?? 1] { w.float(v) }; send(w.data)
-        if Date().timeIntervalSince(pingAt) >= 10 { pingAt = Date(); send(WyrmRainWire.pair(118,0)) }
     }
     func rotate(_ direction: Int) { rotation = rotationEnabled ? min(max(direction,-1),1) : 0; wyrm_rain_rotate(Int32(rotation)) }
     func handleKey(_ key: String) -> Bool {

@@ -188,14 +188,16 @@ static void wyrm_log_output(void* userdata, int category,
   CGRect bounds = self.view.bounds;
   CGFloat stageWidth = self.landscapePresentation ? CGRectGetHeight(bounds):CGRectGetWidth(bounds);
   CGFloat stageHeight = self.landscapePresentation ? CGRectGetWidth(bounds):CGRectGetHeight(bounds);
-  CGFloat width = MIN(self.rainExpanded ? 330:70, stageWidth);
-  CGFloat height = MIN(self.rainExpanded ? 360:54, stageHeight);
-  CGFloat left = MIN(MAX(self.rainOrigin.x,0),MAX(stageWidth-width,0));
-  CGFloat top = MIN(MAX(self.rainOrigin.y,0),MAX(stageHeight-height,0));
+  // The Rain panel (OM, 2026-10-14): opened by the arena's Rain key, centred;
+  // rainOrigin carries its wanted width and height (panel size slider).
+  CGFloat width = MAX(MIN(self.rainOrigin.x, stageWidth - 16), 120);
+  CGFloat height = MAX(MIN(self.rainOrigin.y, stageHeight - 16), 120);
+  CGFloat left = (stageWidth - width) / 2;
+  CGFloat top = (stageHeight - height) / 2;
   rain.transform = CGAffineTransformIdentity; rain.bounds = CGRectMake(0,0,width,height);
   rain.center = self.landscapePresentation ? CGPointMake(stageHeight-top-height/2,left+width/2):CGPointMake(left+width/2,top+height/2);
   if (self.landscapePresentation) rain.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
-  rain.hidden = !self.rainVisible || !engine_presentation || reported_screen != PLAYING;
+  rain.hidden = !self.rainVisible || !self.rainExpanded || !engine_presentation || reported_screen != PLAYING;
   [self.view bringSubviewToFront:rain];
 }
 
@@ -245,7 +247,7 @@ static bool shell_overlay;
 void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y) {
   dispatch_async(dispatch_get_main_queue(), ^{
     engine_container.rainVisible = visible; engine_container.rainExpanded = expanded;
-    engine_container.rainOrigin = CGPointMake(isfinite(x) ? x:12,isfinite(y) ? y:24);
+    engine_container.rainOrigin = CGPointMake(isfinite(x) ? x:380,isfinite(y) ? y:340);
     [engine_container layoutRainPanel];
   });
 }

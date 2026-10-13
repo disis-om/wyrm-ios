@@ -12,4 +12,7 @@ void wyrm_rain_read(char* out, size_t capacity);
 void wyrm_rain_enable(bool enabled);
 void wyrm_rain_rotate(int direction);
 bool wyrm_rain_rotating(void);
+/* Rain key (OM, 2026-10-14): shown while Rain is on; a tap asks for the panel. */
+bool wyrm_rain_enabled(void);
+void wyrm_rain_key_press(void);
 #endif

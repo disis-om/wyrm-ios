@@ -725,119 +725,9 @@ struct WyrmSkinRoot: View {
     private var patternPanel: some View {
         VStack(spacing: 0) {
             inlineHeader
-            HStack(spacing: 10) {
-                Text("\(customGroups.count) / 256 beads").font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.quiet)
-                Spacer()
-                Button("UNDO") {
-                    var groups = customGroups; if !groups.isEmpty { groups.removeLast() }
-                    savePattern(groups, colors: Array(customColors.prefix(groups.count)))
-                }.font(.androidWyrm(9.5, .bold)).foregroundColor(ATheme.ink)
-                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
-                Button("CLEAR") { savePattern([], colors: []) }
-                    .font(.androidWyrm(9.5, .bold)).foregroundColor(.red)
-                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
-                WyrmAirWheelToggle(showingWheel: showingWheel, enabled: !WyrmBead.builtBeadsOff) {
-                    withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.84)) { showingWheel.toggle() }
-                }
-            }.padding(.horizontal, 20).padding(.bottom, 10)
-            TextField("Type or paste a skin code", text: Binding(
-                get: { WyrmSkinCatalog.code(for: customGroups) },
-                set: { typed in
-                    let groups = typed.lowercased().prefix(256).compactMap { WyrmSkinCatalog.group(for: $0) }
-                    let common = zip(groups, customGroups).prefix { pair in pair.0 == pair.1 }.count
-                    savePattern(groups, colors: groups.indices.map { $0 < common ? customColors[$0] : 0 })
-                }
-            ))
-                .font(.system(size: 15, design: .monospaced))
-                .textInputAutocapitalization(.never).disableAutocorrection(true)
-                .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
-                .padding(.horizontal, 20)
-            WyrmSectionLabel("Build a Wyrm")
-            // The wheel opens above the beads; the beads stay below it
-            // (OM, 2026-10-03: one group, every bead the same size).
-            if showingWheel {
-                airWheelPanel.padding(.bottom, 16).transition(.opacity.combined(with: .scale(scale: 0.96)))
-            }
-            allBeadsGrid
+            WyrmPatternBuilder(textures: textures, groups: customGroups, colors: customColors,
+                               showingWheel: showingWheel, onSave: { savePattern($0, colors: $1) })
         }
-    }
-
-    /// Every bead in one grid, all one size (Android `AllBeadGrid`): slither's
-    /// beads first, then Wyrm's own. Patterned Wyrm beads take the wheel's
-    /// current colour; the arena only ever gets each bead's nearest slither
-    /// colour group.
-    ///
-    /// One ForEach with one identity per bead (OM, 2026-10-04): the grid used
-    /// two ForEach over plain Ints (slither groups 0-39, Wyrm beads 0-53), so
-    /// both lists shared ids 0, 1, 2… inside one lazy grid, and scrolling
-    /// recycled the wrong cells — beads drew wrong or vanished and came back.
-    /// Each cell is also a fixed square the bead is laid over.
-    private var allBeadsGrid: some View {
-        let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
-        let cells = WyrmSkinCatalog.validGroups.map(WyrmPatternBead.slither)
-            + (0..<WyrmBead.count).map(WyrmPatternBead.wyrm)
-        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
-            ForEach(cells, id: \.self) { cell in
-                switch cell {
-                case .slither(let group):
-                    Button {
-                        var groups = customGroups
-                        if groups.count < 256 { groups.append(group); savePattern(groups, colors: customColors + [0]) }
-                    } label: {
-                        beadCell(WyrmAtlasImage(image: textures.beads[group]))
-                    }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
-                case .wyrm(let kind):
-                    // Wyrm's beads, when switched off, stay in view but faded
-                    // and cannot be picked.
-                    Button { addWyrmBead(kind: kind, tint: tint) } label: {
-                        beadCell(WyrmAtlasImage(image: textures.wyrmBeads[kind])
-                            .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white))
-                    }.buttonStyle(.plain)
-                        .disabled(WyrmBead.builtBeadsOff)
-                        .opacity(WyrmBead.builtBeadsOff ? 0.28 : 1)
-                        .accessibilityLabel("\(WyrmBead.names[kind]) bead")
-                }
-            }
-        }.padding(.horizontal, 16)
-    }
-
-    /// A square cell on the card disc with the bead laid over it.
-    private func beadCell<Content: View>(_ bead: Content) -> some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay(bead.padding(5))
-            .background(ATheme.card.opacity(0.72))
-            .clipShape(Circle())
-            .contentShape(Circle())
-    }
-
-    private func addWyrmBead(kind: Int, tint: UInt32) {
-        var groups = customGroups
-        guard !WyrmBead.builtBeadsOff, groups.count < 256 else { return }
-        let rgba = WyrmBead.rgba(kind, tint: tint)
-        groups.append(WyrmAirSkin.nearestGroup(rgba & 0xFF_FFFF))
-        savePattern(groups, colors: customColors + [rgba])
-    }
-
-    /// The Android Build-a-Slither wheel: bezel knob for brightness, pointer
-    /// for hue and saturation, and AIR's first two bead buttons. Its live
-    /// state stays inside the panel; only a lifted finger is persisted.
-    private var airWheelPanel: some View {
-        WyrmAirWheelPanel(wheel: textures.airWheel, beads: textures.airBeads,
-                          storedX: $airPointerX, storedY: $airPointerY,
-                          storedAngle: $airBezel, storedRGB: $airRGB) { kind, rgb in
-            addAirBead(kind: kind, rgb: rgb)
-        }
-        .onAppear { NSLog("Wyrm AIR colour wheel presented rgb=%06X", UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF) }
-    }
-
-    /// A wheel bead: the arena gets the nearest colour group, Wyrm keeps the
-    /// exact picked RGB with the AIR texture named in its alpha byte.
-    private func addAirBead(kind: Int, rgb: UInt32) {
-        var groups = customGroups
-        guard !WyrmBead.builtBeadsOff, groups.count < 256 else { return }
-        groups.append(WyrmAirSkin.nearestGroup(rgb))
-        savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
     }
 
     // MARK: Wyrm looks (hair, ears, glasses): only this phone sees them.
@@ -1426,4 +1316,152 @@ extension WyrmSkinCatalog {
     static func isWyrmTag(_ ntlID: Int) -> Bool { ntlID >= wyrmTagBase }
     /// Picker order: Wyrm's own first, then NTL's.
     static let tagPickerOrder: [WyrmTagAsset] = tags.filter { isWyrmTag($0.ntlID) } + tags.filter { !isWyrmTag($0.ntlID) }
+}
+
+/// The Pattern editor's body (code field, UNDO / CLEAR, wheel, every bead):
+/// the Skin tab's and Snakey Rain's characters' (OM, 2026-10-14) are this one.
+/// [onSave] gets the whole new pattern and its per-bead colours.
+struct WyrmPatternBuilder: View {
+    @ObservedObject var textures: WyrmSkinTextureLibrary
+    let groups: [Int]
+    let colors: [UInt32]
+    var maxBeads = 256
+    @State private var showingWheel: Bool
+    let onSave: ([Int], [UInt32]) -> Void
+
+    // The AIR colour wheel's state, in AIR wheel units (see WyrmAirSkin).
+    @AppStorage("wyrm.ios.skin.air-pointer-x") private var airPointerX = 0.0
+    @AppStorage("wyrm.ios.skin.air-pointer-y") private var airPointerY = 0.0
+    @AppStorage("wyrm.ios.skin.air-bezel") private var airBezel = 0.0
+    @AppStorage("wyrm.ios.skin.air-rgb") private var airRGB = 0x808080
+
+    init(textures: WyrmSkinTextureLibrary, groups: [Int], colors: [UInt32], maxBeads: Int = 256,
+         showingWheel: Bool = false, onSave: @escaping ([Int], [UInt32]) -> Void) {
+        self.textures = textures; self.groups = groups; self.colors = colors; self.maxBeads = maxBeads
+        _showingWheel = State(initialValue: showingWheel); self.onSave = onSave
+    }
+
+    private var customGroups: [Int] { Array(groups.prefix(maxBeads)) }
+    private var customColors: [UInt32] { customGroups.indices.map { $0 < colors.count ? colors[$0] : 0 } }
+    private func savePattern(_ groups: [Int], colors: [UInt32]) {
+        onSave(Array(groups.prefix(maxBeads)), Array(colors.prefix(min(groups.count, maxBeads))))
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            HStack(spacing: 10) {
+                Text("\(customGroups.count) / \(maxBeads) beads").font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.quiet)
+                Spacer()
+                Button("UNDO") {
+                    var groups = customGroups; if !groups.isEmpty { groups.removeLast() }
+                    savePattern(groups, colors: Array(customColors.prefix(groups.count)))
+                }.font(.androidWyrm(9.5, .bold)).foregroundColor(ATheme.ink)
+                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
+                Button("CLEAR") { savePattern([], colors: []) }
+                    .font(.androidWyrm(9.5, .bold)).foregroundColor(.red)
+                    .modifier(WyrmGlassButtonModifier(fallback: PlainButtonStyleShim()))
+                WyrmAirWheelToggle(showingWheel: showingWheel, enabled: !WyrmBead.builtBeadsOff) {
+                    withAnimation(.interactiveSpring(response: 0.38, dampingFraction: 0.84)) { showingWheel.toggle() }
+                }
+            }.padding(.horizontal, 20).padding(.bottom, 10)
+            TextField("Type or paste a skin code", text: Binding(
+                get: { WyrmSkinCatalog.code(for: customGroups) },
+                set: { typed in
+                    let groups = typed.lowercased().prefix(maxBeads).compactMap { WyrmSkinCatalog.group(for: $0) }
+                    let common = zip(groups, customGroups).prefix { pair in pair.0 == pair.1 }.count
+                    savePattern(groups, colors: groups.indices.map { $0 < common ? customColors[$0] : 0 })
+                }
+            ))
+                .font(.system(size: 15, design: .monospaced))
+                .textInputAutocapitalization(.never).disableAutocorrection(true)
+                .padding(13).background(ATheme.card.opacity(0.9)).cornerRadius(11)
+                .padding(.horizontal, 20)
+            WyrmSectionLabel("Build a Wyrm")
+            // The wheel opens above the beads; the beads stay below it
+            // (OM, 2026-10-03: one group, every bead the same size).
+            if showingWheel {
+                airWheelPanel.padding(.bottom, 16).transition(.opacity.combined(with: .scale(scale: 0.96)))
+            }
+            allBeadsGrid
+        }
+    }
+
+    /// Every bead in one grid, all one size (Android `AllBeadGrid`): slither's
+    /// beads first, then Wyrm's own. Patterned Wyrm beads take the wheel's
+    /// current colour; the arena only ever gets each bead's nearest slither
+    /// colour group.
+    ///
+    /// One ForEach with one identity per bead (OM, 2026-10-04): the grid used
+    /// two ForEach over plain Ints (slither groups 0-39, Wyrm beads 0-53), so
+    /// both lists shared ids 0, 1, 2… inside one lazy grid, and scrolling
+    /// recycled the wrong cells — beads drew wrong or vanished and came back.
+    /// Each cell is also a fixed square the bead is laid over.
+    private var allBeadsGrid: some View {
+        let tint = UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF
+        let cells = WyrmSkinCatalog.validGroups.map(WyrmPatternBead.slither)
+            + (0..<WyrmBead.count).map(WyrmPatternBead.wyrm)
+        return LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 7), spacing: 8) {
+            ForEach(cells, id: \.self) { cell in
+                switch cell {
+                case .slither(let group):
+                    Button {
+                        var groups = customGroups
+                        if groups.count < maxBeads { groups.append(group); savePattern(groups, colors: customColors + [0]) }
+                    } label: {
+                        beadCell(WyrmAtlasImage(image: textures.beads[group]))
+                    }.buttonStyle(.plain).accessibilityLabel("Bead group \(group)")
+                case .wyrm(let kind):
+                    // Wyrm's beads, when switched off, stay in view but faded
+                    // and cannot be picked.
+                    Button { addWyrmBead(kind: kind, tint: tint) } label: {
+                        beadCell(WyrmAtlasImage(image: textures.wyrmBeads[kind])
+                            .colorMultiply(WyrmBead.tinted[kind] ? Color(rgb: tint) : .white))
+                    }.buttonStyle(.plain)
+                        .disabled(WyrmBead.builtBeadsOff)
+                        .opacity(WyrmBead.builtBeadsOff ? 0.28 : 1)
+                        .accessibilityLabel("\(WyrmBead.names[kind]) bead")
+                }
+            }
+        }.padding(.horizontal, 16)
+    }
+
+    /// A square cell on the card disc with the bead laid over it.
+    private func beadCell<Content: View>(_ bead: Content) -> some View {
+        Color.clear
+            .aspectRatio(1, contentMode: .fit)
+            .overlay(bead.padding(5))
+            .background(ATheme.card.opacity(0.72))
+            .clipShape(Circle())
+            .contentShape(Circle())
+    }
+
+    private func addWyrmBead(kind: Int, tint: UInt32) {
+        var groups = customGroups
+        guard !WyrmBead.builtBeadsOff, groups.count < maxBeads else { return }
+        let rgba = WyrmBead.rgba(kind, tint: tint)
+        groups.append(WyrmAirSkin.nearestGroup(rgba & 0xFF_FFFF))
+        savePattern(groups, colors: customColors + [rgba])
+    }
+
+    /// The Android Build-a-Slither wheel: bezel knob for brightness, pointer
+    /// for hue and saturation, and AIR's first two bead buttons. Its live
+    /// state stays inside the panel; only a lifted finger is persisted.
+    private var airWheelPanel: some View {
+        WyrmAirWheelPanel(wheel: textures.airWheel, beads: textures.airBeads,
+                          storedX: $airPointerX, storedY: $airPointerY,
+                          storedAngle: $airBezel, storedRGB: $airRGB) { kind, rgb in
+            addAirBead(kind: kind, rgb: rgb)
+        }
+        .onAppear { NSLog("Wyrm AIR colour wheel presented rgb=%06X", UInt32(truncatingIfNeeded: airRGB) & 0xFF_FFFF) }
+    }
+
+    /// A wheel bead: the arena gets the nearest colour group, Wyrm keeps the
+    /// exact picked RGB with the AIR texture named in its alpha byte.
+    private func addAirBead(kind: Int, rgb: UInt32) {
+        var groups = customGroups
+        guard !WyrmBead.builtBeadsOff, groups.count < maxBeads else { return }
+        groups.append(WyrmAirSkin.nearestGroup(rgb))
+        savePattern(groups, colors: customColors + [WyrmAirSkin.marker(kind: kind) | rgb])
+    }
+
 }

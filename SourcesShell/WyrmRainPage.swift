@@ -1,218 +1,515 @@
 import SwiftUI
 import UIKit
 
+/*
+ * Snakey Rain (OM, 2026-10-14): the page opens like Loadout's Controls and
+ * Modes (back, title, the Wyrm look), with the character's snake drawn the
+ * way the Skin tab draws it, and Characters / Settings / Login below. A
+ * character's skin, presets, tags and accessories are the Skin tab's own
+ * pickers; only what Rain's character packet carries is offered. In the
+ * arena the Rain key (an on-screen key, placed in Arrange the UI) opens
+ * WyrmRainPanel. Same as Android's SnakeyRainScreen.kt.
+ */
+
+private enum WyrmRainTab: Int, CaseIterable {
+    case characters, settings, login
+    var title: String { ["Characters", "Settings", "Login"][rawValue] }
+}
+
+private enum WyrmRainEditor: String {
+    case pattern = "Build a pattern", presets = "Presets", tags = "Tags", accessories = "Accessories"
+}
+
+extension WyrmRainCharacter {
+    /// "/n" is preset n; anything else is bead letters.
+    var presetIndex: Int? {
+        guard skin.hasPrefix("/") || skin.hasPrefix("\\"), let n = Int(skin.dropFirst()), WyrmSkinCatalog.presets.indices.contains(n) else { return nil }
+        return n
+    }
+    var beadGroups: [Int] { skin.compactMap { WyrmSkinCatalog.group(for: $0) } }
+    var tagAsset: WyrmTagAsset? {
+        guard let ntl = Int(tag) else { return nil }
+        return WyrmSkinCatalog.tags.first { $0.ntlID == ntl && !WyrmSkinCatalog.isWyrmTag($0.ntlID) }
+    }
+    var previewGroups: [Int] {
+        if let p = presetIndex { return WyrmSkinCatalog.presets[p] }
+        let beads = beadGroups
+        return beads.isEmpty ? (WyrmSkinCatalog.presets.first ?? [7]) : beads
+    }
+}
+
+struct WyrmRainSnakePreview: View {
+    @ObservedObject var textures: WyrmSkinTextureLibrary
+    let character: WyrmRainCharacter?
+    var body: some View {
+        let c = character ?? WyrmRainCharacter()
+        WyrmSkinPreview(textures: textures, groups: c.previewGroups, colors: [], preset: c.presetIndex ?? 0,
+                        custom: c.presetIndex == nil && !c.beadGroups.isEmpty,
+                        accessoryID: c.cosmetic == 255 ? -1 : c.cosmetic, tagID: c.tagAsset?.id ?? -1,
+                        backgroundID: 0, chain: 1, swing: 1, tagScale: 1,
+                        trialLook: WyrmTrailSkin.Look(hair: -1, hairTone: 0.22, ears: -1, glasses: -1))
+    }
+}
+
+/// Rain's state in one line: a dot (green connected, amber on the way, red refused) and the words.
+struct WyrmRainStatusLine: View {
+    @ObservedObject var rain = WyrmRain.shared
+    var body: some View {
+        let failed = ["refused", "failed", "invalid", "Enter your"].contains { rain.status.localizedCaseInsensitiveContains($0) }
+        let dot: Color = failed ? ATheme.badge : rain.connected ? ATheme.live : rain.enabled ? Color(red: 0.9, green: 0.65, blue: 0.04) : ATheme.quiet
+        HStack(spacing: 8) {
+            Circle().fill(dot).frame(width: 8, height: 8)
+            Text(rain.running ? "\(rain.status) · \(rain.count) bots" : rain.status)
+                .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(2)
+        }
+    }
+}
+
 struct WyrmRainPage: View {
+    @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @ObservedObject private var rain = WyrmRain.shared
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
-    @State private var tab = "Characters"
-    @State private var selected = ""
-    @State private var editor = ""
-    @State private var user = ""
-    @State private var pass = ""
-    @State private var personal = false
-    @State private var transfer = ""
-    @State private var transferMessage = ""
-    @State private var undo = [String]()
-    @State private var privateTagKey = ""
-    private var bot: WyrmRainCharacter { rain.characters.first(where: { $0.id == selected }) ?? rain.characters[0] }
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack { Button("‹ Back", action: close); Spacer() }.font(.androidWyrm(14,.semibold))
-                Text("Snakey Rain").font(.custom("BodoniModa-Regular",size:34)).foregroundColor(ATheme.ink)
-                Toggle("Enable Snakey Rain", isOn: Binding(get:{ rain.enabled },set:rain.enable))
-                Text(rain.status).font(.androidWyrm(12,.medium)).foregroundColor(ATheme.quiet)
-                Picker("Rain page", selection:$tab) { ForEach(["Characters","Settings","Login"], id:\.self) { Text($0).tag($0) } }.pickerStyle(.segmented)
-                if tab == "Login" { login }
-                else if tab == "Settings" { settings }
-                else { characters }
-            }.padding(20).padding(.bottom,36)
-        }.background(ATheme.paper.ignoresSafeArea()).foregroundColor(ATheme.ink).font(.androidWyrm(14,.regular))
-            .onAppear { textures.prepare(); user = rain.username; pass = rain.password; personal = rain.personal }
-    }
-    private var login: some View {
-        VStack(alignment:.leading,spacing:14) {
-            Text("Change the credentials").font(.androidWyrm(19,.bold))
-            Text("Enter your personal Snakey account to use Snakey Rain. Otherwise, the public account is used.").font(.androidWyrm(13,.regular))
-            Toggle("Use my personal account",isOn:$personal)
-            TextField("Username",text:$user).textContentType(.username).autocapitalization(.none).disableAutocorrection(true).textFieldStyle(.roundedBorder)
-            SecureField("Password",text:$pass).textContentType(.password).textFieldStyle(.roundedBorder)
-            Text("Public account changes are temporary. Its original credentials return when you restart the app.").font(.androidWyrm(12,.regular))
-            Button("Connect") { rain.credentials(user,pass,personal:personal); rain.enable(true) }.buttonStyle(.borderedProminent)
-            Button("Use public account") { personal = false; rain.credentials("","",personal:false); user = rain.username; pass = rain.password; rain.enable(true) }
-            Link("Create a personal account ↗",destination:URL(string:"https://snakeyrain.com/")!)
-            Button("Disconnect",action:rain.disconnect)
-        }
-    }
-    private var settings: some View {
-        VStack(alignment:.leading,spacing:14) {
-            ForEach(WyrmRain.ranges,id:\.0) { key, range in
-                VStack(alignment:.leading) {
-                    Text("\(Self.settingName(key)) · \(rain.config[key] ?? 0, specifier:key == "rOC" ? "%.2f" : "%.0f")").font(.androidWyrm(13,.medium))
-                    Slider(value:Binding(get:{rain.config[key] ?? range.lowerBound},set:{rain.set(key,$0)}),in:range)
-                }
-            }
-            Toggle("Cycle through characters",isOn:Binding(get:{rain.evolveEnabled},set:{rain.flag("evolveEnabled",$0)}))
-            Toggle("Player rotation",isOn:Binding(get:{rain.rotationEnabled},set:{rain.flag("rotationEnabled",$0)}))
-            WyrmSectionLabel("Keyboard controls")
-            ForEach(WyrmRain.defaultKeys.keys.sorted(),id:\.self) { key in
-                HStack { Text(key); Spacer(); TextField("Key",text:Binding(get:{rain.keys[key] ?? ""},set:{rain.setKey(key,$0)})).frame(width:90).textFieldStyle(.roundedBorder) }
-            }
-            WyrmSectionLabel("Import and export")
-            Text("Only settings and characters are exported. Passwords stay on this phone.").font(.androidWyrm(12,.regular))
-            TextEditor(text:$transfer).frame(height:130).overlay(RoundedRectangle(cornerRadius:12).stroke(ATheme.rule))
-            HStack { Button("Export") { transfer = rain.export() }; Button("Import") { transferMessage = rain.importSettings(transfer) ? "Settings imported" : "Could not read these settings" } }
-            Text(transferMessage).font(.androidWyrm(12,.regular))
-            Button("Reset settings",action:rain.reset)
-        }
-    }
-    private func change(_ write: (inout WyrmRainCharacter) -> Void) {
-        var value = bot; write(&value)
-        if value.skin != bot.skin { undo.append(bot.skin); undo = Array(undo.suffix(100)) }
-        rain.update(value)
-    }
-    private var groups: [Int] {
-        if bot.skin.hasPrefix("/") || bot.skin.hasPrefix("\\"), let preset = Int(bot.skin.dropFirst()), WyrmSkinCatalog.presets.indices.contains(preset) { return WyrmSkinCatalog.presets[preset] }
-        return bot.skin.compactMap { WyrmSkinCatalog.group(for:$0) }
-    }
-    private var characters: some View {
-        VStack(alignment:.leading,spacing:14) {
-            WyrmSkinPreview(textures:textures,groups:groups,colors:[],preset:Int(bot.skin.dropFirst()) ?? 0,
-                custom:!(bot.skin.hasPrefix("/") || bot.skin.hasPrefix("\\")),accessoryID:bot.cosmetic == 255 ? -1:bot.cosmetic,
-                tagID:WyrmSkinCatalog.tags.first(where:{$0.ntlID == Int(bot.tag)})?.id ?? -1,backgroundID:0,chain:0.4,swing:0.4,tagScale:0.4,
-                trialLook:WyrmTrailSkin.Look(hair:-1,hairTone:0.22,ears:-1,glasses:-1))
-                .frame(height:170).accessibilityLabel("Selected Rain snake preview")
-            HStack { Button("Add") { rain.add(); selected = rain.characters.last?.id ?? "" }.disabled(rain.characters.count >= 100)
-                Button("Remove") { rain.remove(bot.id); selected = rain.characters[0].id }.disabled(rain.characters.count <= 1)
-                Button("↑") { rain.move(bot.id,-1) }; Button("↓") { rain.move(bot.id,1) } }
-            HStack { Button("Enable all") { rain.all(true) }; Button("Disable all") { rain.all(false) } }
-            ScrollView(.horizontal,showsIndicators:false) { HStack { ForEach(rain.characters) { item in Button(item.label) { selected = item.id; editor = ""; undo = []; privateTagKey = "" }.font(.androidWyrm(13,bot.id == item.id ? .bold:.regular)) } } }
-            Toggle("Use this character",isOn:Binding(get:{bot.enabled},set:{ value in change{$0.enabled = value} }))
-            TextField("Character name",text:Binding(get:{bot.label},set:{value in change{$0.label = value}})).textFieldStyle(.roundedBorder)
-            TextField("In-game name",text:Binding(get:{bot.name},set:{value in change{$0.name = value}})).textFieldStyle(.roundedBorder)
-            TextField("Skin code",text:Binding(get:{bot.skin},set:{value in change{$0.skin = value}})).autocapitalization(.none).disableAutocorrection(true).textFieldStyle(.roundedBorder)
-            Text("\(bot.skin.count)/250").font(.androidWyrm(11,.medium))
-            HStack {
-                Button("Build a pattern") { editor = editor == "Pattern" ? "":"Pattern" }
-                Button("Undo") { if let skin = undo.popLast() { var value = bot; value.skin = skin; rain.update(value) } }.disabled(undo.isEmpty)
-                Button("Clear") { change { $0.skin = "" } }
-            }
-            if editor == "Pattern" {
-                LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:6),count:7),spacing:6) {
-                    ForEach(WyrmSkinCatalog.validGroups,id:\.self) { id in
-                        Button { change { value in value.skin = String((WyrmSkinCatalog.code(for:groups) + WyrmSkinCatalog.code(for:[id])).prefix(250)) } } label: {
-                            WyrmAtlasImage(image:textures.beads[id]).frame(height:38).frame(maxWidth:.infinity).background(ATheme.well).cornerRadius(10)
-                        }.buttonStyle(.plain).accessibilityLabel("Add bead \(id)")
-                    }
-                }
-            }
-            HStack { Button("Repeat ×5") { change { value in value.skin = String((value.skin + String(repeating:String(value.skin.suffix(1)),count:5)).prefix(250)) } }
-                Button("Presets") { editor = editor == "Presets" ? "" : "Presets" } }
-            if editor == "Presets" {
-                LazyVGrid(columns:Array(repeating:GridItem(.flexible()),count:4)) { ForEach(0..<66,id:\.self) { id in Button("\(id)") { change{$0.skin = "/\(id)"}; editor = "" } } }
-            }
-            HStack { Button("Accessories") { editor = editor == "Accessories" ? "" : "Accessories" }; Button("Tags") { editor = editor == "Tags" ? "" : "Tags" } }
-            if editor == "Accessories" {
-                Button("None") { change{$0.cosmetic = 255} }
-                WyrmRainAccessoryGrid(textures:textures,selected:bot.cosmetic) { id in change{$0.cosmetic = id} }
-            }
-            if editor == "Tags" {
-                Button("None") { privateTagKey = ""; change{$0.tag = "-1"; $0.hash = ""} }
-                WyrmRainTagGrid(textures:textures,selected:Int(bot.tag) ?? -1) { id in privateTagKey = ""; change{$0.tag = String(id); $0.hash = ""} }
-            }
-            TextField("Tag id",text:Binding(get:{bot.tag},set:{value in privateTagKey = ""; change{$0.tag = value; $0.hash = ""}})).textFieldStyle(.roundedBorder).autocapitalization(.none)
-            SecureField(bot.hash.isEmpty ? "Private tag key (optional)":"Private tag key saved",text:Binding(get:{privateTagKey},set:{value in
-                privateTagKey = String(value.prefix(512)); change { $0.hash = WyrmRainWire.tagProof(privateTagKey) }
-            })).textFieldStyle(.roundedBorder)
-                .onChange(of:bot.id) { _ in privateTagKey = ""; undo = [] }
-            Text("Private bot tag codes are sent to the Rain service. Use a tag only with its owner's permission.").font(.androidWyrm(12,.regular))
-        }
-    }
-    static func settingName(_ key: String) -> String {
-        ["maxBots":"Maximum bots","size":"Tornado size","separation":"Tornado separation","finalAng":"Final angle","rOC":"Angle change rate","rotationDir":"Clockwise direction","period":"Wigwag period (ms)","amplitude":"Wigwag amplitude","ranRate":"Random rate (ms)","evolveTime":"Cycle time (seconds)","evolveBots":"Characters per cycle"][key] ?? key
-    }
-}
+    @State private var tab = WyrmRainTab.characters
+    @State private var openID: String?
+    @State private var editor: WyrmRainEditor?
+    @State private var selection: Set<String> = []
 
-// Same catalogues, thumbnails and tile language as the existing Skin page.
-struct WyrmRainAccessoryGrid: View {
-    @ObservedObject var textures: WyrmSkinTextureLibrary
-    let selected: Int; let pick: (Int) -> Void
-    var body: some View {
-        LazyVGrid(columns:Array(repeating:GridItem(.flexible(),spacing:10),count:4),spacing:10) {
-            ForEach(WyrmSkinCatalog.accessories) { item in Button { pick(item.id) } label: {
-                WyrmAtlasImage(image:textures.accessoryThumbnails[item.id]).padding(4).aspectRatio(1,contentMode:.fit)
-                    .background(ATheme.card).cornerRadius(15).overlay(RoundedRectangle(cornerRadius:15).stroke(selected == item.id ? ATheme.ink:ATheme.rule,lineWidth:selected == item.id ? 2:1))
-            }.buttonStyle(.plain).accessibilityLabel("Accessory \(item.id + 1)") }
-        }
-    }
-}
-struct WyrmRainTagGrid: View {
-    @ObservedObject var textures: WyrmSkinTextureLibrary
-    let selected: Int; let pick: (Int) -> Void
-    var body: some View {
-        LazyVGrid(columns:[GridItem(.adaptive(minimum:76),spacing:10)],spacing:10) {
-            ForEach(WyrmSkinCatalog.tagPickerOrder.filter { !WyrmSkinCatalog.isWyrmTag($0.ntlID) }) { item in Button { pick(item.ntlID) } label: {
-                WyrmAtlasImage(image:textures.tagThumbnails[item.id]).padding(7).aspectRatio(1,contentMode:.fit)
-                    .background(ATheme.card).cornerRadius(15).overlay(RoundedRectangle(cornerRadius:15).stroke(selected == item.ntlID ? ATheme.ink:ATheme.rule,lineWidth:selected == item.ntlID ? 2:1))
-            }.buttonStyle(.plain).accessibilityLabel("Tag \(item.ntlID)") }
-        }
-    }
-}
+    private var open: WyrmRainCharacter? { openID.flatMap { id in rain.characters.first { $0.id == id } } }
+    private var previewed: WyrmRainCharacter? { open ?? rain.characters.first(where: \.enabled) ?? rain.characters.first }
 
-struct WyrmRainPanel: View {
-    @ObservedObject private var rain = WyrmRain.shared
-    @State private var expanded = false
-    @State private var origin = CGSize(width:12,height:24)
-    @State private var dragOrigin = CGSize.zero
     var body: some View {
         Group {
-            if expanded { controls } else { Button("Rain") { expanded = true; layout() }.frame(width:70,height:54).background(ATheme.paper).cornerRadius(18) }
-        }.font(.androidWyrm(12,.semibold)).foregroundColor(ATheme.ink)
-            .onReceive(NotificationCenter.default.publisher(for:Notification.Name("WyrmEngineScreenChanged"))) { _ in layout() }
-            .onChange(of:rain.enabled) { _ in layout() }
-            .onChange(of:rain.snapshot["alive"] as? Bool ?? false) { _ in layout() }
-            .onAppear { layout() }
-    }
-    private func layout() { WyrmIOSSetRainPanel(rain.enabled && (rain.snapshot["alive"] as? Bool == true), expanded, Double(origin.width),Double(origin.height)) }
-    private var controls: some View {
-        VStack(spacing:8) {
-            HStack { Text("Rain · \(rain.count) bots"); Spacer(); Button("×") { expanded = false; layout() } }
-            Text(rain.status).font(.androidWyrm(11,.regular)).lineLimit(2)
-            HStack { Button(rain.running ? "Stop":"Start") { if rain.running { rain.stop() } else { rain.start() } }
-                Button(rain.boosting ? "Boost off":"Boost",action:rain.boost)
-                Button("Reconnect") { rain.disconnect(); rain.connect() } }
-            ScrollView {
-                VStack(spacing:10) {
-                    LazyVGrid(columns:[GridItem(.flexible()),GridItem(.flexible())],spacing:8) {
-                        ForEach(1..<15,id:\.self) { id in Button((rain.mode == id ? "• ":"") + WyrmRain.modes[id-1]) { rain.setMode(id) }.frame(minHeight:44).frame(maxWidth:.infinity).background(ATheme.well).cornerRadius(12) }
+            if let c = open, let editor {
+                WSScaffold(title: editor.rawValue, parent: c.label.isEmpty ? "Character" : c.label, sectionTabs: header(list: false),
+                           onBack: { self.editor = nil }) { editorPage(c, editor) }
+            } else if let c = open {
+                WSScaffold(title: c.label.isEmpty ? "Character" : c.label, parent: "Snakey Rain", sectionTabs: header(list: false),
+                           onBack: { openID = nil }) { characterPage(c) }
+            } else {
+                WSScaffold(title: "Snakey Rain", parent: "Play", sectionTabs: header(list: true), onBack: close) {
+                    switch tab {
+                    case .characters: charactersTab
+                    case .settings: settingsTab
+                    case .login: WyrmRainLoginTab()
                     }
-                    Text("Target a nearby snake")
-                    ForEach(Array((rain.snapshot["targets"] as? [[String:Any]] ?? []).enumerated()),id:\.offset) { _, target in
-                        Button("Snake \((target["id"] as? NSNumber)?.intValue ?? 0)") { rain.target(target) }.frame(minHeight:44)
-                    }
-                    Text("Pointer pad · Copy / Follow pointer")
-                    GeometryReader { proxy in Text("Drag to aim").frame(maxWidth:.infinity,maxHeight:.infinity).background(ATheme.well)
-                        .gesture(DragGesture(minimumDistance:0).onChanged { rain.pointer($0.location,proxy.size) }) }.frame(height:100)
-                    HStack { Button("Rotate left") { rain.rotate(rain.rotation == -1 ? 0:-1) }; Button("Rotate right") { rain.rotate(rain.rotation == 1 ? 0:1) } }
-                    Button("Stop rotation") { rain.rotate(0) }
-                    Text("Live settings")
-                    ForEach(WyrmRain.ranges,id:\.0) { key, range in
-                        VStack(alignment:.leading) {
-                            Text("\(WyrmRainPage.settingName(key)) · \(rain.config[key] ?? 0, specifier:key == "rOC" ? "%.2f":"%.0f")")
-                            Slider(value:Binding(get:{rain.config[key] ?? range.lowerBound},set:{rain.set(key,$0)}),in:range)
-                        }
-                    }
-                    Toggle("Cycle characters",isOn:Binding(get:{rain.evolveEnabled},set:{rain.flag("evolveEnabled",$0)}))
-                    Toggle("Player rotation",isOn:Binding(get:{rain.rotationEnabled},set:{rain.flag("rotationEnabled",$0)}))
                 }
             }
-            Capsule().fill(ATheme.ink.opacity(0.35)).frame(width:42,height:7).frame(maxWidth:.infinity).frame(height:44).contentShape(Rectangle())
-                .gesture(DragGesture().onChanged { value in
-                    if dragOrigin == .zero { dragOrigin = origin }; origin = CGSize(width:dragOrigin.width + value.translation.width,height:dragOrigin.height + value.translation.height); layout()
-                }.onEnded { _ in dragOrigin = .zero })
-                .accessibilityLabel("Drag Rain panel")
-        }.padding(12).frame(maxWidth:.infinity,maxHeight:.infinity).background(ATheme.paper.opacity(0.97)).cornerRadius(20)
+        }
+        .onAppear { textures.prepare() }
+    }
+
+    private func header(list: Bool) -> AnyView {
+        AnyView(VStack(spacing: 0) {
+            WyrmRainSnakePreview(textures: textures, character: previewed).frame(height: 196)
+            Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
+            if list {
+                HStack(spacing: 10) {
+                    WyrmRainStatusLine().frame(maxWidth: .infinity, alignment: .leading)
+                    WSInkSwitch(on: rain.enabled) { rain.enable($0) }
+                }.padding(.leading, 20).padding(.trailing, 16).padding(.top, 10)
+                WSSegmented(options: WyrmRainTab.allCases.map(\.title), selected: tab.rawValue) { tab = WyrmRainTab(rawValue: $0) ?? .characters }
+                    .padding(.horizontal, 16).padding(.vertical, 10)
+            }
+        })
+    }
+
+    // MARK: Characters
+
+    private func roundButton(_ symbol: String, _ label: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.onInk)
+                .frame(width: 36, height: 36).background(enabled ? ATheme.ink : ATheme.ink.opacity(0.3)).clipShape(Circle())
+        }.buttonStyle(WSPressStyle()).disabled(!enabled).accessibilityLabel(label)
+    }
+
+    @ViewBuilder private var charactersTab: some View {
+        let list = rain.characters
+        HStack(spacing: 12) {
+            if selection.isEmpty {
+                Text("CHARACTERS · \(list.count)/\(WyrmRain.maxCharacters)").font(.androidWyrm(11.5, .semibold)).tracking(0.92)
+                    .foregroundColor(ATheme.quiet).frame(maxWidth: .infinity, alignment: .leading)
+                roundButton("plus", "Add a character", enabled: list.count < WyrmRain.maxCharacters) {
+                    if let made = rain.add() { openID = made.id }
+                }
+            } else {
+                roundButton("xmark", "Cancel") { selection = [] }
+                Text("\(selection.count) selected").font(.androidWyrm(15, .semibold)).frame(maxWidth: .infinity, alignment: .leading)
+                Button("Delete") { rain.remove(selection); selection = [] }
+                    .font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.badge).buttonStyle(.plain)
+                    .padding(.horizontal, 10).padding(.vertical, 8)
+            }
+        }
+        .frame(minHeight: 36).padding(.leading, 20).padding(.trailing, 16).padding(.top, 14).padding(.bottom, 8)
+        if list.isEmpty {
+            WSCaption("No characters yet. Tap + to add one; it starts as wyrm.bot.")
+        } else {
+            WSCard {
+                ForEach(Array(list.enumerated()), id: \.element.id) { index, c in
+                    if index > 0 { WSHairline() }
+                    characterRow(c)
+                }
+            }
+            WSCaption("Tap a character to edit it. Touch and hold to select, then delete.")
+        }
+    }
+
+    private func characterRow(_ c: WyrmRainCharacter) -> some View {
+        let picked = selection.contains(c.id)
+        return HStack(spacing: 12) {
+            if !selection.isEmpty {
+                ZStack {
+                    Circle().stroke(picked ? ATheme.ink : ATheme.chevron, lineWidth: 1.5)
+                    if picked { Circle().fill(ATheme.ink); Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(ATheme.paper) }
+                }.frame(width: 22, height: 22)
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                Text(c.label.isEmpty ? "Character" : c.label).font(.androidWyrm(15.5)).foregroundColor(c.enabled ? ATheme.ink : ATheme.quiet).lineLimit(1)
+                Text((c.name.isEmpty ? "No name" : c.name) + (c.enabled ? "" : " · off")).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            WyrmMiniSnake(textures: textures, groups: Array(c.previewGroups.prefix(24))).frame(width: 92, height: 26)
+            if selection.isEmpty { Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron) }
+        }
+        .padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 62)
+        .background(picked ? ATheme.hover : Color.clear)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            if selection.isEmpty { openID = c.id }
+            else if picked { selection.remove(c.id) } else { selection.insert(c.id) }
+        }
+        .onLongPressGesture { selection.insert(c.id) }
+    }
+
+    private func field(_ title: String, _ value: String, first: Bool, mono: Bool = false, placeholder: String, set: @escaping (String) -> Void) -> some View {
+        VStack(spacing: 0) {
+            if !first { WSHairline() }
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                TextField(placeholder, text: Binding(get: { value }, set: set))
+                    .font(mono ? .system(size: 15.5, design: .monospaced) : .androidWyrm(15.5))
+                    .textInputAutocapitalization(.never).disableAutocorrection(true)
+            }.padding(.horizontal, 14).padding(.vertical, 10)
+        }
+    }
+
+    private func update(_ c: WyrmRainCharacter, _ change: (inout WyrmRainCharacter) -> Void) {
+        var next = c; change(&next); rain.update(next)
+    }
+
+    @ViewBuilder private func characterPage(_ c: WyrmRainCharacter) -> some View {
+        WSSectionLabel("Character")
+        WSCard {
+            field("Character name", c.label, first: true, placeholder: WyrmRainCharacter.defaultName) { v in update(c) { $0.label = String(v.prefix(24)) } }
+            field("In-game name", c.name, first: false, placeholder: WyrmRainCharacter.defaultName) { v in update(c) { $0.name = String(v.prefix(24)) } }
+            field("Skin code · \(c.skin.count)/250", c.skin, first: false, mono: true, placeholder: "Type or paste a skin code") { v in update(c) { $0.skin = String(v.prefix(250)) } }
+        }
+        WSSectionLabel("Look")
+        WSCard {
+            WSValueRow(title: WyrmRainEditor.pattern.rawValue, value: c.presetIndex == nil && !c.beadGroups.isEmpty ? "\(c.beadGroups.count) beads" : "", first: true) { editor = .pattern }
+            WSValueRow(title: WyrmRainEditor.presets.rawValue, value: c.presetIndex.map { String(format: "%02d", $0 + 1) } ?? "") { editor = .presets }
+            WSValueRow(title: WyrmRainEditor.tags.rawValue, value: c.tagAsset.map { "#\($0.ntlID)" } ?? "None") { editor = .tags }
+            WSValueRow(title: WyrmRainEditor.accessories.rawValue, value: c.cosmetic == 255 ? "None" : String(format: "%02d", c.cosmetic + 1)) { editor = .accessories }
+        }
+        WSSectionLabel("Storm")
+        WSCard {
+            WSBoolRow(title: "Use this character", detail: "Rain spawns bots with it", on: c.enabled, first: true) { on in update(c) { $0.enabled = on } }
+        }
+        Spacer().frame(height: 18)
+        WSCard { WSActionRow(title: "Delete character", first: true, danger: true) { rain.remove([c.id]); openID = nil } }
+    }
+
+    /// The Skin tab's own pickers, writing to this character.
+    @ViewBuilder private func editorPage(_ c: WyrmRainCharacter, _ editor: WyrmRainEditor) -> some View {
+        Spacer().frame(height: 12)
+        switch editor {
+        case .pattern:
+            let groups = c.presetIndex == nil ? c.beadGroups : []
+            // Rain's character packet carries the bead letters only (250 at most).
+            WyrmPatternBuilder(textures: textures, groups: groups, colors: [], maxBeads: 250) { next, _ in
+                update(c) { $0.skin = String(WyrmSkinCatalog.code(for: next).prefix(250)) }
+            }
+        case .presets:
+            LazyVStack(spacing: 0) {
+                ForEach(WyrmSkinCatalog.presets.indices, id: \.self) { index in
+                    Button { update(c) { $0.skin = "/\(index)" } } label: {
+                        HStack(spacing: 12) {
+                            Text(String(format: "%02d", index + 1)).font(.androidWyrm(10.5, .bold))
+                                .foregroundColor(c.presetIndex == index ? ATheme.live : ATheme.quiet).frame(width: 24)
+                            WyrmMiniSnake(textures: textures, groups: WyrmSkinCatalog.presets[index]).frame(height: 38)
+                        }.frame(maxWidth: .infinity).frame(height: 57)
+                    }.buttonStyle(.plain).accessibilityLabel("Default skin \(index + 1)")
+                    Rectangle().fill(ATheme.rule).frame(height: 1)
+                }
+            }.padding(.horizontal, 20)
+        case .tags:
+            // Rain's bots carry NTL's tags; Wyrm's own stickers cannot travel in its packet.
+            let current = c.tagAsset?.id ?? -1
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 76), spacing: 10)], spacing: 10) {
+                Button { update(c) { $0.tag = "-1"; $0.hash = "" } } label: { noneTile(current < 0) }.buttonStyle(.plain)
+                ForEach(WyrmSkinCatalog.tagPickerOrder.filter { !WyrmSkinCatalog.isWyrmTag($0.ntlID) }) { item in
+                    Button { update(c) { $0.tag = String(item.ntlID); $0.hash = "" } } label: {
+                        imageTile(textures.tagThumbnails[item.id], inset: 7, selected: current == item.id, badge: "\(item.ntlID)")
+                    }.buttonStyle(.plain).accessibilityLabel("Tag \(item.ntlID)")
+                }
+            }.padding(.horizontal, 16)
+        case .accessories:
+            let current = c.cosmetic == 255 ? -1 : c.cosmetic
+            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 10) {
+                Button { update(c) { $0.cosmetic = 255 } } label: { noneTile(current < 0) }.buttonStyle(.plain)
+                ForEach(WyrmSkinCatalog.accessories) { item in
+                    Button { update(c) { $0.cosmetic = item.id } } label: {
+                        imageTile(textures.accessoryThumbnails[item.id], inset: 4, selected: current == item.id, badge: nil)
+                    }.buttonStyle(.plain).accessibilityLabel("Accessory \(item.id + 1)")
+                }
+            }.padding(.horizontal, 16)
+        }
+    }
+
+    private func check() -> some View {
+        Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(ATheme.paper)
+            .frame(width: 18, height: 18).background(ATheme.ink).clipShape(Circle()).padding(6)
+    }
+
+    private func noneTile(_ selected: Bool) -> some View {
+        Text("NONE").font(.androidWyrm(9, .bold)).tracking(0.7).foregroundColor(ATheme.ink)
+            .frame(maxWidth: .infinity, maxHeight: .infinity).aspectRatio(1, contentMode: .fit)
+            .background(ATheme.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .overlay(alignment: .topTrailing) { if selected { check() } }
+    }
+
+    private func imageTile(_ image: CGImage?, inset: CGFloat, selected: Bool, badge: String?) -> some View {
+        WyrmAtlasImage(image: image).padding(inset).aspectRatio(1, contentMode: .fit).frame(maxWidth: .infinity)
+            .background(ATheme.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .overlay(alignment: .bottomTrailing) { if let badge { Text(badge).font(.androidWyrm(7.5, .bold)).foregroundColor(ATheme.quiet).padding(6) } }
+            .overlay(alignment: .topTrailing) { if selected { check() } }
+    }
+
+    // MARK: Settings
+
+    @ViewBuilder private var settingsTab: some View {
+        WSSectionLabel("Bots", top: 14)
+        WyrmRainSliders(keys: ["maxBots", "size", "separation", "finalAng", "rOC", "rotationDir"])
+        WSSectionLabel("Movement")
+        WyrmRainSliders(keys: ["period", "amplitude", "ranRate"])
+        WSSectionLabel("Characters")
+        WSCard {
+            WSBoolRow(title: "Cycle through characters", detail: "Bots change character over time", on: rain.evolveEnabled, first: true) { rain.flag("evolveEnabled", $0) }
+            WSBoolRow(title: "Player rotation", detail: "Rotate your snake with the storm", on: rain.rotationEnabled) { rain.flag("rotationEnabled", $0) }
+        }
+        if rain.evolveEnabled { WyrmRainSliders(keys: ["evolveTime", "evolveBots"]).padding(.top, 10) }
+        WSSectionLabel("Arena")
+        WSCard { WSValueRow(title: "Arrange the UI", value: "", first: true) { engine.openLayoutEditor() } }
+        WSCaption(rain.enabled ? "The Rain button sits with your on-screen buttons. Drag it, or touch and hold it for size and opacity."
+                               : "Turn on Snakey Rain to place its button in the arena.")
+        Spacer().frame(height: 8)
+        WSCard { WSActionRow(title: "Reset settings", first: true, danger: true) { rain.reset() } }
+    }
+}
+
+func wyrmRainSettingName(_ key: String) -> String {
+    ["maxBots": "Maximum bots", "size": "Tornado size", "separation": "Tornado separation", "finalAng": "Final angle",
+     "rOC": "Angle change rate", "rotationDir": "Clockwise direction", "period": "Wigwag period", "amplitude": "Wigwag amplitude",
+     "ranRate": "Random rate", "evolveTime": "Cycle time", "evolveBots": "Characters per cycle",
+     "panelSize": "Panel size", "panelOpacity": "Panel opacity", "panelBack": "Back"][key] ?? key
+}
+
+func wyrmRainSettingValue(_ key: String, _ v: Double) -> String {
+    switch key {
+    case "rOC": return String(format: "%.2f", v)
+    case "period", "ranRate": return "\(Int(v.rounded())) ms"
+    case "evolveTime": return "\(Int(v.rounded())) s"
+    case "finalAng": return "\(Int(v.rounded()))°"
+    case "panelSize", "panelOpacity", "panelBack": return "\(Int((v * 100).rounded()))%"
+    default: return "\(Int(v.rounded()))"
+    }
+}
+
+struct WyrmRainSliders: View {
+    @ObservedObject var rain = WyrmRain.shared
+    let keys: [String]
+    var body: some View {
+        WSCard {
+            ForEach(Array(keys.enumerated()), id: \.element) { index, key in
+                let range = WyrmRain.ranges.first { $0.0 == key }?.1 ?? 0...1
+                let value = rain.config[key] ?? WyrmRain.defaults[key] ?? range.lowerBound
+                WSSliderRow(title: wyrmRainSettingName(key), valueText: wyrmRainSettingValue(key, value),
+                            value: value, range: range, first: index == 0) { rain.set(key, $0) }
+            }
+        }
+    }
+}
+
+// MARK: Login
+
+struct WyrmRainLoginTab: View {
+    @ObservedObject private var rain = WyrmRain.shared
+    @State private var personal = false
+    @State private var user = ""
+    @State private var pass = ""
+    var body: some View {
+        WSSectionLabel("Account", top: 14)
+        WSCard {
+            WSBoolRow(title: "Use my personal account", detail: personal ? "Sign in with your own Rain account" : "The public account is signed in",
+                      on: personal, first: true) { on in
+                personal = on
+                if on { user = ""; pass = "" } else {
+                    user = WyrmRain.publicUser; pass = WyrmRain.publicPassword
+                    if rain.personal { rain.credentials("", "", personal: false) }
+                }
+            }
+            row("Username") {
+                TextField("Username", text: $user).textContentType(.username)
+            }
+            row("Password") {
+                SecureField("Password", text: $pass).textContentType(.password)
+            }
+        }
+        Spacer().frame(height: 14)
+        WSPrimaryButton(label: "Connect", enabled: !personal || (!user.trimmingCharacters(in: .whitespaces).isEmpty && !pass.isEmpty)) {
+            rain.credentials(user, pass, personal: personal); rain.enable(true)
+        }.padding(.horizontal, 16)
+        WSCaption("Your password stays on this phone, locked. The public account is shared by everyone.")
+        WSCard {
+            WSLinkRow(title: "Create a personal account", value: "snakeyrain.com", first: true) {
+                if let url = URL(string: "https://snakeyrain.com/") { UIApplication.shared.open(url) }
+            }
+        }
+        Color.clear.frame(height: 0).onAppear {
+            personal = rain.personal
+            user = rain.personal ? rain.username : WyrmRain.publicUser
+            pass = rain.personal ? rain.password : WyrmRain.publicPassword
+        }
+    }
+    private func row<F: View>(_ title: String, @ViewBuilder _ field: () -> F) -> some View {
+        VStack(spacing: 0) {
+            WSHairline()
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title).font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                field().font(.androidWyrm(15.5)).foregroundColor(personal ? ATheme.ink : ATheme.quiet)
+                    .textInputAutocapitalization(.never).disableAutocorrection(true).disabled(!personal)
+            }.padding(.horizontal, 14).padding(.vertical, 10)
+        }
+    }
+}
+
+// MARK: Arena panel
+
+/// A key as the arena draws its own: paper, an ink edge, ink and a green ring while it is on.
+private struct WyrmRainKey: View {
+    let label: String
+    let lit: Bool
+    let action: () -> Void
+    var body: some View {
+        Button(action: action) {
+            Text(label).font(.androidWyrm(13.5, .semibold)).lineLimit(1).minimumScaleFactor(0.7)
+                .foregroundColor(lit ? ATheme.onInk : ATheme.ink)
+                .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 46)
+                .background(lit ? ATheme.ink : ATheme.card)
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(lit ? 0.82 : 0.48), lineWidth: 1.5))
+                .padding(3)
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.live.opacity(lit ? 0.6 : 0), lineWidth: 2.5))
+        }.buttonStyle(WSPressStyle())
+    }
+}
+
+/// The arena's Rain panel (OM, 2026-10-14): opened by the Rain key, tabs for
+/// the controls, modes, nearby snakes and live settings. Its size, opacity
+/// and back plate are the player's ("panelSize", "panelOpacity", "panelBack").
+struct WyrmRainPanel: View {
+    @ObservedObject private var rain = WyrmRain.shared
+    @State private var open = false
+    @State private var seen = WyrmRain.shared.panelRequests
+    @State private var tab = 0
+    var body: some View {
+        let opacity = min(max(rain.config["panelOpacity"] ?? 1, 0.3), 1)
+        let back = min(max(rain.config["panelBack"] ?? 0.94, 0), 1)
+        VStack(spacing: 0) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Snakey Rain").font(.androidWyrm(16, .bold)).foregroundColor(ATheme.ink)
+                    WyrmRainStatusLine()
+                }
+                Spacer()
+                Button { open = false; layout() } label: {
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundColor(ATheme.ink)
+                        .frame(width: 34, height: 34).background(ATheme.card).clipShape(Circle())
+                }.buttonStyle(.plain).accessibilityLabel("Close")
+            }.padding(.leading, 16).padding(.trailing, 8).padding(.top, 10)
+            WSSegmented(options: ["Controls", "Modes", "Target", "Settings"], selected: tab) { tab = $0 }
+                .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 2) { content }.padding(.bottom, 10)
+            }
+        }
+        .background(ATheme.paper.opacity(back))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule.opacity(max(back, 0.25)), lineWidth: 1))
+        .shadow(color: ATheme.ink.opacity(0.12 * back), radius: 18 * back)
+        .padding(6)
+        .opacity(opacity)
+        .onChange(of: rain.panelRequests) { now in if now != seen { seen = now; open.toggle(); layout() } }
+        .onChange(of: rain.enabled) { on in if !on { open = false }; layout() }
+        .onChange(of: rain.config["panelSize"] ?? 1) { _ in layout() }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WyrmEngineScreenChanged"))) { _ in open = false; layout() }
+        .onAppear { layout() }
+    }
+
+    private func row<C: View>(@ViewBuilder _ c: () -> C) -> some View {
+        HStack(spacing: 4) { c() }.padding(.horizontal, 12)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch tab {
+        case 0:
+            row {
+                WyrmRainKey(label: rain.running ? "Stop" : "Start", lit: rain.running) { if rain.running { rain.stop() } else { rain.start() } }
+                WyrmRainKey(label: "Boost", lit: rain.boosting) { rain.boost() }
+                WyrmRainKey(label: "Reconnect", lit: false) { rain.disconnect(); rain.connect() }
+            }
+            if rain.rotationEnabled {
+                row {
+                    WyrmRainKey(label: "Rotate left", lit: rain.rotation == -1) { rain.rotate(rain.rotation == -1 ? 0 : -1) }
+                    WyrmRainKey(label: "Rotate right", lit: rain.rotation == 1) { rain.rotate(rain.rotation == 1 ? 0 : 1) }
+                }
+            }
+            Text("Mode · \(WyrmRain.modes[min(max(rain.mode, 1), 14) - 1])").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 16).padding(.top, 8)
+        case 1:
+            ForEach(0..<7, id: \.self) { r in
+                row {
+                    ForEach(1...2, id: \.self) { c in
+                        let id = r * 2 + c
+                        WyrmRainKey(label: WyrmRain.modes[id - 1], lit: rain.mode == id) { rain.setMode(id) }
+                    }
+                }
+            }
+        case 2:
+            let targets = rain.snapshot["targets"] as? [[String: Any]] ?? []
+            if targets.isEmpty {
+                Text("No snakes nearby").font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(16)
+            }
+            ForEach(Array(targets.enumerated()), id: \.offset) { _, target in
+                let name = (target["name"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+                row { WyrmRainKey(label: name.isEmpty ? "Unnamed snake" : name, lit: false) { rain.target(target) } }
+            }
+        default:
+            Spacer().frame(height: 6)
+            WyrmRainSliders(keys: ["panelSize", "panelOpacity", "panelBack"])
+            Spacer().frame(height: 10)
+            WyrmRainSliders(keys: ["maxBots", "size", "separation", "finalAng", "rOC", "rotationDir", "period", "amplitude", "ranRate"])
+            Spacer().frame(height: 10)
+            WSCard { WSBoolRow(title: "Cycle through characters", on: rain.evolveEnabled, first: true) { rain.flag("evolveEnabled", $0) } }
+        }
+    }
+
+    /// The hosting view covers only the panel, centred: the rest still steers.
+    private func layout() {
+        let scale = min(max(rain.config["panelSize"] ?? 1, 0.7), 1.3)
+        WyrmIOSSetRainPanel(rain.enabled && open, true, 380 * scale, 340 * scale)
     }
 }
 
@@ -221,6 +518,6 @@ struct WyrmRainPanel: View {
 final class WyrmRainHost: NSObject {
     @objc static func handleKey(_ key: String) -> Bool { WyrmRain.shared.handleKey(key) }
     @objc static func makeViewController() -> UIViewController {
-        let controller = UIHostingController(rootView:WyrmRainPanel()); controller.view.backgroundColor = .clear; return controller
+        let controller = UIHostingController(rootView: WyrmRainPanel()); controller.view.backgroundColor = .clear; return controller
     }
 }

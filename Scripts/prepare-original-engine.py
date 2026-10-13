@@ -4761,3 +4761,10 @@ print("Engine 2026-10-13: Eyes Back locked arenas")
 
 import engine_rain_2026_10_13 as _rain_1013
 _rain_1013.apply(OUTPUT, label="Rain bridge (iOS)")
+
+# Snakey Rain key (OM, 2026-10-14): the arena's Rain button is on-screen key 16
+# (layout editor, SIZE/OPACITY), shown while Rain is on. Same text as Wyrm
+# Android's tree (Scripts/engine_rain_key_2026_10_14.py).
+import engine_rain_key_2026_10_14 as _rainkey_1014
+_rainkey_1014.apply(OUTPUT, label="engine rain key 2026-10-14 (iOS)")
+print("Engine 2026-10-14: Rain key")
