@@ -322,6 +322,10 @@ private actor WyrmServiceClient {
         WyrmServicePlayer(try await request("/v1/players/\(playerID)/follow", method: following ? "PUT" : "DELETE", token: token))
     }
 
+    func deleteChatMessage(_ id: String, direct: Bool, token: String) async throws {
+        _ = try await request(direct ? "/v1/direct/messages/\(id)" : "/v1/chat/messages/\(id)", method: "DELETE", token: token)
+    }
+
     func globalMessages(token: String) async throws -> [WyrmChatItem] {
         try await request("/v1/chat/messages", token: token).array("messages").map { WyrmChatItem($0) }
     }
@@ -734,6 +738,24 @@ final class WyrmServiceStore: ObservableObject {
     @Published private(set) var preparedPlayerID: String?
     private var token = ""
     private var sessionRevision = UUID()
+    private var deletedChatIDs: Set<String> = []
+
+    func dropChatMessage(_ id: String) {
+        guard !id.isEmpty else { return }
+        deletedChatIDs.insert(id)
+        globalChat.removeAll { $0.id == id }
+        messages.removeAll { $0.id == id }
+    }
+
+    func deleteChatMessage(_ message: WyrmChatItem, direct: Bool) async {
+        let revision = sessionRevision
+        await perform {
+            try await WyrmServiceClient.shared.deleteChatMessage(message.id, direct: direct, token: self.token)
+            guard revision == self.sessionRevision else { return }
+            self.dropChatMessage(message.id)
+            await self.refreshConversations()
+        }
+    }
     private var arenaRefreshInFlight = false
     /// IPv4 -> lower-case country code, from NTL's service (see arenaCountries).
     @Published private(set) var arenaCountries: [String: String] = [:]
@@ -772,6 +794,9 @@ final class WyrmServiceStore: ObservableObject {
     /// account-scoped data. This is deliberately exhaustive: switching users
     /// must never show the previous player's alerts, messages or connections.
     func resetSession() {
+        deletedChatIDs.removeAll()
+        globalChat = []
+        messages = []
         sessionRevision = UUID()
         token = ""
         clearPublishedSession()
@@ -834,7 +859,7 @@ final class WyrmServiceStore: ObservableObject {
     }
 
     func refreshGlobalChat() async {
-        await perform { self.globalChat = try await WyrmServiceClient.shared.globalMessages(token: self.token) }
+        await perform { self.globalChat = (try await WyrmServiceClient.shared.globalMessages(token: self.token)).filter { !self.deletedChatIDs.contains($0.id) } }
     }
 
     /// The newest global message this phone has shown in the open room.
@@ -868,7 +893,7 @@ final class WyrmServiceStore: ObservableObject {
         await perform {
             try await WyrmServiceClient.shared.sendGlobal(body: body, token: self.token)
             sent = true
-            self.globalChat = try await WyrmServiceClient.shared.globalMessages(token: self.token)
+            self.globalChat = (try await WyrmServiceClient.shared.globalMessages(token: self.token)).filter { !self.deletedChatIDs.contains($0.id) }
         }
         return sent
     }
@@ -1007,8 +1032,8 @@ final class WyrmServiceStore: ObservableObject {
     }
 
     func refreshConversations() async { await perform { self.conversations = try await WyrmServiceClient.shared.conversations(token: self.token) } }
-    func loadThread(playerID: String) async { await perform { self.messages = try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token) } }
-    func sendDirect(playerID: String, body: String) async { await perform { try await WyrmServiceClient.shared.sendDirect(playerID: playerID, body: body, token: self.token); self.messages = try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token) } }
+    func loadThread(playerID: String) async { await perform { self.messages = (try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token)).filter { !self.deletedChatIDs.contains($0.id) } } }
+    func sendDirect(playerID: String, body: String) async { await perform { try await WyrmServiceClient.shared.sendDirect(playerID: playerID, body: body, token: self.token); self.messages = (try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token)).filter { !self.deletedChatIDs.contains($0.id) } } }
 
     func refreshVoice() async { await perform { self.voiceRooms = try await WyrmServiceClient.shared.voiceRooms(token: self.token) } }
     func refreshVoiceVerification() async { await perform { self.voiceVerification = try await WyrmServiceClient.shared.voiceVerification(token: self.token) } }

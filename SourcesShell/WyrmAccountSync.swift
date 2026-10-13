@@ -196,6 +196,8 @@ final class WyrmAccountSync: ObservableObject {
             "arrowCustomMotion": WyrmPlayFeelStore.shared.customArrow,
             "lookAhead": WyrmPlayFeelStore.shared.lookAhead,
             "zoomSpring": WyrmPlayFeelStore.shared.zoomSpring,
+            // Controls › Joystick knob (OM, 2026-10-13): the same on every platform.
+            "joystickKnobCentre": WyrmPlayFeelStore.shared.knobCentre,
         ]
     }
 
@@ -319,6 +321,7 @@ final class WyrmAccountSync: ObservableObject {
         if let custom = doc["arrowCustomMotion"] as? Bool { d.set(custom, forKey: WyrmPlayFeelStore.customArrowKey) }
         if let ahead = doc["lookAhead"] as? Bool { d.set(ahead, forKey: WyrmPlayFeelStore.lookAheadKey) }
         if let spring = doc["zoomSpring"] as? Bool { d.set(spring, forKey: WyrmPlayFeelStore.zoomSpringKey) }
+        if let centre = doc["joystickKnobCentre"] as? Bool { d.set(centre, forKey: WyrmPlayFeelStore.knobCentreKey) }
         if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
             d.set(mode, forKey: "wyrm.ios.performance.mode")
         }
@@ -362,6 +365,7 @@ final class WyrmAccountSync: ObservableObject {
         WyrmPlayFeelStore.shared.reloadFromDefaults()
         WyrmNearOriginalStore.shared.reloadFromDefaults()
         WyrmPlayOrientation.shared.reloadFromDefaults()
+        WyrmSavedSkins.shared.reloadFromDefaults()
     }
 
     // MARK: network
@@ -477,6 +481,8 @@ final class WyrmAccountSync: ObservableObject {
             if let scope = Self.scope(of: key), scope != .keep { d.removeObject(forKey: key) }
         }
         engine?.reset(1, message: "")
+        // The engine's skin is back to its defaults: no Studio skin is on (the library stays).
+        WyrmStudio.shared.dropWorn()
         reloadStores()
         logOutStage = .idle
     }

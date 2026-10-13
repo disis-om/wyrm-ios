@@ -307,6 +307,8 @@ struct WyrmSkinRoot: View {
     @AppStorage("wyrm.ios.skin.tag-swing") private var swing = 1.0
     @AppStorage("wyrm.ios.skin.tag-scale") private var tagScale = 1.0
     @ObservedObject private var look = WyrmLookStore.shared
+    /// Saved skins being selected (keys), Gmail-style: the top bar turns into their actions.
+    @State private var savedSelection: Set<String> = []
 
 
     init(engine: WyrmShellStore) {
@@ -373,7 +375,18 @@ struct WyrmSkinRoot: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            WyrmScreenHeader(kicker: "WYRM", title: "Skin")
+            if !savedSelection.isEmpty {
+                WyrmSavedSelectionBar(count: savedSelection.count,
+                                      onClose: { savedSelection = [] },
+                                      onEdit: savedSelection.count == 1 ? (editSaved as () -> Void) : nil,
+                                      onDelete: {
+                                          WyrmSavedSkins.shared.delete(savedSelection)
+                                          savedSelection = []
+                                      })
+            } else {
+                // Beside the title: the way back to Skin Studio (OM, 2026-10-12).
+                WyrmScreenHeader(kicker: "WYRM", title: "Skin", trailing: studioCapsule)
+            }
             if let draft = trial.skin {
                 // Try this skin: the draft, never the saved skin, until Wear.
                 WyrmSkinPreview(textures: textures, groups: draft.wornGroups, colors: draft.wornColors,
@@ -540,6 +553,18 @@ struct WyrmSkinRoot: View {
                 }
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
+            // Saved skins (OM, 2026-10-13): every custom skin played, newest first.
+            WyrmSectionLabel("Saved skins")
+            WyrmSavedSkinsBlock(textures: textures, selected: savedSelection,
+                                onTap: { saved in
+                                    if !savedSelection.isEmpty {
+                                        if savedSelection.contains(saved.key) { savedSelection.remove(saved.key) }
+                                        else { savedSelection.insert(saved.key) }
+                                    } else {
+                                        wearSaved(saved)
+                                    }
+                                },
+                                onLongPress: { saved in savedSelection.insert(saved.key) })
             // Wyrm's own looks (hair, ears, glasses): only this phone sees them.
             WyrmSectionLabel("Wyrm accessories")
             WyrmPaperCard {
@@ -903,7 +928,37 @@ struct WyrmSkinRoot: View {
         }.padding(12).background(ATheme.card.opacity(0.88)).cornerRadius(14)
     }
 
+    /// "Skin Studio" beside the title; none while a skin is tried.
+    private var studioCapsule: AnyView? {
+        guard trial.skin == nil else { return nil }
+        return AnyView(StudioCapsule(label: "Skin Studio", icon: "sparkles") {
+            withAnimation(.easeOut(duration: 0.2)) { WyrmStudio.shared.classicOpen = false }
+        })
+    }
+
+    /// A saved skin worn as it was played (the Pattern's code and colours).
+    private func wearSaved(_ saved: WyrmSavedSkin) {
+        let groups = saved.groups
+        guard !groups.isEmpty else { return }
+        pattern = groups.map(String.init).joined(separator: ",")
+        patternColors = groups.indices.map { String($0 < saved.colors.count ? saved.colors[$0] : 0, radix: 16) }
+            .joined(separator: ",")
+        customEnabled = true
+        apply(custom: true)
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    /// Edit (one selected): the Pattern page with that skin on it.
+    private func editSaved() {
+        guard let saved = WyrmSavedSkins.shared.list.first(where: { savedSelection.contains($0.key) }) else { return }
+        let groups = saved.groups
+        savedSelection = []
+        enter(.pattern)
+        savePattern(groups, colors: groups.indices.map { $0 < saved.colors.count ? saved.colors[$0] : 0 })
+    }
+
     private func enter(_ target: WyrmSkinStudioSection) {
+        if target != .overview { savedSelection = [] }
         if target != .pattern && editingPattern { editingPattern = false; apply() }
         withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.1)) { section = target }
     }
@@ -1220,7 +1275,7 @@ private struct WyrmSkinPreview: View {
     }
 }
 
-private struct WyrmMiniSnake: View {
+struct WyrmMiniSnake: View {
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
     var body: some View {

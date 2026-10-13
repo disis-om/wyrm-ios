@@ -176,6 +176,7 @@ struct WyrmChatTranscript: View {
     var emptyNote = ""
     var onAuthor: ((String) -> Void)? = nil
     var onReport: ((WyrmChatItem) -> Void)? = nil
+    var onDelete: ((WyrmChatItem) -> Void)? = nil
     /// A direct conversation (Instagram's layout): the other player. Their
     /// profile card heads the thread, their face sits beside the last bubble
     /// of each of their runs, and times sit between runs far apart.
@@ -275,6 +276,7 @@ struct WyrmChatTranscript: View {
                 .frame(maxWidth: 290, alignment: mine ? .trailing : .leading)
                 .contextMenu {
                     Button { UIPasteboard.general.string = message.body } label: { Label("Copy", systemImage: "doc.on.doc") }
+                    if mine, let onDelete { Button(role: .destructive) { onDelete(message) } label: { Label("Delete", systemImage: "trash") } }
                     if !mine, let onReport { Button(role: .destructive) { onReport(message) } label: { Label("Report", systemImage: "flag") } }
                 }
             if !direct, endsGroup, let time = time(message.createdAt) {

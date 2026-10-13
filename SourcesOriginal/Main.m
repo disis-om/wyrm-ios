@@ -368,11 +368,15 @@ static void frame(void* unused) {
   (void)unused;
   if (!ready) return;
   twindow_poll_input(engine.wnd);
-  tinput(&engine);
+  if (!wyrm_background()) tinput(&engine);
   /* A failed join can enter and leave PLAYING in one render call. Publish
    * both edges so the Swift gate still observes this attempt's busy state. */
   publish_arena_port_availability();
-  if (engine.ctx->swapchain_ok) trender(&engine);
+  /* Background play (OM, 2026-10-13): not active, the match keeps running
+     and nothing is drawn; GPU work sent from the background is what made
+     the device "lost" after coming back. */
+  if (wyrm_background_tick(&engine)) {
+  } else if (engine.ctx->swapchain_ok) trender(&engine);
   else if (engine.usr->gdata.connection) server_poll(&engine);
   bool idle = engine.usr->gdata.curr_screen == TITLE_SCREEN &&
               !ui_skin_editor_postcard();
@@ -457,6 +461,51 @@ static void frame(void* unused) {
     }
     if (gameplay_frames % 600 == 0) log_engine_geometry();
   }
+}
+
+/* Background play (OM, 2026-10-13). The display link stops in the
+   background, so a 30 Hz timer on the main queue keeps the frames coming
+   (the app is kept awake by WyrmBackgroundPlay.swift's silent audio). Not
+   active (a call, Control Centre, the app switcher) nothing is drawn. */
+static dispatch_source_t background_timer;
+
+static void start_background_timer(void) {
+  if (background_timer) return;
+  background_timer = dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER, 0, 0,
+                                            dispatch_get_main_queue());
+  dispatch_source_set_timer(background_timer, dispatch_time(DISPATCH_TIME_NOW, 0),
+                            NSEC_PER_SEC / 30, NSEC_PER_MSEC * 5);
+  dispatch_source_set_event_handler(background_timer, ^{ frame(NULL); });
+  dispatch_resume(background_timer);
+  SDL_Log("Wyrm background: timer on");
+}
+
+static void stop_background_timer(void) {
+  if (!background_timer) return;
+  dispatch_source_cancel(background_timer);
+  background_timer = nil;
+  SDL_Log("Wyrm background: timer off");
+}
+
+static void install_background_play(void) {
+  NSNotificationCenter* center = NSNotificationCenter.defaultCenter;
+  NSOperationQueue* main = NSOperationQueue.mainQueue;
+  [center addObserverForName:UIApplicationWillResignActiveNotification object:nil queue:main
+                  usingBlock:^(NSNotification* note) { (void)note; wyrm_set_background(true); }];
+  [center addObserverForName:UIApplicationDidEnterBackgroundNotification object:nil queue:main
+                  usingBlock:^(NSNotification* note) {
+                    (void)note;
+                    wyrm_set_background(true);
+                    start_background_timer();
+                  }];
+  [center addObserverForName:UIApplicationWillEnterForegroundNotification object:nil queue:main
+                  usingBlock:^(NSNotification* note) { (void)note; stop_background_timer(); }];
+  [center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:main
+                  usingBlock:^(NSNotification* note) {
+                    (void)note;
+                    stop_background_timer();
+                    wyrm_set_background(false);
+                  }];
 }
 
 static int display_max_fps(void) {
@@ -575,6 +624,7 @@ static int engine_main(int argc, char** argv) {
     // bootstrap away from UIKit's main runloop. The animation callback and all
     // later engine mutation remain on main after initialization completes.
     WyrmIOSSetEnginePresentation(false);
+    install_background_play();
     SDL_Log("Wyrm engine bootstrap scheduled off main thread");
     // Register before returning from SDL's main callback. Frames are harmless
     // no-ops until `ready` flips on main, and UIKit gets its runloop back now.

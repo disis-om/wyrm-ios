@@ -205,7 +205,13 @@ private struct WyrmThreadDetail: View {
                 header
                 Rectangle().fill(ATheme.rule).frame(height: 1)
                 WyrmChatTranscript(messages: services.messages, myID: account.player?.id, showsAuthors: false,
+                                   onDelete: { message in Task { await services.deleteChatMessage(message, direct: true) } },
                                    peer: person, onPeer: { open(.profile(playerID)) })
+                if !services.errorMessage.isEmpty {
+                    Text(services.errorMessage).font(.androidWyrm(11.5)).foregroundColor(ATheme.badge)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 18).padding(.vertical, 6)
+                }
                 WyrmChatComposer(text: $message, placeholder: "Message…", limit: 1000,
                                  sending: sending, onSend: send)
             }

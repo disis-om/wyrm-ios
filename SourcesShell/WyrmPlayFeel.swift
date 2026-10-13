@@ -11,6 +11,9 @@ import SwiftUI
 ///   toward where it is going (further while boosting). Both modes.
 /// - zoomSpring: the zoom bar as a spring: the knob rests in the middle,
 ///   toward + zooms in, toward - zooms out, and it springs back.
+/// - knobCentre (OM, 2026-10-13): the joystick's knob goes back to the centre
+///   instead of following the snake (Near Original keeps slither's). Shared
+///   document key `joystickKnobCentre`; engine `WyrmIOSSetJoystickKnob`.
 ///
 /// The engine draws and steers (`mobile_controls_set_play_feel` through
 /// `WyrmIOSSetPlayFeel`). Saved under `wyrm.ios.play-feel.*`, synced with the
@@ -21,15 +24,20 @@ final class WyrmPlayFeelStore: ObservableObject {
     static let customArrowKey = "wyrm.ios.play-feel.custom-arrow"
     static let lookAheadKey = "wyrm.ios.play-feel.look-ahead"
     static let zoomSpringKey = "wyrm.ios.play-feel.zoom-spring"
+    static let knobCentreKey = "wyrm.ios.play-feel.knob-centre"
 
     @Published private(set) var customArrow = true
     @Published private(set) var lookAhead = false
     @Published private(set) var zoomSpring = false
+    @Published private(set) var knobCentre = false
 
     private init() { read() }
 
     /// Called once at launch: the saved choices reach the engine.
-    func publish() { WyrmIOSSetPlayFeel(!customArrow, lookAhead, zoomSpring ? 1 : 0) }
+    func publish() {
+        WyrmIOSSetPlayFeel(!customArrow, lookAhead, zoomSpring ? 1 : 0)
+        WyrmIOSSetJoystickKnob(knobCentre)
+    }
 
     /// After a log in or log out rewrote the defaults (WyrmAccountSync).
     func reloadFromDefaults() {
@@ -55,10 +63,17 @@ final class WyrmPlayFeelStore: ObservableObject {
         publish()
     }
 
+    func setKnobCentre(_ value: Bool) {
+        knobCentre = value
+        UserDefaults.standard.set(value, forKey: Self.knobCentreKey)
+        publish()
+    }
+
     private func read() {
         let d = UserDefaults.standard
         customArrow = d.object(forKey: Self.customArrowKey) as? Bool ?? true
         lookAhead = d.object(forKey: Self.lookAheadKey) as? Bool ?? false
         zoomSpring = d.object(forKey: Self.zoomSpringKey) as? Bool ?? false
+        knobCentre = d.object(forKey: Self.knobCentreKey) as? Bool ?? false
     }
 }

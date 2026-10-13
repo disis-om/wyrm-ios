@@ -4686,3 +4686,51 @@ print("Engine stutter 2026-10-12: vsync always, names batched, light spine, extr
 import engine_skin_studio_2026_10_12 as _studio_1012
 _studio_1012.apply(OUTPUT, label="engine skin studio 2026-10-12 (iOS)", ios=True)
 print("Engine Skin Studio 2026-10-12: atlas binding 4, own snake beads + eyes")
+
+
+# Leaderboard WIDTH and HEIGHT (OM, 2026-10-13): two appended team-HUD style
+# values; the name column follows WIDTH, and from HEIGHT 1.75 a long name
+# folds onto a second line. Same text as Wyrm Android's tree
+# (Scripts/engine_lb_size_2026_10_13.py).
+import engine_lb_size_2026_10_13 as _lb_1013
+_lb_1013.apply(OUTPUT, label="engine leaderboard size 2026-10-13 (iOS)")
+print("Engine 2026-10-13: leaderboard width and height")
+
+
+# Wyrm's bot = NTL 9.68's bot (OM, 2026-10-13): sbot.c replaced whole, Bot
+# radius default 12, Circle after score up to 50000. Same text as Wyrm
+# Android's tree (Scripts/engine_ntl_bot_2026_10_13.py).
+import engine_ntl_bot_2026_10_13 as _bot_1013
+_bot_1013.apply(OUTPUT, label="engine NTL bot 2026-10-13 (iOS)")
+print("Engine 2026-10-13: NTL bot")
+
+
+# Background play (OM, 2026-10-13): out of sight the match keeps running and
+# nothing is drawn (iOS kills GPU work sent from the background: the "GPU
+# lost" card). Same text as Wyrm Android's tree
+# (Scripts/engine_background_2026_10_13.py); Main.m drives it on iOS.
+import engine_background_2026_10_13 as _bg_1013
+_bg_1013.apply(OUTPUT, label="engine background 2026-10-13 (iOS)")
+print("Engine 2026-10-13: background play")
+
+
+# Joystick knob (OM, 2026-10-13): follows the snake, or back to the centre.
+# Same text as Wyrm Android's tree (Scripts/engine_joystick_knob_2026_10_13.py).
+import engine_joystick_knob_2026_10_13 as _knob_1013
+_knob_1013.apply(OUTPUT, label="engine joystick knob 2026-10-13 (iOS)")
+print("Engine 2026-10-13: joystick knob")
+
+
+# Bigger on-screen buttons (OM, 2026-10-13): key size up to 2.5x. Same text as
+# Wyrm Android's tree (Scripts/engine_key_size_2026_10_13.py).
+import engine_key_size_2026_10_13 as _keys_1013
+_keys_1013.apply(OUTPUT, label="engine key size 2026-10-13 (iOS)")
+print("Engine 2026-10-13: bigger on-screen buttons")
+
+
+# Tags fly on death (OM, 2026-10-13): a dead snake's tag lets go, stretches,
+# hops and fades. Same text as Wyrm Android's tree
+# (Scripts/engine_tags_fly_2026_10_13.py).
+import engine_tags_fly_2026_10_13 as _fly_1013
+_fly_1013.apply(OUTPUT, label="engine tags fly 2026-10-13 (iOS)")
+print("Engine 2026-10-13: tags fly on death")

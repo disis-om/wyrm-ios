@@ -20,6 +20,15 @@ bool WyrmIOSQueueSkinSelection(int preset, const char* code,
                                const uint32_t* colors, int color_count, int accessory,
                                int tag, int background);
 void WyrmIOSApplySkinSelection(tenv* env);
+/* Background play (2026-10-13, main.c): out of sight the match keeps running
+   and nothing is drawn (iOS kills GPU work sent from the background). */
+void wyrm_set_background(bool on);
+bool wyrm_background(void);
+bool wyrm_background_tick(tenv* env);
+/* Skin Studio (OM, 2026-10-12; iOS 2026-10-13): wear the baked atlas at
+   [path] with [text] (game/studio.h); "" takes it off. False until the
+   engine's first frame; AppleSkinMailbox.c. */
+bool WyrmIOSStudioSet(const char* path, const char* text);
 const char* WyrmIOSTeamPresenceSnapshot(void);
 void WyrmIOSSetTeamMembers(const char* packed);
 /* Team HUD (2026-10-04): the team chat for the arena's chat window, the
@@ -54,6 +63,8 @@ void WyrmIOSSetPerformanceChip(const char* text);
 void WyrmIOSSetJoystickLaser(bool on, float length);
 /* Play feel (2026-10-05): slither's arrow motion, look ahead, spring zoom (0/1). */
 void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style);
+/* Controls › Joystick knob (2026-10-13): true = back to the centre. */
+void WyrmIOSSetJoystickKnob(bool centre);
 /* Near Original (Home): slither's own HUD and controls; `server` labels the
    minimap (0 = unknown). HomeMailbox.inc. */
 void WyrmIOSSetNearOriginal(bool on, int server);

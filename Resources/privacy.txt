@@ -1,6 +1,6 @@
 # Wyrm — Privacy
 
-Last updated 9 October 2026. Wyrm is made by OM Rajput. This is the iPhone
+Last updated 13 October 2026. Wyrm is made by OM Rajput. This is the iPhone
 edition of the same document the Android app carries; the parts that differ are
 the ones about how you sign in and where secrets are kept.
 
@@ -119,6 +119,34 @@ back) see whether you are on Wyrm right now and which arena you play in or last
 played in. Settings › Privacy › **Show my activity to friends** turns that
 off; while it is off you do not see theirs either. Your email
 address is never shown to another player.
+
+## Deleting messages and Trails
+
+Touch and hold your own message in Global chat or a direct thread, then choose
+Delete. Wyrm removes it from the active server database for both sides,
+including any report or stored invite notification linked to it, and tells
+connected apps to remove it. A deleted message cannot be restored in the app.
+
+Deleting a Trail removes its post, comments, likes, reports and media references.
+Its photo, thumbnail and video files are removed from active storage once no
+other valid post/upload uses the same file. Deleting a comment also removes its
+stored reply notification. Deleting your account removes your Trails, uploaded
+Trail media and comments on other Trails.
+
+Disaster-recovery backups and retained rollback releases can still contain old
+copies. Nightly database backups rotate after seven days; off-site packs retain
+seven daily and four weekly copies. Previous releases remain until release
+retention prunes them. Deletion does not recall another player's screenshots,
+clipboard, previously delivered notification or downloaded/cached copy.
+
+## Background play
+
+A match can keep running when you switch apps or lock the screen. iPhone plays
+a silent sound through a playback audio session while a match is backgrounded,
+mixed with other audio, to try to keep the app awake. It stops on return or match
+end. The arena connection and bot may continue on a timer without game frames
+or GPU drawing. This can use battery and network data; iOS may still suspend or
+interrupt the app. No sound is recorded and no microphone access is needed.
 
 ## Deleting your account
 

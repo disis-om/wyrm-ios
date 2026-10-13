@@ -122,6 +122,10 @@ final class WyrmShellStore: ObservableObject {
 
     init() {
         WyrmDiagnostics.record("SwiftUI shell store started", category: "LIFECYCLE")
+        // Skin Studio (OM, 2026-10-12): its library, and the worn skin back on the engine.
+        WyrmStudio.shared.attach(self)
+        // Background play (OM, 2026-10-13): a match keeps running out of sight.
+        WyrmBackgroundPlay.shared.install()
         NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineScreenChanged"),
                                                object: nil, queue: .main) { [weak self] note in
             let screen = note.userInfo?["screen"] as? Int ?? 0
@@ -131,7 +135,11 @@ final class WyrmShellStore: ObservableObject {
             // bot arena is not a run.
             if screen == 2 {
                 MainActor.assumeIsolated {
-                    if self?.layoutEditorActive != true { WyrmRunCapture.runStarted() }
+                    if self?.layoutEditorActive != true {
+                        WyrmRunCapture.runStarted()
+                        // Saved skins (OM, 2026-10-13): a match starting with a custom skin keeps it.
+                        WyrmSavedSkins.shared.recordWorn()
+                    }
                 }
             }
             Task { @MainActor in self?.engineScreen = screen }
@@ -500,6 +508,8 @@ final class WyrmShellStore: ObservableObject {
             }
         }
         if !accepted { toast = "Engine is still starting — tap once more" }
+        // A classic skin put on anywhere ends a Studio skin (not the Studio's own black bead).
+        WyrmStudio.shared.classicApplied(custom: custom, code: code)
         WyrmDiagnostics.record(
             "skin queued preset=\(preset) custom=\(custom) accessory=\(accessory) tag=\(tag) background=\(background) accepted=\(accepted)",
             category: "ENGINE"

@@ -135,6 +135,10 @@ void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style) {
   mobile_controls_set_play_feel(original_arrow, look_ahead, zoom_style);
 }
 
+/* Controls › Joystick knob (OM, 2026-10-13): true = back to the centre. */
+void mobile_controls_set_knob_centre(bool centre);
+void WyrmIOSSetJoystickKnob(bool centre) { mobile_controls_set_knob_centre(centre); }
+
 void WyrmIOSToggleEditorLeaderboard(void) {
   if (!home_mutex) return;
   SDL_LockMutex(home_mutex);

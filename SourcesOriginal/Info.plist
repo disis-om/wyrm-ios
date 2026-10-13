@@ -74,6 +74,12 @@
     <array>
         <string>UIInterfaceOrientationPortrait</string>
     </array>
+    <!-- Background play (2026-10-13): a match left in the background keeps
+         running; silent audio keeps the app awake (WyrmBackgroundPlay.swift). -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
     <key>LSApplicationQueriesSchemes</key>
     <array>
         <string>altstore</string>

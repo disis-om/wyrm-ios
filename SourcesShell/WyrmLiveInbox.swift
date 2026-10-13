@@ -11,6 +11,7 @@ final class WyrmLiveInbox {
 
     /// Called with the kind ("" = catch up on everything after a reconnect).
     var onInbox: (String) -> Void = { _ in }
+    var onMessageDeleted: (String) -> Void = { _ in }
     private var task: URLSessionWebSocketTask?
     private var token = ""
     private var running = false
@@ -78,6 +79,8 @@ final class WyrmLiveInbox {
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = event["type"] as? String else { return }
         switch type {
+        case "chat.deleted", "direct.deleted":
+            if let id = event["id"] as? String { onMessageDeleted(id) }
         case "live.ready":
             if let presence { task?.send(.string(presence)) { _ in } }
             onInbox("")

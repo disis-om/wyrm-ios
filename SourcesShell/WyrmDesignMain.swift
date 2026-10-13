@@ -72,6 +72,23 @@ struct WyrmDesignMain: View {
                         // Only the container edges: the keyboard's safe area must
                         // still lift composers and input boxes above the keys.
                         .ignoresSafeArea(.container)
+                        // The phone's own way back (OM, 2026-10-13): a swipe in from the
+                        // left edge closes the page, as its Back does.
+                        .overlay(alignment: .leading) {
+                            if index == routes.count - 1 {
+                                Color.clear
+                                    .frame(width: 22)
+                                    .frame(maxHeight: .infinity)
+                                    .contentShape(Rectangle())
+                                    .gesture(DragGesture(minimumDistance: 12, coordinateSpace: .global)
+                                        .onEnded { drag in
+                                            if drag.translation.width > 70,
+                                               abs(drag.translation.height) < drag.translation.width {
+                                                pop(route)
+                                            }
+                                        })
+                            }
+                        }
                         .zIndex(Double(30 + index))
                         .transition(.wyrmCinematicPush)
                         .allowsHitTesting(index == routes.count - 1)
@@ -123,6 +140,10 @@ struct WyrmDesignMain: View {
         // A quiet look stays as a fallback: every 15 s on Alerts, every 45 s elsewhere.
         .task {
             WyrmLiveInbox.shared.onInbox = { kind in Task { await handleInbox(kind) } }
+            WyrmLiveInbox.shared.onMessageDeleted = { id in
+                services.dropChatMessage(id)
+                Task { await services.refreshConversations() }
+            }
             startPresence()
             WyrmLiveInbox.shared.start(token: account.sessionToken)
             var quiet = 0
@@ -151,8 +172,12 @@ struct WyrmDesignMain: View {
         .onChange(of: routes) { value in WyrmCrashWatch.shared.screen = value.last?.id ?? tab.rawValue }
         .onChange(of: tab) { value in
             if routes.isEmpty { WyrmCrashWatch.shared.screen = value.rawValue }
-            // Leaving the Skin tab without Wear drops a tried skin.
-            if value != .skin { trial.end() }
+            // Leaving the Skin tab without Wear drops a tried skin, and the tab
+            // opens on Skin Studio again (OM, 2026-10-12).
+            if value != .skin {
+                trial.end()
+                WyrmStudio.shared.classicOpen = false
+            }
         }
         .onChange(of: trial.request) { _ in
             withAnimation(.easeOut(duration: 0.2)) { routes.removeAll() }
@@ -209,7 +234,8 @@ struct WyrmDesignMain: View {
                 else { WyrmTrailsComingSoon() }
             case .social: WyrmSocialRoot(account: account, services: services, open: open)
             case .play: WyrmPlayRoot(engine: engine, account: account, services: services, open: open)
-            case .skin: WyrmSkinRoot(engine: engine)
+            // Skin Studio first; the classic page behind "Default skin editor" (OM, 2026-10-12).
+            case .skin: WyrmSkinTab(engine: engine)
             case .settings: WyrmSettingsHub(engine: engine, account: account, open: open)
             }
         }

@@ -321,6 +321,14 @@ struct WyrmControlsContent: View {
                         WSSegmented(options: behaviour, selected: min(max(steering, 0), 1)) { engine.write(setting, values: [Double($0)]) }
                             .padding(.horizontal, 14).padding(.bottom, 14)
                     }
+                    // Joystick knob (OM, 2026-10-13): follows the snake, or back to the centre.
+                    WSEnumBlock(title: "Joystick knob",
+                                detail: playFeel.knobCentre
+                                    ? "At rest the knob goes back to the centre, and a new touch starts with it in the middle."
+                                    : "At rest the knob points where your snake is going, and a new touch starts there.",
+                                options: ["Follows the snake", "Back to centre"],
+                                selected: playFeel.knobCentre ? 1 : 0) { playFeel.setKnobCentre($0 == 1) }
+                        .wyrmSettingAnchor("app.joystick-knob")
                 }
                 // Upright there is no left or right hand (OM, 2026-10-02): the row
                 // hides; the stored choice stays for sideways play.
@@ -1147,7 +1155,7 @@ struct WyrmBotPage: View {
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Let the bot play").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
-                    Text("Turn it on with the Bot button in a match. It hunts food, then circles once it is big.")
+                    Text("Turn it on with the Bot button in a match. It plays like NTL's bot: it eats, dodges snakes and breaks away with boost when one surrounds it, then coils round itself once it is big.")
                         .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
                 }.padding(.horizontal, 14).padding(.vertical, 15)
             }
@@ -1909,6 +1917,8 @@ struct WyrmLayoutEditor: View {
         let baseOpacity = engine.value("controls.opacity", 1)
         let minimap = min(max(engine.value("general.minimap_size", 300), 128), 512) / scale
         let lbScale = 1 + Double(min(max(Int(engine.value("general.lb_font", 1)), 0), 2)) * 0.16
+        let lbSize = CGSize(width: 250 * lbScale * teamHud.value("lb_width") / scale,
+                            height: 132 * lbScale * (0.4 + 0.6 * teamHud.value("lb_height")) / scale)
         let statsScale = (1 + Double(min(max(Int(engine.value("general.stats_font", 1)), 0), 2)) * 0.14) * engine.value("layout.stats_scale", 1)
         let chatScale = engine.value("layout.chat_scale", 1)
 
@@ -1948,7 +1958,7 @@ struct WyrmLayoutEditor: View {
                 let keyScale = engine.value("layout.key_\(key.id)_scale", engine.value("keys.key_scale", 1))
                 keyPiece(key, size, CGSize(width: 104 * keyScale, height: 54 * keyScale),
                          Options(id: "key-\(key.id)", title: key.name.uppercased(),
-                                 sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...1.60),
+                                 sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...2.50),
                                            Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1)])) {
                     WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale)
                 }
@@ -1963,11 +1973,15 @@ struct WyrmLayoutEditor: View {
                     .background(Circle().fill(ATheme.card.opacity(0.18)))
                     .overlay(Circle().stroke(ATheme.ink.opacity(0.76), lineWidth: 3))
             }
-            piece(HUD.leaderboard.prefix, size, CGSize(width: 250 * lbScale / scale, height: 132 * lbScale / scale),
-                  Options(id: "leaderboard", title: "LEADERBOARD", sliders: [Slider(label: "TEXT SIZE", id: "general.lb_font", range: 0...2, whole: true)]),
+            // WIDTH and HEIGHT (OM, 2026-10-13): long names show whole on a wider
+            // board; from a tall enough row they fold onto a second line.
+            piece(HUD.leaderboard.prefix, size, lbSize,
+                  Options(id: "leaderboard", title: "LEADERBOARD", sliders: [Slider(label: "TEXT SIZE", id: "general.lb_font", range: 0...2, whole: true),
+                                                                            teamHudSlider("WIDTH", "lb_width"),
+                                                                            teamHudSlider("HEIGHT", "lb_height")]),
                   fallback: HUD.leaderboard.fallback, onTap: { engine.toggleEditorLeaderboard() }) {
                 panel("LEADERBOARD\n1  Wyrm Player     9503\n2  Northwind       2819\n3  Orbit            418\n4  Meadow           389\n5  Drift            248",
-                      CGSize(width: 250 * lbScale / scale, height: 132 * lbScale / scale))
+                      lbSize)
             }
             piece(HUD.stats.prefix, size, CGSize(width: 142 * statsScale / scale, height: 132 * statsScale / scale),
                   Options(id: "stats", title: "STATS", sliders: [Slider(label: "SIZE", id: "layout.stats_scale", range: 0.65...1.60),

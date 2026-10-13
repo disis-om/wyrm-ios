@@ -71,7 +71,8 @@ struct WyrmGlobalChatDetail: View {
             VStack(spacing: 0) {
                 WyrmChatTranscript(messages: services.globalChat, myID: account.player?.id,
                                    emptyTitle: "Quiet right now", emptyNote: "Messages stay here for 24 hours. Say hello.",
-                                   onAuthor: { open(.profile($0)) }, onReport: { reporting = $0 })
+                                   onAuthor: { open(.profile($0)) }, onReport: { reporting = $0 },
+                                   onDelete: { message in Task { await services.deleteChatMessage(message, direct: false) } })
                 if !services.errorMessage.isEmpty {
                     Text(friendly(services.errorMessage)).font(.androidWyrm(11.5)).foregroundColor(ATheme.badge)
                         .frame(maxWidth: .infinity, alignment: .leading)

@@ -21,12 +21,16 @@ final class WyrmTeamHudStore: ObservableObject {
                        "team_panel", "chat_panel", "stats_panel",
                        // The stats panel's text colour (OM, 2026-10-11), appended:
                        // the engine reads this order; an older engine ignores it.
-                       "stats_text"]
-    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0]
+                       "stats_text",
+                       // The leaderboard's WIDTH and HEIGHT (OM, 2026-10-13), appended
+                       // likewise: multiples of the board's own width and row height.
+                       "lb_width", "lb_height"]
+    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1]
     private static let ranges: [ClosedRange<Double>] = [0.65...1.60, 0.05...1, 220...900, 120...800, 0...8, 0...8,
                                                         240...1000, 150...900, 0...8, 0...8,
                                                         0...1, 0...1, 0...1,
-                                                        0...8]
+                                                        0...8,
+                                                        0.7...2.2, 1...2.2]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
     static let swatches: [Color?] = [nil] + [0xFFFFFF, 0x111111, 0xFFD54A, 0x4DD9FF, 0x5BE37D,
