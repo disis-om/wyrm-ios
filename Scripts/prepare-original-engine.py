@@ -4743,3 +4743,21 @@ print("Engine 2026-10-13: tags fly on death")
 import engine_wyrm_skins_2026_10_13 as _skins_1013
 _skins_1013.apply(OUTPUT, label="engine wyrm skins 2026-10-13 (iOS)")
 print("Engine 2026-10-13: Wyrm skins")
+
+# Custom arena id (OM, 2026-10-13; packet addition OM asked for): 'C' + the
+# player's 16-character id between the challenge answer and the join, only to
+# the arenas on NTL's list. Same text as Wyrm Android's tree
+# (Scripts/engine_custom_arena_2026_10_13.py).
+import engine_custom_arena_2026_10_13 as _carena_1013
+_carena_1013.apply(OUTPUT, label="engine custom arena 2026-10-13 (iOS)")
+print("Engine 2026-10-13: custom arena id")
+
+# Eyes Back locked arenas (OM, 2026-10-13, as NTL VANCED): never runs in an
+# arena that bans it, and says so for 5 s at the top. Same text as Wyrm
+# Android's tree (Scripts/engine_eyes_back_lock_2026_10_13.py).
+import engine_eyes_back_lock_2026_10_13 as _eblock_1013
+_eblock_1013.apply(OUTPUT, label="engine eyes back lock 2026-10-13 (iOS)")
+print("Engine 2026-10-13: Eyes Back locked arenas")
+
+import engine_rain_2026_10_13 as _rain_1013
+_rain_1013.apply(OUTPUT, label="Rain bridge (iOS)")

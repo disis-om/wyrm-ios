@@ -1,4 +1,12 @@
 #pragma once
+#include <stddef.h>
+#include <stdbool.h>
+
+// Engine-owned bounded mailbox; called only from the native app clients.
+void wyrm_rain_read(char* out, size_t capacity);
+void wyrm_rain_enable(bool enabled);
+void wyrm_rain_rotate(int direction);
+void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y);
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -65,6 +73,9 @@ void WyrmIOSSetJoystickLaser(bool on, float length);
 void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style);
 /* Controls › Joystick knob (2026-10-13): true = back to the centre. */
 void WyrmIOSSetJoystickKnob(bool centre);
+/* Custom arenas (2026-10-13): the 16-character id and the arenas that get it,
+   one "ip:port" a line. HomeMailbox.inc. */
+void WyrmIOSSetCustomArenas(const char* id, const char* list);
 /* Near Original (Home): slither's own HUD and controls; `server` labels the
    minimap (0 = unknown). HomeMailbox.inc. */
 void WyrmIOSSetNearOriginal(bool on, int server);

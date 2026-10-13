@@ -319,6 +319,7 @@ final class WyrmAccountStore: ObservableObject {
     /// Called by the app shell after the account-scoped service store has been
     /// cleared and the cinematic sign-out transition has finished.
     func completeSignOut() {
+        WyrmRain.shared.clearAccount()
         WyrmKeychain.clear()
         WyrmCache.clearAll()
         token = nil

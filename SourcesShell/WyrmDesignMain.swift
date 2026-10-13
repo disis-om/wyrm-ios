@@ -548,6 +548,7 @@ private struct WyrmPlayRoot: View {
                     WyrmLoadoutRow(title: "Controls", value: controls, leading: AnyView(WyrmLoadoutIcon(symbol: "gamecontroller"))) { open(.playControls) }
                         .wyrmTourAnchor("home.controls")
                     WyrmLoadoutRow(title: "Mode", value: "", leading: AnyView(WyrmLoadoutIcon(symbol: "scope"))) { open(.playModes) }
+                    WyrmLoadoutRow(title: "Snakey Rain", value: WyrmRain.shared.enabled ? "On" : "Off", leading: AnyView(WyrmLoadoutIcon(symbol: "cloud.rain"))) { open(.snakeyRain) }
                     WyrmNearOriginalRow()
                         .wyrmTourAnchor("home.near")
                 }

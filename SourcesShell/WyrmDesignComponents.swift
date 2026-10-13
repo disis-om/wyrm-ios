@@ -41,6 +41,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case developer
     case playControls
     case playModes
+    case snakeyRain
     case playFood
     case buildNotes
     case globalChat
@@ -83,6 +84,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .developer: return "developer"
         case .playControls: return "play-controls"
         case .playModes: return "play-modes"
+        case .snakeyRain: return "snakey-rain"
         case .playFood: return "play-food"
         case .buildNotes: return "build-notes"
         case .globalChat: return "global-chat"

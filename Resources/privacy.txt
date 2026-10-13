@@ -93,10 +93,23 @@ Wyrm talks to outside services, and it is worth knowing which is which:
    playing; your snake's position goes to the arena server the way it does in
    any online game. Wyrm sends no account information there — the arena knows
    only the name over your snake.
+   Community-run arenas: Wyrm keeps a random 16-character arena id for your
+   account (random, not made from your name or e-mail) and sends it
+   only to the arenas on a public list of community-run arenas, so those arenas
+   can recognise you between games. Official slither arenas never get it.
 2. **The team service**, only if you turn on Team Mode, and only with the
    credentials you entered yourself.
 3. **Brevo**, only to deliver the Voice Chat verification code that Wyrm's
    backend generated.
+4. **Snakey Rain**, only when you enable it in Loadout. The app sends your
+   public or personal Rain login, chosen characters, arena address, a copy of
+   your arena join, snake position, target and control commands directly to
+   `snakeyrain.com` over an encrypted connection. This service has its own
+   operator. Personal login and private bot tag codes stay in this phone's
+   Keychain, are sent only to Rain, and are cleared on Wyrm logout. Rain settings
+   and non-secret characters follow your Wyrm account. Turning Rain off or
+   leaving the app disconnects it and requests bot stop. Creating a personal
+   Rain account opens that service's website in a browser.
 
 Wyrm's own server is a machine run by the author. It is not a cloud
 account with an analytics dashboard attached.

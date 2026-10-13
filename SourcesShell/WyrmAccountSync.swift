@@ -33,10 +33,12 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.crash.running", .keep),              // + runningVersion: crash detection
         ("wyrm.ios.update.prompted", .keep),
         ("wyrm.ios.tour.", .keep),                  // the app tour was seen on this phone (OM, 2026-10-05)
+        ("wyrm.ios.custom-arena-list.", .keep),     // custom arenas: this phone's copy of the list (2026-10-13)
         // Account caches and retired things: wiped, never uploaded.
         ("wyrm.ios.backup.", .wipe),                // manual backups, retired 2026-10-01
         ("wyrm.ios.update.backup-first", .wipe),
         ("wyrm.ios.look.", .wipe),                  // travels in the shared document
+        ("wyrm.ios.rain.", .wipe),                  // non-secret choices travel in shared rainSettings
         ("wyrm.nickname.chosen", .wipe),            // travels in the shared document
         ("wyrm.support.", .wipe),
         ("wyrm.global-chat.", .wipe),               // the newest global message seen (a marker)
@@ -53,6 +55,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
+        ("wyrm.ios.custom-arena.", .sync),          // custom arenas: the player's id (also shared, 2026-10-13)
         ("wyrm.ios.keyboard.", .sync),
         ("wyrm.ios.developer-mode", .sync),
         ("wyrm.ios.stats.", .sync),
@@ -203,6 +206,9 @@ final class WyrmAccountSync: ObservableObject {
             "zoomSpring": WyrmPlayFeelStore.shared.zoomSpring,
             // Controls › Joystick knob (OM, 2026-10-13): the same on every platform.
             "joystickKnobCentre": WyrmPlayFeelStore.shared.knobCentre,
+            // Custom arenas (OM, 2026-10-13): the id community arenas know you by.
+            "customArenaId": WyrmCustomArenas.shared.id,
+            "rainSettings": WyrmRain.shared.document,
         ]
     }
 
@@ -255,6 +261,7 @@ final class WyrmAccountSync: ObservableObject {
     }
 
     func applyShared(_ doc: [String: Any]) {
+        if let rain = doc["rainSettings"] as? [String: Any], (rain["v"] as? NSNumber)?.intValue == 1 { WyrmRain.shared.restore(rain) }
         let d = UserDefaults.standard
         if let skin = doc["skin"] as? [String: Any], (skin["v"] as? NSNumber)?.intValue == 1 {
             let preset = (skin["preset"] as? NSNumber)?.intValue ?? 2
@@ -331,6 +338,8 @@ final class WyrmAccountSync: ObservableObject {
         if let ahead = doc["lookAhead"] as? Bool { d.set(ahead, forKey: WyrmPlayFeelStore.lookAheadKey) }
         if let spring = doc["zoomSpring"] as? Bool { d.set(spring, forKey: WyrmPlayFeelStore.zoomSpringKey) }
         if let centre = doc["joystickKnobCentre"] as? Bool { d.set(centre, forKey: WyrmPlayFeelStore.knobCentreKey) }
+        // Custom arenas (OM, 2026-10-13): a missing or bad id keeps the phone's.
+        WyrmCustomArenas.shared.adopt(doc["customArenaId"])
         if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
             d.set(mode, forKey: "wyrm.ios.performance.mode")
         }
@@ -375,6 +384,8 @@ final class WyrmAccountSync: ObservableObject {
         WyrmNearOriginalStore.shared.reloadFromDefaults()
         WyrmPlayOrientation.shared.reloadFromDefaults()
         WyrmSavedSkins.shared.reloadFromDefaults()
+        WyrmCustomArenas.shared.reloadFromDefaults()
+        WyrmRain.shared.reload()
     }
 
     // MARK: network

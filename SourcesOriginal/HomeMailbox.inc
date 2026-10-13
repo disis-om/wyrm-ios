@@ -139,6 +139,13 @@ void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style) {
 void mobile_controls_set_knob_centre(bool centre);
 void WyrmIOSSetJoystickKnob(bool centre) { mobile_controls_set_knob_centre(centre); }
 
+/* Custom arenas (OM, 2026-10-13): the player's id and the arenas that get it
+   (network/callback.c, Scripts/engine_custom_arena_2026_10_13.py). */
+void custom_arenas_set(const char* id, const char* list);
+void WyrmIOSSetCustomArenas(const char* id, const char* list) {
+  custom_arenas_set(id, list);
+}
+
 void WyrmIOSToggleEditorLeaderboard(void) {
   if (!home_mutex) return;
   SDL_LockMutex(home_mutex);

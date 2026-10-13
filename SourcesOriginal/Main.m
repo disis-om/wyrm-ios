@@ -93,6 +93,10 @@ static void wyrm_log_output(void* userdata, int category,
 @interface WyrmShellHost : NSObject
 + (UIViewController*)makeViewController;
 @end
+@interface WyrmRainHost : NSObject
++ (UIViewController*)makeViewController;
++ (BOOL)handleKey:(NSString*)key;
+@end
 
 // UIWindow owns the root controller's geometry and is allowed to lay it out
 // again at any time.  Rotating that managed root view directly was therefore
@@ -102,10 +106,15 @@ static void wyrm_log_output(void* userdata, int category,
 @interface WyrmEngineContainerController : UIViewController
 @property(nonatomic, strong) UIViewController* engineController;
 @property(nonatomic, strong) UIViewController* shellController;
+@property(nonatomic, strong) UIViewController* rainController;
+@property(nonatomic, assign) BOOL rainVisible;
+@property(nonatomic, assign) BOOL rainExpanded;
+@property(nonatomic, assign) CGPoint rainOrigin;
 @property(nonatomic, assign) BOOL landscapePresentation;
 - (void)installEngineController:(UIViewController*)controller;
 - (void)installShellControllerIfNeeded;
 - (BOOL)engineGeometryIsStable;
+- (void)layoutRainPanel;
 @end
 
 @implementation WyrmEngineContainerController
@@ -125,6 +134,13 @@ static void wyrm_log_output(void* userdata, int category,
   shell.view.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
   [self.view addSubview:shell.view];
   [shell didMoveToParentViewController:self];
+  UIViewController* rain = [WyrmRainHost makeViewController];
+  self.rainController = rain;
+  [self addChildViewController:rain];
+  rain.view.backgroundColor = UIColor.clearColor;
+  rain.view.frame = CGRectMake(12, 24, 70, 54); rain.view.hidden = YES;
+  [self.view addSubview:rain.view];
+  [rain didMoveToParentViewController:self];
 }
 
 - (void)installEngineController:(UIViewController*)controller {
@@ -163,6 +179,36 @@ static void wyrm_log_output(void* userdata, int category,
   if (self.landscapePresentation)
     surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
   self.shellController.view.frame = portrait;
+  [self layoutRainPanel];
+}
+
+- (void)layoutRainPanel {
+  UIView* rain = self.rainController.view;
+  if (!rain) return;
+  CGRect bounds = self.view.bounds;
+  CGFloat stageWidth = self.landscapePresentation ? CGRectGetHeight(bounds):CGRectGetWidth(bounds);
+  CGFloat stageHeight = self.landscapePresentation ? CGRectGetWidth(bounds):CGRectGetHeight(bounds);
+  CGFloat width = MIN(self.rainExpanded ? 330:70, stageWidth);
+  CGFloat height = MIN(self.rainExpanded ? 360:54, stageHeight);
+  CGFloat left = MIN(MAX(self.rainOrigin.x,0),MAX(stageWidth-width,0));
+  CGFloat top = MIN(MAX(self.rainOrigin.y,0),MAX(stageHeight-height,0));
+  rain.transform = CGAffineTransformIdentity; rain.bounds = CGRectMake(0,0,width,height);
+  rain.center = self.landscapePresentation ? CGPointMake(stageHeight-top-height/2,left+width/2):CGPointMake(left+width/2,top+height/2);
+  if (self.landscapePresentation) rain.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
+  rain.hidden = !self.rainVisible || !engine_presentation || reported_screen != PLAYING;
+  [self.view bringSubviewToFront:rain];
+}
+
+- (void)pressesBegan:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event {
+  NSMutableSet<UIPress*>* remaining = [NSMutableSet setWithSet:presses];
+  if (engine_presentation && reported_screen == PLAYING) for (UIPress* press in presses) {
+    UIKey* key = press.key;
+    NSString* name = key.charactersIgnoringModifiers;
+    if (key.keyCode >= UIKeyboardHIDUsageKeyboardF1 && key.keyCode <= UIKeyboardHIDUsageKeyboardF12)
+      name = [NSString stringWithFormat:@"F%ld", (long)(key.keyCode-UIKeyboardHIDUsageKeyboardF1+1)];
+    if (name.length && [WyrmRainHost handleKey:name]) [remaining removeObject:press];
+  }
+  if (remaining.count) [super pressesBegan:remaining withEvent:event];
 }
 
 - (void)setLandscapePresentation:(BOOL)enabled {
@@ -193,6 +239,16 @@ static void wyrm_log_output(void* userdata, int category,
 
 static WyrmEngineContainerController* engine_container;
 static bool shell_overlay;
+
+// Separate small hosting view: the rest of the screen still belongs to SDL.
+// In sideways play, coordinates and bounds are in the engine's logical stage.
+void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    engine_container.rainVisible = visible; engine_container.rainExpanded = expanded;
+    engine_container.rainOrigin = CGPointMake(isfinite(x) ? x:12,isfinite(y) ? y:24);
+    [engine_container layoutRainPanel];
+  });
+}
 
 /* The SwiftUI shell stays visible above the rotated engine while it draws the
    Ready Room (LOBBY) or the layout editor; its hosting view turns clear so the

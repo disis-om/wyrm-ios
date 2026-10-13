@@ -1056,7 +1056,7 @@ struct WyrmSkinRoot: View {
 }
 
 
-private struct WyrmSkinPreview: View {
+struct WyrmSkinPreview: View {
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
     let colors: [UInt32]

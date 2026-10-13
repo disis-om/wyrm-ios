@@ -834,6 +834,8 @@ final class WyrmShellHost: NSObject {
         WyrmPlayOrientation.shared.publish()
         // Settings › Performance: the saved mode reaches the engine's display link.
         _ = WyrmPerformance.shared
+        // Custom arenas: the player's id and the arenas that get it.
+        WyrmCustomArenas.shared.start()
         WyrmKeyboardController.shared.install()
         NSLog("Wyrm SwiftUI shell installed")
         return UIHostingController(rootView: WyrmDesignRoot())
