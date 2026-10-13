@@ -2,12 +2,13 @@ import Foundation
 import Security
 import SwiftUI
 import UIKit
+import CryptoKit
 
 struct WyrmRainCharacter: Codable, Identifiable {
     var id = UUID().uuidString
     var label = "My snake"
     var name = "SnakeyRain"
-    var skin = "uuuuuuuauuuuuuaauuuuuaaauuuuaaaa"
+    var skin = "uuuuuuuauuuuuuaauuuuuaaauuuuaaaauuuaaaaauuaaaaaauaaaaaaauuaaaaaauuuaaaaauuuuaaaauuuuuaaauuuuuuaa"
     var tag = "12"
     var cosmetic = 11
     var hash = ""
@@ -47,6 +48,10 @@ struct WyrmRainWire {
         withUnsafeBytes(of: &bits) { data.append(contentsOf: $0) }
     }
     static func pair(_ opcode: UInt8, _ value: Int) -> Data { var w = Self(opcode); w.byte(value); return w.data }
+    // The 6.36 private-tag proof format; never used to store login passwords.
+    static func tagProof(_ key: String) -> String {
+        key.isEmpty ? "" : Insecure.MD5.hash(data:Data(key.utf8)).map { String(format:"%02x",$0) }.joined()
+    }
     static func xy(_ opcode: UInt8, _ x: Double, _ y: Double) -> Data {
         var w = Self(opcode); w.short(coord(x)); w.short(coord(y)); return w.data
     }

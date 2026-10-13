@@ -14,6 +14,7 @@ struct WyrmRainPage: View {
     @State private var transfer = ""
     @State private var transferMessage = ""
     @State private var undo = [String]()
+    @State private var privateTagKey = ""
     private var bot: WyrmRainCharacter { rain.characters.first(where: { $0.id == selected }) ?? rain.characters[0] }
     var body: some View {
         ScrollView {
@@ -86,7 +87,7 @@ struct WyrmRainPage: View {
                 Button("Remove") { rain.remove(bot.id); selected = rain.characters[0].id }.disabled(rain.characters.count <= 1)
                 Button("↑") { rain.move(bot.id,-1) }; Button("↓") { rain.move(bot.id,1) } }
             HStack { Button("Enable all") { rain.all(true) }; Button("Disable all") { rain.all(false) } }
-            ScrollView(.horizontal,showsIndicators:false) { HStack { ForEach(rain.characters) { item in Button(item.label) { selected = item.id; editor = ""; undo = [] }.font(.androidWyrm(13,bot.id == item.id ? .bold:.regular)) } } }
+            ScrollView(.horizontal,showsIndicators:false) { HStack { ForEach(rain.characters) { item in Button(item.label) { selected = item.id; editor = ""; undo = []; privateTagKey = "" }.font(.androidWyrm(13,bot.id == item.id ? .bold:.regular)) } } }
             Toggle("Use this character",isOn:Binding(get:{bot.enabled},set:{ value in change{$0.enabled = value} }))
             TextField("Character name",text:Binding(get:{bot.label},set:{value in change{$0.label = value}})).textFieldStyle(.roundedBorder)
             TextField("In-game name",text:Binding(get:{bot.name},set:{value in change{$0.name = value}})).textFieldStyle(.roundedBorder)
@@ -117,10 +118,14 @@ struct WyrmRainPage: View {
                 WyrmRainAccessoryGrid(textures:textures,selected:bot.cosmetic) { id in change{$0.cosmetic = id} }
             }
             if editor == "Tags" {
-                Button("None") { change{$0.tag = "-1"} }
-                WyrmRainTagGrid(textures:textures,selected:Int(bot.tag) ?? -1) { id in change{$0.tag = String(id)} }
+                Button("None") { privateTagKey = ""; change{$0.tag = "-1"; $0.hash = ""} }
+                WyrmRainTagGrid(textures:textures,selected:Int(bot.tag) ?? -1) { id in privateTagKey = ""; change{$0.tag = String(id); $0.hash = ""} }
             }
-            TextField("Tag id or private tag code",text:Binding(get:{bot.tag},set:{value in change{$0.tag = value}})).textFieldStyle(.roundedBorder).autocapitalization(.none)
+            TextField("Tag id",text:Binding(get:{bot.tag},set:{value in privateTagKey = ""; change{$0.tag = value; $0.hash = ""}})).textFieldStyle(.roundedBorder).autocapitalization(.none)
+            SecureField(bot.hash.isEmpty ? "Private tag key (optional)":"Private tag key saved",text:Binding(get:{privateTagKey},set:{value in
+                privateTagKey = String(value.prefix(512)); change { $0.hash = WyrmRainWire.tagProof(privateTagKey) }
+            })).textFieldStyle(.roundedBorder)
+                .onChange(of:bot.id) { _ in privateTagKey = ""; undo = [] }
             Text("Private bot tag codes are sent to the Rain service. Use a tag only with its owner's permission.").font(.androidWyrm(12,.regular))
         }
     }

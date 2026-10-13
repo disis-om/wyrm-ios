@@ -1384,7 +1384,7 @@ private enum WyrmPatternBead: Hashable {
     case wyrm(Int)
 }
 
-private struct WyrmAtlasImage: View {
+struct WyrmAtlasImage: View {
     let image: CGImage?
     var body: some View {
         Group {
