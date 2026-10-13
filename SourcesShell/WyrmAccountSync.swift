@@ -135,6 +135,11 @@ final class WyrmAccountSync: ObservableObject {
             let raw = mode.values.first ?? 0
             doc["renderModeAssist"] = min(max(raw.isFinite ? Int(raw.rounded()) : 0, 0), 3)
         }
+        // Wyrm skin (OM, 2026-10-13): part of the look, the same everywhere.
+        if let skin = engine?.setting("skin.wyrm") {
+            let raw = skin.values.first ?? 0
+            doc["wyrmSkin"] = min(max(raw.isFinite ? Int(raw.rounded()) : 0, 0), 255)
+        }
         if let spine = engine?.setting("normal.spine") {
             doc["spineNormal"] = (spine.values.first ?? 0) >= 0.5
         }
@@ -304,6 +309,10 @@ final class WyrmAccountSync: ObservableObject {
         }
         if let raw = doc["renderModeAssist"] as? NSNumber {
             engine?.write(id: "assist.render_mode", values: [Double(min(max(raw.intValue, 0), 3))])
+        }
+        // Wyrm skin (OM, 2026-10-13); an unknown number reads as none in the engine.
+        if let raw = doc["wyrmSkin"] as? NSNumber, (0...255).contains(raw.intValue) {
+            engine?.write(id: "skin.wyrm", values: [Double(raw.intValue)])
         }
         if let on = doc["spineNormal"] as? Bool { engine?.write(id: "normal.spine", values: [on ? 1 : 0]) }
         if let on = doc["spineAssist"] as? Bool { engine?.write(id: "assist.spine", values: [on ? 1 : 0]) }

@@ -1155,7 +1155,7 @@ struct WyrmBotPage: View {
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Let the bot play").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
-                    Text("Turn it on with the Bot button in a match. It plays like NTL's bot: it eats, dodges snakes and breaks away with boost when one surrounds it, then coils round itself once it is big.")
+                    Text("Turn it on with the Bot button in a match. It eats, dodges snakes, breaks away with boost when it is surrounded, and coils round itself once it is big.")
                         .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
                 }.padding(.horizontal, 14).padding(.vertical, 15)
             }

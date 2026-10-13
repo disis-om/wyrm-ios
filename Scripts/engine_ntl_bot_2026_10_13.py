@@ -1102,15 +1102,15 @@ pairs("app/src/platform/android_settings.c",
      "How wide the bot keeps its distance.", SETTING_INT, 10, 40, NULL,
      OWNER_SETTINGS, SETTINGS_FIELD(bot_radius_mult)},""",
        """    {"general.bot_circle", "general.bot", "Circle after score",
-     "Below this score the bot eats. Above it, it turns until its head meets "
-     "its own body and coils round itself, keeping the coil clear and closing "
-     "it on a snake caught inside. NTL's bot length; 2000 is NTL's.",
+     "Below this score the bot hunts for food. From this score on it coils "
+     "round itself to guard its length and closes the coil on any snake "
+     "caught inside.",
      SETTING_INT, 1000, 50000, NULL, OWNER_SETTINGS,
      SETTINGS_FIELD(bot_follow_circle_score)},
     {"general.bot_radius", "general.bot", "Bot radius",
-     "How far ahead of its head the bot watches for snakes, in half snake "
-     "widths. Smaller goes closer to snakes for food; bigger dodges sooner. "
-     "12 is NTL's.", SETTING_INT, 10, 40, NULL,
+     "How far around its head the bot watches for danger. Smaller lets it go "
+     "closer to other snakes for food; bigger makes it dodge them earlier.",
+     SETTING_INT, 10, 40, NULL,
      OWNER_SETTINGS, SETTINGS_FIELD(bot_radius_mult)},"""))
 
 

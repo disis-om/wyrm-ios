@@ -4734,3 +4734,12 @@ print("Engine 2026-10-13: bigger on-screen buttons")
 import engine_tags_fly_2026_10_13 as _fly_1013
 _fly_1013.apply(OUTPUT, label="engine tags fly 2026-10-13 (iOS)")
 print("Engine 2026-10-13: tags fly on death")
+
+
+# Wyrm skins (OM, 2026-10-13): 23 creatures and 15 strip looks drawn over a
+# snake, sent in the join's skin-block corner (254, 86, preset, 0,0,0, n,
+# n^0x5C). game/wyrm_skins.c/.h come from SharedEngine; the hooks are the same
+# text as Wyrm Android's tree (Scripts/engine_wyrm_skins_2026_10_13.py).
+import engine_wyrm_skins_2026_10_13 as _skins_1013
+_skins_1013.apply(OUTPUT, label="engine wyrm skins 2026-10-13 (iOS)")
+print("Engine 2026-10-13: Wyrm skins")

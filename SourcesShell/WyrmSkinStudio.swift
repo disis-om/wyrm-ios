@@ -24,6 +24,8 @@ final class WyrmSkinTextureLibrary: ObservableObject {
     private(set) var accessoryThumbnails: [Int: CGImage] = [:]
     private(set) var tagThumbnails: [Int: CGImage] = [:]
     private(set) var backgrounds: [Int: CGImage] = [:]
+    /// Wyrm skins (`WyrmSkins`): each skin's picture, by its number.
+    private(set) var wyrmSkins: [Int: CGImage] = [:]
     private var loading = false
 
     /// One library while any screen holds it (the Skin tab, Share run's skin
@@ -115,8 +117,14 @@ final class WyrmSkinTextureLibrary: ObservableObject {
                     backgroundImages[background.id] = image
                 }
 
+                // Wyrm skins (OM, 2026-10-13): one WebP sheet, cut per skin.
+                let skinPictures = Bundle.main.url(forResource: "WyrmSkins", withExtension: "webp")
+                    .flatMap { Self.downsample($0, maxPixel: 4096) }
+                    .map(WyrmSkins.pictures) ?? [:]
+
                 DispatchQueue.main.async {
                     self.beads = beadImages
+                    self.wyrmSkins = skinPictures
                     self.airBeads = airImages
                     self.airShadow = airShadowImage
                     self.wyrmBeads = wyrmImages
@@ -259,7 +267,7 @@ final class WyrmSkinTextureLibrary: ObservableObject {
 }
 
 private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
-    case overview, presets, pattern, accessories, tags, background, wyrmAccessories
+    case overview, presets, pattern, accessories, tags, background, wyrmAccessories, wyrmSkins
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -270,6 +278,7 @@ private enum WyrmSkinStudioSection: String, CaseIterable, Identifiable {
         case .tags: return "Tag"
         case .background: return "Arena background"
         case .wyrmAccessories: return "Wyrm accessories"
+        case .wyrmSkins: return "Wyrm skins"
         }
     }
 }
@@ -398,6 +407,12 @@ struct WyrmSkinRoot: View {
                     .frame(height: 218)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Preview of the skin you are trying")
+            } else if wyrmSkinWorn && !editingPattern {
+                // A Wyrm skin is worn (OM, 2026-10-13): its picture is the preview.
+                WyrmSkinPicture(image: textures.wyrmSkins[wyrmSkin])
+                    .frame(height: 218)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Preview of your Wyrm skin")
             } else {
                 WyrmSkinPreview(textures: textures, groups: previewGroups, colors: previewColors,
                                 preset: preset, custom: customEnabled,
@@ -428,6 +443,14 @@ struct WyrmSkinRoot: View {
                         case .tags: tagsPanel
                         case .background: backgroundsPanel
                         case .wyrmAccessories: wyrmAccessoriesPanel
+                        case .wyrmSkins:
+                            VStack(spacing: 0) {
+                                inlineHeader
+                                WyrmSkinsPanel(pictures: textures.wyrmSkins, selected: wyrmSkin) { number in
+                                    engine.write(id: WyrmSkins.setting, values: [Double(number)])
+                                    UISelectionFeedbackGenerator().selectionChanged()
+                                }
+                            }
                         }
                     }
                 }
@@ -545,11 +568,17 @@ struct WyrmSkinRoot: View {
             WyrmPaperCard {
                 studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)")
                 studioRow(.pattern, value: customEnabled ? "Custom" : "Preset")
-                studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
-                if wyrmTagsDisabled {
-                    WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
+                // A Wyrm skin travels where a tag would: tags and accessories wait (OM, 2026-10-13).
+                if wyrmSkinWorn {
+                    offRow(.accessories)
+                    offRow(.tags)
                 } else {
-                    studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { WyrmSkinCatalog.isWyrmTag($0.ntlID) ? "On" : "#\($0.ntlID)" } ?? "None")
+                    studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
+                    if wyrmTagsDisabled {
+                        WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
+                    } else {
+                        studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { WyrmSkinCatalog.isWyrmTag($0.ntlID) ? "On" : "#\($0.ntlID)" } ?? "None")
+                    }
                 }
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
@@ -569,7 +598,20 @@ struct WyrmSkinRoot: View {
             WyrmSectionLabel("Wyrm accessories")
             WyrmPaperCard {
                 let worn = [look.hair, look.ears, look.glasses].filter { $0 >= 0 }.count
-                studioRow(.wyrmAccessories, value: worn == 0 ? "None" : "\(worn) on")
+                if wyrmSkinWorn {
+                    offRow(.wyrmAccessories)
+                } else {
+                    studioRow(.wyrmAccessories, value: worn == 0 ? "None" : "\(worn) on")
+                }
+                // Wyrm skins (OM, 2026-10-13): creatures and strip looks.
+                studioRow(.wyrmSkins, value: WyrmSkins.item(wyrmSkin)?.name ?? "None")
+            }
+            if wyrmSkinWorn {
+                Text("Your Wyrm skin is on, so accessories, tags and Wyrm accessories are off. "
+                     + "Choose None in Wyrm skins to use them again.")
+                    .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 20).padding(.top, 8)
             }
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
@@ -623,6 +665,21 @@ struct WyrmSkinRoot: View {
 
     private func studioRow(_ target: WyrmSkinStudioSection, value: String) -> some View {
         WyrmListRow(title: target.title, value: value) { enter(target) }
+    }
+
+    /// The worn Wyrm skin (`skin.wyrm`), 0 for none.
+    private var wyrmSkin: Int {
+        Int((engine.settings.first { $0.id == WyrmSkins.setting }?.values.first ?? 0).rounded())
+    }
+
+    private var wyrmSkinWorn: Bool { WyrmSkins.item(wyrmSkin) != nil }
+
+    /// A row that waits while a Wyrm skin is worn: faded, no way in.
+    private func offRow(_ target: WyrmSkinStudioSection) -> some View {
+        WyrmListRow(title: target.title, value: "Off", showsChevron: false, action: nil)
+            .opacity(0.42)
+            .allowsHitTesting(false)
+            .accessibilityHint("Off while a Wyrm skin is on")
     }
 
     private var inlineHeader: some View {

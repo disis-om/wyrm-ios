@@ -393,5 +393,7 @@
   "thermite/include/cglm/vec3.h": "fd0a246d082e8136c0b199d89ca9ad5ce8f1d3ab9c9dd79d0d076fe432904e2e",
   "thermite/include/cglm/vec4-ext.h": "02deecc5730e4fdd98852cf2cc24066c2477e16fb4c7c62ef964254f6bf116b6",
   "thermite/include/cglm/vec4.h": "87fc168b3e6f18e76ba5af30549fe4d750ec23f017f201a47c2dd7fc29700b5f",
-  "thermite/include/cglm/version.h": "f4a2ef726f7c6a5a47b3dd931aec74e16592715c771012a85d3cffb9c3a9986a"
+  "thermite/include/cglm/version.h": "f4a2ef726f7c6a5a47b3dd931aec74e16592715c771012a85d3cffb9c3a9986a",
+  "app/src/game/wyrm_skins.c": "435c5b2106bc2c639f16b0d6a06abb7232050984bcd96174aec176d26b5eb4fb",
+  "app/src/game/wyrm_skins.h": "1bc6b2e4cff07f423a72f198867c2385c2b10caca006601d717d948be0e28c8a"
 }
