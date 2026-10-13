@@ -396,6 +396,6 @@
   "thermite/include/cglm/version.h": "f4a2ef726f7c6a5a47b3dd931aec74e16592715c771012a85d3cffb9c3a9986a",
   "app/src/game/wyrm_skins.c": "435c5b2106bc2c639f16b0d6a06abb7232050984bcd96174aec176d26b5eb4fb",
   "app/src/game/wyrm_skins.h": "1bc6b2e4cff07f423a72f198867c2385c2b10caca006601d717d948be0e28c8a",
-  "app/src/platform/rain_bridge.c": "0a7cc02b51579f8bc27a53f42fffe221b0b43553508c9fff5702a901df18e010",
+  "app/src/platform/rain_bridge.c": "2f1245a63b5a1bc986d152d2cb2289e7acb8497ac21e1667984e232ec9830398",
   "app/src/platform/rain_bridge.h": "d7c340f49d9dd1dd71e662f9b75e8f65a5e870d7068ab414e54236037a90ec74"
 }

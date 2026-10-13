@@ -42,7 +42,10 @@ bool wyrm_rain_rotating(void) {
   SDL_UnlockMutex(rain_mutex); return on;
 }
 void wyrm_rain_capture(struct mg_connection* connection, const void* data, size_t length) {
-  if (!rain_mutex || !data || !length || length > RAIN_JOIN_MAX || ((const uint8_t*)data)[0] != 's') return;
+  // A heading is one byte and can also equal 's'. The real web join has a
+  // 28-byte minimum and its fixed 30 marker; the challenge answer is 27 bytes.
+  if (!rain_mutex || !data || length < 28 || length > RAIN_JOIN_MAX ||
+      ((const uint8_t*)data)[0] != 's' || ((const uint8_t*)data)[1] != 30) return;
   const char* hex = "0123456789abcdef";
   SDL_LockMutex(rain_mutex);
   rain_connection = connection; ++rain_generation; rain_rotation = 0;
