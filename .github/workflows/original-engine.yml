@@ -82,6 +82,11 @@ jobs:
           grep -E 'Wyrm engine bootstrap completed off main thread in [0-9]+ ms' original-artifacts/settings-stderr.log
           grep -E 'Wyrm SwiftUI settings bridge verified rows=[1-9][0-9]* id=general.minimap_size' original-artifacts/settings-stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
+          xcrun simctl launch --stdout="$PWD/original-artifacts/studio-stdout.log" --stderr="$PWD/original-artifacts/studio-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-skin-studio
+          sleep 6
+          xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin-studio.png
+          grep -E 'Wyrm Skin Studio library presented skins=[1-9][0-9]* beads=[1-9][0-9]*' original-artifacts/studio-stderr.log
+          xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios
           xcrun simctl launch --stdout="$PWD/original-artifacts/skin-stdout.log" --stderr="$PWD/original-artifacts/skin-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-skin
           sleep 6
           xcrun simctl io "$DEVICE" screenshot original-artifacts/swiftui-skin.png

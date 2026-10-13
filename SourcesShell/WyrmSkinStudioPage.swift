@@ -17,8 +17,16 @@ struct WyrmSkinTab: View {
     @ObservedObject private var studio = WyrmStudio.shared
     @ObservedObject private var trial = WyrmSkinTrial.shared
 
+    // Existing CI probes address the classic editor and its named sections.
+    // The separate Studio probe exercises the default page players see.
+    private var classicSmoke: Bool {
+        let flags = ["--smoke-skin", "--smoke-skin-accessories", "--smoke-skin-tags",
+                     "--smoke-skin-presets", "--smoke-skin-pattern", "--smoke-skin-wheel"]
+        return flags.contains { ProcessInfo.processInfo.arguments.contains($0) }
+    }
+
     var body: some View {
-        if trial.skin != nil || studio.classicOpen {
+        if trial.skin != nil || studio.classicOpen || classicSmoke {
             WyrmSkinRoot(engine: engine)
         } else {
             WyrmSkinStudioPage(engine: engine)
@@ -150,7 +158,10 @@ struct WyrmSkinStudioPage: View {
                 .zIndex(6)
             }
         }
-        .onAppear { textures.prepare() }
+        .onAppear {
+            textures.prepare()
+            NSLog("Wyrm Skin Studio library presented skins=%d beads=%d", studio.skins.count, studio.beads.count)
+        }
         // The editors rise over the whole page.
         .fullScreenCover(item: $editingBead) { editing in
             StudioBeadEditor(beadID: editing.id, textures: textures) { saved in
