@@ -1,4 +1,5 @@
 import SwiftUI
+import ImageIO
 
 /// Wyrm skins (OM, 2026-10-13): creatures and strip looks the engine draws
 /// over a snake instead of its beads (game/wyrm_skins.c). The number is what
@@ -20,6 +21,28 @@ enum WyrmSkins {
     static let sheetColumns = 6
     static let sheetRows = 7
     static let setting = "skin.wyrm"
+    /// The moving preview: frames in one sheet per skin, Resources/WyrmSkinsLive/<n>.webp
+    /// (Wyrm Android tools/wyrm-skins/make.py --live).
+    static let liveFrames = 32
+    static let liveColumns = 8
+    static let liveRows = 4
+    static let liveSeconds = 4.0
+
+    /// A skin's frames, cut from its sheet (kept for the last few skins shown).
+    @MainActor private static var liveCache: [Int: [CGImage]] = [:]
+    @MainActor static func liveSheetFrames(_ number: Int) -> [CGImage] {
+        if let cached = liveCache[number] { return cached }
+        guard let url = Bundle.main.url(forResource: "\(number)", withExtension: "webp", subdirectory: "WyrmSkinsLive"),
+              let source = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let sheet = CGImageSourceCreateImageAtIndex(source, 0, nil) else { return [] }
+        let cw = sheet.width / liveColumns, ch = sheet.height / liveRows
+        let frames: [CGImage] = (0..<liveFrames).compactMap { f in
+            sheet.cropping(to: CGRect(x: (f % liveColumns) * cw, y: (f / liveColumns) * ch, width: cw, height: ch))
+        }
+        if liveCache.count > 3 { liveCache.removeAll() }
+        liveCache[number] = frames
+        return frames
+    }
 
     static let creatures: [WyrmSkinItem] = [
         .init(number: 1, name: "Centipede"), .init(number: 2, name: "Dragon"), .init(number: 3, name: "Skeleton"),
@@ -52,6 +75,52 @@ enum WyrmSkins {
             if let part = sheet.cropping(to: rect) { out[skin.number] = part }
         }
         return out
+    }
+}
+
+/// The worn skin, moving gently and slowly on the Skin page's preview (OM, 2026-10-13):
+/// its frames in turn, each blended into the next. Until the frames are in, the still picture.
+struct WyrmSkinLive: View {
+    let number: Int
+    let still: CGImage?
+    @State private var frames: [CGImage] = []
+    @State private var loaded = -1
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                guard !frames.isEmpty else {
+                    if let still { draw(context, still, in: size, opacity: 1) }
+                    return
+                }
+                let count = Double(frames.count)
+                let phase = (timeline.date.timeIntervalSinceReferenceDate / WyrmSkins.liveSeconds)
+                    .truncatingRemainder(dividingBy: 1) * count
+                let f0 = min(Int(phase), frames.count - 1)
+                let mix = phase - Double(f0)
+                draw(context, frames[f0], in: size, opacity: 1)
+                if mix > 0.01 { draw(context, frames[(f0 + 1) % frames.count], in: size, opacity: mix) }
+            }
+        }
+        .padding(.horizontal, 18).padding(.vertical, 10)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .onAppear(perform: load)
+        .onChange(of: number) { _ in load() }
+    }
+
+    private func load() {
+        guard loaded != number else { return }
+        loaded = number
+        frames = WyrmSkins.liveSheetFrames(number)
+    }
+
+    private func draw(_ context: GraphicsContext, _ image: CGImage, in size: CGSize, opacity: Double) {
+        let w = CGFloat(image.width), h = CGFloat(image.height)
+        let scale = min(size.width / w, size.height / h)
+        let rect = CGRect(x: (size.width - w * scale) / 2, y: (size.height - h * scale) / 2, width: w * scale, height: h * scale)
+        var c = context
+        c.opacity = opacity
+        c.draw(Image(decorative: image, scale: 1), in: rect)
     }
 }
 
@@ -123,9 +192,7 @@ struct WyrmSkinsPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            caption("Your snake becomes this skin in the arena, moving and boosting with you. "
-                    + "Other Wyrm players see it too; everyone else sees the nearest normal skin. "
-                    + "While a Wyrm skin is on, accessories, tags and Wyrm accessories are off.")
+            caption("Pick one and your snake becomes it in the arena.")
             LazyVGrid(columns: columns, spacing: 10) {
                 WyrmSkinTile(selected: selected == 0, label: "None", image: nil) { onPick(0) }
                 ForEach(WyrmSkins.creatures) { skin in

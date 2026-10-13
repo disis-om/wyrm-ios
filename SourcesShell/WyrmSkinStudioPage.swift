@@ -259,6 +259,39 @@ private struct StudioShelfCard<Content: View>: View {
     }
 }
 
+/// The worn Studio skin on the classic Skin page's preview (OM, 2026-10-13): the same
+/// beads and eyes the Studio made, swimming slowly, no card.
+struct StudioWornPreview: View {
+    let skin: WyrmStudioSkin
+    @ObservedObject var textures: WyrmSkinTextureLibrary
+    @State private var clock = StudioClock()
+
+    var body: some View {
+        let _ = WyrmStudio.shared.paintRevision
+        let pictures = studioPictures(Array(Set(skin.pattern)), white: textures.beads[40])
+        let clock = self.clock
+        let skin = self.skin
+        return TimelineView(.animation) { timeline in
+            Canvas { context, size in
+                let time = clock.advance(to: timeline.date)
+                let bead = size.height * 0.2
+                let step = bead * studioBeadStep
+                let count = min(max(Int((size.width + bead * 2) / step), 8), 256)
+                let head = CGPoint(x: size.width * 0.84, y: size.height * 0.5)
+                let wave = bead * 0.55
+                let k = 0.32 * studioBeadStep / 0.36
+                let look = CGPoint(x: 1.4 + 0.6 * cos(time * 0.9), y: 1.8 * sin(time * 0.7))
+                drawStudioSnake(context, skin: skin, count: count, bead: bead, place: { i in
+                    let fi = CGFloat(i)
+                    return CGPoint(x: head.x - fi * step,
+                                   y: head.y + sin(time * 2.0 - fi * k) * wave * (0.25 + 0.75 * min(fi / 30, 1)))
+                }, image: { pictures[$0] }, look: look)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
 // MARK: - the stage
 
 private struct StudioStage: View {

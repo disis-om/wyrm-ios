@@ -316,8 +316,12 @@ struct WyrmSkinRoot: View {
     @AppStorage("wyrm.ios.skin.tag-swing") private var swing = 1.0
     @AppStorage("wyrm.ios.skin.tag-scale") private var tagScale = 1.0
     @ObservedObject private var look = WyrmLookStore.shared
+    /// The worn Skin Studio skin shows on the preview (OM, 2026-10-13).
+    @ObservedObject private var studioStore = WyrmStudio.shared
     /// Saved skins being selected (keys), Gmail-style: the top bar turns into their actions.
     @State private var savedSelection: Set<String> = []
+    /// What was tapped while a Wyrm skin is worn ("Tags", ...): the popup that explains.
+    @State private var blockedBy: String?
 
 
     init(engine: WyrmShellStore) {
@@ -408,11 +412,17 @@ struct WyrmSkinRoot: View {
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Preview of the skin you are trying")
             } else if wyrmSkinWorn && !editingPattern {
-                // A Wyrm skin is worn (OM, 2026-10-13): its picture is the preview.
-                WyrmSkinPicture(image: textures.wyrmSkins[wyrmSkin])
+                // A Wyrm skin is worn (OM, 2026-10-13): it moves on the preview.
+                WyrmSkinLive(number: wyrmSkin, still: textures.wyrmSkins[wyrmSkin])
                     .frame(height: 218)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Preview of your Wyrm skin")
+            } else if !editingPattern, let studioSkin = studioStore.skin(studioStore.worn) {
+                // A Skin Studio skin is worn (OM, 2026-10-13): it shows here, eyes and all.
+                StudioWornPreview(skin: studioSkin, textures: textures)
+                    .frame(height: 218)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel("Preview of your Skin Studio skin")
             } else {
                 WyrmSkinPreview(textures: textures, groups: previewGroups, colors: previewColors,
                                 preset: preset, custom: customEnabled,
@@ -463,6 +473,16 @@ struct WyrmSkinRoot: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(ATheme.paper)
+        .alert("\(WyrmSkins.item(wyrmSkin)?.name ?? "Your Wyrm skin") is on", isPresented: Binding(
+            get: { blockedBy != nil }, set: { if !$0 { blockedBy = nil } })) {
+            Button("Choose a default skin") { blockedBy = nil; dropWyrmSkin(); enter(.presets) }
+            Button("Make a custom skin") { blockedBy = nil; dropWyrmSkin(); enter(.pattern) }
+            Button("Keep \(WyrmSkins.item(wyrmSkin)?.name ?? "it")", role: .cancel) { blockedBy = nil }
+        } message: {
+            let item = WyrmSkins.item(wyrmSkin)
+            Text("You are wearing the \(item?.strip == true ? "strip look" : "creature skin") \(item?.name ?? "") , so \(blockedBy ?? "these") stay off. To use them, choose a default skin or make a custom one."
+                .replacingOccurrences(of: " ,", with: ","))
+        }
         .onAppear {
             textures.prepare()
             if ProcessInfo.processInfo.arguments.contains("--smoke-skin-accessories"), accessory < 0 { accessory = 0 }
@@ -568,17 +588,12 @@ struct WyrmSkinRoot: View {
             WyrmPaperCard {
                 studioRow(.presets, value: "\(WyrmSkinCatalog.presets.count)")
                 studioRow(.pattern, value: customEnabled ? "Custom" : "Preset")
-                // A Wyrm skin travels where a tag would: tags and accessories wait (OM, 2026-10-13).
-                if wyrmSkinWorn {
-                    offRow(.accessories)
-                    offRow(.tags)
+                // While a Wyrm skin is worn these wait; a tap says why (OM, 2026-10-13).
+                guardedRow(.accessories, what: "Accessories", value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
+                if wyrmTagsDisabled {
+                    WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
                 } else {
-                    studioRow(.accessories, value: accessory < 0 ? "None" : String(format: "%02d", accessory + 1))
-                    if wyrmTagsDisabled {
-                        WyrmListRow(title: WyrmSkinStudioSection.tags.title, value: "Coming soon") {}
-                    } else {
-                        studioRow(.tags, value: WyrmSkinCatalog.tags[safe: tag].map { WyrmSkinCatalog.isWyrmTag($0.ntlID) ? "On" : "#\($0.ntlID)" } ?? "None")
-                    }
+                    guardedRow(.tags, what: "Tags", value: WyrmSkinCatalog.tags[safe: tag].map { WyrmSkinCatalog.isWyrmTag($0.ntlID) ? "On" : "#\($0.ntlID)" } ?? "None")
                 }
                 studioRow(.background, value: WyrmSkinCatalog.backgrounds[safe: background]?.label ?? "Wyrm")
             }
@@ -598,20 +613,9 @@ struct WyrmSkinRoot: View {
             WyrmSectionLabel("Wyrm accessories")
             WyrmPaperCard {
                 let worn = [look.hair, look.ears, look.glasses].filter { $0 >= 0 }.count
-                if wyrmSkinWorn {
-                    offRow(.wyrmAccessories)
-                } else {
-                    studioRow(.wyrmAccessories, value: worn == 0 ? "None" : "\(worn) on")
-                }
+                guardedRow(.wyrmAccessories, what: "Wyrm accessories", value: worn == 0 ? "None" : "\(worn) on")
                 // Wyrm skins (OM, 2026-10-13): creatures and strip looks.
                 studioRow(.wyrmSkins, value: WyrmSkins.item(wyrmSkin)?.name ?? "None")
-            }
-            if wyrmSkinWorn {
-                Text("Your Wyrm skin is on, so accessories, tags and Wyrm accessories are off. "
-                     + "Choose None in Wyrm skins to use them again.")
-                    .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(3)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 20).padding(.top, 8)
             }
             if let failure = textures.failure {
                 Text(failure).font(.androidWyrm(11)).foregroundColor(.red).padding(12)
@@ -674,12 +678,15 @@ struct WyrmSkinRoot: View {
 
     private var wyrmSkinWorn: Bool { WyrmSkins.item(wyrmSkin) != nil }
 
-    /// A row that waits while a Wyrm skin is worn: faded, no way in.
-    private func offRow(_ target: WyrmSkinStudioSection) -> some View {
-        WyrmListRow(title: target.title, value: "Off", showsChevron: false, action: nil)
-            .opacity(0.42)
-            .allowsHitTesting(false)
-            .accessibilityHint("Off while a Wyrm skin is on")
+    /// A row that waits while a Wyrm skin is worn: a tap says why and offers the ways out.
+    private func guardedRow(_ target: WyrmSkinStudioSection, what: String, value: String) -> some View {
+        WyrmListRow(title: target.title, value: value) {
+            if wyrmSkinWorn { blockedBy = what } else { enter(target) }
+        }
+    }
+
+    private func dropWyrmSkin() {
+        engine.write(id: WyrmSkins.setting, values: [0])
     }
 
     private var inlineHeader: some View {

@@ -34,7 +34,7 @@ targets:
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
           - MG_ENABLE_IPV6=1
-          - APP_VERSION=\"1.1.5\"
+          - APP_VERSION=\"1.1.6\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -61,6 +61,10 @@ targets:
         buildPhase: resources
       # Wyrm skins (OM, 2026-10-13): the Skin page's pictures.
       - path: Resources/WyrmSkins.webp
+        buildPhase: resources
+      # The Skin page's moving preview: one frame sheet per Wyrm skin (OM, 2026-10-13).
+      - path: Resources/WyrmSkinsLive
+        type: folder
         buildPhase: resources
       - path: Resources/privacy.txt
         buildPhase: resources
@@ -100,8 +104,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "1.1.5"
-        CURRENT_PROJECT_VERSION: "119"
+        MARKETING_VERSION: "1.1.6"
+        CURRENT_PROJECT_VERSION: "120"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

@@ -11,7 +11,7 @@
 
 ## Status
 
-- Current release: **1.1.0 (build 114)**, stable. Source/test build: **1.1.4 (118)**. iOS **15 or newer**, iPhone
+- Current release: **1.1.0 (build 114)**, stable. Source/test build: **1.1.6 (120)**. iOS **15 or newer**, iPhone
   first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
@@ -30,7 +30,7 @@
   animation; logging out clears the phone.
 - Touch and hold your own Global or direct message to delete it for both sides.
   Trail deletion removes posts and unreferenced media from active server storage.
-- Skin Studio with painted beads/eyes, classic Saved skins, NTL-compatible bot,
+- Skin Studio with painted beads/eyes, classic Saved skins, assisted play,
   joystick knob modes, larger on-screen keys and tags that fly away on death.
   Background play runs the game without GPU frames while a silent audio session
   attempts to keep the match awake; system interruptions may still suspend it.

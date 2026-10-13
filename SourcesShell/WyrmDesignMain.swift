@@ -173,10 +173,10 @@ struct WyrmDesignMain: View {
         .onChange(of: tab) { value in
             if routes.isEmpty { WyrmCrashWatch.shared.screen = value.rawValue }
             // Leaving the Skin tab without Wear drops a tried skin, and the tab
-            // opens on Skin Studio again (OM, 2026-10-12).
+            // opens on the classic Skin page again (OM, 2026-10-13).
             if value != .skin {
                 trial.end()
-                WyrmStudio.shared.classicOpen = false
+                WyrmStudio.shared.classicOpen = !ProcessInfo.processInfo.arguments.contains("--smoke-skin-studio")
             }
         }
         .onChange(of: trial.request) { _ in

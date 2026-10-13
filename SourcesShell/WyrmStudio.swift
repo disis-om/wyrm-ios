@@ -142,8 +142,9 @@ final class WyrmStudio: ObservableObject {
     /// Bumped when a painting changes, so pictures redraw.
     @Published private(set) var paintRevision = 0
 
-    /// The classic Skin page is open over the Studio (the Skin tab resets to the Studio).
-    @Published var classicOpen = false
+    /// The classic Skin page is the Skin tab's default (OM, 2026-10-13); the Studio opens
+    /// from it. CI's Studio probe starts on the Studio.
+    @Published var classicOpen = !ProcessInfo.processInfo.arguments.contains("--smoke-skin-studio")
 
     weak var engine: WyrmShellStore?
     private var root: URL?
