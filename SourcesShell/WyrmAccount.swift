@@ -148,12 +148,9 @@ private actor WyrmAPI {
             "displayName": displayName, "username": username,
             "bio": bio, "avatarKey": avatarKey,
         ]
-        // Guest accounts begin without an arena name. Sending an empty string
-        // would fail the backend's 3–20 character IGN contract, so leave the
-        // field untouched until the player actually chooses one.
-        if !ingameName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            body["ingameName"] = ingameName
-        }
+        // The arena name comes from the lobby only (OM, 2026-10-14): Edit
+        // profile never sends one, so it cannot put back an old name.
+        _ = ingameName
         return try await request("/v1/me", method: "PATCH", body: body, token: token)
     }
 
@@ -587,7 +584,6 @@ private struct WyrmProfileEditor: View {
             ScrollView {
                 VStack(spacing: 14) {
                     WyrmField(title: "DISPLAY NAME", text: $displayName, placeholder: "Display name")
-                    WyrmField(title: "ARENA NAME", text: $ingameName, placeholder: "3–20 letters, numbers or _")
                     WyrmField(title: "USERNAME", text: $username, placeholder: "Username")
                     WyrmField(title: "BIO", text: $bio, placeholder: "150 characters max")
                     if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }

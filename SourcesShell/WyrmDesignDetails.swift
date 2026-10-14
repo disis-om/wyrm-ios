@@ -385,7 +385,6 @@ private struct WyrmEditProfileDetail: View {
                         if account.busy { ProgressView().tint(ATheme.quiet) }
                     }.padding(.vertical, 8)
                     WyrmDesignEditField(label: "Display name", value: $displayName)
-                    WyrmDesignEditField(label: "Arena name", value: $ingameName)
                     WyrmDesignEditField(label: "Username", value: $username)
                     WyrmDesignEditField(label: "Bio", value: $bio)
                     if let renames = account.renames {

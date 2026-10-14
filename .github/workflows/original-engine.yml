@@ -35,8 +35,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-2.0.0-build-129-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-2.0.0-build-129-simulator.app.zip
+          zip -qry Wyrm-2.1.0-build-130-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-2.1.0-build-130-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test

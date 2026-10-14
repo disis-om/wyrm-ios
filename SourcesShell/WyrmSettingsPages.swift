@@ -1839,22 +1839,9 @@ struct WyrmBuildNotesPage: View {
         }
     }
 
-    /// This release (2.0.0, OM 2026-10-14): everything since 1.1.0.
+    /// This release (2.1.0, OM 2026-10-14).
     static let notes: [String] = [
-        "Arena chat has three tabs: TEAM, GLOBAL and ONLINE. Read and send to Wyrm's global chat without leaving the match.",
-        "ONLINE shows who has been on Wyrm lately, their username and the arena they play in. Each tab has its own unread count; the X closes the chat in one tap.",
-        "Snakey Rain is built in, with its own page, an on-screen key and a panel you can move, resize and recolour.",
-        "Skin Studio: build a snake bead by bead with finishes, colours, painting and eyes.",
-        "Saved skins keep every custom skin you play with. Tap one to wear it again.",
-        "Wyrm skins: 23 creatures and 15 strip looks, with a live preview.",
-        "On-screen buttons can be up to 5x bigger, with their own label, border and fill colours. A button that is on gets a green border.",
-        "Leaderboard width and height, stats text colour, and Spine for Mine or Everyone.",
-        "Play in the background, joystick knob that can go back to the centre, and tags that fly off when a snake dies.",
-        "Any in-game name you like, shared with others and changed any time. It updates everywhere.",
-        "Delete your own messages in global chat and DMs. Profile photos have a proper cropper and load faster.",
-        "The bot plays like NTL's bot again.",
-        "Boost reacts faster, ping is measured more exactly, and IPv6 arenas work.",
-        "Fixed: the game stopping while you touch the Rain panel, teammates vanishing from the minimap after a death, a short freeze when joining, and stutter with many snakes.",
+        "Fixed a known bug.",
     ]
 }
 

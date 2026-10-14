@@ -41,7 +41,7 @@ final class WyrmGameSync {
         let changed = playerID != self.playerID
         self.token = token
         self.playerID = playerID
-        if changed { reconcileTask?.cancel(); reconcileTask = nil }
+        if changed { reconcileTask?.cancel(); reconcileTask = nil; lastSentIngameName = nil }
         flushRuns()
         startReconciliation()
     }
@@ -54,6 +54,7 @@ final class WyrmGameSync {
         reconcileTask = nil
         token = ""
         playerID = ""
+        lastSentIngameName = nil
     }
 
     private func tick() {
@@ -233,6 +234,8 @@ final class WyrmGameSync {
     /// a valid IGN; anything else stays local to the engine.
     func syncIngameName(_ raw: String) {
         let name = raw.trimmingCharacters(in: .whitespaces)
+        // Sent once per change: every match asks, the account hears it once.
+        guard name != lastSentIngameName else { return }
         // No name now (OM, 2026-10-14): the account forgets the old one, so chat,
         // the online list and the Observatory show the username instead.
         if name.isEmpty {
@@ -240,6 +243,7 @@ final class WyrmGameSync {
             Task {
                 do {
                     _ = try await call("/v1/me", method: "PATCH", body: ["ingameName": NSNull()])
+                    lastSentIngameName = ""
                     NotificationCenter.default.post(name: Self.profileChanged, object: nil)
                 } catch {}
             }
@@ -255,12 +259,16 @@ final class WyrmGameSync {
         Task {
             do {
                 _ = try await call("/v1/me", method: "PATCH", body: ["ingameName": name])
+                lastSentIngameName = name
                 NotificationCenter.default.post(name: Self.profileChanged, object: nil)
             } catch WyrmSyncError.rejected(let status) where status == 409 || status == 400 || (status == 429 && lastRetryAfter == 0) {
                 refusedIngameNames.insert(name.lowercased())
             } catch {}
         }
     }
+
+    /// The arena name the account last accepted from this phone (nil = not yet).
+    private var lastSentIngameName: String?
 
     /// Until the app restarts: names the account answered 409/400/NAME_CHANGE_LIMIT for.
     private var refusedIngameNames = Set<String>()

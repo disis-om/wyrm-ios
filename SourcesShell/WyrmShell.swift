@@ -139,6 +139,9 @@ final class WyrmShellStore: ObservableObject {
                         WyrmRunCapture.runStarted()
                         // Saved skins (OM, 2026-10-13): a match starting with a custom skin keeps it.
                         WyrmSavedSkins.shared.recordWorn()
+                        // The name in the arena is the account's name everywhere
+                        // (OM, 2026-10-14), sent on every match like Android.
+                        if let name = self?.nickname { WyrmGameSync.shared.syncIngameName(name) }
                     }
                 }
             }
