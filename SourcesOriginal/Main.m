@@ -512,8 +512,34 @@ bool WyrmIOSGraphicsLost(void) {
   return ready && engine.ctx && engine.ctx->device_lost;
 }
 
+/* SDL 3 adds its CADisplayLink to NSDefaultRunLoopMode only. While a SwiftUI
+   ScrollView scrolls, a slider drags or any UIKit gesture tracks (the Snakey
+   Rain panel above the arena), the main run loop is in UITrackingRunLoopMode,
+   the link does not fire and the whole game stood still until the finger
+   lifted (OM, 2026-10-14; Android runs the engine on its own thread and never
+   had this). The link is added to the common modes too, which include the
+   tracking mode. SDL makes a new link whenever the frame interval changes or
+   the app returns, so the current one is checked again every 30 frames. */
+static const void* common_mode_link;
+static void keep_frames_while_tracking(void) {
+  UIViewController* sdl = engine_container.engineController;
+  if (!sdl) return;
+  id link = nil;
+  @try {
+    link = [sdl valueForKey:@"displayLink"];
+  } @catch (NSException* error) {
+    return;
+  }
+  if (![link isKindOfClass:CADisplayLink.class] || (__bridge const void*)link == common_mode_link) return;
+  [(CADisplayLink*)link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+  common_mode_link = (__bridge const void*)link;
+  SDL_Log("Wyrm frames: display link also runs while UIKit tracks touches");
+}
+
 static void frame(void* unused) {
   (void)unused;
+  static unsigned frames_since_link_check;
+  if (frames_since_link_check++ % 30 == 0) keep_frames_while_tracking();
   if (!ready) return;
   twindow_poll_input(engine.wnd);
   if (!wyrm_background()) tinput(&engine);
@@ -677,6 +703,7 @@ static void apply_frame_interval(void) {
     SDL_Log("Wyrm performance: interval %d refused: %s", interval, SDL_GetError());
     return;
   }
+  keep_frames_while_tracking();
   SDL_Log("Wyrm performance: display %d Hz, %s, interval %d = %d FPS", max,
           frame_idle ? "idle under SwiftUI" : "drawing", interval, max / interval);
 }

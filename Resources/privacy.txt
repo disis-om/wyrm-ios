@@ -130,7 +130,10 @@ Your display name, your username, your in-game name, your avatar, your bio, your
 best score and your kills, and anything you posted in global chat. Friends (players who follow you and whom you follow
 back) see whether you are on Wyrm right now and which arena you play in or last
 played in. Settings › Privacy › **Show my activity to friends** turns that
-off; while it is off you do not see theirs either. Your email
+off; while it is off you do not see theirs either. While that switch is on,
+signed-in players also see you in the arena chat's **Online** list for a few
+minutes after you use Wyrm: your in-game name, your username and the arena you
+played in; turning the switch off leaves you out of that list. Your email
 address is never shown to another player.
 
 ## Deleting messages and Trails

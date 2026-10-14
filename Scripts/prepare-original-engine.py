@@ -4789,3 +4789,17 @@ _whitekeys_1014.apply(OUTPUT, label="white keys (iOS)")
 import engine_grey_fill_2026_10_14 as _greyfill_1014
 _greyfill_1014.apply(OUTPUT, label="grey fill (iOS)")
 
+
+# Bot = NTL exactly (OM, 2026-10-14): no Wyrm border guard, no always-boost
+# when surrounded, no coil break-out, NTL's wall measure and gap search. Same
+# text as Wyrm Android's tree (Scripts/engine_bot_ntl_exact_2026_10_14.py).
+import engine_bot_ntl_exact_2026_10_14 as _botexact_1014
+_botexact_1014.apply(OUTPUT, label="engine bot NTL exact 2026-10-14 (iOS)")
+print("Engine 2026-10-14: bot = NTL exactly")
+
+# Arena chat tabs (OM, 2026-10-14): TEAM / GLOBAL / ONLINE in the arena's
+# chat window, ONLINE row colours. Same text as Wyrm Android's tree
+# (Scripts/engine_chat_tabs_2026_10_14.py).
+import engine_chat_tabs_2026_10_14 as _chattabs_1014
+_chattabs_1014.apply(OUTPUT, label="engine chat tabs 2026-10-14 (iOS)", tree="ios")
+print("Engine 2026-10-14: arena chat tabs")

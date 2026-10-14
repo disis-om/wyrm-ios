@@ -83,6 +83,8 @@ struct WyrmChatItem: Identifiable, Equatable {
     let authorID: String
     let authorName: String
     let authorUsername: String
+    /// The author's in-game name; blank when they never set one (arena chat, 2026-10-14).
+    var authorIngame: String = ""
 
     /// For lines that do not come from the Wyrm API, such as NTL Team chat.
     init(id: String, body: String, createdAt: String, authorID: String, authorName: String, authorUsername: String) {
@@ -97,7 +99,17 @@ struct WyrmChatItem: Identifiable, Equatable {
         authorID = json.string(direct ? "senderId" : "playerId")
         authorName = json.string("displayName", fallback: "Player")
         authorUsername = json.string("username")
+        authorIngame = json.string("ingameName")
     }
+}
+
+/// A player seen on Wyrm lately, for the arena chat's ONLINE tab (OM, 2026-10-14).
+struct WyrmOnlinePlayer: Equatable {
+    let username: String
+    let ingameName: String
+    let displayName: String
+    /// "ip:port" of the arena they played in lately, blank otherwise.
+    let arena: String
 }
 
 struct WyrmConversation: Identifiable, Equatable {
@@ -328,6 +340,14 @@ private actor WyrmServiceClient {
 
     func globalMessages(token: String) async throws -> [WyrmChatItem] {
         try await request("/v1/chat/messages", token: token).array("messages").map { WyrmChatItem($0) }
+    }
+
+    /// Players on Wyrm in the last few minutes who share their activity.
+    func onlinePlayers(token: String) async throws -> [WyrmOnlinePlayer] {
+        try await request("/v1/players/online", token: token).array("players").map {
+            WyrmOnlinePlayer(username: $0.string("username"), ingameName: $0.string("ingameName"),
+                             displayName: $0.string("displayName"), arena: $0.string("arena"))
+        }
     }
 
     func sendGlobal(body: String, token: String) async throws {

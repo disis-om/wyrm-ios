@@ -43,6 +43,12 @@ void WyrmIOSSetTeamMembers(const char* packed);
 /* Team HUD (2026-10-04): the team chat for the arena's chat window, the
    roster's and chat window's look, and taps on the window's message box. */
 void WyrmIOSSetTeamChat(const char* packed);
+/* Arena chat tabs (OM, 2026-10-14): global chat (packed as the team chat),
+   players online (`name<TAB>@username · server` lines), the tab shown. */
+void WyrmIOSSetGlobalChat(const char* packed);
+void WyrmIOSSetOnlinePlayers(const char* packed);
+int WyrmIOSChatTab(void);
+void WyrmIOSSetChatTab(int tab);
 void WyrmIOSSetTeamHudStyle(const float* values, int count);
 int WyrmIOSTakeTeamComposerRequest(void);
 void WyrmIOSSetEnginePresentation(bool enabled);

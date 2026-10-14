@@ -2042,7 +2042,11 @@ struct WyrmLayoutEditor: View {
                                     teamHudSlider("BACK", "chat_panel"),
                                     teamHudSlider("WIDTH", "chat_width"), teamHudSlider("HEIGHT", "chat_height")],
                           colours: [ColourRow(label: "PLAYER NAME", key: "chat_name"),
-                                    ColourRow(label: "MESSAGES", key: "chat_text")]),
+                                    ColourRow(label: "MESSAGES", key: "chat_text"),
+                                    // The ONLINE tab's rows (OM, 2026-10-14); picking
+                                    // one shows that tab in the window.
+                                    ColourRow(label: "ONLINE PLAYER NAME", key: "online_name"),
+                                    ColourRow(label: "ONLINE USERNAME AND SERVER", key: "online_data")]),
                   fallback: HUD.chat.fallback) {
                 RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: chatSize.width, height: chatSize.height)
             }

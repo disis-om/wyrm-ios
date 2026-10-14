@@ -24,13 +24,17 @@ final class WyrmTeamHudStore: ObservableObject {
                        "stats_text",
                        // The leaderboard's WIDTH and HEIGHT (OM, 2026-10-13), appended
                        // likewise: multiples of the board's own width and row height.
-                       "lb_width", "lb_height"]
-    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1]
+                       "lb_width", "lb_height",
+                       // The chat window's ONLINE tab (OM, 2026-10-14): name and
+                       // "@username · server" colours, appended likewise.
+                       "online_name", "online_data"]
+    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0]
     private static let ranges: [ClosedRange<Double>] = [0.65...1.60, 0.05...1, 220...900, 120...800, 0...8, 0...8,
                                                         240...1000, 150...900, 0...8, 0...8,
                                                         0...1, 0...1, 0...1,
                                                         0...8,
-                                                        0.7...2.2, 1...2.2]
+                                                        0.7...2.2, 1...2.2,
+                                                        0...8, 0...8]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
     /// White, yellow, cyan, green, pink and orange take dark text; black, red light (OM, 2026-10-14).
@@ -70,6 +74,8 @@ final class WyrmTeamHudStore: ObservableObject {
         values[index] = clamped
         UserDefaults.standard.set(clamped, forKey: "wyrm.ios.team-hud.\(key)")
         publish()
+        // An ONLINE colour shows the online players in the window.
+        if key.hasPrefix("online_") { WyrmIOSSetChatTab(2) }
     }
 
     /// Called once at launch: the saved look reaches the engine.
@@ -107,6 +113,8 @@ final class WyrmTeamComposer: ObservableObject {
     /// The bar (and, sideways, the Wyrm keys) slid in from the bottom.
     @Published private(set) var shown = false
     @Published var draft = ""
+    /// The message box was tapped on the GLOBAL tab: Send writes to everyone.
+    @Published private(set) var global = false
     private var generation = 0
 
     func takeEngineRequests() {
@@ -116,6 +124,7 @@ final class WyrmTeamComposer: ObservableObject {
     /// In: the overlay first (it fades in over two frames), then the bar
     /// slides up from the bottom with the keys.
     func present() {
+        global = WyrmArenaFeed.shared.globalTab
         generation += 1
         let mine = generation
         open = true
@@ -243,7 +252,7 @@ struct WyrmArenaComposerBar: View {
 
     private var field: some View {
             HStack(spacing: 8) {
-                TextField("Message the team", text: $composer.draft)
+                TextField(composer.global ? "Message everyone" : "Message the team", text: $composer.draft)
                     .font(.androidWyrm(15))
                     .foregroundColor(ATheme.ink)
                     .focused($focused)
@@ -268,7 +277,11 @@ struct WyrmArenaComposerBar: View {
 
     private func send() {
         guard !blank else { return }
-        team.send(composer.draft)
+        if composer.global {
+            WyrmArenaFeed.shared.sendGlobal(composer.draft)
+        } else {
+            team.send(composer.draft)
+        }
         composer.draft = ""
         composer.close()
     }

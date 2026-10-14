@@ -142,7 +142,10 @@ final class WyrmShellStore: ObservableObject {
                     }
                 }
             }
-            Task { @MainActor in self?.engineScreen = screen }
+            Task { @MainActor in
+                self?.engineScreen = screen
+                WyrmArenaFeed.shared.engineScreen(Int(screen))
+            }
         }
         NotificationCenter.default.addObserver(forName: Notification.Name("WyrmEngineArenaPortAvailable"),
                                                object: nil, queue: .main) { [weak self] note in
