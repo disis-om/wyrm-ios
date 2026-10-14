@@ -54,6 +54,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.team-hud.", .sync),              // Layout editor: team roster + chat window look
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
+        ("wyrm.ios.device-migrations.", .keep),      // one-time defaults survive log out
         ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
         ("wyrm.ios.custom-arena.", .sync),          // custom arenas: the player's id (also shared, 2026-10-13)
         ("wyrm.ios.keyboard.", .sync),
@@ -115,7 +116,7 @@ final class WyrmAccountSync: ObservableObject {
         for (key, value) in UserDefaults.standard.dictionaryRepresentation() where Self.scope(of: key) == .sync {
             if let typed = Self.encode(value) { defaults[key] = typed }
         }
-        return ["schema": Self.schema, "platform": Self.platform, "engine": values, "hotkeys": hotkeys, "defaults": defaults]
+        return ["schema": Self.schema, "keysWhiteV1": true, "platform": Self.platform, "engine": values, "hotkeys": hotkeys, "defaults": defaults]
     }
 
     /// Skin (with the player's own pattern even while a preset is worn), look,
@@ -242,7 +243,9 @@ final class WyrmAccountSync: ObservableObject {
         var changes: [(String, [Double])] = []
         for (id, raw) in doc["engine"] as? [String: Any] ?? [:] {
             guard let setting = current[id], let text = raw as? String else { continue }
-            let values = text.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.filter(\.isFinite)
+            let oldKeyColour = id.hasPrefix("layout.key_") && id.hasSuffix("_colour") && (doc["keysWhiteV1"] as? Bool != true)
+            let restored = oldKeyColour ? "0" : text
+            let values = restored.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.filter(\.isFinite)
             guard let first = values.first else { continue }
             let low = min(setting.minimum, setting.maximum), high = max(setting.minimum, setting.maximum)
             let wanted = setting.type.hasPrefix("color") ? values.map { min(max($0, 0), 1) } : [min(max(first, low), high)]
@@ -459,6 +462,7 @@ final class WyrmAccountSync: ObservableObject {
         for _ in 0..<40 where engine?.settings.isEmpty ?? true { try? await Task.sleep(nanoseconds: 150_000_000) }
         if let platform = (body["platform"] as? [String: Any])?["doc"] as? [String: Any] { await applyPlatform(platform) }
         if let shared = (body["shared"] as? [String: Any])?["doc"] as? [String: Any] { applyShared(shared) }
+        WyrmPerformance.shared.applyUpdateDefaults()
         reloadStores()
         // The account's common orientation: turn (and swap layouts) once the
         // engine has the restored layout.
@@ -482,6 +486,7 @@ final class WyrmAccountSync: ObservableObject {
             Task { await restore(token: token, playerID: playerID) }
             return
         }
+        WyrmPerformance.shared.applyUpdateDefaults()
         ready = true
         Task {
             try? await Task.sleep(nanoseconds: 6_000_000_000)

@@ -1232,6 +1232,7 @@ struct WyrmSkinPreview: View {
 struct WyrmMiniSnake: View {
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
+    var colors: [UInt32] = []
     var body: some View {
         Canvas(opaque: false, rendersAsynchronously: true) { context, size in
             let bead = min(size.height * 0.87, 38)
@@ -1239,8 +1240,19 @@ struct WyrmMiniSnake: View {
             let count = min(128, max(1, Int(ceil(max(0, size.width - bead) / step)) + 1))
             for index in 0..<count {
                 let group = groups.isEmpty ? 7 : groups[index % groups.count]
-                guard let texture = textures.beads[group] else { continue }
-                context.draw(Image(decorative: texture, scale: 1),
+                let rgba = colors.isEmpty ? 0 : colors[index % colors.count]
+                let air = WyrmAirSkin.kind(of: rgba)
+                let wyrm = WyrmBead.kind(of: rgba)
+                guard let texture = wyrm.flatMap({ textures.wyrmBeads[$0] })
+                        ?? air.flatMap({ textures.airBeads[$0] })
+                        ?? textures.beads[rgba == 0 ? group : 40] else { continue }
+                var inked = context
+                if let wyrm {
+                    if WyrmBead.tinted[wyrm] { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
+                } else if air != nil {
+                    inked.addFilter(.colorMultiply(Color(rgb: WyrmAirSkin.bodyTint(rgba))))
+                } else if rgba != 0 { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
+                inked.draw(Image(decorative: texture, scale: 1),
                              in: CGRect(x: CGFloat(index) * step, y: (size.height - bead) * 0.5,
                                         width: bead, height: bead))
             }

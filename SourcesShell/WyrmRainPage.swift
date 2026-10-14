@@ -27,6 +27,12 @@ extension WyrmRainCharacter {
         return n
     }
     var beadGroups: [Int] { skin.compactMap { WyrmSkinCatalog.group(for: $0) } }
+    var previewColors: [UInt32] {
+        guard presetIndex == nil else { return [] }
+        return Array(skin.enumerated()).compactMap { index, c in
+            WyrmSkinCatalog.group(for: c) == nil ? nil : (index < colors.count ? colors[index] : 0)
+        }
+    }
     var tagAsset: WyrmTagAsset? {
         guard let ntl = Int(tag) else { return nil }
         return WyrmSkinCatalog.tags.first { $0.ntlID == ntl && !WyrmSkinCatalog.isWyrmTag($0.ntlID) }
@@ -43,7 +49,10 @@ struct WyrmRainSnakePreview: View {
     let character: WyrmRainCharacter?
     var body: some View {
         let c = character ?? WyrmRainCharacter()
-        WyrmSkinPreview(textures: textures, groups: c.previewGroups, colors: [], preset: c.presetIndex ?? 0,
+        let groups = c.previewGroups
+        let colors = c.previewColors
+        WyrmSkinPreview(textures: textures, groups: (0..<256).map { groups[$0 % groups.count] },
+                        colors: (0..<256).map { colors.isEmpty ? 0 : colors[$0 % colors.count] }, preset: c.presetIndex ?? 0,
                         custom: c.presetIndex == nil && !c.beadGroups.isEmpty,
                         accessoryID: c.cosmetic == 255 ? -1 : c.cosmetic, tagID: c.tagAsset?.id ?? -1,
                         backgroundID: 0, chain: 1, swing: 1, tagScale: 1,
@@ -204,7 +213,7 @@ struct WyrmRainPage: View {
                 Text(c.label.isEmpty ? "Character" : c.label).font(.androidWyrm(15.5)).foregroundColor(c.enabled ? ATheme.ink : ATheme.quiet).lineLimit(1)
                 Text((c.name.isEmpty ? "No name" : c.name) + (c.enabled ? "" : " · off")).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
-            WyrmMiniSnake(textures: textures, groups: Array(c.previewGroups.prefix(24))).frame(width: 92, height: 26)
+            WyrmMiniSnake(textures: textures, groups: c.previewGroups, colors: c.previewColors).frame(width: 92, height: 26)
             if selection.isEmpty { Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron) }
         }
         .padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 62)
@@ -238,7 +247,7 @@ struct WyrmRainPage: View {
         WSCard {
             field("Character name", c.label, first: true, placeholder: WyrmRainCharacter.defaultName) { v in update(c) { $0.label = String(v.prefix(24)) } }
             field("In-game name", c.name, first: false, placeholder: WyrmRainCharacter.defaultName) { v in update(c) { $0.name = String(v.prefix(24)) } }
-            field("Skin code · \(c.skin.count)/250", c.skin, first: false, mono: true, placeholder: "Type or paste a skin code") { v in update(c) { $0.skin = String(v.prefix(250)) } }
+            field("Skin code · \(c.skin.count)/250", c.skin, first: false, mono: true, placeholder: "Type or paste a skin code") { v in update(c) { $0.setSkin(v) } }
         }
         WSSectionLabel("Look")
         WSCard {
@@ -261,13 +270,13 @@ struct WyrmRainPage: View {
         case .pattern:
             let groups = c.presetIndex == nil ? c.beadGroups : []
             // Rain's character packet carries the bead letters only (250 at most).
-            WyrmPatternBuilder(textures: textures, groups: groups, colors: [], maxBeads: 250) { next, _ in
-                update(c) { $0.skin = String(WyrmSkinCatalog.code(for: next).prefix(250)) }
+            WyrmPatternBuilder(textures: textures, groups: groups, colors: c.previewColors, maxBeads: 250) { next, colors in
+                update(c) { $0.skin = String(WyrmSkinCatalog.code(for: next).prefix(250)); $0.colors = Array(colors.prefix(250)) }
             }
         case .presets:
             LazyVStack(spacing: 0) {
                 ForEach(WyrmSkinCatalog.presets.indices, id: \.self) { index in
-                    Button { update(c) { $0.skin = "/\(index)" } } label: {
+                    Button { update(c) { $0.setSkin("/\(index)") } } label: {
                         HStack(spacing: 12) {
                             Text(String(format: "%02d", index + 1)).font(.androidWyrm(10.5, .bold))
                                 .foregroundColor(c.presetIndex == index ? ATheme.live : ATheme.quiet).frame(width: 24)
@@ -490,9 +499,12 @@ struct WyrmRainPanel: View {
 
     /// Panel size scales the whole panel, type and keys too, not only its box (OM, 2026-10-14).
     var body: some View {
-        panel.frame(width: 380, height: 340)
-            .scaleEffect(scale, anchor: .topLeading)
-            .frame(width: 380 * scale, height: 340 * scale, alignment: .topLeading)
+        GeometryReader { geometry in
+            let fit = min(scale, min(geometry.size.width / 428, geometry.size.height / 388))
+            panel.frame(width: 380, height: 340).padding(24)
+                .scaleEffect(fit, anchor: .topLeading)
+                .frame(width: 428 * fit, height: 388 * fit, alignment: .topLeading)
+        }
     }
 
     @ViewBuilder private var panel: some View {
@@ -518,11 +530,7 @@ struct WyrmRainPanel: View {
             // The knob at the bottom centre drags the panel anywhere (OM, 2026-10-14).
             Capsule().fill(ATheme.ink.opacity(0.32)).frame(width: 42, height: 5)
                 .frame(maxWidth: .infinity).frame(height: 26).contentShape(Rectangle())
-                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
-                    // The view follows the finger, so each step is finger minus grab point.
-                    WyrmIOSMoveRainPanel(Double((v.location.x - v.startLocation.x) * scale),
-                                         Double((v.location.y - v.startLocation.y) * scale))
-                })
+                .overlay(WyrmRainDragHandle())
                 .accessibilityLabel("Move Rain panel")
         }
         .background(ATheme.paper.opacity(back))
@@ -530,7 +538,6 @@ struct WyrmRainPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.35), lineWidth: 1))
         .environment(\.wyrmRainBack, back)
         .shadow(color: ATheme.ink.opacity(0.12 * back), radius: 18 * back)
-        .padding(6)
         .opacity(opacity)
         .onChange(of: rain.panelRequests) { now in if now != seen { seen = now; open.toggle(); layout() } }
         .onChange(of: rain.enabled) { on in if !on { open = false }; layout() }
@@ -616,8 +623,30 @@ struct WyrmRainPanel: View {
     /// The hosting view covers only the panel, centred: the rest still steers.
     private func layout() {
         let scale = min(max(rain.config["panelSize"] ?? 1, 0.7), 1.3)
-        WyrmIOSSetRainPanel(rain.enabled && open, true, 380 * scale, 340 * scale)
+        WyrmIOSSetRainPanel(rain.enabled && open, true, 428 * scale, 388 * scale)
     }
+}
+
+/// Window coordinates stay stable while the small hosting view moves or rotates.
+private struct WyrmRainDragHandle: UIViewRepresentable {
+    final class Coordinator: NSObject {
+        private var last = CGPoint.zero
+        @objc func pan(_ gesture: UIPanGestureRecognizer) {
+            let point = gesture.location(in: nil)
+            if gesture.state == .began { last = point }
+            if gesture.state == .changed {
+                WyrmIOSMoveRainPanel(Double(point.x - last.x), Double(point.y - last.y))
+                last = point
+            }
+        }
+    }
+    func makeCoordinator() -> Coordinator { Coordinator() }
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.addGestureRecognizer(UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.pan(_:))))
+        return view
+    }
+    func updateUIView(_ uiView: UIView, context: Context) {}
 }
 
 @objc(WyrmRainHost)

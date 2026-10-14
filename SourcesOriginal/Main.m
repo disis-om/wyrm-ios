@@ -191,8 +191,12 @@ static void wyrm_log_output(void* userdata, int category,
   CGFloat stageHeight = self.landscapePresentation ? CGRectGetWidth(bounds):CGRectGetHeight(bounds);
   // The Rain panel (OM, 2026-10-14): opened by the arena's Rain key, centred;
   // rainOrigin carries its wanted width and height (panel size slider).
-  CGFloat width = MAX(MIN(self.rainOrigin.x, stageWidth - 16), 120);
-  CGFloat height = MAX(MIN(self.rainOrigin.y, stageHeight - 16), 120);
+  CGFloat wantedWidth = MAX(self.rainOrigin.x, 1);
+  CGFloat wantedHeight = MAX(self.rainOrigin.y, 1);
+  CGFloat fit = MIN(1, MIN(stageWidth / wantedWidth, stageHeight / wantedHeight));
+  CGFloat width = wantedWidth * fit;
+  CGFloat height = wantedHeight * fit;
+  rain.clipsToBounds = NO; rain.layer.masksToBounds = NO;
   // Dragged by its knob (OM, 2026-10-14): an offset from the centre, kept on screen.
   CGFloat left = MIN(MAX((stageWidth - width) / 2 + self.rainOffset.x, 0), MAX(stageWidth - width, 0));
   CGFloat top = MIN(MAX((stageHeight - height) / 2 + self.rainOffset.y, 0), MAX(stageHeight - height, 0));
@@ -261,7 +265,10 @@ void WyrmIOSMoveRainPanel(double dx, double dy) {
   void (^move)(void) = ^{
     if (!engine_container || !isfinite(dx) || !isfinite(dy)) return;
     CGPoint o = engine_container.rainOffset;
-    engine_container.rainOffset = CGPointMake(o.x + dx, o.y + dy);
+    // Pan reports window coordinates; inverse of the hosting view's +90deg turn.
+    CGFloat stageDX = engine_container.landscapePresentation ? dy : dx;
+    CGFloat stageDY = engine_container.landscapePresentation ? -dx : dy;
+    engine_container.rainOffset = CGPointMake(o.x + stageDX, o.y + stageDY);
     [engine_container layoutRainPanel];
   };
   if (NSThread.isMainThread) move(); else dispatch_async(dispatch_get_main_queue(), move);

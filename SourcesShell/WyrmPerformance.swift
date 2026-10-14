@@ -35,6 +35,7 @@ final class WyrmPerformance: ObservableObject {
     enum Heat { case cool, warm, hot }
 
     static let limitAuto = 0
+    static let limitMax = -1
     private static let modeKey = "wyrm.ios.performance.mode"
     private static let limitKey = "wyrm.ios.performance.fps-limit"
 
@@ -59,9 +60,9 @@ final class WyrmPerformance: ObservableObject {
     }
 
     /// The limits this display can use: Auto, 30, 60 and its own maximum.
-    var limitChoices: [Int] { [Self.limitAuto, 30, 60] + (displayMax > 60 ? [displayMax] : []) }
+    var limitChoices: [Int] { [Self.limitAuto, 30, 60] + (displayMax > 60 ? [displayMax] : []) + [Self.limitMax] }
 
-    func limitLabel(_ value: Int) -> String { value == Self.limitAuto ? "Auto" : "\(value)" }
+    func limitLabel(_ value: Int) -> String { value == Self.limitAuto ? "Auto" : value == Self.limitMax ? "Max" : "\(value)" }
 
     /// One line for the hub row: the mode and what it draws at right now.
     var summary: String { "\(mode.title) · \(cap) FPS" }
@@ -70,6 +71,17 @@ final class WyrmPerformance: ObservableObject {
     func reloadFromDefaults() {
         read()
         publish()
+    }
+
+    /// Device-local migration; account restore finishes before this runs.
+    func applyUpdateDefaults() {
+        let d = UserDefaults.standard
+        let flag = "wyrm.ios.device-migrations.performance-max-v1"
+        guard !d.bool(forKey: flag) else { return }
+        d.set(Mode.performance.rawValue, forKey: Self.modeKey)
+        d.set(Self.limitMax, forKey: Self.limitKey)
+        d.set(true, forKey: flag)
+        reloadFromDefaults()
     }
 
     func choose(_ next: Mode) {
@@ -90,7 +102,7 @@ final class WyrmPerformance: ObservableObject {
         let defaults = UserDefaults.standard
         mode = Mode(rawValue: defaults.string(forKey: Self.modeKey) ?? "") ?? .auto
         let stored = defaults.object(forKey: Self.limitKey) as? Int ?? Self.limitAuto
-        limit = stored == Self.limitAuto || stored == 30 || stored == 60 ? stored : (stored > 60 ? displayMax : Self.limitAuto)
+        limit = stored == Self.limitMax || stored == Self.limitAuto || stored == 30 || stored == 60 ? stored : (stored > 60 ? displayMax : Self.limitAuto)
     }
 
     private var sentChip: String?
@@ -103,7 +115,7 @@ final class WyrmPerformance: ObservableObject {
         default: heat = .cool
         }
         lowPower = info.isLowPowerModeEnabled
-        let chosen: Int? = limit == Self.limitAuto ? nil : min(limit, displayMax)
+        let chosen: Int? = limit == Self.limitAuto ? nil : limit == Self.limitMax ? displayMax : min(limit, displayMax)
         switch mode {
         case .performance:
             cap = chosen ?? displayMax

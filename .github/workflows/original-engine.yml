@@ -20,6 +20,8 @@ jobs:
       - run: python3 Tests/air_skin_contract_test.py
       - run: python3 Tests/team_mode_contract_test.py
       - run: python3 Tests/session_lifecycle_contract_test.py
+      - run: python3 Tests/account_sync_contract_test.py
+      - run: python3 Tests/rain_update_contract_test.py
       - run: xcodegen generate --spec original-engine.yml
       - name: Compile original core on iPhone and Simulator
         shell: bash
@@ -33,8 +35,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-1.1.10-build-124-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.1.10-build-124-simulator.app.zip
+          zip -qry Wyrm-1.1.11-build-125-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.1.11-build-125-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test

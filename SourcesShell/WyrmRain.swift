@@ -11,23 +11,37 @@ struct WyrmRainCharacter: Codable, Identifiable {
     var label = defaultName
     var name = defaultName
     var skin = "uuuuuuuauuuuuuaauuuuuaaauuuuaaaauuuaaaaauuaaaaaauaaaaaaauuaaaaaauuuaaaaauuuuaaaauuuuuaaauuuuuuaa"
+    var colors: [UInt32] = []
     var tag = "12"
     var cosmetic = 11
     var hash = ""
     var enabled = true
-    var dictionary: [String: Any] { ["id": id, "label": label, "name": name, "skin": skin, "tag": tag, "cosmetic": cosmetic, "hash": hash, "enabled": enabled] }
+    var dictionary: [String: Any] { ["id": id, "label": label, "name": name, "skin": skin, "colors": colors.prefix(250).map { String(format: "%08x", $0) }, "tag": tag, "cosmetic": cosmetic, "hash": hash, "enabled": enabled] }
     static func from(_ raw: [String: Any]) -> Self {
         var v = Self()
         v.id = String((raw["id"] as? String ?? v.id).prefix(80))
         v.label = String((raw["label"] as? String ?? v.label).prefix(24))
         v.name = String((raw["name"] as? String ?? v.name).unicodeScalars.filter { (32...126).contains(Int($0.value)) }.prefix(24).map(String.init).joined())
         v.skin = ascii(raw["skin"] as? String ?? v.skin, limit:250)
+        let rawColors = raw["colors"] as? [Any] ?? []
+        v.colors = (0..<v.skin.count).map { i in
+            guard i < rawColors.count, let hex = rawColors[i] as? String,
+                  (1...8).contains(hex.count), hex.allSatisfy({ $0.isASCII && $0.isHexDigit }) else { return 0 }
+            return UInt32(hex, radix: 16) ?? 0
+        }
         v.tag = ascii(raw["tag"] as? String ?? v.tag, limit:255)
         let cosmetic = (raw["cosmetic"] as? NSNumber)?.intValue ?? 255
         v.cosmetic = (0...31).contains(cosmetic) || cosmetic == 255 ? cosmetic : 255
         v.hash = ascii(raw["hash"] as? String ?? "", limit:64)
         v.enabled = raw["enabled"] as? Bool ?? true
         return v
+    }
+    mutating func setSkin(_ next: String) {
+        let code = String(next.prefix(250))
+        let preset = skin.hasPrefix("/") || skin.hasPrefix("\\") || code.hasPrefix("/") || code.hasPrefix("\\")
+        let common = preset ? 0 : zip(skin, code).prefix { $0.0 == $0.1 }.count
+        colors = (0..<code.count).map { $0 < common && $0 < colors.count ? colors[$0] : 0 }
+        skin = code
     }
     private static func ascii(_ value: String, limit: Int) -> String {
         value.unicodeScalars.filter { (32...126).contains(Int($0.value)) }.prefix(limit).map(String.init).joined()

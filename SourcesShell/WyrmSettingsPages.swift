@@ -684,13 +684,13 @@ struct WyrmPaperKey: View {
     let label: String
     var opacity = 1.0
     var scale = 1.0
-    /// Label and border: a team-roster colour index (OM, 2026-10-14); 0 = the theme's ink.
+    /// Label and border: a team-roster colour index (OM, 2026-10-14); 0 = white.
     var colour = 0
     /// The fill, the same palette; 0 = the theme's paper.
     var fill = 0
     var body: some View {
         let swatch = fill > 0 && fill < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[fill] : nil
-        let ink: Color = (colour > 0 && colour < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[colour] : nil) ?? ATheme.ink
+        let ink: Color = (colour > 0 && colour < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[colour] : nil) ?? Color.white
         Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7).foregroundColor(ink)
             .lineLimit(1).minimumScaleFactor(0.5)
             .frame(width: 104 * scale, height: 54 * scale)
@@ -2255,11 +2255,13 @@ struct WyrmLayoutEditor: View {
                 }
                 ForEach(options.colours, id: \.key) { row in
                     let selected = Int(row.settingID.map { engine.value($0, 0) } ?? teamHud.value(row.key))
-                    Text("\(row.label) · \(WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)].uppercased())")
+                    let whiteDefault = row.label == "TEXT AND BORDER"
+                    let name = whiteDefault && selected == 0 ? "White" : WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)]
+                    Text("\(row.label) · \(name.uppercased())")
                         .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                     HStack(spacing: 5) {
                         ForEach(0..<WyrmTeamHudStore.swatches.count, id: \.self) { index in
-                            Circle().fill(WyrmTeamHudStore.swatches[index] ?? ATheme.ink)
+                            Circle().fill(whiteDefault && index == 0 ? Color.white : (WyrmTeamHudStore.swatches[index] ?? ATheme.ink))
                                 .padding(3)
                                 .frame(width: 24, height: 24)
                                 .overlay(Circle().stroke(index == selected ? ATheme.ink : ATheme.rule,
