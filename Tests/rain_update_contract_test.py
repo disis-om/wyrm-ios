@@ -30,15 +30,22 @@ assert wire and "colors" not in wire.split("\n    }", 1)[0]
 assert '("wyrm.ios.device-migrations.", .keep)' in sync
 assert sync.index("applyShared(shared)", sync.index("private func tryRestore")) < sync.index("applyUpdateDefaults()", sync.index("private func tryRestore"))
 assert '"keysWhiteV1": true' in sync and 'doc["keysWhiteV1"] as? Bool != true' in sync
+assert '"keysGreyFillV1": true' in sync and 'doc["keysGreyFillV1"] as? Bool != true' in sync
+assert 'uint8_t reserved_grey_alignment[3];' in header
+assert 'bytes_read >= ext_at + grey_at + 1' in settings
+assert 'ext->key_fill[i] = 9' in settings and 'x->keys_grey_fill_v1 = true' in settings
 assert 'd.set(Self.limitMax, forKey: Self.limitKey)' in perf
 assert "limit == Self.limitMax ? displayMax" in perf
 assert "UIPanGestureRecognizer" in page and "gesture.location(in: nil)" in page
 assert "landscapePresentation ? dy : dx" in main and "landscapePresentation ? -dx : dy" in main
 assert "wantedWidth * fit" in main and "frame.width / 428" in page
-assert "rain.bounds = CGRectMake(0, 0, stageWidth, stageHeight)" in main
-assert "self.rainController.view.frame = rain.bounds" in main
+assert 'if (!CGSizeEqualToSize(rain.bounds.size, stageSize))' in main
+assert 'if (!CGAffineTransformEqualToTransform(rain.transform, turn))' in main
+assert 'content.center = CGPointMake(left + stageWidth / 2, top + stageHeight / 2)' in main
+assert '[CATransaction setDisableActions:YES]' in main
 assert "CGRectContainsPoint(self.panelRect, point)" in main
-assert ".offset(x: frame.minX, y: frame.minY)" in page
+assert '.offset(x: frame.minX, y: frame.minY)' not in page
+assert '[WyrmRainHost placePanelLeft:0 top:0 width:width height:height]' in main
 assert "placePanelLeft:top:width:height:" in page
 for key in ["panelTextColour", "panelFillColour"]:
     assert f'("{key}",0...8)' in rain
@@ -55,6 +62,9 @@ if android.exists():
     assert "panelBounds.contains(event.x, event.y)" in stage
     assert "if (!ownsGesture) return false" in stage
     assert "ACTION_UP" in stage and "ACTION_CANCEL" in stage
+    assert 'position.begin(event.x, event.y)' in stage and 'position.move(event.getX(index), event.getY(index))' in stage
+    assert 'rainStage.layoutPanel(pw, ph, w, h, densityNow.density * scale)' in overlay
+    assert 'origin = androidx.compose.ui.geometry.Offset' not in overlay
     assert '"panelTextColour" to 0.0..8.0' in controller
     assert '"panelFillColour" to 0.0..8.0' in controller
 print("Rain/update source contracts passed")

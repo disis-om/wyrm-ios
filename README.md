@@ -11,7 +11,7 @@
 
 ## Status
 
-- Current release: **1.1.0 (build 114)**, stable. Source/test target: **1.1.12 (126)**. iOS **15 or newer**, iPhone
+- Current release: **1.1.0 (build 114)**, stable. Source/test target: **1.1.13 (127)**. iOS **15 or newer**, iPhone
   first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled

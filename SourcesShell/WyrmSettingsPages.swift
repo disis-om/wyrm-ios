@@ -687,9 +687,9 @@ struct WyrmPaperKey: View {
     /// Label and border: a team-roster colour index (OM, 2026-10-14); 0 = white.
     var colour = 0
     /// The fill, the same palette; 0 = the theme's paper.
-    var fill = 0
+    var fill = 9
     var body: some View {
-        let swatch = fill > 0 && fill < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[fill] : nil
+        let swatch: Color? = fill == 9 ? Color(red: 128/255.0, green: 128/255.0, blue: 128/255.0) : (fill > 0 && fill < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[fill] : nil)
         let ink: Color = (colour > 0 && colour < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[colour] : nil) ?? Color.white
         Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7).foregroundColor(ink)
             .lineLimit(1).minimumScaleFactor(0.5)
@@ -1982,7 +1982,7 @@ struct WyrmLayoutEditor: View {
                                            ColourRow(label: "FILL", key: "key_\(key.id)_fill", settingID: "layout.key_\(key.id)_fill")])) {
                     WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale,
                                  colour: Int(engine.value("layout.key_\(key.id)_colour", 0)),
-                                 fill: Int(engine.value("layout.key_\(key.id)_fill", 0)))
+                                 fill: Int(engine.value("layout.key_\(key.id)_fill", 9)))
                 }
             }
             if !WyrmNearOriginalStore.shared.on {
@@ -2256,14 +2256,15 @@ struct WyrmLayoutEditor: View {
                 ForEach(options.colours, id: \.key) { row in
                     let selected = Int(row.settingID.map { engine.value($0, 0) } ?? teamHud.value(row.key))
                     let whiteDefault = row.label == "TEXT AND BORDER"
-                    let name = whiteDefault && selected == 0 ? "White" : WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)]
+                    let greyFill = row.label == "FILL"
+                    let name = greyFill && selected == 9 ? "Grey" : (whiteDefault && selected == 0 ? "White" : WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)])
                     Text("\(row.label) · \(name.uppercased())")
                         .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
-                    HStack(spacing: 5) {
-                        ForEach(0..<WyrmTeamHudStore.swatches.count, id: \.self) { index in
-                            Circle().fill(whiteDefault && index == 0 ? Color.white : (WyrmTeamHudStore.swatches[index] ?? ATheme.ink))
+                    HStack(spacing: greyFill ? 3 : 5) {
+                        ForEach(0..<(WyrmTeamHudStore.swatches.count + (greyFill ? 1 : 0)), id: \.self) { index in
+                            Circle().fill(index == 9 ? Color(red: 128/255.0, green: 128/255.0, blue: 128/255.0) : (whiteDefault && index == 0 ? Color.white : (WyrmTeamHudStore.swatches[index] ?? ATheme.ink)))
                                 .padding(3)
-                                .frame(width: 24, height: 24)
+                                .frame(width: greyFill ? 22 : 24, height: greyFill ? 22 : 24)
                                 .overlay(Circle().stroke(index == selected ? ATheme.ink : ATheme.rule,
                                                          lineWidth: index == selected ? 2 : 1))
                                 .onTapGesture {

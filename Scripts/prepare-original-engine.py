@@ -4786,3 +4786,6 @@ print("Engine 2026-10-14: key colours round 2, spine owner")
 import engine_white_keys_2026_10_14 as _whitekeys_1014
 _whitekeys_1014.apply(OUTPUT, label="white keys (iOS)")
 
+import engine_grey_fill_2026_10_14 as _greyfill_1014
+_greyfill_1014.apply(OUTPUT, label="grey fill (iOS)")
+

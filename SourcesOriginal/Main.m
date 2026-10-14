@@ -4,6 +4,7 @@
 #include <SDL3/SDL_system.h>
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
+#import <QuartzCore/QuartzCore.h>
 #import <dispatch/dispatch.h>
 #include <TargetConditionals.h>
 #include <math.h>
@@ -221,13 +222,22 @@ static void wyrm_log_output(void* userdata, int category,
   self.rainOffset = CGPointMake(left - (stageWidth - width) / 2, top - (stageHeight - height) / 2);
   // Never translate/resize the SwiftUI render root to the small panel's box:
   // its cached root clip otherwise remains at the old rectangle while dragging.
-  rain.transform = CGAffineTransformIdentity;
-  rain.bounds = CGRectMake(0, 0, stageWidth, stageHeight);
-  rain.center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
-  self.rainController.view.frame = rain.bounds;
+  [CATransaction begin];
+  [CATransaction setDisableActions:YES];
+  CGSize stageSize = CGSizeMake(stageWidth, stageHeight);
+  if (!CGSizeEqualToSize(rain.bounds.size, stageSize)) rain.bounds = (CGRect){CGPointZero, stageSize};
+  CGPoint centre = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+  if (!CGPointEqualToPoint(rain.center, centre)) rain.center = centre;
+  CGAffineTransform turn = self.landscapePresentation ? CGAffineTransformMakeRotation((CGFloat)M_PI_2) : CGAffineTransformIdentity;
+  if (!CGAffineTransformEqualToTransform(rain.transform, turn)) rain.transform = turn;
+  UIView* content = self.rainController.view;
+  if (!CGSizeEqualToSize(content.bounds.size, stageSize)) content.bounds = (CGRect){CGPointZero, stageSize};
+  // Full-stage content host: changing only layer position during a pan cannot
+  // re-layout SwiftUI or restart its recognizer. Its panel stays at local zero.
+  content.center = CGPointMake(left + stageWidth / 2, top + stageHeight / 2);
   rain.panelRect = CGRectMake(left, top, width, height);
-  [WyrmRainHost placePanelLeft:left top:top width:width height:height];
-  if (self.landscapePresentation) rain.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
+  [WyrmRainHost placePanelLeft:0 top:0 width:width height:height];
+  [CATransaction commit];
   rain.hidden = !self.rainVisible || !self.rainExpanded || !engine_presentation || reported_screen != PLAYING;
   [self.view bringSubviewToFront:rain];
 }
@@ -296,6 +306,40 @@ void WyrmIOSMoveRainPanel(double dx, double dy) {
     [engine_container layoutRainPanel];
   };
   if (NSThread.isMainThread) move(); else dispatch_async(dispatch_get_main_queue(), move);
+}
+
+// CI-only runtime regression: exercise the actual native layout across 100
+// displayed positions, including repeated engine layout calls between moves.
+static void smoke_rain_drag(void) {
+  if (![NSProcessInfo.processInfo.arguments containsObject:@"--smoke-rain-drag"]) return;
+  dispatch_async(dispatch_get_main_queue(), ^{
+    WyrmEngineContainerController* c = engine_container;
+    c.rainVisible = YES; c.rainExpanded = YES;
+    c.rainOrigin = CGPointMake(428 * 0.7, 388 * 0.7);
+    [c layoutRainPanel];
+    CGRect stage = c.rainStage.bounds;
+    CGPoint centre = c.rainStage.center;
+    CGAffineTransform turn = c.rainStage.transform;
+    __block int moves = 0;
+    [NSTimer scheduledTimerWithTimeInterval:1.0/60 repeats:YES block:^(NSTimer* timer) {
+      CGFloat freeX = CGRectGetWidth(stage) - c.rainStage.panelRect.size.width;
+      CGFloat freeY = CGRectGetHeight(stage) - c.rainStage.panelRect.size.height;
+      CGFloat x = freeX * (0.05 + 0.9 * (moves + 1) / 100.0);
+      CGFloat y = freeY * (0.1 + 0.8 * (moves + 1) / 100.0);
+      CGFloat dx = x - c.rainStage.panelRect.origin.x;
+      CGFloat dy = y - c.rainStage.panelRect.origin.y;
+      WyrmIOSMoveRainPanel(c.landscapePresentation ? -dy : dx, c.landscapePresentation ? dx : dy);
+      [c layoutRainPanel]; [c layoutRainPanel];
+      BOOL ok = CGRectEqualToRect(stage, c.rainStage.bounds) && CGPointEqualToPoint(centre, c.rainStage.center) &&
+          CGAffineTransformEqualToTransform(turn, c.rainStage.transform) &&
+          fabs(c.rainStage.panelRect.origin.x - x) < 0.01 && fabs(c.rainStage.panelRect.origin.y - y) < 0.01;
+      if (!ok) { NSLog(@"Rain drag geometry FAIL move=%d", moves); [timer invalidate]; return; }
+      if (++moves == 100) {
+        NSLog(@"Rain drag geometry passed moves=100 stable_stage=1 position_held=1");
+        [timer invalidate];
+      }
+    }];
+  });
 }
 
 /* The SwiftUI shell stays visible above the rotated engine while it draws the
@@ -556,6 +600,7 @@ static void frame(void* unused) {
   if (engine.ctx->last_present_succeeded &&
       engine.usr->gdata.curr_screen == PLAYING) {
     gameplay_frames++;
+    if (gameplay_frames == 120) smoke_rain_drag();
     if (gameplay_frames % 120 == 0) {
       snake* own = get_snake(&engine.usr->gdata,
                              engine.usr->gdata.data.snake_id);

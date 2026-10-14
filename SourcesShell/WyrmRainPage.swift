@@ -571,7 +571,8 @@ struct WyrmRainPanel: View {
             panel.frame(width: 380, height: 340).padding(24)
                 .scaleEffect(fit, anchor: .topLeading)
                 .frame(width: frame.width, height: frame.height, alignment: .topLeading)
-                .offset(x: frame.minX, y: frame.minY)
+                // Native full-stage host owns position; SwiftUI owns size only.
+                .transaction { $0.animation = nil }
         }
     }
 
@@ -707,14 +708,14 @@ struct WyrmRainPanel: View {
         }
     }
 
-    /// The hosting view covers only the panel, centred: the rest still steers.
+    /// The native stage owns panel position and outside-touch pass-through.
     private func layout() {
         let scale = min(max(rain.config["panelSize"] ?? 1, 0.7), 1.3)
         WyrmIOSSetRainPanel(rain.enabled && open, true, 428 * scale, 388 * scale)
     }
 }
 
-/// Window coordinates stay stable while the small hosting view moves or rotates.
+/// Window coordinates stay stable while native content position changes.
 private struct WyrmRainDragHandle: UIViewRepresentable {
     final class Coordinator: NSObject {
         private var last = CGPoint.zero

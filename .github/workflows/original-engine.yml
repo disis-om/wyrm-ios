@@ -35,8 +35,8 @@ jobs:
           mkdir -p original-artifacts/Payload
           ditto build-original-iphoneos/Build/Products/Release-iphoneos/Wyrm.app original-artifacts/Payload/Wyrm.app
           cd original-artifacts
-          zip -qry Wyrm-1.1.12-build-126-unsigned.ipa Payload
-          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.1.12-build-126-simulator.app.zip
+          zip -qry Wyrm-1.1.13-build-127-unsigned.ipa Payload
+          ditto -c -k --sequesterRsrc --keepParent ../build-original-iphonesimulator/Build/Products/Release-iphonesimulator/Wyrm.app Wyrm-1.1.13-build-127-simulator.app.zip
           shasum -a 256 *.ipa *.zip > SHA256SUMS
           cp ../README.md README.md
       - name: Simulator portrait shell and rotated original engine smoke test
@@ -170,7 +170,7 @@ jobs:
           sleep 10
           xcrun simctl io "$DEVICE" screenshot original-artifacts/lobby-keyboard.png || true
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
-          xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai
+          xcrun simctl launch --stdout="$PWD/original-artifacts/stdout.log" --stderr="$PWD/original-artifacts/stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai --smoke-rain-drag
           sleep 8
           xcrun simctl io "$DEVICE" screenshot original-artifacts/original-ai.png
           sleep 22
@@ -186,6 +186,7 @@ jobs:
           grep 'leaderboard ready' original-artifacts/stderr.log
           python3 -c 'import re; s=open("original-artifacts/stderr.log").read(); m=re.findall(r"pixel canvas: imgui=(\d+)x(\d+) framebuffer=1\.00x1\.00 drawable=(\d+)x(\d+)",s); assert any(a==c and b==d and int(a)>int(b) for a,b,c,d in m), "AI canvas is not one landscape pixel space"'
           grep 'arena frame progress=120' original-artifacts/stderr.log
+          grep 'Rain drag geometry passed moves=100 stable_stage=1 position_held=1' original-artifacts/stderr.log
           xcrun simctl terminate "$DEVICE" com.omrajput.wyrmios || true
           xcrun simctl launch --stdout="$PWD/original-artifacts/composer-stdout.log" --stderr="$PWD/original-artifacts/composer-stderr.log" "$DEVICE" com.omrajput.wyrmios --smoke-ai --smoke-team-composer || true
           sleep 16

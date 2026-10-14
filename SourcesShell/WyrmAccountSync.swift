@@ -116,7 +116,7 @@ final class WyrmAccountSync: ObservableObject {
         for (key, value) in UserDefaults.standard.dictionaryRepresentation() where Self.scope(of: key) == .sync {
             if let typed = Self.encode(value) { defaults[key] = typed }
         }
-        return ["schema": Self.schema, "keysWhiteV1": true, "platform": Self.platform, "engine": values, "hotkeys": hotkeys, "defaults": defaults]
+        return ["schema": Self.schema, "keysWhiteV1": true, "keysGreyFillV1": true, "platform": Self.platform, "engine": values, "hotkeys": hotkeys, "defaults": defaults]
     }
 
     /// Skin (with the player's own pattern even while a preset is worn), look,
@@ -244,7 +244,8 @@ final class WyrmAccountSync: ObservableObject {
         for (id, raw) in doc["engine"] as? [String: Any] ?? [:] {
             guard let setting = current[id], let text = raw as? String else { continue }
             let oldKeyColour = id.hasPrefix("layout.key_") && id.hasSuffix("_colour") && (doc["keysWhiteV1"] as? Bool != true)
-            let restored = oldKeyColour ? "0" : text
+            let oldKeyFill = id.hasPrefix("layout.key_") && id.hasSuffix("_fill") && (doc["keysGreyFillV1"] as? Bool != true)
+            let restored = oldKeyColour ? "0" : (oldKeyFill ? "9" : text)
             let values = restored.split(separator: ",").compactMap { Double($0.trimmingCharacters(in: .whitespaces)) }.filter(\.isFinite)
             guard let first = values.first else { continue }
             let low = min(setting.minimum, setting.maximum), high = max(setting.minimum, setting.maximum)
