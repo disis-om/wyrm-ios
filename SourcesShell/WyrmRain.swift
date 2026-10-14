@@ -16,7 +16,15 @@ struct WyrmRainCharacter: Codable, Identifiable {
     var cosmetic = 11
     var hash = ""
     var enabled = true
-    var dictionary: [String: Any] { ["id": id, "label": label, "name": name, "skin": skin, "colors": colors.prefix(250).map { String(format: "%08x", $0) }, "tag": tag, "cosmetic": cosmetic, "hash": hash, "enabled": enabled] }
+    var dictionary: [String: Any] {
+        var value: [String: Any] = ["id": id, "label": label, "name": name, "skin": skin, "tag": tag, "cosmetic": cosmetic, "hash": hash, "enabled": enabled]
+        // Palette defaults need no bytes; old Rain accounts can have 100 characters.
+        let stored = Array(colors.prefix(250))
+        if let last = stored.lastIndex(where: { $0 != 0 }) {
+            value["colors"] = stored[...last].map { $0 == 0 ? "" : String(format: "%08x", $0) }
+        }
+        return value
+    }
     static func from(_ raw: [String: Any]) -> Self {
         var v = Self()
         v.id = String((raw["id"] as? String ?? v.id).prefix(80))

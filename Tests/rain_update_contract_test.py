@@ -22,7 +22,7 @@ assert "bytes_read >= ext_at + white_at + 1" in settings
 assert "memset(ext->key_colour, 0, sizeof(ext->key_colour))" in settings
 assert "x->keys_white_v1 = true;" in settings
 assert "ImU32 primary = color(1.0f, 1.0f, 1.0f, 1.0f);" in keys
-assert '"colors": colors.prefix(250).map' in rain
+assert 'value["colors"] = stored[...last].map' in rain
 assert "colors: c.previewColors, maxBeads: 250" in page
 assert "groups: c.previewGroups, colors: c.previewColors" in page
 wire = rain.split("private func sendCharactersNow", 1)[1] if "private func sendCharactersNow" in rain else ""
@@ -47,6 +47,10 @@ assert(c.colors == [0xe0123456, 0xff102030, 0xc0abcdef])
 assert(WyrmRainCharacter.from(c.dictionary).colors == c.colors)
 let old = WyrmRainCharacter.from(["skin":"abc"])
 assert(old.colors == [0,0,0] && old.skin == "abc")
+assert(old.dictionary["colors"] == nil)
+let zeroSuffix = WyrmRainCharacter.from(["skin":"abc", "colors":["ff123456", "", ""]])
+assert((zeroSuffix.dictionary["colors"] as? [String]) == ["ff123456"])
+assert(WyrmRainCharacter.from(zeroSuffix.dictionary).colors == zeroSuffix.colors)
 let bad = WyrmRainCharacter.from(["skin":"abcde", "colors":["100000000", "xx", 34, "ff123456", NSNull()]])
 assert(bad.colors == [0,0,0,0xff123456,0] && bad.skin == "abcde")
 c.setSkin("abdq")
