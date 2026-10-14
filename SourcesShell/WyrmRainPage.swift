@@ -51,20 +51,22 @@ struct WyrmRainSnakePreview: View {
     }
 }
 
-/// Rain's state in one line: a dot (green connected, amber on the way, red refused) and the words.
+/// Rain's link in one word, with a dot: Connected (green) or Disconnected (OM, 2026-10-14).
 struct WyrmRainStatusLine: View {
     @ObservedObject var rain = WyrmRain.shared
     var body: some View {
-        let failed = ["refused", "failed", "invalid", "Enter your"].contains { rain.status.localizedCaseInsensitiveContains($0) }
-        let dot: Color = failed ? ATheme.badge : rain.connected ? ATheme.live : rain.enabled ? Color(red: 0.9, green: 0.65, blue: 0.04) : ATheme.quiet
         HStack(spacing: 8) {
-            Circle().fill(dot).frame(width: 8, height: 8)
-            Text(rain.running ? "\(rain.status) · \(rain.count) bots" : rain.status)
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(2)
+            Circle().fill(rain.connected ? ATheme.live : ATheme.quiet).frame(width: 8, height: 8)
+            Text(!rain.connected ? "Disconnected" : rain.running ? "Connected · \(rain.count) bots" : "Connected")
+                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.ink).lineLimit(1)
         }
     }
 }
 
+/// The Skin tab's flow (OM, 2026-10-14: "yeh Wyrm app ka hi part hai"):
+/// the preview stays put and only changes with the character; under the rule
+/// each page comes in with the Skin tab's spring, and a page inside has the
+/// round back arrow at the rule's top-left.
 struct WyrmRainPage: View {
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
@@ -77,41 +79,76 @@ struct WyrmRainPage: View {
 
     private var open: WyrmRainCharacter? { openID.flatMap { id in rain.characters.first { $0.id == id } } }
     private var previewed: WyrmRainCharacter? { open ?? rain.characters.first(where: \.enabled) ?? rain.characters.first }
+    private var pageKey: String { "\(openID ?? "home")|\(editor?.rawValue ?? "")" }
+
+    private func go(_ id: String?, _ next: WyrmRainEditor?) {
+        withAnimation(.interactiveSpring(response: 0.42, dampingFraction: 0.86, blendDuration: 0.1)) { openID = id; editor = next }
+    }
 
     var body: some View {
-        Group {
-            if let c = open, let editor {
-                WSScaffold(title: editor.rawValue, parent: c.label.isEmpty ? "Character" : c.label, sectionTabs: header(list: false),
-                           onBack: { self.editor = nil }) { editorPage(c, editor) }
-            } else if let c = open {
-                WSScaffold(title: c.label.isEmpty ? "Character" : c.label, parent: "Snakey Rain", sectionTabs: header(list: false),
-                           onBack: { openID = nil }) { characterPage(c) }
-            } else {
-                WSScaffold(title: "Snakey Rain", parent: "Play", sectionTabs: header(list: true), onBack: close) {
-                    switch tab {
-                    case .characters: charactersTab
-                    case .settings: settingsTab
-                    case .login: WyrmRainLoginTab()
-                    }
+        VStack(spacing: 0) {
+            ZStack {
+                HStack {
+                    Button(action: close) {
+                        Text("‹ Play").font(.androidWyrm(16)).foregroundColor(ATheme.link)
+                            .padding(.horizontal, 6).padding(.vertical, 8).contentShape(Rectangle())
+                    }.buttonStyle(.plain)
+                    Spacer()
                 }
+                Text("Snakey Rain").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
+            }.frame(height: 40).padding(.horizontal, 14)
+            WyrmRainSnakePreview(textures: textures, character: previewed).frame(height: 218)
+            Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
+            ZStack {
+                ScrollView(showsIndicators: false) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        if let c = open, let editor {
+                            inlineHeader(editor.rawValue) { go(c.id, nil) }
+                            editorPage(c, editor)
+                        } else if let c = open {
+                            inlineHeader(c.label.isEmpty ? "Character" : c.label) { go(nil, nil) }
+                            characterPage(c)
+                        } else {
+                            HStack(spacing: 10) {
+                                WyrmRainStatusLine().frame(maxWidth: .infinity, alignment: .leading)
+                                WSInkSwitch(on: rain.enabled) { rain.enable($0) }
+                            }.padding(.leading, 20).padding(.trailing, 16).padding(.top, 12)
+                            WSSegmented(options: WyrmRainTab.allCases.map(\.title), selected: tab.rawValue) { next in
+                                withAnimation(.easeInOut(duration: 0.22)) { tab = WyrmRainTab(rawValue: next) ?? .characters }
+                            }.padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 4)
+                            Group {
+                                switch tab {
+                                case .characters: charactersTab
+                                case .settings: settingsTab
+                                case .login: WyrmRainLoginTab()
+                                }
+                            }.id(tab).transition(.opacity)
+                        }
+                        Spacer().frame(height: 60)
+                    }.frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .id(pageKey)
+                .transition(.opacity.combined(with: .scale(scale: 0.985, anchor: .top)))
             }
+            .frame(maxHeight: .infinity)
+            .clipped()
         }
+        .foregroundColor(ATheme.ink)
+        .background(ATheme.paper.ignoresSafeArea())
         .onAppear { textures.prepare() }
     }
 
-    private func header(list: Bool) -> AnyView {
-        AnyView(VStack(spacing: 0) {
-            WyrmRainSnakePreview(textures: textures, character: previewed).frame(height: 196)
-            Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
-            if list {
-                HStack(spacing: 10) {
-                    WyrmRainStatusLine().frame(maxWidth: .infinity, alignment: .leading)
-                    WSInkSwitch(on: rain.enabled) { rain.enable($0) }
-                }.padding(.leading, 20).padding(.trailing, 16).padding(.top, 10)
-                WSSegmented(options: WyrmRainTab.allCases.map(\.title), selected: tab.rawValue) { tab = WyrmRainTab(rawValue: $0) ?? .characters }
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-            }
-        })
+    /// The Skin tab's inline header: round back arrow at the rule's top-left.
+    private func inlineHeader(_ title: String, back: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Button(action: back) {
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundColor(ATheme.ink)
+                    .frame(width: 34, height: 34).background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.92)).clipShape(Circle())
+            }.modifier(WyrmGlassCircleButton()).accessibilityLabel("Back")
+            Text(title).font(.androidWyrm(18, .bold)).lineLimit(1)
+            Spacer()
+            Text("AUTO-SAVED").font(.androidWyrm(8.5, .bold)).tracking(1).foregroundColor(ATheme.live)
+        }.padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 12)
     }
 
     // MARK: Characters
@@ -130,7 +167,7 @@ struct WyrmRainPage: View {
                 Text("CHARACTERS · \(list.count)/\(WyrmRain.maxCharacters)").font(.androidWyrm(11.5, .semibold)).tracking(0.92)
                     .foregroundColor(ATheme.quiet).frame(maxWidth: .infinity, alignment: .leading)
                 roundButton("plus", "Add a character", enabled: list.count < WyrmRain.maxCharacters) {
-                    if let made = rain.add() { openID = made.id }
+                    if let made = rain.add() { go(made.id, nil) }
                 }
             } else {
                 roundButton("xmark", "Cancel") { selection = [] }
@@ -174,7 +211,7 @@ struct WyrmRainPage: View {
         .background(picked ? ATheme.hover : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
-            if selection.isEmpty { openID = c.id }
+            if selection.isEmpty { go(c.id, nil) }
             else if picked { selection.remove(c.id) } else { selection.insert(c.id) }
         }
         .onLongPressGesture { selection.insert(c.id) }
@@ -205,22 +242,21 @@ struct WyrmRainPage: View {
         }
         WSSectionLabel("Look")
         WSCard {
-            WSValueRow(title: WyrmRainEditor.pattern.rawValue, value: c.presetIndex == nil && !c.beadGroups.isEmpty ? "\(c.beadGroups.count) beads" : "", first: true) { editor = .pattern }
-            WSValueRow(title: WyrmRainEditor.presets.rawValue, value: c.presetIndex.map { String(format: "%02d", $0 + 1) } ?? "") { editor = .presets }
-            WSValueRow(title: WyrmRainEditor.tags.rawValue, value: c.tagAsset.map { "#\($0.ntlID)" } ?? "None") { editor = .tags }
-            WSValueRow(title: WyrmRainEditor.accessories.rawValue, value: c.cosmetic == 255 ? "None" : String(format: "%02d", c.cosmetic + 1)) { editor = .accessories }
+            WSValueRow(title: WyrmRainEditor.pattern.rawValue, value: c.presetIndex == nil && !c.beadGroups.isEmpty ? "\(c.beadGroups.count) beads" : "", first: true) { go(c.id, .pattern) }
+            WSValueRow(title: WyrmRainEditor.presets.rawValue, value: c.presetIndex.map { String(format: "%02d", $0 + 1) } ?? "") { go(c.id, .presets) }
+            WSValueRow(title: WyrmRainEditor.tags.rawValue, value: c.tagAsset.map { "#\($0.ntlID)" } ?? "None") { go(c.id, .tags) }
+            WSValueRow(title: WyrmRainEditor.accessories.rawValue, value: c.cosmetic == 255 ? "None" : String(format: "%02d", c.cosmetic + 1)) { go(c.id, .accessories) }
         }
         WSSectionLabel("Storm")
         WSCard {
             WSBoolRow(title: "Use this character", detail: "Rain spawns bots with it", on: c.enabled, first: true) { on in update(c) { $0.enabled = on } }
         }
         Spacer().frame(height: 18)
-        WSCard { WSActionRow(title: "Delete character", first: true, danger: true) { rain.remove([c.id]); openID = nil } }
+        WSCard { WSActionRow(title: "Delete character", first: true, danger: true) { rain.remove([c.id]); go(nil, nil) } }
     }
 
     /// The Skin tab's own pickers, writing to this character.
     @ViewBuilder private func editorPage(_ c: WyrmRainCharacter, _ editor: WyrmRainEditor) -> some View {
-        Spacer().frame(height: 12)
         switch editor {
         case .pattern:
             let groups = c.presetIndex == nil ? c.beadGroups : []
@@ -299,12 +335,12 @@ struct WyrmRainPage: View {
             WSBoolRow(title: "Player rotation", detail: "Rotate your snake with the storm", on: rain.rotationEnabled) { rain.flag("rotationEnabled", $0) }
         }
         if rain.evolveEnabled { WyrmRainSliders(keys: ["evolveTime", "evolveBots"]).padding(.top, 10) }
-        WSSectionLabel("Arena")
-        WSCard { WSValueRow(title: "Arrange the UI", value: "", first: true) { engine.openLayoutEditor() } }
+        VStack(spacing: 9) {
+            WSPrimaryButton(label: "Arrange arena UI") { engine.openLayoutEditor() }
+            WSOutlineButton(label: "Reset settings") { rain.reset() }
+        }.padding(.horizontal, 16).padding(.top, 22)
         WSCaption(rain.enabled ? "The Rain button sits with your on-screen buttons. Drag it, or touch and hold it for size and opacity."
                                : "Turn on Snakey Rain to place its button in the arena.")
-        Spacer().frame(height: 8)
-        WSCard { WSActionRow(title: "Reset settings", first: true, danger: true) { rain.reset() } }
     }
 }
 
@@ -371,11 +407,6 @@ struct WyrmRainLoginTab: View {
             rain.credentials(user, pass, personal: personal); rain.enable(true)
         }.padding(.horizontal, 16)
         WSCaption("Your password stays on this phone, locked. The public account is shared by everyone.")
-        WSCard {
-            WSLinkRow(title: "Create a personal account", value: "snakeyrain.com", first: true) {
-                if let url = URL(string: "https://snakeyrain.com/") { UIApplication.shared.open(url) }
-            }
-        }
         Color.clear.frame(height: 0).onAppear {
             personal = rain.personal
             user = rain.personal ? rain.username : WyrmRain.publicUser
@@ -423,7 +454,16 @@ struct WyrmRainPanel: View {
     @State private var open = false
     @State private var seen = WyrmRain.shared.panelRequests
     @State private var tab = 0
+    private var scale: CGFloat { CGFloat(min(max(rain.config["panelSize"] ?? 1, 0.7), 1.3)) }
+
+    /// Panel size scales the whole panel, type and keys too, not only its box (OM, 2026-10-14).
     var body: some View {
+        panel.frame(width: 380, height: 340)
+            .scaleEffect(scale, anchor: .topLeading)
+            .frame(width: 380 * scale, height: 340 * scale, alignment: .topLeading)
+    }
+
+    @ViewBuilder private var panel: some View {
         let opacity = min(max(rain.config["panelOpacity"] ?? 1, 0.3), 1)
         let back = min(max(rain.config["panelBack"] ?? 0.94, 0), 1)
         VStack(spacing: 0) {
@@ -443,6 +483,15 @@ struct WyrmRainPanel: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 2) { content }.padding(.bottom, 10)
             }
+            // The knob at the bottom centre drags the panel anywhere (OM, 2026-10-14).
+            Capsule().fill(ATheme.ink.opacity(0.32)).frame(width: 42, height: 5)
+                .frame(maxWidth: .infinity).frame(height: 26).contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 0).onChanged { v in
+                    // The view follows the finger, so each step is finger minus grab point.
+                    WyrmIOSMoveRainPanel(Double((v.location.x - v.startLocation.x) * scale),
+                                         Double((v.location.y - v.startLocation.y) * scale))
+                })
+                .accessibilityLabel("Move Rain panel")
         }
         .background(ATheme.paper.opacity(back))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))

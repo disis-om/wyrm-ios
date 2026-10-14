@@ -7,6 +7,7 @@ void wyrm_rain_read(char* out, size_t capacity);
 void wyrm_rain_enable(bool enabled);
 void wyrm_rain_rotate(int direction);
 void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y);
+void WyrmIOSMoveRainPanel(double dx, double dy);
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>

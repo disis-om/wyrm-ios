@@ -110,6 +110,7 @@ static void wyrm_log_output(void* userdata, int category,
 @property(nonatomic, assign) BOOL rainVisible;
 @property(nonatomic, assign) BOOL rainExpanded;
 @property(nonatomic, assign) CGPoint rainOrigin;
+@property(nonatomic, assign) CGPoint rainOffset;
 @property(nonatomic, assign) BOOL landscapePresentation;
 - (void)installEngineController:(UIViewController*)controller;
 - (void)installShellControllerIfNeeded;
@@ -192,8 +193,10 @@ static void wyrm_log_output(void* userdata, int category,
   // rainOrigin carries its wanted width and height (panel size slider).
   CGFloat width = MAX(MIN(self.rainOrigin.x, stageWidth - 16), 120);
   CGFloat height = MAX(MIN(self.rainOrigin.y, stageHeight - 16), 120);
-  CGFloat left = (stageWidth - width) / 2;
-  CGFloat top = (stageHeight - height) / 2;
+  // Dragged by its knob (OM, 2026-10-14): an offset from the centre, kept on screen.
+  CGFloat left = MIN(MAX((stageWidth - width) / 2 + self.rainOffset.x, 0), MAX(stageWidth - width, 0));
+  CGFloat top = MIN(MAX((stageHeight - height) / 2 + self.rainOffset.y, 0), MAX(stageHeight - height, 0));
+  self.rainOffset = CGPointMake(left - (stageWidth - width) / 2, top - (stageHeight - height) / 2);
   rain.transform = CGAffineTransformIdentity; rain.bounds = CGRectMake(0,0,width,height);
   rain.center = self.landscapePresentation ? CGPointMake(stageHeight-top-height/2,left+width/2):CGPointMake(left+width/2,top+height/2);
   if (self.landscapePresentation) rain.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
@@ -250,6 +253,18 @@ void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y) {
     engine_container.rainOrigin = CGPointMake(isfinite(x) ? x:380,isfinite(y) ? y:340);
     [engine_container layoutRainPanel];
   });
+}
+
+// The panel's knob moved the finger by (dx, dy) stage points from where it grabbed.
+// Main thread (the gesture's own), so the next touch already sees the new place.
+void WyrmIOSMoveRainPanel(double dx, double dy) {
+  void (^move)(void) = ^{
+    if (!engine_container || !isfinite(dx) || !isfinite(dy)) return;
+    CGPoint o = engine_container.rainOffset;
+    engine_container.rainOffset = CGPointMake(o.x + dx, o.y + dy);
+    [engine_container layoutRainPanel];
+  };
+  if (NSThread.isMainThread) move(); else dispatch_async(dispatch_get_main_queue(), move);
 }
 
 /* The SwiftUI shell stays visible above the rotated engine while it draws the

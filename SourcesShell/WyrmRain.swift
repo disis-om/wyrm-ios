@@ -290,7 +290,9 @@ final class WyrmRain: ObservableObject {
         if let open = (d["open"] as? NSNumber)?.intValue, open >= 0 {
             if lastOpen >= 0 && open > lastOpen { panelRequests += 1 }; lastOpen = open
         }
-        if alive && (!live || seq != sentJoin) && running { stop() }; alive = live
+        // Like Rain 6.36: a death or a new join never stops the storm; every
+        // join is relayed again below and the bots carry on (OM, 2026-10-14).
+        alive = live
         if connected && live && seq != sentJoin, let hex = d["join"] as? String, !hex.isEmpty, hex.count % 2 == 0 {
             var join = Data(); var cursor = hex.startIndex
             while cursor < hex.endIndex { let end = hex.index(cursor,offsetBy:2); guard let byte = UInt8(hex[cursor..<end],radix:16) else { return }; join.append(byte); cursor = end }
