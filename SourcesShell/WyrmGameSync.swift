@@ -233,7 +233,10 @@ final class WyrmGameSync {
     /// a valid IGN; anything else stays local to the engine.
     func syncIngameName(_ raw: String) {
         let name = raw.trimmingCharacters(in: .whitespaces)
-        guard !token.isEmpty, name.range(of: "^[A-Za-z0-9_]{3,20}$", options: .regularExpression) != nil else { return }
+        // Any arena name, shared with others (OM, 2026-10-14): the server only
+        // wants 1-24 characters and no control codes now.
+        guard !token.isEmpty, !name.isEmpty, name.count <= 24,
+              !name.unicodeScalars.contains(where: { $0.value < 32 || $0.value == 127 }) else { return }
         // A name the account refused (another player owns it) is not sent on
         // every Play again (2026-10-08); the arena still uses it as typed.
         guard !refusedIngameNames.contains(name.lowercased()) else { return }
