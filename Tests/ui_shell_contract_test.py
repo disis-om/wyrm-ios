@@ -90,7 +90,7 @@ checks = {
     "own avatar path is made absolute": 'rawAvatar.hasPrefix("/")' in ACCOUNT,
     "avatar upload and renames use the Android routes": "/v1/me/avatar" in ACCOUNT and "/v1/me/renames" in ACCOUNT,
     "global chat and fresh profiles": "/v1/chat/messages" in SERVICES and '"/v1/players/' in SERVICES,
-    "in-game name follows the account": "syncIngameName" in SYNC and "^[A-Za-z0-9_]{3,20}$" in SYNC,
+    "in-game name follows the account (any 1-24 characters, 2026-10-14)": "syncIngameName" in SYNC and "name.count <= 24" in SYNC and "[A-Za-z0-9_]{3,20}" not in SYNC,
     "twenty image arrows plus the five drawn styles in one picker": ARROWS.count('", "') >= 15 and "Vanced arrow" not in ARROWS
         and "WyrmArrowShapes.points.count" in ARROWS and (ROOT / "Resources" / "ArrowSkins.png").exists(),
     "image arrows are one atlas drawn as a rotated quad": "ImDrawList_AddImageQuad" in ARROWS_C and "WyrmIOSDrawArrowImage(dl, ax, ay, dx, dy, length," in PREPARE
