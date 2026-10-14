@@ -11,7 +11,7 @@
 
 ## Status
 
-- Current release: **1.1.0 (build 114)**, stable. Source/test target: **1.1.13 (127)**. iOS **15 or newer**, iPhone
+- Current release: **2.0.0 (build 129)**, stable (2026-10-14). iOS **15 or newer**, iPhone
   first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
@@ -23,6 +23,9 @@
 
 ## Features
 
+- Arena chat with TEAM, GLOBAL and ONLINE tabs: global chat inside the match,
+  players seen on Wyrm lately with their in-game name, username and arena
+  (sharing off = left out), and an unread count per tab.
 - Native Snakey Rain controller in Loadout: public or personal login, character
   and compatible skin/tag/accessory editors, 14 modes, live settings, and an
   arena panel dragged by its bottom handle and fitted to the screen. Character
