@@ -106,9 +106,9 @@ struct WyrmRainReader {
 final class WyrmRain: ObservableObject {
     static let shared = WyrmRain()
     static let settingsKey = "wyrm.ios.rain.settings"
-    static let defaults: [String: Double] = ["maxBots":1000,"size":2000,"separation":800,"finalAng":90,"rOC":0.5,"rotationDir":1,"period":2000,"amplitude":45,"ranRate":1000,"evolveTime":30,"evolveBots":1,"panelSize":1,"panelOpacity":1,"panelBack":0.94]
+    static let defaults: [String: Double] = ["maxBots":1000,"size":2000,"separation":800,"finalAng":90,"rOC":0.5,"rotationDir":1,"period":2000,"amplitude":45,"ranRate":1000,"evolveTime":30,"evolveBots":1,"panelSize":1,"panelOpacity":1,"panelBack":0.94,"panelTextColour":0,"panelFillColour":0]
     /// The last three are the arena panel's own look (OM, 2026-10-14): never sent to Rain.
-    static let ranges: [(String, ClosedRange<Double>)] = [("maxBots",1...1000),("size",100...3000),("separation",0...3000),("finalAng",0...90),("rOC",0...1),("rotationDir",0...1),("period",100...10000),("amplitude",0...62),("ranRate",100...5000),("evolveTime",10...300),("evolveBots",1...5),("panelSize",0.7...1.3),("panelOpacity",0.3...1),("panelBack",0...1)]
+    static let ranges: [(String, ClosedRange<Double>)] = [("maxBots",1...1000),("size",100...3000),("separation",0...3000),("finalAng",0...90),("rOC",0...1),("rotationDir",0...1),("period",100...10000),("amplitude",0...62),("ranRate",100...5000),("evolveTime",10...300),("evolveBots",1...5),("panelSize",0.7...1.3),("panelOpacity",0.3...1),("panelBack",0...1),("panelTextColour",0...8),("panelFillColour",0...8)]
     static let maxCharacters = 100
     /// Rain 6.36's factory account, shared by everyone.
     static let publicUser = "snakeyuser"
@@ -182,7 +182,7 @@ final class WyrmRain: ObservableObject {
     }
     func restore(_ d: [String: Any]) {
         for (key, range) in Self.ranges {
-            if let v = (d[key] as? NSNumber)?.doubleValue, v.isFinite { config[key] = min(max(v, range.lowerBound), range.upperBound) }
+            if let v = (d[key] as? NSNumber)?.doubleValue, v.isFinite { let bounded = min(max(v, range.lowerBound), range.upperBound); config[key] = key == "panelTextColour" || key == "panelFillColour" ? bounded.rounded() : bounded }
         }
         if let on = d["evolveEnabled"] as? Bool { evolveEnabled = on }
         if let on = d["rotationEnabled"] as? Bool { rotationEnabled = on }
@@ -238,7 +238,8 @@ final class WyrmRain: ObservableObject {
     }
     func set(_ key: String, _ v: Double) {
         guard v.isFinite, let range = Self.ranges.first(where: { $0.0 == key })?.1 else { return }
-        config[key] = min(max(v, range.lowerBound), range.upperBound); save(); sendSettings()
+        let bounded = min(max(v, range.lowerBound), range.upperBound)
+        config[key] = key == "panelTextColour" || key == "panelFillColour" ? bounded.rounded() : bounded; save(); sendSettings()
     }
     func flag(_ key: String, _ on: Bool) {
         if key == "evolveEnabled" { evolveEnabled = on } else if key == "rotationEnabled" { rotationEnabled = on; if !on { rotate(0) } }

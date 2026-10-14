@@ -63,11 +63,12 @@ struct WyrmRainSnakePreview: View {
 /// Rain's link in one word, with a dot: Connected (green) or Disconnected (OM, 2026-10-14).
 struct WyrmRainStatusLine: View {
     @ObservedObject var rain = WyrmRain.shared
+    var ink: Color? = nil
     var body: some View {
         HStack(spacing: 8) {
             Circle().fill(rain.connected ? ATheme.live : ATheme.quiet).frame(width: 8, height: 8)
             Text(!rain.connected ? "Disconnected" : rain.running ? "Connected · \(rain.count) bots" : "Connected")
-                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.ink).lineLimit(1)
+                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ink ?? ATheme.ink).lineLimit(1)
         }
     }
 }
@@ -334,6 +335,8 @@ struct WyrmRainPage: View {
     // MARK: Settings
 
     @ViewBuilder private var settingsTab: some View {
+        WSSectionLabel("Arena panel", top: 14)
+        WyrmRainColourRows()
         WSSectionLabel("Bots", top: 14)
         WyrmRainSliders(keys: ["maxBots", "size", "separation", "finalAng", "rOC", "rotationDir"])
         WSSectionLabel("Movement")
@@ -373,8 +376,22 @@ func wyrmRainSettingValue(_ key: String, _ v: Double) -> String {
 
 /// The panel's Back (OM, 2026-10-14): how much of every fill shows, the
 /// plate, the cards and the keys; type and borders stay whole. 1 on the page.
+private struct WyrmRainPanelLook {
+    let ink: Color
+    let fill: Color
+}
+private struct WyrmRainLookKey: EnvironmentKey { static let defaultValue: WyrmRainPanelLook? = nil }
+
+private func wyrmRainSwatch(_ index: Int, fallback: Color) -> Color {
+    index > 0 && index < WyrmTeamHudStore.swatches.count ? (WyrmTeamHudStore.swatches[index] ?? fallback) : fallback
+}
+
 private struct WyrmRainBackKey: EnvironmentKey { static let defaultValue: Double = 1 }
 extension EnvironmentValues {
+    fileprivate var wyrmRainLook: WyrmRainPanelLook? {
+        get { self[WyrmRainLookKey.self] }
+        set { self[WyrmRainLookKey.self] = newValue }
+    }
     var wyrmRainBack: Double {
         get { self[WyrmRainBackKey.self] }
         set { self[WyrmRainBackKey.self] = newValue }
@@ -384,17 +401,18 @@ extension EnvironmentValues {
 /// WSCard whose fill follows the panel's Back; the edge stays.
 struct WyrmRainCard<Content: View>: View {
     @Environment(\.wyrmRainBack) private var back
+    @Environment(\.wyrmRainLook) private var look
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
-        if back >= 0.999 {
+        if look == nil && back >= 0.999 {
             WSCard { content }
         } else {
             VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background(ATheme.card.opacity(back))
+                .background((look?.fill ?? ATheme.card).opacity(back))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(0.35), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke((look?.ink ?? ATheme.ink).opacity(0.35), lineWidth: 1))
                 .padding(.horizontal, 16)
         }
     }
@@ -403,15 +421,56 @@ struct WyrmRainCard<Content: View>: View {
 struct WyrmRainSliders: View {
     @ObservedObject var rain = WyrmRain.shared
     let keys: [String]
+    @Environment(\.wyrmRainLook) private var look
     var body: some View {
         WyrmRainCard {
             ForEach(Array(keys.enumerated()), id: \.element) { index, key in
                 let range = WyrmRain.ranges.first { $0.0 == key }?.1 ?? 0...1
                 let value = rain.config[key] ?? WyrmRain.defaults[key] ?? range.lowerBound
-                WSSliderRow(title: wyrmRainSettingName(key), valueText: wyrmRainSettingValue(key, value),
-                            value: value, range: range, first: index == 0) { rain.set(key, $0) }
+                if let look {
+                    VStack(spacing: 4) {
+                        HStack {
+                            Text(wyrmRainSettingName(key)).font(.androidWyrm(15.5))
+                            Spacer()
+                            Text(wyrmRainSettingValue(key, value)).font(.androidWyrm(14)).monospacedDigit()
+                        }.foregroundColor(look.ink)
+                        Slider(value: Binding(get: { value }, set: { rain.set(key, $0) }), in: range).tint(look.ink)
+                    }.padding(14)
+                } else {
+                    WSSliderRow(title: wyrmRainSettingName(key), valueText: wyrmRainSettingValue(key, value),
+                                value: value, range: range, first: index == 0) { rain.set(key, $0) }
+                }
             }
         }
+    }
+}
+
+private struct WyrmRainColourRows: View {
+    @ObservedObject private var rain = WyrmRain.shared
+    @Environment(\.wyrmRainLook) private var look
+    var body: some View {
+        let ink = look?.ink ?? ATheme.ink
+        WyrmRainCard {
+            row("panelTextColour", "TEXT AND BORDER", ink)
+            row("panelFillColour", "FILL", ink)
+        }
+    }
+    private func row(_ key: String, _ title: String, _ ink: Color) -> some View {
+        let selected = min(max(Int(rain.config[key] ?? 0), 0), 8)
+        return VStack(alignment: .leading, spacing: 9) {
+            Text("\(title) · \(WyrmTeamHudStore.colourNames[selected].uppercased())")
+                .font(.androidWyrm(10, .bold)).tracking(0.8).foregroundColor(ink)
+            HStack {
+                ForEach(0..<9, id: \.self) { index in
+                    if index > 0 { Spacer(minLength: 2) }
+                    Button { rain.set(key, Double(index)) } label: {
+                        Circle().fill(WyrmTeamHudStore.swatches[index] ?? ink).padding(4)
+                            .frame(width: 28, height: 28)
+                            .overlay(Circle().stroke(ink.opacity(index == selected ? 1 : 0.35), lineWidth: index == selected ? 2 : 1))
+                    }.buttonStyle(.plain).accessibilityLabel("\(title) \(WyrmTeamHudStore.colourNames[index])")
+                }
+            }
+        }.padding(.horizontal, 14).padding(.vertical, 10)
     }
 }
 
@@ -471,18 +530,18 @@ private struct WyrmRainKey: View {
     let lit: Bool
     let action: () -> Void
     @Environment(\.wyrmRainBack) private var back
+    @Environment(\.wyrmRainLook) private var look
     var body: some View {
-        // With little fill left, a lit key keeps ink type over the arena.
-        let inked = lit && back >= 0.5
+        let ink = look?.ink ?? ATheme.ink
+        let fill = look?.fill ?? ATheme.card
         Button(action: action) {
             Text(label).font(.androidWyrm(13.5, .semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                .foregroundColor(inked ? ATheme.onInk : ATheme.ink)
+                .foregroundColor(ink)
                 .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 46)
-                .background((lit ? ATheme.ink : ATheme.card).opacity(back))
+                .background(fill.opacity(back))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(lit ? 0.9 : 0.6), lineWidth: 1.5))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(lit ? ATheme.live : ink.opacity(0.6), lineWidth: lit ? 2.5 : 1.5))
                 .padding(3)
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.live.opacity(lit ? 0.75 : 0), lineWidth: 2.5))
         }.buttonStyle(WSPressStyle())
     }
 }
@@ -490,8 +549,15 @@ private struct WyrmRainKey: View {
 /// The arena's Rain panel (OM, 2026-10-14): opened by the Rain key, tabs for
 /// the controls, modes, nearby snakes and live settings. Its size, opacity
 /// and back plate are the player's ("panelSize", "panelOpacity", "panelBack").
+@MainActor
+private final class WyrmRainPanelPlacement: ObservableObject {
+    static let shared = WyrmRainPanelPlacement()
+    @Published var frame = CGRect(x: 0, y: 0, width: 428, height: 388)
+}
+
 struct WyrmRainPanel: View {
     @ObservedObject private var rain = WyrmRain.shared
+    @ObservedObject private var placement = WyrmRainPanelPlacement.shared
     @State private var open = false
     @State private var seen = WyrmRain.shared.panelRequests
     @State private var tab = 0
@@ -499,13 +565,18 @@ struct WyrmRainPanel: View {
 
     /// Panel size scales the whole panel, type and keys too, not only its box (OM, 2026-10-14).
     var body: some View {
-        GeometryReader { geometry in
-            let fit = min(scale, min(geometry.size.width / 428, geometry.size.height / 388))
+        GeometryReader { _ in
+            let frame = placement.frame
+            let fit = min(frame.width / 428, frame.height / 388)
             panel.frame(width: 380, height: 340).padding(24)
                 .scaleEffect(fit, anchor: .topLeading)
-                .frame(width: 428 * fit, height: 388 * fit, alignment: .topLeading)
+                .frame(width: frame.width, height: frame.height, alignment: .topLeading)
+                .offset(x: frame.minX, y: frame.minY)
         }
     }
+
+    private var ink: Color { wyrmRainSwatch(Int(rain.config["panelTextColour"] ?? 0), fallback: ATheme.ink) }
+    private var fill: Color { wyrmRainSwatch(Int(rain.config["panelFillColour"] ?? 0), fallback: ATheme.paper) }
 
     @ViewBuilder private var panel: some View {
         let opacity = min(max(rain.config["panelOpacity"] ?? 1, 0.3), 1)
@@ -513,30 +584,39 @@ struct WyrmRainPanel: View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Snakey Rain").font(.androidWyrm(16, .bold)).foregroundColor(ATheme.ink)
-                    WyrmRainStatusLine()
+                    Text("Snakey Rain").font(.androidWyrm(16, .bold)).foregroundColor(ink)
+                    WyrmRainStatusLine(ink: ink)
                 }
                 Spacer()
                 Button { open = false; layout() } label: {
-                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundColor(ATheme.ink)
-                        .frame(width: 34, height: 34).background(ATheme.card).clipShape(Circle())
+                    Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).foregroundColor(ink)
+                        .frame(width: 34, height: 34).background(fill.opacity(rain.config["panelBack"] ?? 0.94)).clipShape(Circle())
                 }.buttonStyle(.plain).accessibilityLabel("Close")
             }.padding(.leading, 16).padding(.trailing, 8).padding(.top, 10)
-            WSSegmented(options: ["Controls", "Modes", "Target", "Settings"], selected: tab) { tab = $0 }
+            HStack(spacing: 0) {
+                ForEach(Array(["Controls", "Modes", "Target", "Settings"].enumerated()), id: \.offset) { index, title in
+                    Button { tab = index } label: {
+                        Text(title).font(.androidWyrm(12, tab == index ? .bold : .medium)).foregroundColor(ink)
+                            .lineLimit(1).minimumScaleFactor(0.7).frame(maxWidth: .infinity).frame(height: 36)
+                            .background(ink.opacity(tab == index ? 0.14 : 0)).clipShape(Capsule())
+                    }.buttonStyle(.plain)
+                }
+            }.padding(3).background(ink.opacity(0.06)).clipShape(Capsule())
                 .padding(.horizontal, 12).padding(.top, 10).padding(.bottom, 6)
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 2) { content }.padding(.bottom, 10)
             }
             // The knob at the bottom centre drags the panel anywhere (OM, 2026-10-14).
-            Capsule().fill(ATheme.ink.opacity(0.32)).frame(width: 42, height: 5)
+            Capsule().fill(ink.opacity(0.5)).frame(width: 42, height: 5)
                 .frame(maxWidth: .infinity).frame(height: 26).contentShape(Rectangle())
                 .overlay(WyrmRainDragHandle())
                 .accessibilityLabel("Move Rain panel")
         }
-        .background(ATheme.paper.opacity(back))
+        .background(fill.opacity(back))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.35), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ink.opacity(0.35), lineWidth: 1))
         .environment(\.wyrmRainBack, back)
+        .environment(\.wyrmRainLook, WyrmRainPanelLook(ink: ink, fill: fill))
         .shadow(color: ATheme.ink.opacity(0.12 * back), radius: 18 * back)
         .opacity(opacity)
         .onChange(of: rain.panelRequests) { now in if now != seen { seen = now; open.toggle(); layout() } }
@@ -548,8 +628,9 @@ struct WyrmRainPanel: View {
 
     private func stepButton(_ symbol: String, _ label: String, _ enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.onInk)
-                .frame(width: 36, height: 36).background(ATheme.ink.opacity(enabled ? 1 : 0.3)).clipShape(Circle())
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ink)
+                .frame(width: 36, height: 36).background(fill.opacity(rain.config["panelBack"] ?? 0.94)).clipShape(Circle())
+                .overlay(Circle().stroke(ink.opacity(enabled ? 0.8 : 0.3), lineWidth: 1))
         }.buttonStyle(WSPressStyle()).disabled(!enabled).accessibilityLabel(label)
     }
 
@@ -571,7 +652,7 @@ struct WyrmRainPanel: View {
                     WyrmRainKey(label: "Rotate right", lit: rain.rotation == 1) { rain.rotate(rain.rotation == 1 ? 0 : 1) }
                 }
             }
-            Text("Mode · \(WyrmRain.modes[min(max(rain.mode, 1), 14) - 1])").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            Text("Mode · \(WyrmRain.modes[min(max(rain.mode, 1), 14) - 1])").font(.androidWyrm(12.5)).foregroundColor(ink)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 16).padding(.top, 8)
         case 1:
             ForEach(0..<7, id: \.self) { r in
@@ -589,7 +670,7 @@ struct WyrmRainPanel: View {
                 !mine.contains(($0["name"] as? String ?? "").trimmingCharacters(in: .whitespaces).lowercased())
             }
             if targets.isEmpty {
-                Text("No snakes nearby").font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                Text("No snakes nearby").font(.androidWyrm(13)).foregroundColor(ink)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
             Color.clear.frame(height: 0)
@@ -604,19 +685,25 @@ struct WyrmRainPanel: View {
             // Minus / plus, not a slider: a slider resized the view under the finger (OM, 2026-10-14).
             WyrmRainCard {
                 HStack(spacing: 10) {
-                    Text("Panel size").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
+                    Text("Panel size").font(.androidWyrm(15.5)).foregroundColor(ink).frame(maxWidth: .infinity, alignment: .leading)
                     let size = rain.config["panelSize"] ?? 1
                     stepButton("minus", "Smaller", size > 0.71) { rain.set("panelSize", size - 0.1) }
-                    Text("\(Int((size * 100).rounded()))%").font(.androidWyrm(14)).monospacedDigit().foregroundColor(ATheme.mute).frame(width: 56)
+                    Text("\(Int((size * 100).rounded()))%").font(.androidWyrm(14)).monospacedDigit().foregroundColor(ink).frame(width: 56)
                     stepButton("plus", "Bigger", size < 1.29) { rain.set("panelSize", size + 0.1) }
                 }.padding(.horizontal, 14).padding(.vertical, 10)
             }
+            Spacer().frame(height: 10)
+            WyrmRainColourRows()
             Spacer().frame(height: 10)
             WyrmRainSliders(keys: ["panelOpacity", "panelBack"])
             Spacer().frame(height: 10)
             WyrmRainSliders(keys: ["maxBots", "size", "separation", "finalAng", "rOC", "rotationDir", "period", "amplitude", "ranRate"])
             Spacer().frame(height: 10)
-            WyrmRainCard { WSBoolRow(title: "Cycle through characters", on: rain.evolveEnabled, first: true) { rain.flag("evolveEnabled", $0) } }
+            WyrmRainCard {
+                Toggle(isOn: Binding(get: { rain.evolveEnabled }, set: { rain.flag("evolveEnabled", $0) })) {
+                    Text("Cycle through characters").font(.androidWyrm(15.5)).foregroundColor(ink)
+                }.tint(ink).padding(14)
+            }
         }
     }
 
@@ -653,6 +740,11 @@ private struct WyrmRainDragHandle: UIViewRepresentable {
 @MainActor
 final class WyrmRainHost: NSObject {
     @objc static func handleKey(_ key: String) -> Bool { WyrmRain.shared.handleKey(key) }
+    @objc(placePanelLeft:top:width:height:)
+    static func placePanel(left: Double, top: Double, width: Double, height: Double) {
+        let frame = CGRect(x: left, y: top, width: width, height: height)
+        if WyrmRainPanelPlacement.shared.frame != frame { WyrmRainPanelPlacement.shared.frame = frame }
+    }
     @objc static func makeViewController() -> UIViewController {
         let controller = UIHostingController(rootView: WyrmRainPanel()); controller.view.backgroundColor = .clear; return controller
     }

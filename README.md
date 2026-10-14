@@ -11,7 +11,7 @@
 
 ## Status
 
-- Current release: **1.1.0 (build 114)**, stable. Source/test target: **1.1.7 (121)**. iOS **15 or newer**, iPhone
+- Current release: **1.1.0 (build 114)**, stable. Source/test target: **1.1.12 (126)**. iOS **15 or newer**, iPhone
   first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
@@ -25,7 +25,9 @@
 
 - Native Snakey Rain controller in Loadout: public or personal login, character
   and compatible skin/tag/accessory editors, 14 modes, live settings, and an
-  arena panel dragged by its bottom handle. Settings are shared with Android;
+  arena panel dragged by its bottom handle and fitted to the screen. Character
+  patterns keep palette, colour-wheel and Wyrm bead colours in every preview.
+  Panel text/border and fill colours are adjustable. Settings are shared with Android;
   credentials and private bot tag codes remain in this phone's Keychain.
   Device bot spawn and full browser-extension parity remain unverified.
 - Username/password sign-up and login with live username availability.

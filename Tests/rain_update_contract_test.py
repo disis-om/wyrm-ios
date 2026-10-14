@@ -34,7 +34,29 @@ assert 'd.set(Self.limitMax, forKey: Self.limitKey)' in perf
 assert "limit == Self.limitMax ? displayMax" in perf
 assert "UIPanGestureRecognizer" in page and "gesture.location(in: nil)" in page
 assert "landscapePresentation ? dy : dx" in main and "landscapePresentation ? -dx : dy" in main
-assert "wantedWidth * fit" in main and "geometry.size.width / 428" in page
+assert "wantedWidth * fit" in main and "frame.width / 428" in page
+assert "rain.bounds = CGRectMake(0, 0, stageWidth, stageHeight)" in main
+assert "self.rainController.view.frame = rain.bounds" in main
+assert "CGRectContainsPoint(self.panelRect, point)" in main
+assert ".offset(x: frame.minX, y: frame.minY)" in page
+assert "placePanelLeft:top:width:height:" in page
+for key in ["panelTextColour", "panelFillColour"]:
+    assert f'("{key}",0...8)' in rain
+    assert key in page
+assert "WyrmRainColourRows()" in page and "wyrmRainLook" in page
+android = ROOT.parent / "Wyrm Android/android/app/src/main/java/com/wyrm/omrajput"
+if android.exists():
+    overlay = (android / "ui/WyrmOverlay.kt").read_text(encoding="utf-8")
+    stage = (android / "ui/RainPanelTouchFrame.kt").read_text(encoding="utf-8")
+    controller = (android / "data/SnakeyRain.kt").read_text(encoding="utf-8")
+    assert "val rainStage = RainPanelTouchFrame(activity)" in overlay
+    assert "rainView.x =" not in overlay and "rainView.y =" not in overlay
+    assert "sizeRainPanel()" not in overlay
+    assert "panelBounds.contains(event.x, event.y)" in stage
+    assert "if (!ownsGesture) return false" in stage
+    assert "ACTION_UP" in stage and "ACTION_CANCEL" in stage
+    assert '"panelTextColour" to 0.0..8.0' in controller
+    assert '"panelFillColour" to 0.0..8.0' in controller
 print("Rain/update source contracts passed")
 
 # Compile and run the production character type itself on macOS. It has no

@@ -96,6 +96,19 @@ static void wyrm_log_output(void* userdata, int category,
 @interface WyrmRainHost : NSObject
 + (UIViewController*)makeViewController;
 + (BOOL)handleKey:(NSString*)key;
++ (void)placePanelLeft:(double)left top:(double)top width:(double)width height:(double)height;
+@end
+
+// A stationary stage owns only touches that begin inside the panel. Empty
+// space falls through to the engine; UIKit keeps a captured pan until release.
+@interface WyrmRainStageView : UIView
+@property(nonatomic, assign) CGRect panelRect;
+@end
+@implementation WyrmRainStageView
+- (UIView*)hitTest:(CGPoint)point withEvent:(UIEvent*)event {
+  if (self.hidden || !CGRectContainsPoint(self.panelRect, point)) return nil;
+  return [super hitTest:point withEvent:event];
+}
 @end
 
 // UIWindow owns the root controller's geometry and is allowed to lay it out
@@ -107,6 +120,7 @@ static void wyrm_log_output(void* userdata, int category,
 @property(nonatomic, strong) UIViewController* engineController;
 @property(nonatomic, strong) UIViewController* shellController;
 @property(nonatomic, strong) UIViewController* rainController;
+@property(nonatomic, strong) WyrmRainStageView* rainStage;
 @property(nonatomic, assign) BOOL rainVisible;
 @property(nonatomic, assign) BOOL rainExpanded;
 @property(nonatomic, assign) CGPoint rainOrigin;
@@ -139,8 +153,12 @@ static void wyrm_log_output(void* userdata, int category,
   self.rainController = rain;
   [self addChildViewController:rain];
   rain.view.backgroundColor = UIColor.clearColor;
-  rain.view.frame = CGRectMake(12, 24, 70, 54); rain.view.hidden = YES;
-  [self.view addSubview:rain.view];
+  WyrmRainStageView* stage = [[WyrmRainStageView alloc] initWithFrame:self.view.bounds];
+  self.rainStage = stage;
+  stage.backgroundColor = UIColor.clearColor; stage.hidden = YES;
+  rain.view.frame = stage.bounds;
+  [stage addSubview:rain.view];
+  [self.view addSubview:stage];
   [rain didMoveToParentViewController:self];
 }
 
@@ -184,7 +202,7 @@ static void wyrm_log_output(void* userdata, int category,
 }
 
 - (void)layoutRainPanel {
-  UIView* rain = self.rainController.view;
+  WyrmRainStageView* rain = self.rainStage;
   if (!rain) return;
   CGRect bounds = self.view.bounds;
   CGFloat stageWidth = self.landscapePresentation ? CGRectGetHeight(bounds):CGRectGetWidth(bounds);
@@ -201,8 +219,14 @@ static void wyrm_log_output(void* userdata, int category,
   CGFloat left = MIN(MAX((stageWidth - width) / 2 + self.rainOffset.x, 0), MAX(stageWidth - width, 0));
   CGFloat top = MIN(MAX((stageHeight - height) / 2 + self.rainOffset.y, 0), MAX(stageHeight - height, 0));
   self.rainOffset = CGPointMake(left - (stageWidth - width) / 2, top - (stageHeight - height) / 2);
-  rain.transform = CGAffineTransformIdentity; rain.bounds = CGRectMake(0,0,width,height);
-  rain.center = self.landscapePresentation ? CGPointMake(stageHeight-top-height/2,left+width/2):CGPointMake(left+width/2,top+height/2);
+  // Never translate/resize the SwiftUI render root to the small panel's box:
+  // its cached root clip otherwise remains at the old rectangle while dragging.
+  rain.transform = CGAffineTransformIdentity;
+  rain.bounds = CGRectMake(0, 0, stageWidth, stageHeight);
+  rain.center = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
+  self.rainController.view.frame = rain.bounds;
+  rain.panelRect = CGRectMake(left, top, width, height);
+  [WyrmRainHost placePanelLeft:left top:top width:width height:height];
   if (self.landscapePresentation) rain.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
   rain.hidden = !self.rainVisible || !self.rainExpanded || !engine_presentation || reported_screen != PLAYING;
   [self.view bringSubviewToFront:rain];
