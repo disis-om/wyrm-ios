@@ -33,6 +33,14 @@ final class WyrmTeamHudStore: ObservableObject {
                                                         0.7...2.2, 1...2.2]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
+    /// White, yellow, cyan, green, pink and orange take dark text; black, red light (OM, 2026-10-14).
+    static func isLight(_ index: Int) -> Bool {
+        let rgb = [0, 0xFFFFFF, 0x111111, 0xFFD54A, 0x4DD9FF, 0x5BE37D, 0xFF6FB5, 0xFF9A3C, 0xFF5A5A]
+        guard index > 0, index < rgb.count else { return false }
+        let c = rgb[index]
+        let l = 0.2126 * Double((c >> 16) & 255) / 255 + 0.7152 * Double((c >> 8) & 255) / 255 + 0.0722 * Double(c & 255) / 255
+        return l > 0.55
+    }
     static let swatches: [Color?] = [nil] + [0xFFFFFF, 0x111111, 0xFFD54A, 0x4DD9FF, 0x5BE37D,
                                              0xFF6FB5, 0xFF9A3C, 0xFF5A5A].map { (rgb: Int) -> Color? in
         Color(red: Double((rgb >> 16) & 0xFF) / 255, green: Double((rgb >> 8) & 0xFF) / 255,

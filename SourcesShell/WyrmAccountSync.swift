@@ -152,6 +152,13 @@ final class WyrmAccountSync: ObservableObject {
         if let hide = engine?.setting("assist.hide_cosmetics") {
             doc["assistHideCosmetics"] = (hide.values.first ?? 0) >= 0.5
         }
+        // Spine on my snake only (OM, 2026-10-14), each mode apart.
+        if let mine = engine?.setting("normal.spine_mine") {
+            doc["spineMineNormal"] = (mine.values.first ?? 0) >= 0.5
+        }
+        if let mine = engine?.setting("assist.spine_mine") {
+            doc["spineMineAssist"] = (mine.values.first ?? 0) >= 0.5
+        }
         // Spine width and snake shadow (OM, 2026-10-09), each mode apart.
         if let width = engine?.setting("normal.spine_width"), let raw = width.values.first, raw.isFinite {
             doc["spineWidthNormal"] = min(max(raw, 0), 1)
@@ -324,6 +331,8 @@ final class WyrmAccountSync: ObservableObject {
         if let on = doc["spineNormal"] as? Bool { engine?.write(id: "normal.spine", values: [on ? 1 : 0]) }
         if let on = doc["spineAssist"] as? Bool { engine?.write(id: "assist.spine", values: [on ? 1 : 0]) }
         if let on = doc["assistHideCosmetics"] as? Bool { engine?.write(id: "assist.hide_cosmetics", values: [on ? 1 : 0]) }
+        if let on = doc["spineMineNormal"] as? Bool { engine?.write(id: "normal.spine_mine", values: [on ? 1 : 0]) }
+        if let on = doc["spineMineAssist"] as? Bool { engine?.write(id: "assist.spine_mine", values: [on ? 1 : 0]) }
         // Spine width and snake shadow (OM, 2026-10-09); a missing key keeps the phone's.
         if let raw = doc["spineWidthNormal"] as? NSNumber, raw.doubleValue.isFinite {
             engine?.write(id: "normal.spine_width", values: [min(max(raw.doubleValue, 0), 1)])

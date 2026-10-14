@@ -4768,3 +4768,17 @@ _rain_1013.apply(OUTPUT, label="Rain bridge (iOS)")
 import engine_rain_key_2026_10_14 as _rainkey_1014
 _rainkey_1014.apply(OUTPUT, label="engine rain key 2026-10-14 (iOS)")
 print("Engine 2026-10-14: Rain key")
+
+# On-screen key colours (OM, 2026-10-14): every key takes one of the team
+# roster's nine colours (`layout.key_N_colour`). Same text as Wyrm Android's
+# tree (Scripts/engine_key_colour_2026_10_14.py).
+import engine_key_colour_2026_10_14 as _keycolour_1014
+_keycolour_1014.apply(OUTPUT, label="engine key colour 2026-10-14 (iOS)")
+print("Engine 2026-10-14: key colours")
+
+# Key look round 2 + spine owner (OM, 2026-10-14): label/border and fill
+# colours, green border when on, keys up to 5x, spine mine/everyone. Same
+# text as Wyrm Android's tree (Scripts/engine_keys_spine_2026_10_14.py).
+import engine_keys_spine_2026_10_14 as _keyspine_1014
+_keyspine_1014.apply(OUTPUT, label="engine keys + spine 2026-10-14 (iOS)")
+print("Engine 2026-10-14: key colours round 2, spine owner")

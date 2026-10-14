@@ -362,11 +362,40 @@ func wyrmRainSettingValue(_ key: String, _ v: Double) -> String {
     }
 }
 
+/// The panel's Back (OM, 2026-10-14): how much of every fill shows, the
+/// plate, the cards and the keys; type and borders stay whole. 1 on the page.
+private struct WyrmRainBackKey: EnvironmentKey { static let defaultValue: Double = 1 }
+extension EnvironmentValues {
+    var wyrmRainBack: Double {
+        get { self[WyrmRainBackKey.self] }
+        set { self[WyrmRainBackKey.self] = newValue }
+    }
+}
+
+/// WSCard whose fill follows the panel's Back; the edge stays.
+struct WyrmRainCard<Content: View>: View {
+    @Environment(\.wyrmRainBack) private var back
+    let content: Content
+    init(@ViewBuilder content: () -> Content) { self.content = content() }
+    var body: some View {
+        if back >= 0.999 {
+            WSCard { content }
+        } else {
+            VStack(alignment: .leading, spacing: 0) { content }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(ATheme.card.opacity(back))
+                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(0.35), lineWidth: 1))
+                .padding(.horizontal, 16)
+        }
+    }
+}
+
 struct WyrmRainSliders: View {
     @ObservedObject var rain = WyrmRain.shared
     let keys: [String]
     var body: some View {
-        WSCard {
+        WyrmRainCard {
             ForEach(Array(keys.enumerated()), id: \.element) { index, key in
                 let range = WyrmRain.ranges.first { $0.0 == key }?.1 ?? 0...1
                 let value = rain.config[key] ?? WyrmRain.defaults[key] ?? range.lowerBound
@@ -432,16 +461,19 @@ private struct WyrmRainKey: View {
     let label: String
     let lit: Bool
     let action: () -> Void
+    @Environment(\.wyrmRainBack) private var back
     var body: some View {
+        // With little fill left, a lit key keeps ink type over the arena.
+        let inked = lit && back >= 0.5
         Button(action: action) {
             Text(label).font(.androidWyrm(13.5, .semibold)).lineLimit(1).minimumScaleFactor(0.7)
-                .foregroundColor(lit ? ATheme.onInk : ATheme.ink)
+                .foregroundColor(inked ? ATheme.onInk : ATheme.ink)
                 .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 46)
-                .background(lit ? ATheme.ink : ATheme.card)
+                .background((lit ? ATheme.ink : ATheme.card).opacity(back))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(lit ? 0.82 : 0.48), lineWidth: 1.5))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.ink.opacity(lit ? 0.9 : 0.6), lineWidth: 1.5))
                 .padding(3)
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.live.opacity(lit ? 0.6 : 0), lineWidth: 2.5))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.live.opacity(lit ? 0.75 : 0), lineWidth: 2.5))
         }.buttonStyle(WSPressStyle())
     }
 }
@@ -495,7 +527,8 @@ struct WyrmRainPanel: View {
         }
         .background(ATheme.paper.opacity(back))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule.opacity(max(back, 0.25)), lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.ink.opacity(0.35), lineWidth: 1))
+        .environment(\.wyrmRainBack, back)
         .shadow(color: ATheme.ink.opacity(0.12 * back), radius: 18 * back)
         .padding(6)
         .opacity(opacity)
@@ -504,6 +537,13 @@ struct WyrmRainPanel: View {
         .onChange(of: rain.config["panelSize"] ?? 1) { _ in layout() }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("WyrmEngineScreenChanged"))) { _ in open = false; layout() }
         .onAppear { layout() }
+    }
+
+    private func stepButton(_ symbol: String, _ label: String, _ enabled: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.onInk)
+                .frame(width: 36, height: 36).background(ATheme.ink.opacity(enabled ? 1 : 0.3)).clipShape(Circle())
+        }.buttonStyle(WSPressStyle()).disabled(!enabled).accessibilityLabel(label)
     }
 
     private func row<C: View>(@ViewBuilder _ c: () -> C) -> some View {
@@ -536,22 +576,40 @@ struct WyrmRainPanel: View {
                 }
             }
         case 2:
-            let targets = rain.snapshot["targets"] as? [[String: Any]] ?? []
+            // My own bots crowd me; they carry my characters' in-game names (OM, 2026-10-14).
+            let mine = Set(rain.characters.map { $0.name.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
+            let targets = (rain.snapshot["targets"] as? [[String: Any]] ?? []).filter {
+                !mine.contains(($0["name"] as? String ?? "").trimmingCharacters(in: .whitespaces).lowercased())
+            }
             if targets.isEmpty {
                 Text("No snakes nearby").font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(16)
             }
+            Color.clear.frame(height: 0)
+                .onAppear { rain.liveTargets = true }
+                .onDisappear { rain.liveTargets = false }
             ForEach(Array(targets.enumerated()), id: \.offset) { _, target in
                 let name = (target["name"] as? String ?? "").trimmingCharacters(in: .whitespaces)
                 row { WyrmRainKey(label: name.isEmpty ? "Unnamed snake" : name, lit: false) { rain.target(target) } }
             }
         default:
             Spacer().frame(height: 6)
-            WyrmRainSliders(keys: ["panelSize", "panelOpacity", "panelBack"])
+            // Minus / plus, not a slider: a slider resized the view under the finger (OM, 2026-10-14).
+            WyrmRainCard {
+                HStack(spacing: 10) {
+                    Text("Panel size").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
+                    let size = rain.config["panelSize"] ?? 1
+                    stepButton("minus", "Smaller", size > 0.71) { rain.set("panelSize", size - 0.1) }
+                    Text("\(Int((size * 100).rounded()))%").font(.androidWyrm(14)).monospacedDigit().foregroundColor(ATheme.mute).frame(width: 56)
+                    stepButton("plus", "Bigger", size < 1.29) { rain.set("panelSize", size + 0.1) }
+                }.padding(.horizontal, 14).padding(.vertical, 10)
+            }
+            Spacer().frame(height: 10)
+            WyrmRainSliders(keys: ["panelOpacity", "panelBack"])
             Spacer().frame(height: 10)
             WyrmRainSliders(keys: ["maxBots", "size", "separation", "finalAng", "rOC", "rotationDir", "period", "amplitude", "ranRate"])
             Spacer().frame(height: 10)
-            WSCard { WSBoolRow(title: "Cycle through characters", on: rain.evolveEnabled, first: true) { rain.flag("evolveEnabled", $0) } }
+            WyrmRainCard { WSBoolRow(title: "Cycle through characters", on: rain.evolveEnabled, first: true) { rain.flag("evolveEnabled", $0) } }
         }
     }
 

@@ -10,7 +10,7 @@ struct WyrmDetailHost: View {
 
     var body: some View {
         switch route {
-        case .leaderboard: WyrmLeaderboardDetail(services: services, close: close, open: open)
+        case .leaderboard: WyrmLeaderboardDetail(services: services, meID: account.player?.id ?? "", close: close, open: open)
         case .messages: WyrmMessagesDetail(account: account, services: services, close: close, open: open)
         case .thread(let id): WyrmThreadDetail(playerID: id, account: account, services: services, close: close, open: open)
         case .people(let kind): WyrmPeopleDetail(kind: kind, account: account, services: services, close: close, open: open)
@@ -79,6 +79,8 @@ func wyrmLeaderboardMatches(_ player: WyrmServicePlayer, _ query: String) -> Boo
 
 private struct WyrmLeaderboardDetail: View {
     @ObservedObject var services: WyrmServiceStore
+    /// My own row gets a light Wyrm-green wash (OM, 2026-10-14).
+    var meID = ""
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
     @State private var sort = 0
@@ -100,13 +102,16 @@ private struct WyrmLeaderboardDetail: View {
                         ForEach(shown, id: \.element.id) { index, player in
                             Button { open(.profile(player.id)) } label: {
                                 HStack(spacing: 12) {
-                                    Text("\(index + 1)").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.quiet).frame(width: 24)
+                                    // Ranks past 99 overflowed a 24 pt column (OM, 2026-10-14).
+                                    Text("\(index + 1)").font(.androidWyrm(String(index + 1).count >= 4 ? 11 : 13, .bold)).foregroundColor(ATheme.quiet)
+                                        .lineLimit(1).minimumScaleFactor(0.6).frame(width: 36)
                                     WyrmAvatar(initials: player.initials, size: 35, url: player.avatarURL)
                                     VStack(alignment: .leading, spacing: 2) { Text(player.displayName).font(.androidWyrm(14.5, .semibold)); Text(player.handle).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet) }
                                     Spacer()
                                     Text((sort == 0 ? player.highestScore : player.kills).wyrmFormatted).font(.androidWyrm(14, .bold))
                                 }.foregroundColor(ATheme.ink).padding(.horizontal, 14).frame(minHeight: 56)
-                            }.buttonStyle(.plain).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 58), alignment: .bottom)
+                                .background(!meID.isEmpty && player.id == meID ? ATheme.live.opacity(0.12) : Color.clear)
+                            }.buttonStyle(.plain).overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 70), alignment: .bottom)
                         }
                     }
                     Spacer().frame(height: 24)
@@ -393,12 +398,9 @@ private struct WyrmEditProfileDetail: View {
             }.onAppear { displayName = account.player?.displayName ?? ""; ingameName = account.player?.ingameName ?? ""; username = account.player?.username ?? ""; bio = account.player?.bio ?? ""; avatar = account.player?.avatarKey ?? "mono-ink" }
         }
         .task { await account.loadRenames() }
-        .sheet(isPresented: $choosingPhoto) {
-            WyrmPhotoPicker { image in
-                choosingPhoto = false
-                guard let image, let jpeg = WyrmPhotoPicker.jpeg(image) else { return }
-                Task { await account.uploadAvatar(jpeg) }
-            }
+        // Picker, then the cropper (OM, 2026-10-14), then a 256 px JPEG.
+        .wyrmAvatarPicker(isPresented: $choosingPhoto) { jpeg in
+            Task { await account.uploadAvatar(jpeg) }
         }
     }
     private func save() { Task { if await account.update(displayName: displayName, ingameName: ingameName, username: username, bio: bio, avatarKey: avatar) { close() } } }

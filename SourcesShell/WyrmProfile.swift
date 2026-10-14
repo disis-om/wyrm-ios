@@ -163,17 +163,14 @@ struct WyrmProfilePage: View {
             if let badge = badgeShown { badgeOverlay(badge).zIndex(6) }
         }
         .task(id: targetID) { await reload(pulled: false) }
-        .sheet(isPresented: $choosingPhoto) {
-            WyrmPhotoPicker { image in
-                choosingPhoto = false
-                guard let image, let jpeg = WyrmPhotoPicker.jpeg(image) else { return }
+        // Picker, then the cropper (OM, 2026-10-14), then a 256 px JPEG.
+        .wyrmAvatarPicker(isPresented: $choosingPhoto) { jpeg in
                 photoError = ""
                 Task {
                     await account.uploadAvatar(jpeg)
                     photoError = account.errorMessage
                     if photoError.isEmpty { UINotificationFeedbackGenerator().notificationOccurred(.success) }
                 }
-            }
         }
         .sheet(isPresented: $sharing) {
             WyrmShareSheet(items: ["Find me on Wyrm: \(handle.isEmpty ? name : handle)"])

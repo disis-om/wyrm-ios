@@ -283,6 +283,13 @@ struct WyrmListRow: View {
 }
 
 struct WyrmAvatar: View {
+    /// Wyrm's own avatar addresses (`/v1/players/<id>/avatar?v=…`) get
+    /// `size=small` unless [big]; anything else is left as it is. A server
+    /// before 2026-10-14 ignores the extra parameter.
+    static func source(_ url: String, big: Bool) -> String {
+        guard !big, !url.isEmpty, url.contains("/avatar"), !url.contains("size=") else { return url }
+        return url + (url.contains("?") ? "&" : "?") + "size=small"
+    }
     let initials: String
     var size: CGFloat = 38
     var url = ""
@@ -305,7 +312,9 @@ struct WyrmAvatar: View {
         ZStack {
             RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(ATheme.ink)
             Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(ATheme.onInk)
-            if let remote = URL(string: url), !url.isEmpty {
+            // The profile's big face gets the 256 px copy; every smaller place asks
+            // the server for the 128 px one (OM, 2026-10-14, Discord-style).
+            if let remote = URL(string: WyrmAvatar.source(url, big: size >= 72)), !url.isEmpty {
                 AsyncImage(url: remote) { phase in
                     if case .success(let image) = phase { image.resizable().scaledToFill() }
                 }

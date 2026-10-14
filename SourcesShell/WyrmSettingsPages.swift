@@ -684,12 +684,18 @@ struct WyrmPaperKey: View {
     let label: String
     var opacity = 1.0
     var scale = 1.0
+    /// Label and border: a team-roster colour index (OM, 2026-10-14); 0 = the theme's ink.
+    var colour = 0
+    /// The fill, the same palette; 0 = the theme's paper.
+    var fill = 0
     var body: some View {
-        Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7).foregroundColor(ATheme.ink)
+        let swatch = fill > 0 && fill < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[fill] : nil
+        let ink: Color = (colour > 0 && colour < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[colour] : nil) ?? ATheme.ink
+        Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7).foregroundColor(ink)
             .lineLimit(1).minimumScaleFactor(0.5)
             .frame(width: 104 * scale, height: 54 * scale)
-            .background(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).fill(ATheme.card.opacity(min(max(opacity, 0), 1))))
-            .overlay(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).stroke(ATheme.ink, lineWidth: 1.25))
+            .background(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).fill((swatch ?? ATheme.card).opacity(min(max(opacity, 0), 1))))
+            .overlay(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).stroke(ink, lineWidth: 1.25))
     }
 }
 
@@ -808,7 +814,7 @@ struct WyrmModesPage: View {
     private static let foodIDs: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "const_food_scale", "uniform_food_color", "food_color"]
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
     /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
-    private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_width", "snake_shadow", "hide_cosmetics"]
+    private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_mine", "spine_width", "snake_shadow", "hide_cosmetics"]
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
@@ -865,6 +871,14 @@ struct WyrmModesPage: View {
                                      hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
                 if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
                 if let spine { WSTypedRow(setting: spine, engine: engine) }
+                // Whose spine (OM, 2026-10-14): only mine, or every snake's.
+                if let mine = engine.settings.first(where: { $0.id == "\(group).spine_mine" }), spine?.enabled == true {
+                    WSEnumBlock(title: "Show spine on", detail: "Mine shows it on your snake only",
+                                options: ["Mine", "Everyone"], selected: mine.enabled ? 0 : 1) { index in
+                        engine.write(id: mine.id, values: [index == 0 ? 1 : 0])
+                    }
+                    .wyrmSettingAnchor(mine.id)
+                }
                 // Spine width (OM, 2026-10-09): comes out from under the switch
                 // while the spine is on; each mode keeps its own.
                 if let spineWidth, spine?.enabled == true {
@@ -1878,7 +1892,11 @@ struct WyrmLayoutEditor: View {
 
     struct Slider { let label: String; let id: String; let range: ClosedRange<Double>; var whole = false }
     /// A row of colour swatches for a `teamhud.<key>` colour.
-    struct ColourRow { let label: String; let key: String }
+    struct ColourRow {
+        let label: String; let key: String
+        /// An engine setting instead of a `teamhud.<key>` value (on-screen key colours, OM 2026-10-14).
+        var settingID: String? = nil
+    }
     struct Options: Identifiable {
         let id: String; let title: String; let sliders: [Slider]; var zoomChoice = false
         var colours: [ColourRow] = []
@@ -1958,9 +1976,13 @@ struct WyrmLayoutEditor: View {
                 let keyScale = engine.value("layout.key_\(key.id)_scale", engine.value("keys.key_scale", 1))
                 keyPiece(key, size, CGSize(width: 104 * keyScale, height: 54 * keyScale),
                          Options(id: "key-\(key.id)", title: key.name.uppercased(),
-                                 sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...2.50),
-                                           Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1)])) {
-                    WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale)
+                                 sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...5.00),
+                                           Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1)],
+                                 colours: [ColourRow(label: "TEXT AND BORDER", key: "key_\(key.id)_colour", settingID: "layout.key_\(key.id)_colour"),
+                                           ColourRow(label: "FILL", key: "key_\(key.id)_fill", settingID: "layout.key_\(key.id)_fill")])) {
+                    WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale,
+                                 colour: Int(engine.value("layout.key_\(key.id)_colour", 0)),
+                                 fill: Int(engine.value("layout.key_\(key.id)_fill", 0)))
                 }
             }
             if !WyrmNearOriginalStore.shared.on {
@@ -2232,7 +2254,7 @@ struct WyrmLayoutEditor: View {
                     }
                 }
                 ForEach(options.colours, id: \.key) { row in
-                    let selected = Int(teamHud.value(row.key))
+                    let selected = Int(row.settingID.map { engine.value($0, 0) } ?? teamHud.value(row.key))
                     Text("\(row.label) · \(WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)].uppercased())")
                         .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                     HStack(spacing: 5) {
@@ -2242,7 +2264,13 @@ struct WyrmLayoutEditor: View {
                                 .frame(width: 24, height: 24)
                                 .overlay(Circle().stroke(index == selected ? ATheme.ink : ATheme.rule,
                                                          lineWidth: index == selected ? 2 : 1))
-                                .onTapGesture { teamHud.set("teamhud.\(row.key)", Double(index)) }
+                                .onTapGesture {
+                                    if let id = row.settingID, let setting = engine.setting(id) {
+                                        engine.write(setting, values: [Double(index)])
+                                    } else {
+                                        teamHud.set("teamhud.\(row.key)", Double(index))
+                                    }
+                                }
                         }
                     }
                 }

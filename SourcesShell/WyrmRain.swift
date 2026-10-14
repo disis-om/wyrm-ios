@@ -109,7 +109,14 @@ final class WyrmRain: ObservableObject {
     @Published private(set) var rotation = 0
     @Published private(set) var evolveEnabled = false
     @Published private(set) var rotationEnabled = true
+    /// What the panel's Target tab shows; only published while it is open, so
+    /// the panel does not redraw ten times a second over the game (OM, 2026-10-14).
     @Published private(set) var snapshot: [String: Any] = [:]
+    /// The engine's latest snapshot, read by the controller; never drives the UI.
+    private var latest: [String: Any] = [:]
+    /// True while the panel's Target tab is on screen.
+    var liveTargets = false
+    private var saveTask: Task<Void, Never>?
     /// Grows on each tap of the arena's Rain key (engine `open` count): the panel opens or closes.
     @Published private(set) var panelRequests = 0
     private var lastOpen = -1
@@ -128,7 +135,7 @@ final class WyrmRain: ObservableObject {
     private init() {
         loadCredentials(); reload()
         NotificationCenter.default.addObserver(forName: UIApplication.didEnterBackgroundNotification, object: nil, queue: .main) { _ in
-            Task { @MainActor in WyrmRain.shared.disconnect() }
+            Task { @MainActor in WyrmRain.shared.saveNow(); WyrmRain.shared.disconnect() }
         }
         NotificationCenter.default.addObserver(forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main) { _ in
             Task { @MainActor in if WyrmRain.shared.enabled { WyrmRain.shared.connect() } }
@@ -166,7 +173,18 @@ final class WyrmRain: ObservableObject {
         if let on = d["enabled"] as? Bool { enable(on) }
         save()
     }
+    // A slider tick no longer writes UserDefaults and the keychain each time:
+    // the game (same main thread on iOS) stuttered while the panel was touched
+    // (OM, 2026-10-14). The last value lands 400 ms later.
     private func save() {
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 400_000_000) } catch { return }
+            self?.saveNow()
+        }
+    }
+    func saveNow() {
+        saveTask?.cancel(); saveTask = nil
         if let data = try? JSONSerialization.data(withJSONObject: document) { UserDefaults.standard.set(data, forKey: Self.settingsKey) }
         let secrets = Dictionary(characters.filter { $0.tag.hasPrefix("!") || !$0.hash.isEmpty }.map { ($0.id,["tag":$0.tag,"hash":$0.hash]) },uniquingKeysWith:{a,_ in a})
         guard let signature = try? JSONSerialization.data(withJSONObject:secrets,options:.sortedKeys), signature != secretSignature else { return }
@@ -299,19 +317,20 @@ final class WyrmRain: ObservableObject {
             var wire = WyrmRainWire(83); wire.data.append(join); send(wire.data); sentJoin = seq
         }
         if connected && live && [1,6,9].contains(mode) { send(WyrmRainWire.xy(112, (d["x"] as? NSNumber)?.doubleValue ?? 0, (d["y"] as? NSNumber)?.doubleValue ?? 0)) }
-        if Date().timeIntervalSince(lastUI) >= 0.1 { snapshot = d; lastUI = Date() }
+        latest = d
+        if liveTargets && Date().timeIntervalSince(lastUI) >= 0.25 { snapshot = d; lastUI = Date() }
     }
     func start() {
         guard connected else { connect(); status = "Wait for Rain login, then tap Start"; return }
         guard characters.contains(where: \.enabled) else { status = "Add a character first"; return }
-        guard snapshot["alive"] as? Bool == true, let address = snapshot["arena"] as? String, let colon = address.lastIndex(of:":") else { status = "Join an arena before starting Rain"; return }
+        guard latest["alive"] as? Bool == true, let address = latest["arena"] as? String, let colon = address.lastIndex(of:":") else { status = "Join an arena before starting Rain"; return }
         var wire = WyrmRainWire(114); wire.text(String(address[..<colon]).trimmingCharacters(in:CharacterSet(charactersIn:"[]"))); wire.text(String(address[address.index(after:colon)...])); send(wire.data)
     }
     func stop() { send(WyrmRainWire.pair(120,0)); rotate(0) }
     func boost() { send(WyrmRainWire.pair(98,boosting ? 0 : 1)) }
     func setMode(_ id: Int) {
         guard (1...14).contains(id) else { return }
-        if [8,9,14].contains(id) { send(WyrmRainWire.xy(111,(snapshot["x"] as? NSNumber)?.doubleValue ?? 0,(snapshot["y"] as? NSNumber)?.doubleValue ?? 0)) }
+        if [8,9,14].contains(id) { send(WyrmRainWire.xy(111,(latest["x"] as? NSNumber)?.doubleValue ?? 0,(latest["y"] as? NSNumber)?.doubleValue ?? 0)) }
         send(WyrmRainWire.pair(100,id))
     }
     func target(_ d: [String: Any]) {
@@ -319,7 +338,7 @@ final class WyrmRain: ObservableObject {
     }
     func rotate(_ direction: Int) { rotation = rotationEnabled ? min(max(direction,-1),1) : 0; wyrm_rain_rotate(Int32(rotation)) }
     func handleKey(_ key: String) -> Bool {
-        guard enabled, snapshot["alive"] as? Bool == true, !WyrmKeyboardController.shared.focused,
+        guard enabled, latest["alive"] as? Bool == true, !WyrmKeyboardController.shared.focused,
               let action = Self.defaultKeys.keys.sorted().first(where: { (keys[$0] ?? Self.defaultKeys[$0] ?? "").caseInsensitiveCompare(key) == .orderedSame }) else { return false }
         switch action {
         case "boost": boost()
