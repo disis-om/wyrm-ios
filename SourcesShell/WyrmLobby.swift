@@ -430,7 +430,8 @@ struct WyrmReadyRoom: View {
         let clean = nickname
         if clean != engine.nickname {
             engine.setNickname(clean)
-            if !clean.isEmpty { WyrmGameSync.shared.syncIngameName(clean) }
+            // Blank too (OM, 2026-10-14): the account then forgets the old name.
+            WyrmGameSync.shared.syncIngameName(clean)
         }
     }
 

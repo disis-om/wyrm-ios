@@ -4803,3 +4803,10 @@ print("Engine 2026-10-14: bot = NTL exactly")
 import engine_chat_tabs_2026_10_14 as _chattabs_1014
 _chattabs_1014.apply(OUTPUT, label="engine chat tabs 2026-10-14 (iOS)", tree="ios")
 print("Engine 2026-10-14: arena chat tabs")
+
+# Arena chat panel round 2 (OM, 2026-10-14): X close, unread per tab, ONLINE
+# from the top with a scroll bar. Same text as Wyrm Android's tree
+# (Scripts/engine_chat_panel_2026_10_14.py).
+import engine_chat_panel_2026_10_14 as _chatpanel_1014
+_chatpanel_1014.apply(OUTPUT, label="engine chat panel 2026-10-14 (iOS)", tree="ios")
+print("Engine 2026-10-14: arena chat panel round 2")

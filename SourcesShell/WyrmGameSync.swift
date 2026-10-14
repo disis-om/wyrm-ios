@@ -233,6 +233,18 @@ final class WyrmGameSync {
     /// a valid IGN; anything else stays local to the engine.
     func syncIngameName(_ raw: String) {
         let name = raw.trimmingCharacters(in: .whitespaces)
+        // No name now (OM, 2026-10-14): the account forgets the old one, so chat,
+        // the online list and the Observatory show the username instead.
+        if name.isEmpty {
+            guard !token.isEmpty else { return }
+            Task {
+                do {
+                    _ = try await call("/v1/me", method: "PATCH", body: ["ingameName": NSNull()])
+                    NotificationCenter.default.post(name: Self.profileChanged, object: nil)
+                } catch {}
+            }
+            return
+        }
         // Any arena name, shared with others (OM, 2026-10-14): the server only
         // wants 1-24 characters and no control codes now.
         guard !token.isEmpty, !name.isEmpty, name.count <= 24,

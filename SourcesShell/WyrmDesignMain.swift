@@ -616,7 +616,9 @@ private struct WyrmPlayRoot: View {
         nickname = clean
         guard clean != engine.nickname else { return }
         engine.setNickname(clean)
-        if !clean.isEmpty, clean != account.player?.ingameName { WyrmGameSync.shared.syncIngameName(clean) }
+        // Blank too (OM, 2026-10-14): the account then forgets the old name.
+        let trimmed = clean.trimmingCharacters(in: .whitespaces)
+        if trimmed != (account.player?.ingameName ?? "") { WyrmGameSync.shared.syncIngameName(clean) }
     }
 }
 
