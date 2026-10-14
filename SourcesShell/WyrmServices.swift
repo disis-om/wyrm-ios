@@ -279,6 +279,19 @@ enum WyrmRateLimit {
     }
 }
 
+/// The arena chat feed's way to the private client (WyrmArenaFeed, 2026-10-14).
+enum WyrmArenaFeedAPI {
+    static func globalMessages(token: String) async throws -> [WyrmChatItem] {
+        try await WyrmServiceClient.shared.globalMessages(token: token)
+    }
+    static func onlinePlayers(token: String) async throws -> [WyrmOnlinePlayer] {
+        try await WyrmServiceClient.shared.onlinePlayers(token: token)
+    }
+    static func sendGlobal(body: String, token: String) async throws {
+        try await WyrmServiceClient.shared.sendGlobal(body: body, token: token)
+    }
+}
+
 private actor WyrmServiceClient {
     static let shared = WyrmServiceClient()
     private let base = "https://wyrm-api.77-245-76-86.sslip.io"

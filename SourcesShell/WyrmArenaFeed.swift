@@ -43,7 +43,7 @@ final class WyrmArenaFeed {
         guard !token.isEmpty, !text.isEmpty else { return }
         Task {
             do {
-                try await WyrmServiceClient.shared.sendGlobal(body: text, token: token)
+                try await WyrmArenaFeedAPI.sendGlobal(body: text, token: token)
                 await pushGlobal(token: token)
             } catch {}
         }
@@ -62,7 +62,7 @@ final class WyrmArenaFeed {
     }
 
     private func pushGlobal(token: String) async {
-        guard let items = try? await WyrmServiceClient.shared.globalMessages(token: token) else { return }
+        guard let items = try? await WyrmArenaFeedAPI.globalMessages(token: token) else { return }
         let shown = items.sorted { $0.createdAt < $1.createdAt }.suffix(80)
         for item in shown where seenIDs.insert(item.id).inserted { total += 1 }
         var packed = String(max(total, shown.count))
@@ -74,7 +74,7 @@ final class WyrmArenaFeed {
     }
 
     private func pushOnline(token: String) async {
-        guard let players = try? await WyrmServiceClient.shared.onlinePlayers(token: token) else { return }
+        guard let players = try? await WyrmArenaFeedAPI.onlinePlayers(token: token) else { return }
         let lines = players.prefix(120).map { player -> String in
             let handle = player.username.isEmpty ? player.displayName : "@" + player.username
             let server = player.arena.isEmpty ? "Not in an arena" : WyrmPresence.shared.arenaName(player.arena)
