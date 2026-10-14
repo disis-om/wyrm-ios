@@ -11,7 +11,7 @@
 
 ## Status
 
-- Current release: **2.0.0 (build 129)**, stable (2026-10-14). iOS **15 or newer**, iPhone
+- Current release: **2.1.0 (build 130)**, stable (2026-10-14). iOS **15 or newer**, iPhone
   first.
 - Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
   builds are published as releases of this repository. Betas are titled
