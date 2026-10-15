@@ -34,7 +34,7 @@ targets:
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
           - MG_ENABLE_IPV6=1
-          - APP_VERSION=\"2.1.0\"
+          - APP_VERSION=\"2.1.1\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -104,8 +104,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "2.1.0"
-        CURRENT_PROJECT_VERSION: "130"
+        MARKETING_VERSION: "2.1.1"
+        CURRENT_PROJECT_VERSION: "131"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

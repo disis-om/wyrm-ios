@@ -18,7 +18,7 @@ checks = {
         and "if !WyrmSkinCatalog.isWyrmTag(item.ntlID)" in STUDIO,
     "catalog has all 32 accessories": len(re.findall(r"\.init\(id: \d+, scale:", CATALOG)) == 32,
     # The original 22 plus Black and seven Wyrm floors (OM, 2026-10-01).
-    "catalog has all 30 arena backgrounds": len(re.findall(r"\.init\(id: \d+, key:", CATALOG)) == 30,
+    "catalog has all 49 arena backgrounds": len(re.findall(r"\.init\(id: \d+, key:", CATALOG)) == 49,
     "Black is background 22": '.init(id: 22, key: "black"' in CATALOG,
     "pickers show Wyrm, Black, None first": "backgroundOrder: [Int] = [0, 22, 1," in CATALOG,
     "body preview crops the original atlas": "res/textures/tex_atlas_8k.png" in STUDIO and "Self.crop(atlas" in STUDIO,

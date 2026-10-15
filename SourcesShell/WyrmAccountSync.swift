@@ -39,6 +39,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.update.backup-first", .wipe),
         ("wyrm.ios.look.", .wipe),                  // travels in the shared document
         ("wyrm.ios.rain.", .wipe),                  // non-secret choices travel in shared rainSettings
+        ("wyrm.ios.shed.", .wipe),                  // Shed: recipe + skins already shown, this phone only (OM, 2026-10-15)
         ("wyrm.nickname.chosen", .wipe),            // travels in the shared document
         ("wyrm.support.", .wipe),
         ("wyrm.global-chat.", .wipe),               // the newest global message seen (a marker)

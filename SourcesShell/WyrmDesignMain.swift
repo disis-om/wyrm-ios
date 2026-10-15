@@ -553,6 +553,12 @@ private struct WyrmPlayRoot: View {
                         .wyrmTourAnchor("home.near")
                 }
 
+                // Shed (OM, 2026-10-15): between Loadout and Rooms & team, as on Android.
+                WyrmSectionLabel("Shed")
+                WyrmPaperCard {
+                    WyrmShedHomeCard { open(.shed) }
+                }
+
                 WyrmSectionLabel("Rooms & team")
                 WyrmPaperCard {
                     if WyrmVoiceFeature.enabled {

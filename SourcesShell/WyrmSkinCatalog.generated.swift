@@ -413,10 +413,29 @@ enum WyrmSkinCatalog {
         .init(id: 27, key: "wyrm_dotgrid", label: "Dot grid", resourcePath: "res/textures/backgrounds/wyrm_dotgrid.png", tileWidth: 2735.23, tileHeight: 2735.23),
         .init(id: 28, key: "wyrm_contours", label: "Contours", resourcePath: "res/textures/backgrounds/wyrm_contours.png", tileWidth: 7002.18, tileHeight: 7002.18),
         .init(id: 29, key: "wyrm_scales", label: "Scales", resourcePath: "res/textures/backgrounds/wyrm_scales.png", tileWidth: 3282.27, tileHeight: 3282.27),
+        .init(id: 30, key: "wyrm_ember", label: "Ember", resourcePath: "res/textures/backgrounds/wyrm_ember.png", tileWidth: 5251.63, tileHeight: 5251.63),
+        .init(id: 31, key: "wyrm_dunes", label: "Dunes", resourcePath: "res/textures/backgrounds/wyrm_dunes.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 32, key: "wyrm_moss", label: "Moss", resourcePath: "res/textures/backgrounds/wyrm_moss.png", tileWidth: 5251.63, tileHeight: 5251.63),
+        .init(id: 33, key: "wyrm_cells", label: "Cells", resourcePath: "res/textures/backgrounds/wyrm_cells.png", tileWidth: 6154.26, tileHeight: 6154.26),
+        .init(id: 34, key: "wyrm_aurora", label: "Aurora", resourcePath: "res/textures/backgrounds/wyrm_aurora.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 35, key: "wyrm_facets", label: "Facets", resourcePath: "res/textures/backgrounds/wyrm_facets.png", tileWidth: 5470.45, tileHeight: 5470.45),
+        .init(id: 36, key: "wyrm_frost", label: "Frost", resourcePath: "res/textures/backgrounds/wyrm_frost.png", tileWidth: 5251.63, tileHeight: 5251.63),
+        .init(id: 37, key: "wyrm_tartan", label: "Tartan", resourcePath: "res/textures/backgrounds/wyrm_tartan.png", tileWidth: 3282.27, tileHeight: 3282.27),
+        .init(id: 38, key: "wyrm_reptile", label: "Reptile", resourcePath: "res/textures/backgrounds/wyrm_reptile.png", tileWidth: 6154.26, tileHeight: 6154.26),
+        .init(id: 39, key: "wyrm_sage", label: "Sage", resourcePath: "res/textures/backgrounds/wyrm_sage.png", tileWidth: 3501.09, tileHeight: 3501.09),
+        .init(id: 40, key: "wyrm_shore", label: "Shore", resourcePath: "res/textures/backgrounds/wyrm_shore.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 41, key: "wyrm_terrazzo", label: "Terrazzo", resourcePath: "res/textures/backgrounds/wyrm_terrazzo.png", tileWidth: 5251.63, tileHeight: 5251.63),
+        .init(id: 42, key: "wyrm_mist", label: "Mist", resourcePath: "res/textures/backgrounds/wyrm_mist.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 43, key: "wyrm_lavender", label: "Lavender", resourcePath: "res/textures/backgrounds/wyrm_lavender.png", tileWidth: 3411.04, tileHeight: 2954.04),
+        .init(id: 44, key: "wyrm_clay", label: "Clay", resourcePath: "res/textures/backgrounds/wyrm_clay.png", tileWidth: 2625.82, tileHeight: 2625.82),
+        .init(id: 45, key: "wyrm_paper", label: "Paper", resourcePath: "res/textures/backgrounds/wyrm_paper.png", tileWidth: 2735.23, tileHeight: 2735.23),
+        .init(id: 46, key: "wyrm_seafoam", label: "Seafoam", resourcePath: "res/textures/backgrounds/wyrm_seafoam.png", tileWidth: 3501.09, tileHeight: 1750.54),
+        .init(id: 47, key: "wyrm_marble", label: "Marble", resourcePath: "res/textures/backgrounds/wyrm_marble.png", tileWidth: 7002.18, tileHeight: 7002.18),
+        .init(id: 48, key: "wyrm_pebbles", label: "Pebbles", resourcePath: "res/textures/backgrounds/wyrm_pebbles.png", tileWidth: 5251.63, tileHeight: 5251.63),
     ]
 
     /// The pickers' order (ids stay the engine's): Wyrm, Black, None, Wyrm's own, then the imported set.
-    static let backgroundOrder: [Int] = [0, 22, 1, 23, 24, 25, 26, 27, 28, 29, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
+    static let backgroundOrder: [Int] = [0, 22, 1, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21]
 
     static func code(for groups: [Int]) -> String {
         String(groups.prefix(256).compactMap { groupCodes.indices.contains($0) && validGroups.contains($0) ? groupCodes[$0] : nil })
