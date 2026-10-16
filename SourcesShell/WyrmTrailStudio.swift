@@ -4,13 +4,16 @@ import AVFoundation
 import Photos
 
 /*
- * The Trails studio (OM, 2026-09-28): where a trail is made.
+ * The Trails studio (OM, 2026-09-28): where a trail is made. Since
+ * 2026-10-17 it opens on the camera (`WyrmTrailCamera.swift`), Instagram's
+ * way, with PHOTO · VIDEO · TEXT · CANVAS under it and the gallery in its
+ * corner.
  *
- *   Photo   — live camera on top, recent photos below. A picked or taken photo
- *             opens in the editor: crop, text, drawing.
- *   Video   — records up to 30 s or takes a clip from the phone; the same
- *             editor over the playing clip, plus trim, cover and sound
- *             (`WyrmTrailVideo.swift`, OM 2026-10-05).
+ *   Photo   — a taken or picked photo opens in the editor: crop, text,
+ *             drawing, stickers, looks.
+ *   Video   — recorded (hold the shutter) or from the gallery; the same editor
+ *             over the playing clip, plus the cut: pieces, transitions, crop,
+ *             cover and sound (`WyrmTrailTimeline.swift`, OM 2026-10-17).
  *   Text    — words only; posted as a text trail.
  *   Canvas  — a plain colour to write and draw on.
  *
@@ -517,6 +520,16 @@ final class WyrmStudioDraft: ObservableObject {
         }
     }
 
+    /// The canvas changed size (a crop, a new video shape): words, emoji and
+    /// strokes keep their place on the picture (OM, 2026-10-17).
+    func rescale(x sx: CGFloat, y sy: CGFloat) {
+        guard sx.isFinite, sy.isFinite, sx > 0, sy > 0, sx != 1 || sy != 1 else { return }
+        func move(_ p: CGPoint) -> CGPoint { CGPoint(x: p.x * sx, y: p.y * sy) }
+        for i in texts.indices { texts[i].center = move(texts[i].center) }
+        for i in emojis.indices { emojis[i].center = move(emojis[i].center) }
+        for i in strokes.indices { strokes[i].points = strokes[i].points.map(move) }
+    }
+
     /// Keeps stickers and words on a canvas that changed shape.
     func keepItems(in size: CGSize) {
         guard sharing, size.width > 0, size.height > 0 else { return }
@@ -652,82 +665,7 @@ final class WyrmStudioDraft: ObservableObject {
     }
 }
 
-// MARK: - Camera
-
-final class WyrmTrailCamera: NSObject, ObservableObject, AVCapturePhotoCaptureDelegate {
-    enum State { case idle, running, denied, unavailable }
-    @Published private(set) var state: State = .idle
-    let session = AVCaptureSession()
-    private let output = AVCapturePhotoOutput()
-    private let queue = DispatchQueue(label: "wyrm.trails.camera")
-    private var configured = false
-    private var position: AVCaptureDevice.Position = .back
-    private var onPhoto: ((UIImage?) -> Void)?
-
-    func start() {
-        switch AVCaptureDevice.authorizationStatus(for: .video) {
-        case .authorized: run()
-        case .notDetermined:
-            AVCaptureDevice.requestAccess(for: .video) { granted in
-                DispatchQueue.main.async { if granted { self.run() } else { self.state = .denied } }
-            }
-        default: state = .denied
-        }
-    }
-
-    private func run() {
-        queue.async {
-            if !self.configured { self.configure() }
-            guard self.configured else { DispatchQueue.main.async { self.state = .unavailable }; return }
-            if !self.session.isRunning { self.session.startRunning() }
-            DispatchQueue.main.async { self.state = .running }
-        }
-    }
-
-    private func configure() {
-        session.beginConfiguration()
-        session.sessionPreset = .photo
-        defer { session.commitConfiguration() }
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: position),
-              let input = try? AVCaptureDeviceInput(device: device),
-              session.canAddInput(input), session.canAddOutput(output) else { return }
-        session.addInput(input)
-        session.addOutput(output)
-        configured = true
-    }
-
-    func stop() { queue.async { if self.session.isRunning { self.session.stopRunning() } } }
-
-    func flip() {
-        queue.async {
-            guard self.configured else { return }
-            let next: AVCaptureDevice.Position = self.position == .back ? .front : .back
-            guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: next),
-                  let input = try? AVCaptureDeviceInput(device: device) else { return }
-            self.session.beginConfiguration()
-            for old in self.session.inputs { self.session.removeInput(old) }
-            if self.session.canAddInput(input) { self.session.addInput(input); self.position = next }
-            self.session.commitConfiguration()
-        }
-    }
-
-    func capture(_ done: @escaping (UIImage?) -> Void) {
-        guard state == .running else { done(nil); return }
-        onPhoto = done
-        queue.async { self.output.capturePhoto(with: AVCapturePhotoSettings(), delegate: self) }
-    }
-
-    func photoOutput(_ output: AVCapturePhotoOutput, didFinishProcessingPhoto photo: AVCapturePhoto, error: Error?) {
-        var image = photo.fileDataRepresentation().flatMap { UIImage(data: $0) }
-        if position == .front, let shot = image, let cg = shot.cgImage {
-            image = UIImage(cgImage: cg, scale: shot.scale, orientation: .leftMirrored)
-        }
-        DispatchQueue.main.async {
-            self.onPhoto?(image)
-            self.onPhoto = nil
-        }
-    }
-}
+// MARK: - Camera preview
 
 struct WyrmCameraPreview: UIViewRepresentable {
     let session: AVCaptureSession
@@ -742,64 +680,6 @@ struct WyrmCameraPreview: UIViewRepresentable {
         return view
     }
     func updateUIView(_ view: PreviewView, context: Context) {}
-}
-
-// MARK: - Gallery
-
-@MainActor
-final class WyrmTrailGallery: ObservableObject {
-    @Published private(set) var assets: [PHAsset] = []
-    @Published private(set) var status: PHAuthorizationStatus = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-    let manager = PHCachingImageManager()
-
-    func load() {
-        if status == .notDetermined {
-            PHPhotoLibrary.requestAuthorization(for: .readWrite) { next in
-                Task { @MainActor in self.status = next; self.fetch() }
-            }
-        } else { fetch() }
-    }
-
-    private func fetch() {
-        guard status == .authorized || status == .limited else { return }
-        let options = PHFetchOptions()
-        options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-        options.fetchLimit = 300
-        let result = PHAsset.fetchAssets(with: .image, options: options)
-        var list: [PHAsset] = []
-        result.enumerateObjects { asset, _, _ in list.append(asset) }
-        assets = list
-    }
-
-    func full(_ asset: PHAsset) async -> UIImage? {
-        await withCheckedContinuation { continuation in
-            let options = PHImageRequestOptions()
-            options.deliveryMode = .highQualityFormat
-            options.isNetworkAccessAllowed = true
-            options.resizeMode = .fast
-            manager.requestImage(for: asset, targetSize: CGSize(width: 2400, height: 2400), contentMode: .aspectFit,
-                                 options: options) { image, _ in continuation.resume(returning: image) }
-        }
-    }
-}
-
-private struct WyrmGalleryCell: View {
-    let asset: PHAsset
-    let manager: PHCachingImageManager
-    @State private var image: UIImage?
-    var body: some View {
-        Color.clear
-            .aspectRatio(1, contentMode: .fit)
-            .overlay(Group { if let image { Image(uiImage: image).resizable().scaledToFill() } else { ATheme.well } })
-            .clipped()
-            .onAppear {
-                let options = PHImageRequestOptions()
-                options.deliveryMode = .opportunistic
-                options.isNetworkAccessAllowed = true
-                manager.requestImage(for: asset, targetSize: CGSize(width: 260, height: 260), contentMode: .aspectFill,
-                                     options: options) { picked, _ in if let picked { image = picked } }
-            }
-    }
 }
 
 // MARK: - System camera
@@ -832,6 +712,9 @@ struct WyrmSystemCamera: UIViewControllerRepresentable {
 
 // MARK: - Studio
 
+/// The studio (redesigned OM, 2026-10-17, Instagram's flow): the camera
+/// first with the modes under it, the gallery from its corner, then the
+/// editor on a dark stage, then the caption.
 struct WyrmTrailStudio: View {
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
@@ -841,21 +724,20 @@ struct WyrmTrailStudio: View {
     let run: WyrmLastRun?
     let onPosted: (() -> Void)?
     @StateObject private var draft: WyrmStudioDraft
-    @StateObject private var camera = WyrmTrailCamera()
-    @StateObject private var gallery = WyrmTrailGallery()
+    @StateObject private var camera = WyrmStudioCamera()
+    @StateObject private var gallery = WyrmTrailMediaGallery()
     /// The skin sticker's textures (shared with the Skin tab while both live).
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
     @ObservedObject private var store = WyrmTrailsStore.shared
     @State private var step: Step
-    @State private var picking = false
+    /// The page under the modes: the camera (Photo, Video), Text or Canvas.
+    @State private var pickMode: WyrmStudioMode = .photo
+    @State private var showGallery = false
     @State private var systemCamera = false
     @State private var loadingPhoto = false
     @State private var canvasSize: CGSize = .zero
     @State private var rendered: UIImage?
     @State private var forward = true
-    /// The Video page (OM, 2026-10-05): its camera, the phone's clips, and the clip being edited.
-    @StateObject private var recorder = WyrmTrailRecorder()
-    @StateObject private var videoGallery = WyrmTrailVideoGallery()
     @State private var videoSession: WyrmTrailVideoSession?
     @State private var openingClip = false
     /// Posted: the clip's own copy now belongs to the post (`WyrmTrailsStore.postVideo`).
@@ -875,10 +757,26 @@ struct WyrmTrailStudio: View {
         _step = State(initialValue: run == nil && !skinOnly ? .pick : .edit)
     }
 
-    /// One number per page, so a change slides the right way.
+    /// The studio's modes; Video stays out while `WyrmTrailsFeature.videoEnabled` is off (OM, 2026-10-05).
+    private var shownModes: [WyrmStudioMode] {
+        WyrmStudioMode.allCases.filter { $0 != .video || WyrmTrailsFeature.videoEnabled }
+    }
+
+    private var cameraPage: Bool { step == .pick && !showGallery && (pickMode == .photo || pickMode == .video) }
+    private var galleryPage: Bool { step == .pick && showGallery }
+    private var dark: Bool { cameraPage || galleryPage || (step == .edit && (draft.image != nil || draft.video)) }
+
+    /// One number per page, so a change slides the right way; the camera is
+    /// one page for Photo and Video, so changing between them keeps it running.
     private var page: Int {
         switch step {
-        case .pick: return WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0
+        case .pick:
+            if showGallery { return 20 }
+            switch pickMode {
+            case .photo, .video: return 0
+            case .text: return 1
+            case .canvas: return 2
+            }
         case .edit: return 10
         case .caption: return 11
         }
@@ -886,12 +784,9 @@ struct WyrmTrailStudio: View {
 
     var body: some View {
         ZStack {
-            ATheme.paper.ignoresSafeArea()
+            (dark ? Color.black : ATheme.paper).ignoresSafeArea()
             VStack(spacing: 0) {
-                header
-                // The mode pill sits here, in one place, for every mode; only
-                // the page under it moves.
-                if step == .pick { modeBar.padding(.bottom, 12) }
+                if !cameraPage && !galleryPage { header }
                 if step == .edit && draft.run != nil { shareModeBar.padding(.bottom, 10) }
                 ZStack {
                     content
@@ -902,9 +797,15 @@ struct WyrmTrailStudio: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .clipped()
+                if step == .pick && !showGallery {
+                    WyrmStudioModeCarousel(modes: shownModes, mode: pickMode, dark: cameraPage, enabled: !camera.recording) { next in
+                        switchMode(next)
+                    }
+                }
             }
         }
-        .foregroundColor(ATheme.ink)
+        .foregroundColor(dark ? .white : ATheme.ink)
+        .overlay(alignment: .top) { WyrmTrailToast(store: store) }
         .onAppear {
             store.token = { [weak account] in account?.sessionToken ?? "" }
             store.resetPosting()
@@ -912,8 +813,6 @@ struct WyrmTrailStudio: View {
                 // Share run needs no camera or photos, only the skin's textures.
                 draft.textures = textures
                 textures.prepare()
-                // The Ready Room under Share run has left the keyboard's
-                // sideways canvases, so the studio types on the docked keys.
             } else {
                 camera.start()
                 gallery.load()
@@ -921,22 +820,18 @@ struct WyrmTrailStudio: View {
         }
         .onDisappear {
             camera.stop()
-            recorder.stop()
             dropVideo()
         }
         .onChange(of: run?.screenshot != nil) { _ in draft.adopt(run) }
         // The player previews the look the export will burn in.
         .onChange(of: draft.look) { _ in videoSession?.setLook(draft.look, draft.adjust) }
         .onChange(of: draft.adjust) { _ in videoSession?.setLook(draft.look, draft.adjust) }
-        // It plays while being edited and rests on the caption.
-        .onChange(of: step) { next in if next == .edit { videoSession?.play() } else { videoSession?.pause() } }
-        .sheet(isPresented: $picking) {
-            WyrmPhotoPicker { picked in
-                picking = false
-                if let picked { open(picked) }
-            }
-            .ignoresSafeArea()
+        // It plays while being edited and rests on the caption; the camera runs only on its page.
+        .onChange(of: step) { next in
+            if next == .edit { videoSession?.play() } else { videoSession?.pause() }
+            syncCamera()
         }
+        .onChange(of: showGallery) { _ in syncCamera() }
         .fullScreenCover(isPresented: $systemCamera) {
             WyrmSystemCamera { shot in
                 systemCamera = false
@@ -946,29 +841,60 @@ struct WyrmTrailStudio: View {
         }
     }
 
+    private func syncCamera() {
+        if cameraPage && !draft.sharing { camera.start() } else { camera.stop() }
+    }
+
     @ViewBuilder
     private var content: some View {
         switch step {
-        case .caption: captionStep
+        case .caption: WyrmStudioCaption(draft: draft, rendered: rendered)
         case .edit: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, textures: textures, video: videoSession)
         case .pick:
-            switch draft.mode {
-            case .photo: picker
-            case .video:
-                WyrmTrailVideoPicker(recorder: recorder, gallery: videoGallery, busy: openingClip) { asset, owned in
-                    openClip(asset, owned)
+            if showGallery {
+                WyrmTrailGalleryPage(gallery: gallery, busy: loadingPhoto || openingClip,
+                                     close: { go(showGallery: false) }, onPhoto: open, onClip: openClip)
+            } else {
+                switch pickMode {
+                case .photo, .video:
+                    WyrmTrailCameraPage(camera: camera, gallery: gallery, mode: pickMode, busy: loadingPhoto || openingClip,
+                                        close: close,
+                                        swipe: { d in
+                                            let i = min(max((shownModes.firstIndex(of: pickMode) ?? 0) + d, 0), shownModes.count - 1)
+                                            UISelectionFeedbackGenerator().selectionChanged()
+                                            switchMode(shownModes[i])
+                                        },
+                                        onPhoto: open, onClip: openClip,
+                                        openGallery: { go(showGallery: true) },
+                                        cameraApp: { camera.stop(); systemCamera = true })
+                case .text: WyrmTextTrailComposer(draft: draft)
+                case .canvas: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, textures: textures)
                 }
-            case .text: WyrmTextTrailComposer(draft: draft)
-            case .canvas: WyrmStudioEditor(draft: draft, canvasSize: $canvasSize, textures: textures)
             }
         }
     }
 
     private func go(_ next: Step) {
         let before = page
-        let target: Int = next == .pick ? (WyrmStudioMode.allCases.firstIndex(of: draft.mode) ?? 0) : (next == .edit ? 10 : 11)
+        let target: Int = next == .pick ? 0 : (next == .edit ? 10 : 11)
         forward = target >= before
         withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { step = next }
+    }
+
+    private func go(showGallery next: Bool) {
+        forward = next
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { showGallery = next }
+    }
+
+    private func switchMode(_ next: WyrmStudioMode) {
+        guard next != pickMode else { return }
+        forward = (shownModes.firstIndex(of: next) ?? 0) > (shownModes.firstIndex(of: pickMode) ?? 0)
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) {
+            pickMode = next
+            // Text and Canvas write on the draft; the camera leaves it for the next shot.
+            if next == .text || next == .canvas { draft.reset(for: next) }
+        }
+        DispatchQueue.main.async { syncCamera() }
     }
 
     // MARK: Header
@@ -978,62 +904,47 @@ struct WyrmTrailStudio: View {
             Button { back() } label: {
                 Image(systemName: step == .pick || (draft.sharing && step == .edit) ? "xmark" : "chevron.left")
                     .font(.system(size: 16, weight: .bold)).frame(width: 38, height: 38)
-                    .background(Circle().fill(ATheme.well))
+                    .foregroundColor(dark ? .white : ATheme.ink)
+                    .background(Circle().fill(dark ? Color.white.opacity(0.14) : ATheme.well))
             }.buttonStyle(.plain)
             Spacer()
-            Text(step == .pick ? "New trail" : step == .edit ? (draft.skinOnly ? "Share skin" : draft.sharing ? "Share run"
-                : draft.video ? "Edit video" : "Edit") : "Caption")
-                .font(.androidWyrm(16, .bold))
+            Text(title).font(.androidWyrm(16, .bold)).foregroundColor(dark ? .white : ATheme.ink)
             Spacer()
             actionButton
         }
         .padding(.horizontal, 14).frame(height: 56)
     }
 
+    private var title: String {
+        switch step {
+        case .pick, .caption: return "New trail"
+        case .edit:
+            if draft.skinOnly { return "Share skin" }
+            if draft.sharing { return "Share run" }
+            if draft.video { return "Edit video" }
+            return draft.image != nil ? "Edit" : "Canvas"
+        }
+    }
+
     @ViewBuilder
     private var actionButton: some View {
         let ready: Bool = {
             switch step {
-            case .pick: return draft.mode == .text ? !draft.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                : draft.mode == .canvas
+            case .pick: return pickMode == .text ? !draft.caption.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                : pickMode == .canvas
             // Share run waits for the skin sticker's textures before export.
             case .edit: return !(draft.sharing && draft.stickers.contains(where: { $0.kind == .skin }) && !textures.ready)
             case .caption: return !store.posting.busy
             }
         }()
-        let label = (step == .caption || (step == .pick && draft.mode == .text)) ? "Post" : "Next"
+        let label = (step == .caption || (step == .pick && pickMode == .text)) ? "Post" : "Next"
         Button { advance() } label: {
-            Text(label).font(.androidWyrm(14, .bold)).foregroundColor(ATheme.onInk)
-                .padding(.horizontal, 16).frame(height: 36)
-                .background(Capsule().fill(ATheme.ink.opacity(ready ? 1 : 0.3)))
+            Text(label).font(.androidWyrm(14, .bold)).foregroundColor(dark ? .black : ATheme.onInk)
+                .padding(.horizontal, 18).frame(height: 36)
+                .background(Capsule().fill((dark ? Color.white : ATheme.ink).opacity(ready ? 1 : 0.3)))
         }
         .buttonStyle(WSPressStyle())
         .disabled(!ready)
-    }
-
-    /// The studio's pages; Video stays out while `WyrmTrailsFeature.videoEnabled` is off (OM, 2026-10-05).
-    private var shownModes: [WyrmStudioMode] {
-        WyrmStudioMode.allCases.filter { $0 != .video || WyrmTrailsFeature.videoEnabled }
-    }
-
-    private var modeBar: some View {
-        WSSegmented(options: shownModes.map(\.rawValue),
-                    selected: shownModes.firstIndex(of: draft.mode) ?? 0) { index in
-            let next = shownModes[index]
-            guard next != draft.mode else { return }
-            UISelectionFeedbackGenerator().selectionChanged()
-            forward = index > (shownModes.firstIndex(of: draft.mode) ?? 0)
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.88)) { draft.reset(for: next) }
-            // One camera at a time: the one leaving stops before the next starts.
-            if next != .photo { camera.stop() }
-            if next != .video { recorder.stop() }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-                guard draft.mode == next, step == .pick else { return }
-                if next == .photo { camera.start() }
-                if next == .video { recorder.start(); videoGallery.load() }
-            }
-        }
-        .padding(.horizontal, 16)
     }
 
     /// Share run: Skin | Screenshot. Screenshot is off when the run has no picture.
@@ -1076,15 +987,14 @@ struct WyrmTrailStudio: View {
 
     private func back() {
         switch step {
-        case .pick: close()
+        case .pick: if showGallery { go(showGallery: false) } else { close() }
         case .edit:
             // Share run opens on its editor, so back is close.
             if draft.sharing { close(); return }
-            if draft.mode == .photo { draft.image = nil; camera.start() }
+            if draft.mode == .photo { draft.image = nil }
             if draft.mode == .video {
                 dropVideo()
                 draft.videoAspect = nil
-                recorder.start()
             }
             go(.pick)
         case .caption: go(draft.mode == .canvas ? .pick : .edit)
@@ -1095,8 +1005,8 @@ struct WyrmTrailStudio: View {
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
         switch step {
         case .pick:
-            if draft.mode == .text { post(image: nil) }
-            else if draft.mode == .canvas { rendered = draft.render(canvas: canvasSize); go(.caption) }
+            if pickMode == .text { post(image: nil) }
+            else if pickMode == .canvas { rendered = draft.render(canvas: canvasSize); go(.caption) }
         case .edit:
             rendered = draft.video ? videoPoster() : draft.render(canvas: canvasSize)
             go(.caption)
@@ -1105,7 +1015,7 @@ struct WyrmTrailStudio: View {
         }
     }
 
-    /// A recorded or picked clip into the editor; longer than 30 s, it starts trimmed to its first 30.
+    /// A recorded or picked clip into the editor; longer than 30 s, it starts as its first 30.
     private func openClip(_ asset: AVAsset, _ owned: URL?) {
         guard !openingClip else { return }
         openingClip = true
@@ -1125,7 +1035,8 @@ struct WyrmTrailStudio: View {
             session.load()
             videoSession = session
             openingClip = false
-            recorder.stop()
+            camera.stop()
+            showGallery = false
             go(.edit)
         }
     }
@@ -1138,11 +1049,11 @@ struct WyrmTrailStudio: View {
         videoSession = nil
     }
 
-    /// The video's poster: the cover frame in the look with everything drawn on top.
+    /// The video's poster: the cover frame, cropped, in the look with everything drawn on top.
     private func videoPoster() -> UIImage? {
         guard let session = videoSession else { return nil }
         let canvas = canvasSize
-        return WyrmTrailVideoExport.poster(session.clip, atMs: session.coverMs, look: draft.look, adjust: draft.adjust) { size in
+        return WyrmTrailVideoExport.poster(session.edit.spec(), look: draft.look, adjust: draft.adjust) { size in
             draft.renderOverlay(out: size, canvas: canvas)
         }
     }
@@ -1150,19 +1061,18 @@ struct WyrmTrailStudio: View {
     private func postVideo() {
         guard let session = videoSession, !store.posting.busy else { return }
         let canvas = canvasSize
+        let spec = session.edit.spec()
         // The overlay at each export size, drawn now, while the editor's canvas is known.
         let overlays = (0..<WyrmTrailVideoExport.tierCount).map { tier in
-            draft.renderOverlay(out: WyrmTrailVideoExport.outputSize(session.clip, tier: tier), canvas: canvas)
+            draft.renderOverlay(out: WyrmTrailVideoExport.outputSize(spec, tier: tier), canvas: canvas)
         }
         let poster = rendered ?? videoPoster()
         videoPosted = true
         session.pause()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        let clip = session.clip, start = session.trimStart, end = session.trimEnd, muted = session.muted
         let look = draft.look, adjust = draft.adjust, caption = draft.caption
         Task {
-            _ = await store.postVideo(clip: clip, startMs: start, endMs: end, muted: muted, look: look, adjust: adjust,
-                                      overlays: overlays, poster: poster, caption: caption)
+            _ = await store.postVideo(spec: spec, look: look, adjust: adjust, overlays: overlays, poster: poster, caption: caption)
         }
         if let onPosted { onPosted() } else { close() }
     }
@@ -1182,114 +1092,8 @@ struct WyrmTrailStudio: View {
         draft.reset(for: .photo)
         draft.image = image
         camera.stop()
+        showGallery = false
         go(.edit)
-    }
-
-    // MARK: Pick (camera and gallery)
-
-    private var picker: some View {
-        VStack(spacing: 0) {
-            ZStack {
-                Group {
-                    switch camera.state {
-                    case .running: WyrmCameraPreview(session: camera.session)
-                    case .denied: cameraNote("Camera is off for Wyrm", "Allow it in Settings, or use the phone's camera.")
-                    case .unavailable: cameraNote("No camera", "Pick a photo from your library below.")
-                    case .idle: ATheme.well
-                    }
-                }
-                .frame(maxWidth: .infinity).aspectRatio(0.8, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-                VStack {
-                    HStack {
-                        Spacer()
-                        if WyrmSystemCamera.available {
-                            // Full screen: the phone's own camera.
-                            WyrmStudioRoundButton(symbol: "arrow.up.left.and.arrow.down.right") {
-                                camera.stop()
-                                systemCamera = true
-                            }
-                        }
-                    }
-                    Spacer()
-                    if camera.state == .running {
-                        HStack {
-                            Spacer().frame(width: 44)
-                            Spacer()
-                            Button {
-                                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
-                                camera.capture { shot in if let shot { open(shot) } }
-                            } label: {
-                                Circle().stroke(Color.white, lineWidth: 5).frame(width: 70, height: 70)
-                                    .overlay(Circle().fill(Color.white.opacity(0.9)).padding(9))
-                            }.buttonStyle(WSPressStyle())
-                            Spacer()
-                            WyrmStudioRoundButton(symbol: "arrow.triangle.2.circlepath") { camera.flip() }
-                        }
-                    }
-                }
-                .padding(14)
-            }
-            .aspectRatio(0.8, contentMode: .fit)
-            .padding(.horizontal, 12)
-            galleryGrid.padding(.top, 10)
-        }
-    }
-
-    private func cameraNote(_ title: String, _ note: String) -> some View {
-        VStack(spacing: 6) {
-            Image(systemName: "camera").font(.system(size: 26, weight: .semibold)).foregroundColor(ATheme.quiet)
-            Text(title).font(.androidWyrm(15, .bold))
-            Text(note).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
-        }
-        .padding(20).frame(maxWidth: .infinity, maxHeight: .infinity).background(ATheme.well)
-    }
-
-    private var galleryGrid: some View {
-        ScrollView(showsIndicators: false) {
-            if gallery.status == .authorized || gallery.status == .limited {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 3), count: 4), spacing: 3) {
-                    Button { picking = true } label: {
-                        ZStack {
-                            ATheme.well
-                            VStack(spacing: 4) {
-                                Image(systemName: "photo.on.rectangle").font(.system(size: 18, weight: .semibold))
-                                Text("All photos").font(.androidWyrm(10.5, .bold))
-                            }.foregroundColor(ATheme.mute)
-                        }.aspectRatio(1, contentMode: .fit)
-                    }.buttonStyle(.plain)
-                    ForEach(gallery.assets, id: \.localIdentifier) { asset in
-                        Button {
-                            guard !loadingPhoto else { return }
-                            loadingPhoto = true
-                            Task {
-                                if let image = await gallery.full(asset) { open(image) }
-                                loadingPhoto = false
-                            }
-                        } label: { WyrmGalleryCell(asset: asset, manager: gallery.manager) }
-                            .buttonStyle(.plain)
-                    }
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .padding(.horizontal, 12)
-            } else {
-                VStack(spacing: 10) {
-                    Text("Your photos").font(.androidWyrm(15, .bold))
-                    Text("Allow Wyrm to show your photos here, or pick one from the library.")
-                        .font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
-                    WSPrimaryButton(label: "Choose a photo") { picking = true }
-                }
-                .padding(20)
-            }
-            Spacer().frame(height: 40)
-        }
-        .overlay(Group { if loadingPhoto { ProgressView().padding(14).background(Circle().fill(ATheme.card)) } })
-    }
-
-    // MARK: Caption
-
-    private var captionStep: some View {
-        WyrmStudioCaption(draft: draft, rendered: rendered)
     }
 }
 
@@ -1392,13 +1196,96 @@ private struct WyrmStudioCaption: View {
 // MARK: - Editor
 
 /// What the editor is doing: nothing (move and pinch), writing, drawing,
-/// cropping, picking a sticker or picking a look.
-private enum WyrmStudioTool { case none, text, draw, crop, emoji, looks }
+/// cropping, picking a sticker, a look or the cover.
+private enum WyrmStudioTool { case none, text, draw, crop, emoji, looks, cover }
 
-/// The editor, story-style: the picture fills the page, tools stand in a rail
-/// on its right edge (Aa, draw, crop, undo), and each tool takes the whole
-/// screen while it is in use. Text is dragged, pinched and turned in place and
-/// thrown into the bin at the bottom to delete it.
+/// What a finger landed on.
+private enum WyrmStudioTarget: Equatable { case text(UUID), emoji(UUID), sticker(UUID) }
+
+/// Every finger on the stage (OM, 2026-10-17): the editor's own gestures,
+/// so a second finger anywhere can pinch and turn what the first one holds.
+private struct WyrmStageTouches: UIViewRepresentable {
+    /// A finger landed (stage point, fingers now down).
+    var down: (CGPoint, Int) -> Void
+    /// Fingers moved: the first finger's point, the pan of their middle, the pinch, the turn, fingers down.
+    var move: (CGPoint, CGSize, CGFloat, CGFloat, Int) -> Void
+    /// A finger lifted; true when none is left.
+    var up: (Bool) -> Void
+
+    final class TouchView: UIView {
+        var onDown: ((CGPoint, Int) -> Void)?
+        var onMove: ((CGPoint, CGSize, CGFloat, CGFloat, Int) -> Void)?
+        var onUp: ((Bool) -> Void)?
+        private var active: [UITouch] = []
+
+        override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+            for touch in touches {
+                active.append(touch)
+                onDown?(touch.location(in: self), active.count)
+            }
+        }
+
+        override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+            guard let first = active.first else { return }
+            let p = first.location(in: self)
+            if active.count >= 2 {
+                let b = active[1]
+                let pa = p, pb = b.location(in: self)
+                let qa = first.previousLocation(in: self), qb = b.previousLocation(in: self)
+                let pan = CGSize(width: (pa.x + pb.x - qa.x - qb.x) / 2, height: (pa.y + pb.y - qa.y - qb.y) / 2)
+                let now = hypot(pb.x - pa.x, pb.y - pa.y), before = hypot(qb.x - qa.x, qb.y - qa.y)
+                var turn = atan2(pb.y - pa.y, pb.x - pa.x) - atan2(qb.y - qa.y, qb.x - qa.x)
+                if turn > .pi { turn -= 2 * .pi } else if turn < -.pi { turn += 2 * .pi }
+                onMove?(p, pan, before > 0.5 ? now / before : 1, turn, active.count)
+            } else {
+                let q = first.previousLocation(in: self)
+                onMove?(p, CGSize(width: p.x - q.x, height: p.y - q.y), 1, 0, 1)
+            }
+        }
+
+        override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) { lift(touches) }
+        override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) { lift(touches) }
+
+        private func lift(_ touches: Set<UITouch>) {
+            active.removeAll { touches.contains($0) }
+            onUp?(active.isEmpty)
+        }
+    }
+
+    func makeUIView(context: Context) -> TouchView {
+        let view = TouchView()
+        view.isMultipleTouchEnabled = true
+        view.backgroundColor = .clear
+        return view
+    }
+
+    func updateUIView(_ view: TouchView, context: Context) {
+        view.onDown = down
+        view.onMove = move
+        view.onUp = up
+    }
+}
+
+/// The canvas follows the video's crop shape, so what is drawn lands on the same spot of every frame.
+private struct WyrmCropFollower: View {
+    @ObservedObject var edit: WyrmTrailEdit
+    let draft: WyrmStudioDraft
+    var body: some View {
+        Color.clear
+            .onAppear { draft.videoAspect = edit.crop.ratio(edit.clip) }
+            .onChange(of: edit.crop) { crop in draft.videoAspect = crop.ratio(edit.clip) }
+    }
+}
+
+/// The editor (redesigned OM, 2026-10-17): the picture or the playing clip on
+/// a dark stage, tools in a rail on the right (their names show for a moment
+/// when the editor opens), the tool's own controls on a sheet underneath.
+///
+/// Moving things, Instagram's way: a finger on a word or a sticker takes it;
+/// a second finger anywhere on the stage, on it or not, pinches and turns it.
+/// Either finger may be the one on it. With nothing taken, two fingers zoom
+/// the photo; on a video a tap plays or pauses. Words and stickers are thrown
+/// into the bin at the bottom to delete them.
 private struct WyrmStudioEditor: View {
     @ObservedObject var draft: WyrmStudioDraft
     @Binding var canvasSize: CGSize
@@ -1411,52 +1298,81 @@ private struct WyrmStudioEditor: View {
     @State private var inkRGB: UInt32 = 0xF2B84B
     @State private var live: WyrmStudioStroke?
     @State private var editing: WyrmStudioText?
-    @State private var panStart: CGSize?
-    @State private var zoomStart: CGFloat?
-    @State private var cropStart: CGSize?
-    @State private var dragStart: [UUID: CGPoint] = [:]
     @State private var dragging = false
     @State private var overBin = false
-    // Share run: where a sticker's move, pinch and turn began, and the
-    // screenshot's.
-    @State private var stickerDrag: [UUID: CGPoint] = [:]
-    @State private var stickerZoom: [UUID: CGFloat] = [:]
-    @State private var stickerTurn: [UUID: Angle] = [:]
-    @State private var pinching = false
-    @State private var shotPan: CGSize?
-    @State private var shotZoom: CGFloat?
-    // Emoji stickers: where a move, pinch and turn began.
-    @State private var emojiDrag: [UUID: CGPoint] = [:]
-    @State private var emojiZoom: [UUID: CGFloat] = [:]
-    @State private var emojiTurn: [UUID: Angle] = [:]
     /// The look's name for a moment after a swipe, as Snapchat shows it.
     @State private var lookToast = ""
-    /// Something else was moved during this swipe, so it changes no look.
-    @State private var swipeBlocked = false
+    /// The tools' names, for a moment when the editor opens.
+    @State private var labels = true
+    // The gesture in progress.
+    @State private var target: WyrmStudioTarget?
+    @State private var moved: CGFloat = 0
+    @State private var sweep: CGSize = .zero
+    @State private var fingers = 0
+    @State private var touchStart = Date()
+    @State private var lastPoint: CGPoint = .zero
+
+    private var media: Bool { draft.image != nil || draft.video }
 
     var body: some View {
         GeometryReader { proxy in
-            let bottomBar: CGFloat = tool == .looks ? 150
-                : (draft.video && tool == .none) ? 130
-                : (tool == .crop || draft.image == nil) ? 100 : 44
+            let bottomBar: CGFloat = tool == .looks ? 160
+                : tool == .cover ? 132
+                : tool == .crop ? (draft.video ? 126 : 100)
+                : (draft.video && tool == .none) ? 176
+                : draft.sharing ? (tool == .none ? 110 : 44)
+                : !media ? 100 : 40
+            let stageHeight = max(proxy.size.height - bottomBar, 200)
             let width = proxy.size.width - 24
-            let maxHeight = proxy.size.height - bottomBar - 8
-            let height = min(width / draft.ratio, maxHeight)
+            let height = min(width / draft.ratio, stageHeight - 12)
             let size = CGSize(width: height * draft.ratio, height: height)
-            VStack(spacing: 8) {
-                canvas(size, maxWidth: width, maxHeight: maxHeight)
-                    .onAppear {
-                        canvasSize = size
-                        draft.seedShare(in: size)
+            let origin = CGPoint(x: (proxy.size.width - size.width) / 2, y: (stageHeight - size.height) / 2)
+            VStack(spacing: 0) {
+                ZStack(alignment: .topLeading) {
+                    canvas(size)
+                        .frame(width: size.width, height: size.height)
+                        .offset(x: origin.x, y: origin.y)
+                    if tool != .looks && tool != .cover {
+                        WyrmStageTouches(
+                            down: { p, count in touchDown(CGPoint(x: p.x - origin.x, y: p.y - origin.y), count, size) },
+                            move: { p, pan, scale, turn, count in
+                                touchMove(CGPoint(x: p.x - origin.x, y: p.y - origin.y), pan, scale, turn, count, size)
+                            },
+                            up: { all in if all { touchUp(size) } })
                     }
-                    .onChange(of: size) { next in
-                        canvasSize = next
-                        draft.seedShare(in: next)
-                        draft.keepItems(in: next)
+                    if tool == .crop && draft.aspect == .free && video == nil {
+                        freeHandles(size, maxWidth: width, maxHeight: stageHeight - 12)
+                            .frame(width: size.width, height: size.height)
+                            .offset(x: origin.x, y: origin.y)
                     }
-                bottom.frame(height: bottomBar)
+                    rail
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                    if tool == .draw {
+                        drawBar.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                        inkColumn.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .trailing)
+                    }
+                }
+                .frame(width: proxy.size.width, height: stageHeight)
+                bottom
+                    .frame(maxWidth: .infinity)
+                    .frame(height: bottomBar)
+                    .background(sheet ? RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card) : nil)
+                    .padding(.horizontal, sheet ? 8 : 0)
+                    .padding(.bottom, sheet ? 6 : 0)
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .onAppear {
+                canvasSize = size
+                draft.seedShare(in: size)
+            }
+            .onChange(of: size) { next in
+                let before = canvasSize
+                if !draft.sharing && before.width > 0 && before.height > 0 {
+                    draft.rescale(x: next.width / before.width, y: next.height / before.height)
+                }
+                canvasSize = next
+                draft.seedShare(in: next)
+                draft.keepItems(in: next)
+            }
             .overlay { if let current = editing { WyrmStudioTextEditor(item: current, update: { editing = $0 }, done: commit) } }
             .overlay {
                 if tool == .emoji {
@@ -1471,11 +1387,20 @@ private struct WyrmStudioEditor: View {
                 }
             }
         }
+        .background(Group { if let video { WyrmCropFollower(edit: video.edit, draft: draft) } })
+        .onAppear {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.6) { withAnimation(.easeOut(duration: 0.3)) { labels = false } }
+        }
+    }
+
+    /// The tool's controls sit on a sheet for a photo or a video.
+    private var sheet: Bool {
+        media && (tool == .looks || tool == .crop || tool == .cover || (draft.video && tool == .none))
     }
 
     // MARK: Canvas
 
-    private func canvas(_ size: CGSize, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+    private func canvas(_ size: CGSize) -> some View {
         let bin = CGPoint(x: size.width / 2, y: size.height - 46)
         return ZStack(alignment: .topLeading) {
             if draft.sharing {
@@ -1486,7 +1411,6 @@ private struct WyrmStudioEditor: View {
                     Image(uiImage: shot).resizable()
                         .frame(width: rect.width, height: rect.height)
                         .position(x: rect.midX, y: rect.midY)
-                        .allowsHitTesting(false)
                 }
                 ForEach(draft.stickers) { sticker in
                     let s = draft.stickerSize(sticker)
@@ -1498,16 +1422,12 @@ private struct WyrmStudioEditor: View {
                         }
                     }
                     .frame(width: s.width, height: s.height)
-                    .contentShape(Rectangle())
                     .scaleEffect(sticker.scale).rotationEffect(sticker.rotation)
                     .position(sticker.center)
-                    .gesture(tool == .none ? stickerGesture(sticker.id, size, bin: bin) : nil)
-                    .onTapGesture { if tool == .none && sticker.kind == .stats { draft.cycleStatsStyle() } }
                 }
             } else if draft.video, let video {
-                // The clip plays under everything; the canvas over it is see-through.
-                Color.black
-                WyrmTrailPlayerView(player: video.player)
+                // The cut plays under everything; the canvas over it is see-through.
+                WyrmTrailVideoStage(session: video)
             } else if let image = draft.image {
                 let rect = draft.photoRect(in: size)
                 Color.black
@@ -1523,7 +1443,6 @@ private struct WyrmStudioEditor: View {
                     if let live { WyrmStudioInk.draw(live, in: cg) }
                 }
             }
-            .allowsHitTesting(false)
             if tool == .crop {
                 // The rule of thirds while cropping.
                 Path { path in
@@ -1534,22 +1453,18 @@ private struct WyrmStudioEditor: View {
                     }
                 }
                 .stroke(Color.white.opacity(0.55), lineWidth: 1)
-                .allowsHitTesting(false)
             }
             ForEach(draft.emojis) { item in
                 let s = item.box
                 Image(uiImage: item.image()).resizable().frame(width: s.width, height: s.height)
                     .scaleEffect(item.scale).rotationEffect(item.rotation)
                     .position(item.center)
-                    .gesture(tool == .none ? emojiGesture(item.id, size, bin: bin) : nil)
             }
             ForEach(draft.texts) { item in
                 let s = item.size
                 Image(uiImage: item.image()).resizable().frame(width: s.width, height: s.height)
                     .scaleEffect(item.scale).rotationEffect(item.rotation)
                     .position(item.center)
-                    .gesture(tool == .none ? textGesture(item.id, size, bin: bin) : nil)
-                    .onTapGesture { if tool == .none { editing = item; tool = .text } }
             }
             if dragging {
                 Circle().fill(overBin ? Color(red: 0.9, green: 0.28, blue: 0.3) : Color.black.opacity(0.45))
@@ -1558,60 +1473,225 @@ private struct WyrmStudioEditor: View {
                     .scaleEffect(overBin ? 1.25 : 1)
                     .position(bin)
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: overBin)
-                    .allowsHitTesting(false)
             }
             if !lookToast.isEmpty {
                 Text(lookToast).font(.wyrmDisplay(30)).foregroundColor(.white)
                     .shadow(color: .black.opacity(0.45), radius: 6)
                     .frame(width: size.width, height: size.height)
-                    .allowsHitTesting(false)
                     .transition(.opacity)
             }
         }
         .frame(width: size.width, height: size.height)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .contentShape(Rectangle())
-        .gesture(tool == .draw ? drawGesture(size) : nil)
-        .simultaneousGesture((tool == .none || tool == .crop) && draft.image != nil ? photoGesture(size) : nil)
-        .simultaneousGesture((tool == .none || tool == .crop) && draft.sharing && draft.shotMode ? shotGesture(size) : nil)
-        .simultaneousGesture(tool == .none && draft.video ? swipeGesture : nil)
-        .overlay(alignment: .topTrailing) { rail }
-        .overlay(alignment: .top) { if tool == .draw { drawBar } }
-        .overlay(alignment: .trailing) { if tool == .draw { inkColumn } }
-        .overlay { if tool == .crop && draft.aspect == .free { freeHandles(size, maxWidth: maxWidth, maxHeight: maxHeight) } }
+        .allowsHitTesting(false)
     }
+
+    // MARK: Gestures
+
+    private func hit(_ p: CGPoint) -> WyrmStudioTarget? {
+        for item in draft.texts.reversed() {
+            let s = item.size
+            if abs(p.x - item.center.x) < s.width * item.scale / 2 + 18 && abs(p.y - item.center.y) < s.height * item.scale / 2 + 18 {
+                return .text(item.id)
+            }
+        }
+        for item in draft.emojis.reversed() {
+            let s = item.box
+            if abs(p.x - item.center.x) < s.width * item.scale / 2 + 18 && abs(p.y - item.center.y) < s.height * item.scale / 2 + 18 {
+                return .emoji(item.id)
+            }
+        }
+        if draft.sharing {
+            for item in draft.stickers.reversed() {
+                let s = draft.stickerSize(item)
+                if abs(p.x - item.center.x) < s.width * item.scale / 2 + 18 && abs(p.y - item.center.y) < s.height * item.scale / 2 + 18 {
+                    return .sticker(item.id)
+                }
+            }
+        }
+        return nil
+    }
+
+    private func touchDown(_ p: CGPoint, _ count: Int, _ size: CGSize) {
+        if tool == .draw {
+            if count == 1 {
+                let point = CGPoint(x: min(max(p.x, 0), size.width), y: min(max(p.y, 0), size.height))
+                live = WyrmStudioStroke(points: [point], rgb: inkRGB, width: brush == .beads ? 7 : 5, brush: brush)
+            }
+            return
+        }
+        if count == 1 {
+            target = tool == .none ? hit(p) : nil
+            moved = 0
+            sweep = .zero
+            fingers = 1
+            touchStart = Date()
+            lastPoint = p
+        } else {
+            fingers = max(fingers, count)
+            // A second finger that lands on something takes it, if nothing was taken yet.
+            if target == nil && tool == .none { target = hit(p) }
+        }
+    }
+
+    private func touchMove(_ p: CGPoint, _ pan: CGSize, _ scale: CGFloat, _ turn: CGFloat, _ count: Int, _ size: CGSize) {
+        if tool == .draw {
+            let point = CGPoint(x: min(max(p.x, 0), size.width), y: min(max(p.y, 0), size.height))
+            if let last = live?.points.last, hypot(last.x - point.x, last.y - point.y) > 1.5 { live?.points.append(point) }
+            return
+        }
+        fingers = max(fingers, count)
+        moved += hypot(pan.width, pan.height)
+        sweep = CGSize(width: sweep.width + pan.width, height: sweep.height + pan.height)
+        lastPoint = p
+        if tool == .crop {
+            if let video {
+                video.edit.crop = video.edit.crop.moved(video.clip, pan: pan, scale: scale, canvas: size)
+            } else if draft.image != nil {
+                draft.photoScale = min(max(draft.photoScale * scale, 1), 5)
+                draft.photoOffset = CGSize(width: draft.photoOffset.width + pan.width, height: draft.photoOffset.height + pan.height)
+                draft.clampOffset(in: size)
+            } else if draft.sharing && draft.shotMode {
+                moveShot(pan, scale, size)
+            }
+            return
+        }
+        func inside(_ c: CGPoint) -> CGPoint {
+            CGPoint(x: min(max(c.x + pan.width, 0), size.width), y: min(max(c.y + pan.height, 0), size.height))
+        }
+        switch target {
+        case .text(let id):
+            guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
+            draft.texts[i].center = inside(draft.texts[i].center)
+            draft.texts[i].scale = min(max(draft.texts[i].scale * scale, 0.3), 6)
+            draft.texts[i].rotation = .radians(draft.texts[i].rotation.radians + Double(turn))
+            towardBin(draft.texts[i].center, size)
+        case .emoji(let id):
+            guard let i = draft.emojis.firstIndex(where: { $0.id == id }) else { return }
+            draft.emojis[i].center = inside(draft.emojis[i].center)
+            draft.emojis[i].scale = min(max(draft.emojis[i].scale * scale, 0.3), 7)
+            draft.emojis[i].rotation = .radians(draft.emojis[i].rotation.radians + Double(turn))
+            towardBin(draft.emojis[i].center, size)
+        case .sticker(let id):
+            guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
+            draft.stickers[i].center = inside(draft.stickers[i].center)
+            draft.stickers[i].scale = min(max(draft.stickers[i].scale * scale, 0.3), 6)
+            draft.stickers[i].rotation = .radians(draft.stickers[i].rotation.radians + Double(turn))
+            towardBin(draft.stickers[i].center, size)
+        case .none:
+            if draft.image != nil && (fingers > 1 || draft.photoScale > 1.01) {
+                draft.photoScale = min(max(draft.photoScale * scale, 1), 5)
+                draft.photoOffset = CGSize(width: draft.photoOffset.width + pan.width, height: draft.photoOffset.height + pan.height)
+                draft.clampOffset(in: size)
+            } else if draft.sharing && draft.shotMode {
+                moveShot(pan, scale, size)
+            }
+        }
+    }
+
+    private func moveShot(_ pan: CGSize, _ scale: CGFloat, _ size: CGSize) {
+        draft.shotOffset = CGSize(width: draft.shotOffset.width + pan.width, height: draft.shotOffset.height + pan.height)
+        draft.shotScale = min(max(draft.shotScale * scale, 0.3), 5)
+        draft.clampShot(in: size)
+    }
+
+    private func towardBin(_ center: CGPoint, _ size: CGSize) {
+        guard moved > 12 else { return }
+        if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
+        let bin = CGPoint(x: size.width / 2, y: size.height - 46)
+        let near = hypot(lastPoint.x - bin.x, lastPoint.y - bin.y) < 46
+        if near != overBin {
+            overBin = near
+            if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
+        }
+    }
+
+    private func touchUp(_ size: CGSize) {
+        if tool == .draw {
+            if let live { draft.strokes.append(live) }
+            live = nil
+            return
+        }
+        defer {
+            target = nil
+            fingers = 0
+            withAnimation(.easeOut(duration: 0.15)) { dragging = false }
+            overBin = false
+        }
+        guard tool == .none else { return }
+        let tapped = moved < 12 && Date().timeIntervalSince(touchStart) < 0.32 && fingers == 1
+        switch target {
+        case .text(let id):
+            guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
+            if dragging && overBin { draft.texts.remove(at: i) }
+            else if tapped { editing = draft.texts[i]; tool = .text }
+        case .emoji(let id):
+            if dragging && overBin { withAnimation(.easeOut(duration: 0.2)) { draft.emojis.removeAll { $0.id == id } } }
+        case .sticker(let id):
+            guard let sticker = draft.stickers.first(where: { $0.id == id }) else { return }
+            if dragging && overBin { withAnimation(.easeOut(duration: 0.2)) { draft.removeSticker(id) } }
+            // A tap on the stats box shows its next style.
+            else if tapped && sticker.kind == .stats { draft.cycleStatsStyle() }
+        case .none:
+            if tapped, let video { video.togglePlay() }
+            else if fingers == 1 { swipeLook(sweep) }
+        }
+    }
+
+    /// Snapchat's swipe: across the picture, the next look (left) or the last (right).
+    private func swipeLook(_ t: CGSize) {
+        guard tool == .none, media, draft.photoScale <= 1.01,
+              abs(t.width) > 72, abs(t.height) < abs(t.width) * 0.6 else { return }
+        let looks = WyrmTrailLooks.all
+        let i = looks.firstIndex(of: draft.look) ?? 0
+        let next = looks[(i + (t.width < 0 ? 1 : looks.count - 1)) % looks.count]
+        draft.look = next
+        UISelectionFeedbackGenerator().selectionChanged()
+        withAnimation(.easeOut(duration: 0.15)) { lookToast = next.name }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
+            if lookToast == next.name { withAnimation(.easeOut(duration: 0.25)) { lookToast = "" } }
+        }
+    }
+
+    // MARK: Rail and bars
 
     @ViewBuilder
     private var rail: some View {
         if tool == .none && !dragging {
-            VStack(spacing: 10) {
-                WyrmStudioRoundButton(text: "Aa") {
+            VStack(alignment: .trailing, spacing: 10) {
+                railTool("textformat", "Text") {
                     let rgb: UInt32 = draft.image == nil && !draft.video && !(draft.sharing && draft.shotMode)
                         ? WyrmStudioPalette.contrast(draft.background) : 0xFFFFFF
                     editing = WyrmStudioText(text: "", rgb: rgb, font: .sans, filled: false,
                                              center: CGPoint(x: canvasSize.width / 2, y: canvasSize.height / 2))
                     tool = .text
                 }
-                WyrmStudioRoundButton(symbol: "scribble") {
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    tool = .draw
-                }
-                WyrmStudioRoundButton(symbol: "face.smiling") {
-                    UISelectionFeedbackGenerator().selectionChanged()
-                    tool = .emoji
-                }
-                if draft.image != nil || draft.video {
-                    WyrmStudioRoundButton(symbol: "camera.filters") {
-                        UISelectionFeedbackGenerator().selectionChanged()
-                        tool = .looks
-                    }
-                }
+                railTool("face.smiling", "Stickers") { tool = .emoji }
+                railTool("scribble", "Draw") { tool = .draw }
+                if media { railTool("camera.filters", "Looks") { tool = .looks } }
                 // Share run changes its canvas shape in both of its modes.
-                if draft.image != nil || draft.sharing { WyrmStudioRoundButton(symbol: "crop") { tool = .crop } }
-                if !draft.strokes.isEmpty { WyrmStudioRoundButton(symbol: "arrow.uturn.backward") { draft.strokes.removeLast() } }
+                if draft.image != nil || draft.sharing || video != nil {
+                    railTool("crop", "Crop") { video?.pause(); tool = .crop }
+                }
+                if video != nil { railTool("photo.on.rectangle.angled", "Cover") { tool = .cover } }
+                if !draft.strokes.isEmpty { railTool("arrow.uturn.backward", "Undo") { draft.strokes.removeLast() } }
             }
-            .padding(10)
+            .padding(.top, 12).padding(.trailing, 12)
             .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .topTrailing)))
+        }
+    }
+
+    private func railTool(_ symbol: String, _ label: String, _ action: @escaping () -> Void) -> some View {
+        HStack(spacing: 8) {
+            if labels {
+                Text(label).font(.androidWyrm(13, .bold)).foregroundColor(.white)
+                    .shadow(color: .black.opacity(0.6), radius: 3, y: 1)
+                    .transition(.opacity)
+            }
+            WyrmStudioRoundButton(symbol: symbol) {
+                UISelectionFeedbackGenerator().selectionChanged()
+                action()
+            }
         }
     }
 
@@ -1644,6 +1724,10 @@ private struct WyrmStudioEditor: View {
     private var bottom: some View {
         if tool == .looks {
             WyrmTrailLooksPanel(look: $draft.look, adjust: $draft.adjust, sample: draft.lookSample ?? draft.image) { tool = .none }
+        } else if tool == .cover, let video {
+            WyrmTrailCoverBar(session: video, edit: video.edit) { tool = .none }
+        } else if tool == .crop, let video {
+            WyrmTrailCropBar(edit: video.edit) { tool = .none }
         } else if tool == .crop {
             VStack(spacing: 8) {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -1665,7 +1749,7 @@ private struct WyrmStudioEditor: View {
         } else if draft.sharing && tool == .none {
             shareBottom
         } else if draft.video, tool == .none, let video {
-            WyrmTrailVideoBar(session: video)
+            WyrmTrailTimelineBar(session: video, edit: video.edit)
         } else if draft.image == nil && tool == .none {
             VStack(spacing: 6) {
                 HStack(spacing: 8) {
@@ -1679,7 +1763,7 @@ private struct WyrmStudioEditor: View {
                 WyrmStudioSwatches(selected: draft.background) { draft.background = $0 }
             }
         } else if tool == .none {
-            Text("Aa to write · swipe for looks · pinch to zoom").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+            Text("Swipe for looks · two fingers to zoom").font(.androidWyrm(12)).foregroundColor(.white.opacity(0.6))
         }
     }
 
@@ -1710,243 +1794,34 @@ private struct WyrmStudioEditor: View {
         }
     }
 
-    // MARK: Gestures
-
-    /// Share run: a sticker moves, pinches and turns like words do, and is
-    /// thrown into the bin to remove it.
-    private func stickerGesture(_ id: UUID, _ size: CGSize, bin: CGPoint) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { value in
-                    guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
-                    let start = stickerDrag[id] ?? draft.stickers[i].center
-                    if stickerDrag[id] == nil { stickerDrag[id] = start }
-                    draft.stickers[i].center = CGPoint(x: min(max(start.x + value.translation.width, 0), size.width),
-                                                       y: min(max(start.y + value.translation.height, 0), size.height))
-                    if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
-                    let near = hypot(draft.stickers[i].center.x - bin.x, draft.stickers[i].center.y - bin.y) < 46
-                    if near != overBin {
-                        overBin = near
-                        if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-                    }
-                }
-                .onEnded { _ in
-                    if overBin { withAnimation(.easeOut(duration: 0.2)) { draft.removeSticker(id) } }
-                    stickerDrag[id] = nil
-                    withAnimation(.easeOut(duration: 0.15)) { dragging = false }
-                    overBin = false
-                },
-            SimultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
-                        let start = stickerZoom[id] ?? draft.stickers[i].scale
-                        if stickerZoom[id] == nil { stickerZoom[id] = start }
-                        pinching = true
-                        draft.stickers[i].scale = min(max(start * value, 0.3), 5)
-                    }
-                    .onEnded { _ in
-                        stickerZoom[id] = nil
-                        pinching = false
-                    },
-                RotationGesture()
-                    .onChanged { value in
-                        guard let i = draft.stickers.firstIndex(where: { $0.id == id }) else { return }
-                        let start = stickerTurn[id] ?? draft.stickers[i].rotation
-                        if stickerTurn[id] == nil { stickerTurn[id] = start }
-                        pinching = true
-                        draft.stickers[i].rotation = .radians(start.radians + value.radians)
-                    }
-                    .onEnded { _ in
-                        stickerTurn[id] = nil
-                        pinching = false
-                    }
-            )
-        )
-    }
-
-    /// Share run's screenshot: dragged and pinched behind the stickers, free
-    /// to shrink inside the canvas (the colour shows round it).
-    private func shotGesture(_ size: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture()
-                .onChanged { value in
-                    guard !dragging, !pinching else { return }
-                    let start = shotPan ?? draft.shotOffset
-                    if shotPan == nil { shotPan = start }
-                    draft.shotOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
-                    draft.clampShot(in: size)
-                }
-                .onEnded { _ in shotPan = nil },
-            MagnificationGesture()
-                .onChanged { value in
-                    guard !dragging, !pinching else { return }
-                    let start = shotZoom ?? draft.shotScale
-                    if shotZoom == nil { shotZoom = start }
-                    draft.shotScale = min(max(start * value, 0.3), 5)
-                    draft.clampShot(in: size)
-                }
-                .onEnded { _ in shotZoom = nil }
-        )
-    }
-
-    private func drawGesture(_ size: CGSize) -> some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            .onChanged { value in
-                let point = CGPoint(x: min(max(value.location.x, 0), size.width), y: min(max(value.location.y, 0), size.height))
-                if live == nil {
-                    live = WyrmStudioStroke(points: [point], rgb: inkRGB, width: brush == .beads ? 7 : 5, brush: brush)
-                } else if let last = live?.points.last, hypot(last.x - point.x, last.y - point.y) > 1.5 {
-                    live?.points.append(point)
-                }
-            }
-            .onEnded { _ in
-                if let live { draft.strokes.append(live) }
-                live = nil
-            }
-    }
-
-    private func photoGesture(_ size: CGSize) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture()
-                .onChanged { value in
-                    if dragging || pinching || zoomStart != nil { swipeBlocked = true }
-                    guard !dragging else { return }
-                    let start = panStart ?? draft.photoOffset
-                    if panStart == nil { panStart = start }
-                    draft.photoOffset = CGSize(width: start.width + value.translation.width, height: start.height + value.translation.height)
-                    draft.clampOffset(in: size)
-                }
-                .onEnded { value in
-                    panStart = nil
-                    if !swipeBlocked { swipeLook(value.translation) }
-                    swipeBlocked = false
-                },
-            MagnificationGesture()
-                .onChanged { value in
-                    let start = zoomStart ?? draft.photoScale
-                    if zoomStart == nil { zoomStart = start }
-                    draft.photoScale = min(max(start * value, 1), 5)
-                    draft.clampOffset(in: size)
-                }
-                .onEnded { _ in zoomStart = nil }
-        )
-    }
-
-    /// A video: a swipe across the clip changes its look.
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 20)
-            .onChanged { _ in if dragging || pinching { swipeBlocked = true } }
-            .onEnded { value in
-                if !swipeBlocked { swipeLook(value.translation) }
-                swipeBlocked = false
-            }
-    }
-
-    /// Snapchat's swipe: across the picture, the next look (left) or the last (right).
-    private func swipeLook(_ t: CGSize) {
-        guard tool == .none, draft.video || draft.image != nil, draft.photoScale <= 1.01,
-              abs(t.width) > 72, abs(t.height) < abs(t.width) * 0.6 else { return }
-        let looks = WyrmTrailLooks.all
-        let i = looks.firstIndex(of: draft.look) ?? 0
-        let next = looks[(i + (t.width < 0 ? 1 : looks.count - 1)) % looks.count]
-        draft.look = next
-        UISelectionFeedbackGenerator().selectionChanged()
-        withAnimation(.easeOut(duration: 0.15)) { lookToast = next.name }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.9) {
-            if lookToast == next.name { withAnimation(.easeOut(duration: 0.25)) { lookToast = "" } }
-        }
-    }
-
-    /// An emoji sticker: moved, pinched and turned in place, binned like words.
-    private func emojiGesture(_ id: UUID, _ size: CGSize, bin: CGPoint) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { value in
-                    guard let i = draft.emojis.firstIndex(where: { $0.id == id }) else { return }
-                    let start = emojiDrag[id] ?? draft.emojis[i].center
-                    if emojiDrag[id] == nil { emojiDrag[id] = start }
-                    draft.emojis[i].center = CGPoint(x: min(max(start.x + value.translation.width, 0), size.width),
-                                                     y: min(max(start.y + value.translation.height, 0), size.height))
-                    if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
-                    let near = hypot(draft.emojis[i].center.x - bin.x, draft.emojis[i].center.y - bin.y) < 46
-                    if near != overBin {
-                        overBin = near
-                        if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-                    }
-                }
-                .onEnded { _ in
-                    if overBin { withAnimation(.easeOut(duration: 0.2)) { draft.emojis.removeAll { $0.id == id } } }
-                    emojiDrag[id] = nil
-                    withAnimation(.easeOut(duration: 0.15)) { dragging = false }
-                    overBin = false
-                },
-            SimultaneousGesture(
-                MagnificationGesture()
-                    .onChanged { value in
-                        guard let i = draft.emojis.firstIndex(where: { $0.id == id }) else { return }
-                        let start = emojiZoom[id] ?? draft.emojis[i].scale
-                        if emojiZoom[id] == nil { emojiZoom[id] = start }
-                        pinching = true
-                        draft.emojis[i].scale = min(max(start * value, 0.3), 6)
-                    }
-                    .onEnded { _ in
-                        emojiZoom[id] = nil
-                        pinching = false
-                    },
-                RotationGesture()
-                    .onChanged { value in
-                        guard let i = draft.emojis.firstIndex(where: { $0.id == id }) else { return }
-                        let start = emojiTurn[id] ?? draft.emojis[i].rotation
-                        if emojiTurn[id] == nil { emojiTurn[id] = start }
-                        pinching = true
-                        draft.emojis[i].rotation = .radians(start.radians + value.radians)
-                    }
-                    .onEnded { _ in
-                        emojiTurn[id] = nil
-                        pinching = false
-                    }
-            )
-        )
-    }
-
-    private func textGesture(_ id: UUID, _ size: CGSize, bin: CGPoint) -> some Gesture {
-        SimultaneousGesture(
-            DragGesture(minimumDistance: 6)
-                .onChanged { value in
-                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                    let start = dragStart[id] ?? draft.texts[i].center
-                    if dragStart[id] == nil { dragStart[id] = start }
-                    draft.texts[i].center = CGPoint(x: min(max(start.x + value.translation.width, 0), size.width),
-                                                    y: min(max(start.y + value.translation.height, 0), size.height))
-                    if !dragging { withAnimation(.easeOut(duration: 0.15)) { dragging = true } }
-                    let near = hypot(draft.texts[i].center.x - bin.x, draft.texts[i].center.y - bin.y) < 46
-                    if near != overBin {
-                        overBin = near
-                        if near { UIImpactFeedbackGenerator(style: .medium).impactOccurred() }
-                    }
-                }
-                .onEnded { _ in
-                    if overBin { draft.texts.removeAll { $0.id == id } }
-                    dragStart[id] = nil
-                    withAnimation(.easeOut(duration: 0.15)) { dragging = false }
-                    overBin = false
-                },
-            SimultaneousGesture(
-                MagnificationGesture().onChanged { value in
-                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                    draft.texts[i].scale = min(max(value, 0.4), 5)
-                },
-                RotationGesture().onChanged { value in
-                    guard let i = draft.texts.firstIndex(where: { $0.id == id }) else { return }
-                    draft.texts[i].rotation = value
-                }
-            )
-        )
-    }
-
     /// Free crop: drag an edge to reshape the frame; the photo stays covering it.
     private func freeHandles(_ size: CGSize, maxWidth: CGFloat, maxHeight: CGFloat) -> some View {
+        WyrmFreeHandles(draft: draft, size: size, maxWidth: maxWidth, maxHeight: maxHeight)
+    }
+
+    private func commit(_ done: WyrmStudioText) {
+        var item = done
+        item.text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let i = draft.texts.firstIndex(where: { $0.id == item.id }) {
+            if item.text.isEmpty { draft.texts.remove(at: i) } else { draft.texts[i] = item }
+        } else if !item.text.isEmpty {
+            draft.texts.append(item)
+        }
+        editing = nil
+        tool = .none
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+}
+
+/// Free crop's edges: drag one to reshape the frame; the photo stays covering it.
+private struct WyrmFreeHandles: View {
+    @ObservedObject var draft: WyrmStudioDraft
+    let size: CGSize
+    let maxWidth: CGFloat
+    let maxHeight: CGFloat
+    @State private var cropStart: CGSize?
+
+    var body: some View {
         ZStack {
             ForEach(0..<4, id: \.self) { edge in
                 let horizontal = edge < 2
@@ -1973,20 +1848,6 @@ private struct WyrmStudioEditor: View {
                     }.onEnded { _ in cropStart = nil })
             }
         }
-        .frame(width: size.width, height: size.height)
-    }
-
-    private func commit(_ done: WyrmStudioText) {
-        var item = done
-        item.text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if let i = draft.texts.firstIndex(where: { $0.id == item.id }) {
-            if item.text.isEmpty { draft.texts.remove(at: i) } else { draft.texts[i] = item }
-        } else if !item.text.isEmpty {
-            draft.texts.append(item)
-        }
-        editing = nil
-        tool = .none
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
     }
 }
 

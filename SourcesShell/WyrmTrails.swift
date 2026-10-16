@@ -40,11 +40,12 @@ enum WyrmTrailsFeature {
     /// videos not yet). Android: TRAILS_ENABLED.
     static let enabled = true
 
-    /// Video trails (OM, 2026-10-05): off for now, so nobody can post a video.
-    /// `false` takes the Video page out of the studio's mode bar; the video
-    /// code, the backend route and playback of any video trail stay. Android:
-    /// TRAIL_VIDEO_ENABLED.
-    static let videoEnabled = false
+    /// Video trails (OM, 2026-10-05): off for the releases since 0.18.38, on
+    /// again for the 2026-10-17 test builds of the new studio (OM tests the
+    /// video editor). `false` takes Video out of the studio's modes and the
+    /// hold-to-record shutter; the video code, the backend route and playback
+    /// of any video trail stay. Android: TRAIL_VIDEO_ENABLED.
+    static let videoEnabled = true
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]
@@ -155,6 +156,8 @@ private struct WyrmTrailLike: Decodable { let liked: Bool; let likeCount: Int }
 private struct WyrmTrailMedia: Decodable { let id: String }
 private struct WyrmTrailOK: Decodable {}
 private struct WyrmTrailError: Decodable { let error: String? }
+private struct WyrmVideoUpload: Decodable { let uploadId: String; let partBytes: Int? }
+private struct WyrmVideoReceived: Decodable { let received: Int }
 
 enum WyrmTrailPostPhase: Equatable {
     case idle
@@ -278,10 +281,107 @@ final class WyrmTrailsClient {
         return media.id
     }
 
-    /// A finished clip (`video/mp4`, at most 30 s, 16 MB).
+    /// A finished clip (`video/mp4`, at most 30 s, 16 MB), sent in parts (OM, 2026-10-17).
+    ///
+    /// As one 8 MB request it failed whole at the first glitch of a phone's
+    /// network, around 80%. Now each part goes at its offset; after a failure
+    /// the app waits, asks the server how far it got and carries on from
+    /// there. The progress only moves for parts the server has taken.
     fileprivate func uploadVideo(_ file: URL, token: String, progress: @escaping (Double) -> Void) async throws -> String {
-        let media: WyrmTrailMedia = try await send("/v1/trails/video", method: "PUT", mp4: file, token: token, progress: progress)
-        return media.id
+        let bytes = try Data(contentsOf: file)
+        func open() async throws -> (String, Int) {
+            let body = try JSONSerialization.data(withJSONObject: ["bytes": bytes.count])
+            let (status, data) = try await raw("/v1/trails/video/uploads", method: "POST", body: body,
+                                               contentType: "application/json", token: token)
+            guard status == 200, let opened = try? JSONDecoder().decode(WyrmVideoUpload.self, from: data) else {
+                throw WyrmServiceError.message(Self.friendly(Self.code(status, data)))
+            }
+            return (opened.uploadId, min(max(opened.partBytes ?? 512 * 1024, 64 * 1024), 1024 * 1024))
+        }
+        var (uploadId, part) = try await open()
+        var received = 0
+        var resync = false
+        var failures = 0
+        var reopened = 0
+        progress(0)
+        while true {
+            try Task.checkCancellation()
+            var status = 0
+            var data = Data()
+            if resync {
+                (status, data) = try await raw("/v1/trails/video/uploads/\(uploadId)", method: "GET", body: nil,
+                                               contentType: nil, token: token)
+                if status == 200, let at = try? JSONDecoder().decode(WyrmVideoReceived.self, from: data) {
+                    received = at.received
+                    resync = false
+                    continue
+                }
+            } else if received >= bytes.count {
+                (status, data) = try await raw("/v1/trails/video/uploads/\(uploadId)/finish", method: "POST",
+                                               body: Data("{}".utf8), contentType: "application/json", token: token)
+                if status == 200, let media = try? JSONDecoder().decode(WyrmTrailMedia.self, from: data) { return media.id }
+            } else {
+                let end = min(bytes.count, received + part)
+                (status, data) = try await raw("/v1/trails/video/uploads/\(uploadId)?offset=\(received)", method: "PUT",
+                                               body: bytes.subdata(in: received..<end),
+                                               contentType: "application/octet-stream", token: token)
+                if status == 200, let at = try? JSONDecoder().decode(WyrmVideoReceived.self, from: data) {
+                    received = at.received
+                    failures = 0
+                    progress(Double(received) / Double(bytes.count))
+                    continue
+                }
+            }
+            // The server lost the upload (it restarted): start it again, twice at most.
+            if status == 404 && reopened < 2 {
+                reopened += 1
+                (uploadId, part) = try await open()
+                received = 0
+                resync = false
+                progress(0)
+                continue
+            }
+            // 0 = no answer at all. Anything else that a retry cannot fix ends here.
+            let retryable = status == 0 || status == 408 || status == 409 || status == 429 || (status >= 500 && status != 507)
+            failures += 1
+            guard retryable, failures <= 10 else {
+                throw WyrmServiceError.message(status == 0 ? "Could not reach Wyrm. Check your connection."
+                                                           : Self.friendly(Self.code(status, data)))
+            }
+            try await Task.sleep(nanoseconds: UInt64(1 << min(failures - 1, 3)) * 1_000_000_000)
+            resync = true
+        }
+    }
+
+    /// One request of a video upload: its status and body, status 0 when no answer came.
+    private func raw(_ path: String, method: String, body: Data?, contentType: String?,
+                     token: String) async throws -> (Int, Data) {
+        guard let url = URL(string: Self.base + path) else { throw WyrmServiceError.message("Invalid Wyrm address.") }
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if let contentType { request.setValue(contentType, forHTTPHeaderField: "Content-Type") }
+        do {
+            let data: Data
+            let response: URLResponse
+            if let body {
+                (data, response) = try await session.upload(for: request, from: body)
+            } else {
+                (data, response) = try await session.data(for: request)
+            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            WyrmDiagnostics.record("\(method) \(path) status=\(status)", category: "NETWORK")
+            return (status, data)
+        } catch {
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+            WyrmDiagnostics.record("\(method) \(path) transport failure", category: "NETWORK")
+            return (0, Data())
+        }
+    }
+
+    private static func code(_ status: Int, _ data: Data) -> String {
+        (try? JSONDecoder().decode(WyrmTrailError.self, from: data).error) ?? "HTTP_\(status)"
     }
 
     /// `skin` goes only with `shareSkin` on; the server keeps nothing otherwise.
@@ -451,6 +551,16 @@ final class WyrmTrailsStore: ObservableObject {
     @Published private(set) var loadingMore = false
     @Published private(set) var reachedEnd = false
     @Published private(set) var loaded = false
+    /// The next page failed: the feed's foot offers Try again instead of hanging (OM, 2026-10-17).
+    @Published private(set) var moreFailed = false
+    /// Newer trails found while the feed was open (OM, 2026-10-17, Instagram's
+    /// "New posts" button): the list never moves under the reader's thumb; a
+    /// pill says how many, and a tap puts them on top and goes there.
+    @Published private(set) var fresh: [WyrmTrail] = []
+    /// The page `fresh` came from, used whole when the gap is wider than one page.
+    private var freshPage: WyrmTrailPage?
+    private var checkingNew = false
+    private var fetchedAt = Date.distantPast
     @Published var error = ""
     @Published private(set) var posting: WyrmTrailPostPhase = .idle
     /// The trail being posted, shown at the top of the feed until it lands:
@@ -501,11 +611,57 @@ final class WyrmTrailsStore: ObservableObject {
             cursor = page.nextCursor
             reachedEnd = page.nextCursor == nil
             error = ""
+            moreFailed = false
+            fresh = []
+            freshPage = nil
+            fetchedAt = Date()
             prefetch(page.trails)
             persistFeed()
         } catch is CancellationError {
-        } catch { self.error = message(error) }
+        } catch {
+            self.error = message(error)
+            // Old trails still on screen: say so once instead of nothing.
+            if !trails.isEmpty { toast = "Couldn't refresh Trails" }
+        }
         loaded = true
+    }
+
+    /// A quiet look for newer trails while the feed is open (at most once a
+    /// minute; the feed calls it on open, on return and every minute). Found
+    /// ones wait in `fresh` behind the pill.
+    func checkNew(force: Bool = false) async {
+        guard loaded, !loading, !checkingNew, !trails.isEmpty else { return }
+        guard force || Date().timeIntervalSince(fetchedAt) >= 60 else { return }
+        checkingNew = true
+        defer { checkingNew = false }
+        let token = token()
+        guard let page = try? await Task(operation: { try await WyrmTrailsClient.shared.feed(cursor: nil, author: nil, token: token) }).value
+        else { return }
+        fetchedAt = Date()
+        let known = Set(trails.map(\.id))
+        let newer = Array(page.trails.prefix(while: { !known.contains($0.id) }))
+        guard !newer.isEmpty else { return }
+        freshPage = page
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) { fresh = newer }
+        prefetch(newer)
+    }
+
+    /// The pill's tap: newer trails on top. A gap wider than one page starts the feed again from that page.
+    func showFresh() {
+        guard let page = freshPage else { return }
+        withAnimation(.easeOut(duration: 0.25)) {
+            if fresh.count >= page.trails.count {
+                trails = page.trails
+                cursor = page.nextCursor
+                reachedEnd = page.nextCursor == nil
+                moreFailed = false
+            } else {
+                trails = fresh + trails
+            }
+            fresh = []
+        }
+        freshPage = nil
+        persistFeed()
     }
 
     /// A player's trails for their profile grid, cached per player.
@@ -565,6 +721,10 @@ final class WyrmTrailsStore: ObservableObject {
         cursor = nil
         reachedEnd = false
         loaded = false
+        moreFailed = false
+        fresh = []
+        freshPage = nil
+        fetchedAt = .distantPast
         error = ""
         liking = []
         WyrmTrailFeedPlayer.shared.stop()
@@ -587,18 +747,31 @@ final class WyrmTrailsStore: ObservableObject {
     func loadMoreIfNeeded(after trail: WyrmTrail) async {
         // Three cards before the end, so the next page is there when the thumb gets there.
         guard let at = trails.firstIndex(where: { $0.id == trail.id }), at >= trails.count - 3,
-              !reachedEnd, !loadingMore, !loading, let cursor else { return }
+              !reachedEnd, !loadingMore, !loading, !moreFailed else { return }
+        await loadMore()
+    }
+
+    /// The feed's foot "Try again" after a failed page.
+    func retryMore() async {
+        guard !loadingMore, !loading else { return }
+        moreFailed = false
+        await loadMore()
+    }
+
+    private func loadMore() async {
+        guard let cursor else { return }
         loadingMore = true
         defer { loadingMore = false }
         do {
-            let page = try await WyrmTrailsClient.shared.feed(cursor: cursor, author: nil, token: token())
+            let token = token()
+            let page = try await Task { try await WyrmTrailsClient.shared.feed(cursor: cursor, author: nil, token: token) }.value
             let known = Set(trails.map(\.id))
             trails += page.trails.filter { !known.contains($0.id) }
             self.cursor = page.nextCursor
             reachedEnd = page.nextCursor == nil
             prefetch(page.trails)
         } catch is CancellationError {
-        } catch { self.error = message(error) }
+        } catch { moreFailed = true }
     }
 
     func trail(_ id: String) -> WyrmTrail? {
@@ -698,14 +871,15 @@ final class WyrmTrailsStore: ObservableObject {
 
     /**
      * A video trail (OM, 2026-10-05). The player is back in the feed at once;
-     * then, on the phone, the clip is trimmed and compressed
+     * then, on the phone, the cut (`spec`: pieces, transitions, crop, sound,
+     * 2026-10-17) is made and compressed
      * (`WyrmTrailVideoExport`), sent, its poster sent as a photo and
      * thumbnail, and the trail made. The pending card shows the poster and one
      * progress for the whole way: the export is the first 45%, the clip the
      * next 45%, the poster the rest. `overlays[tier]` is everything drawn on
      * top, at each export size.
      */
-    func postVideo(clip: WyrmTrailClip, startMs: Int64, endMs: Int64, muted: Bool, look: WyrmTrailLook,
+    func postVideo(spec: WyrmTrailEditSpec, look: WyrmTrailLook,
                    adjust: WyrmTrailAdjust, overlays: [UIImage?], poster: UIImage?, caption: String) async -> Bool {
         guard !posting.busy else { return false }
         let words = caption.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -716,21 +890,19 @@ final class WyrmTrailsStore: ObservableObject {
         }
         pendingSkin = nil
         pendingShareSkin = false
-        pendingClip = clip
+        pendingClip = spec.clip
         pendingVideoRetry = { [weak self] in
-            Task { _ = await self?.postVideo(clip: clip, startMs: startMs, endMs: endMs, muted: muted, look: look,
-                                             adjust: adjust, overlays: overlays, poster: poster, caption: caption) }
+            Task { _ = await self?.postVideo(spec: spec, look: look, adjust: adjust, overlays: overlays, poster: poster, caption: caption) }
         }
         posting = .uploading(0)
         var made: URL?
         defer { if let made { try? FileManager.default.removeItem(at: made) } }
         do {
-            let file = try await WyrmTrailVideoExport.export(clip, startMs: startMs, endMs: endMs, muted: muted, look: look,
-                                                             adjust: adjust, overlays: overlays) { value in
+            let file = try await WyrmTrailVideoExport.export(spec, look: look, adjust: adjust, overlays: overlays) { value in
                 Task { @MainActor in if case .uploading = self.posting { self.posting = .uploading(value * 0.45) } }
             }
             made = file
-            let still = poster ?? WyrmTrailFrames.frame(clip, atMs: startMs, longest: 1440)
+            let still = poster ?? WyrmTrailVideoExport.poster(spec, look: look, adjust: adjust) { _ in nil }
             guard let still, let files = await WyrmTrailEncoder.prepare(still) else { throw WyrmTrailVideoError.unreadable }
             posting = .uploading(0.45)
             let token = token()
@@ -1319,14 +1491,24 @@ struct WyrmTrailsFeed: View {
     @Environment(\.scenePhase) private var scenePhase
     @State private var feedHeight: CGFloat = 0
 
+    /// Pull-to-refresh runs; the top bar's own spinner stays out of its way.
+    @State private var pulling = false
+
     var body: some View {
         VStack(spacing: 0) {
             topBar
             ZStack(alignment: .bottom) {
+              ScrollViewReader { reader in
                 ScrollView(showsIndicators: false) {
                     LazyVStack(spacing: 14) {
-                        header
+                        header.id("trails-top")
                         if !store.loaded && store.trails.isEmpty {
+                            // The very first open: what is happening, above the card shapes.
+                            HStack(spacing: 10) {
+                                ProgressView()
+                                Text("Loading trails\u{2026}").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.quiet)
+                            }
+                            .padding(.top, 6)
                             ForEach(0..<3, id: \.self) { _ in WyrmTrailPlaceholder() }
                         } else if store.trails.isEmpty && !store.pendingActive {
                             empty
@@ -1346,9 +1528,11 @@ struct WyrmTrailsFeed: View {
                                     .task { await store.loadMoreIfNeeded(after: trail) }
                             }
                             if store.loadingMore { ProgressView().padding(.vertical, 18) }
-                            if store.reachedEnd && store.trails.count > 3 {
-                                Text("You're all caught up").font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.quiet)
-                                    .padding(.vertical, 18)
+                            if store.moreFailed { moreFailed }
+                            if store.reachedEnd && !store.trails.isEmpty {
+                                caughtUp(showTop: store.trails.count > 2) {
+                                    withAnimation(.easeInOut(duration: 0.45)) { reader.scrollTo("trails-top", anchor: .top) }
+                                }
                             }
                         }
                         if !store.error.isEmpty && store.trails.isEmpty {
@@ -1369,20 +1553,41 @@ struct WyrmTrailsFeed: View {
                         .min { abs($0.value - middle) < abs($1.value - middle) }?.key
                     if WyrmTrailFeedPlayer.shared.activeId != best { WyrmTrailFeedPlayer.shared.activeId = best }
                 }
-                .refreshable { await store.refresh() }
+                .refreshable { pulling = true; await store.refresh(); pulling = false }
+                .overlay(alignment: .top) {
+                    if !store.fresh.isEmpty {
+                        freshPill {
+                            store.showFresh()
+                            withAnimation(.easeInOut(duration: 0.45)) { reader.scrollTo("trails-top", anchor: .top) }
+                        }
+                        .padding(.top, 12)
+                        .transition(.move(edge: .top).combined(with: .opacity))
+                    }
+                }
+              }
             }
         }
         .background(WyrmPaperBackground().ignoresSafeArea())
         .foregroundColor(ATheme.ink)
         .onChange(of: scenePhase) { phase in
-            if phase == .active { WyrmTrailFeedPlayer.shared.resume() } else { WyrmTrailFeedPlayer.shared.pause() }
+            if phase == .active {
+                WyrmTrailFeedPlayer.shared.resume()
+                Task { await store.checkNew() }
+            } else { WyrmTrailFeedPlayer.shared.pause() }
         }
         .onDisappear {
             WyrmTrailFeedPlayer.shared.pause()
             WyrmTrailFeedPlayer.shared.activeId = nil
         }
         .onAppear { store.token = { [weak account] in account?.sessionToken ?? "" } }
-        .task { if !store.loaded { await store.refresh() } }
+        .task { if !store.loaded { await store.refresh() } else { await store.checkNew() } }
+        // A quiet look for newer trails every minute while the feed is open (OM, 2026-10-17).
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 60_000_000_000)
+                await store.checkNew()
+            }
+        }
         .overlay(alignment: .top) { WyrmTrailToast(store: store) }
     }
 
@@ -1428,12 +1633,74 @@ struct WyrmTrailsFeed: View {
                     newButton(large: false).transition(.scale(scale: 0.6).combined(with: .opacity))
                 }
             }
-            Text("Trails").font(.androidWyrm(16, .semibold))
+            HStack(spacing: 8) {
+                Text("Trails").font(.androidWyrm(16, .semibold))
+                // Saved trails on screen while the fresh ones load (not during a pull: that has its own).
+                if store.loading && !store.trails.isEmpty && !pulling { ProgressView().scaleEffect(0.7) }
+            }
         }
         .padding(.horizontal, 16).frame(height: 52)
         .background(ATheme.paper)
         .overlay(Rectangle().fill(ATheme.rule).frame(height: 1), alignment: .bottom)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: store.trails.isEmpty)
+    }
+
+    /// The next page did not come: say so, and let the reader try again (OM, 2026-10-17).
+    private var moreFailed: some View {
+        VStack(spacing: 10) {
+            Text("Couldn't load more trails").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.mute)
+            Button { Task { await store.retryMore() } } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .semibold))
+                    Text("Try again").font(.androidWyrm(13, .bold))
+                }
+                .foregroundColor(ATheme.ink)
+                .padding(.horizontal, 16).frame(height: 34)
+                .background(Capsule().fill(ATheme.card))
+                .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.vertical, 14)
+    }
+
+    /// The end of the feed, Instagram's "You're all caught up" (OM, 2026-10-17).
+    private func caughtUp(showTop: Bool, top: @escaping () -> Void) -> some View {
+        VStack(spacing: 6) {
+            Circle().stroke(ATheme.live, lineWidth: 1.5).frame(width: 44, height: 44)
+                .overlay(Image(systemName: "checkmark").font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.live))
+                .padding(.bottom, 2)
+            Text("You're all caught up").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+            Text("You've seen every trail. New ones show up at the top.").font(.androidWyrm(12.5))
+                .foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+            if showTop {
+                Button(action: top) {
+                    Text("Back to top").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.link)
+                        .padding(.horizontal, 10).padding(.vertical, 6)
+                }
+                .buttonStyle(.plain)
+                .padding(.top, 4)
+            }
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 20).padding(.vertical, 18)
+    }
+
+    /// "N new trails": newer ones wait here, the list never jumps by itself (Instagram's New posts button).
+    private func freshPill(_ tap: @escaping () -> Void) -> some View {
+        let count = store.fresh.count
+        let label = count == 1 ? "1 new trail" : count >= 10 ? "New trails" : "\(count) new trails"
+        return Button(action: tap) {
+            HStack(spacing: 6) {
+                Image(systemName: "arrow.up").font(.system(size: 12, weight: .bold))
+                Text(label).font(.androidWyrm(13, .bold))
+            }
+            .foregroundColor(ATheme.onInk)
+            .padding(.horizontal, 16).frame(height: 36)
+            .background(Capsule().fill(ATheme.ink))
+            .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
+        }
+        .buttonStyle(.plain)
     }
 
     private func newButton(large: Bool) -> some View {
