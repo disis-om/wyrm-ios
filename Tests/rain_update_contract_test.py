@@ -9,7 +9,6 @@ S = ROOT / "SourcesShell"
 rain = (S / "WyrmRain.swift").read_text(encoding="utf-8")
 page = (S / "WyrmRainPage.swift").read_text(encoding="utf-8")
 sync = (S / "WyrmAccountSync.swift").read_text(encoding="utf-8")
-perf = (S / "WyrmPerformance.swift").read_text(encoding="utf-8")
 main = (ROOT / "SourcesOriginal/Main.m").read_text(encoding="utf-8")
 engine = ROOT / "build-original-source/app/src"
 header = (engine / "game/user_settings.h").read_text(encoding="utf-8")
@@ -28,14 +27,13 @@ assert "groups: c.previewGroups, colors: c.previewColors" in page
 wire = rain.split("private func sendCharactersNow", 1)[1] if "private func sendCharactersNow" in rain else ""
 assert wire and "colors" not in wire.split("\n    }", 1)[0]
 assert '("wyrm.ios.device-migrations.", .keep)' in sync
-assert sync.index("applyShared(shared)", sync.index("private func tryRestore")) < sync.index("applyUpdateDefaults()", sync.index("private func tryRestore"))
+# Settings › Performance is gone (2026-10-18): no Performance/Max migration, and no mode in the shared document.
+assert "performanceMode\": W" not in sync and "WyrmPerformance" not in sync
 assert '"keysWhiteV1": true' in sync and 'doc["keysWhiteV1"] as? Bool != true' in sync
 assert '"keysGreyFillV1": true' in sync and 'doc["keysGreyFillV1"] as? Bool != true' in sync
 assert 'uint8_t reserved_grey_alignment[3];' in header
 assert 'bytes_read >= ext_at + grey_at + 1' in settings
 assert 'ext->key_fill[i] = 9' in settings and 'x->keys_grey_fill_v1 = true' in settings
-assert 'd.set(Self.limitMax, forKey: Self.limitKey)' in perf
-assert "limit == Self.limitMax ? displayMax" in perf
 assert "UIPanGestureRecognizer" in page and "gesture.location(in: nil)" in page
 assert "landscapePresentation ? dy : dx" in main and "landscapePresentation ? -dx : dy" in main
 assert "wantedWidth * fit" in main and "frame.width / 428" in page

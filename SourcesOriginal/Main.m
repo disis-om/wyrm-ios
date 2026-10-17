@@ -30,16 +30,15 @@ static unsigned gameplay_frames;
 static NSString* wyrm_engine_log_path;
 
 /*
- * Settings › Performance (OM, 2026-10-01). The engine is driven by SDL's
+ * The display at its fastest, always, as the reference client (OM,
+ * 2026-10-18; Settings › Performance is gone). The engine is driven by SDL's
  * display link, which SDL 3.4 runs at the screen's maximumFramesPerSecond
  * divided by the interval. With CADisableMinimumFrameDurationOnPhone in
- * Info.plist that maximum is 120 on a ProMotion iPhone (Apple: "Optimizing
- * iPhone and iPad apps to support ProMotion displays"), so the cap is an
- * interval: 120/1, 120/2 = 60, 120/4 = 30. Under the opaque SwiftUI pages
- * (Home, not the Skin postcard) the engine draws nothing (main.c's render
- * gate), so the link drops to 30 there and only the mailboxes tick.
+ * Info.plist that maximum is 120 on a ProMotion iPhone, so a match draws at
+ * interval 1. Under the opaque SwiftUI pages (Home, not the Skin postcard)
+ * the engine draws nothing (main.c's render gate), so the link drops to 30
+ * there and only the mailboxes tick.
  */
-static int frame_cap;           /* 0 = the display's maximum */
 static int frame_interval = 1;
 static bool frame_idle;
 static void apply_frame_interval(void);
@@ -692,7 +691,7 @@ static int display_max_fps(void) {
 static void apply_frame_interval(void) {
   if (!engine.wnd) return;
   int max = display_max_fps();
-  int target = frame_idle ? 30 : (frame_cap > 0 ? frame_cap : max);
+  int target = frame_idle ? 30 : max;
   if (target > max) target = max;
   if (target < 1) target = 1;
   int interval = (int)lround((double)max / (double)target);
@@ -706,13 +705,6 @@ static void apply_frame_interval(void) {
   keep_frames_while_tracking();
   SDL_Log("Wyrm performance: display %d Hz, %s, interval %d = %d FPS", max,
           frame_idle ? "idle under SwiftUI" : "drawing", interval, max / interval);
-}
-
-void WyrmIOSSetFrameCap(int fps) {
-  dispatch_async(dispatch_get_main_queue(), ^{
-    frame_cap = fps > 0 ? fps : 0;
-    apply_frame_interval();
-  });
 }
 
 int WyrmIOSDisplayMaxFPS(void) { return display_max_fps(); }

@@ -68,9 +68,6 @@ void WyrmIOSToggleEditorLeaderboard(void);
 void WyrmIOSSetEditorBare(bool bare);
 /* Snake-look preview (OM, 2026-10-05): the bare editor's Normal or Assist. */
 void WyrmIOSSetEditorAssist(bool on);
-/* Settings › Performance (Main.m): the engine's frame cap (0 = the display's
-   maximum) and that maximum (120 on ProMotion, else 60). Main thread. */
-void WyrmIOSSetFrameCap(int fps);
 /* Phase 3 H: the HUD performance chip, "" for none (HomeMailbox.inc). */
 void WyrmIOSSetPerformanceChip(const char* text);
 /* Settings > Modes > Assist: the assist laser in joystick mode (length is a

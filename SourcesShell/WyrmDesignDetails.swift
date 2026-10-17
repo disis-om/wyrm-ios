@@ -33,7 +33,6 @@ struct WyrmDetailHost: View {
         case .modes: WyrmModesPage(engine: engine, close: close)
         case .bot: WyrmBotPage(engine: engine, close: close)
         case .food: WyrmFoodPage(engine: engine, close: close)
-        case .performance: WyrmPerformancePage(close: close)
         case .playControls: WyrmControlsWorkspace(engine: engine, close: close)
         case .playModes: WyrmModesPage(engine: engine, parent: "Play", close: close)
         case .snakeyRain: WyrmRainPage(engine: engine, close: close)

@@ -838,8 +838,6 @@ final class WyrmShellHost: NSObject {
         WyrmNearOriginalStore.shared.publish()
         // Controls › Play orientation: the engine surface's turn.
         WyrmPlayOrientation.shared.publish()
-        // Settings › Performance: the saved mode reaches the engine's display link.
-        _ = WyrmPerformance.shared
         // Custom arenas: the player's id and the arenas that get it.
         WyrmCustomArenas.shared.start()
         WyrmKeyboardController.shared.install()

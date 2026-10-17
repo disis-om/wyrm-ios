@@ -56,7 +56,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.joystick-laser.", .sync),        // Modes › Assist: joystick laser on, length
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.device-migrations.", .keep),      // one-time defaults survive log out
-        ("wyrm.ios.performance.", .sync),           // Settings › Performance: mode, FPS limit
+        ("wyrm.ios.performance.", .wipe),           // retired 2026-10-18 (Settings › Performance removed): log out clears an old copy
         ("wyrm.ios.custom-arena.", .sync),          // custom arenas: the player's id (also shared, 2026-10-13)
         ("wyrm.ios.keyboard.", .sync),
         ("wyrm.ios.developer-mode", .sync),
@@ -206,7 +206,6 @@ final class WyrmAccountSync: ObservableObject {
             // Common to every platform (OM, 2026-10-01): the same on Android and iOS.
             "joystickLaser": ["on": WyrmJoystickLaserStore.shared.on, "length": WyrmJoystickLaserStore.shared.length],
             "playPortrait": WyrmPlayOrientation.shared.portrait,
-            "performanceMode": WyrmPerformance.shared.mode.rawValue,
             // Home › Near Original (OM, 2026-10-02): the same switch on every platform.
             "nearOriginal": WyrmNearOriginalStore.shared.on,
             // Controls › play feel (OM, 2026-10-05): the same on every platform.
@@ -354,9 +353,8 @@ final class WyrmAccountSync: ObservableObject {
         if let centre = doc["joystickKnobCentre"] as? Bool { d.set(centre, forKey: WyrmPlayFeelStore.knobCentreKey) }
         // Custom arenas (OM, 2026-10-13): a missing or bad id keeps the phone's.
         WyrmCustomArenas.shared.adopt(doc["customArenaId"])
-        if let mode = doc["performanceMode"] as? String, WyrmPerformance.Mode(rawValue: mode) != nil {
-            d.set(mode, forKey: "wyrm.ios.performance.mode")
-        }
+        // "performanceMode" (Settings › Performance, removed 2026-10-18): an old
+        // document may still carry it; it is skipped.
         // The orientation swaps layouts, so it waits for the restored layout (tryRestore).
         sharedPortraitPending = doc["playPortrait"] as? Bool
     }
@@ -391,7 +389,6 @@ final class WyrmAccountSync: ObservableObject {
         WyrmLookStore.shared.reloadFromDefaults()
         WyrmArrowSkinStore.shared.reloadFromDefaults()
         WyrmKeyboardController.shared.reloadFromDefaults()
-        WyrmPerformance.shared.reloadFromDefaults()
         WyrmJoystickLaserStore.shared.reloadFromDefaults()
         WyrmTeamHudStore.shared.reloadFromDefaults()
         WyrmPlayFeelStore.shared.reloadFromDefaults()
@@ -464,7 +461,6 @@ final class WyrmAccountSync: ObservableObject {
         for _ in 0..<40 where engine?.settings.isEmpty ?? true { try? await Task.sleep(nanoseconds: 150_000_000) }
         if let platform = (body["platform"] as? [String: Any])?["doc"] as? [String: Any] { await applyPlatform(platform) }
         if let shared = (body["shared"] as? [String: Any])?["doc"] as? [String: Any] { applyShared(shared) }
-        WyrmPerformance.shared.applyUpdateDefaults()
         reloadStores()
         // The account's common orientation: turn (and swap layouts) once the
         // engine has the restored layout.
@@ -488,7 +484,6 @@ final class WyrmAccountSync: ObservableObject {
             Task { await restore(token: token, playerID: playerID) }
             return
         }
-        WyrmPerformance.shared.applyUpdateDefaults()
         ready = true
         Task {
             try? await Task.sleep(nanoseconds: 6_000_000_000)

@@ -26,6 +26,9 @@ targets:
       base: &engineSettings
         PRODUCT_NAME: WyrmOriginalEngine
         GCC_C_LANGUAGE_STANDARD: gnu11
+        # -O3 like the reference client (OM, 2026-10-18); no -ffast-math
+        # (Eyes Back and the tag rope are checked number for number vs NTL).
+        GCC_OPTIMIZATION_LEVEL: "3"
         CLANG_CXX_LANGUAGE_STANDARD: c++17
         GCC_PREPROCESSOR_DEFINITIONS:
           - $(inherited)
@@ -34,7 +37,7 @@ targets:
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
           - MG_ENABLE_IPV6=1
-          - APP_VERSION=\"2.1.2\"
+          - APP_VERSION=\"2.1.3\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -104,8 +107,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "2.1.2"
-        CURRENT_PROJECT_VERSION: "132"
+        MARKETING_VERSION: "2.1.3"
+        CURRENT_PROJECT_VERSION: "133"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

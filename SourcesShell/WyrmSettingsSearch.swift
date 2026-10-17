@@ -166,18 +166,6 @@ enum WyrmSettingsIndex {
                               page: "Modes · Assist", route: .modes, keywords: "laser line aim joystick assist helper length guide") {
                 AnyView(WyrmJoystickLaserSearchRow())
             },
-            WyrmSettingsEntry(id: "app.performance", title: "Performance mode", detail: "Auto, Balanced or Performance: frame rate, heat and battery",
-                              page: "Performance", route: .performance,
-                              keywords: "fps frame rate heat hot battery smooth lag 120 hz promotion refresh balanced auto") {
-                AnyView(WSValueRow(title: "Performance mode", value: WyrmPerformance.shared.summary, first: true))
-            },
-            WyrmSettingsEntry(id: "app.fps-limit", title: "Frame limit", detail: "Auto, 30, 60 or this display's maximum",
-                              page: "Performance", route: .performance, keywords: "fps cap limit frame rate 30 60 120") {
-                AnyView(WSEnumBlock(title: "Frame limit", detail: "Auto lets the mode decide",
-                                    options: WyrmPerformance.shared.limitChoices.map(WyrmPerformance.shared.limitLabel),
-                                    selected: WyrmPerformance.shared.limitChoices.firstIndex(of: WyrmPerformance.shared.limit) ?? 0,
-                                    first: true) { WyrmPerformance.shared.chooseLimit(WyrmPerformance.shared.limitChoices[$0]) })
-            },
         ]
         result += [
             WyrmSettingsEntry(id: "app.theme", title: "Theme", detail: "Paper, dark and colour appearances", page: "Accessibility",

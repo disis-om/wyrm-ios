@@ -60,8 +60,6 @@ final class WyrmTour: ObservableObject {
                      body: "Display: scores, names, minimap and text sizes. Controls: steering, boost and the zoom bar. On-screen buttons: which ones show and how they fire."),
         WyrmTourStep(place: .settings, anchor: "settings.help", title: "Playing help",
                      body: "Modes: Normal or Assist, helper lines and arena colours. Bot: when it circles and how wide it swings."),
-        WyrmTourStep(place: .settings, anchor: "settings.performance", title: "Performance",
-                     body: "Auto: full speed while the phone is cool, slower when it warms up or Low Power Mode is on. Balanced: a steady 60 FPS, cooler and easier on the battery. Performance: the highest frame rate and least delay; the phone runs warmer."),
         WyrmTourStep(place: .settings, anchor: "settings.account", title: "Account",
                      body: "Profile: name, username, photo and bio. Notifications: choose what reaches you. Privacy: who can reach you and what is stored."),
         WyrmTourStep(place: .settings, anchor: "settings.support", title: "Help & feedback",
