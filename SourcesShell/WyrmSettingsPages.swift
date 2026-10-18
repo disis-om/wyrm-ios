@@ -813,6 +813,8 @@ struct WyrmModesPage: View {
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
     /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
     private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_mine", "spine_width", "snake_shadow", "hide_cosmetics"]
+    /// Boost has its own card (OM, 2026-10-18); its strength slider is gone.
+    private static let boostIDs: Set<String> = ["show_boost", "boost_type", "boost_own"]
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
@@ -851,7 +853,10 @@ struct WyrmModesPage: View {
         let dot = rows.first { local($0) == "show_crosshair" }
         let dotSize = rows.first { local($0) == "head_dot_size" }
         let dotColour = rows.first { local($0) == "head_dot_color" }
-        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" && !Self.snakeIDs.contains(local(row)) }
+        let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" && !Self.snakeIDs.contains(local(row)) && !Self.boostIDs.contains(local(row)) }
+        let boostOn = rows.first { local($0) == "show_boost" }
+        let boostType = rows.first { local($0) == "boost_type" }
+        let boostOwn = engine.settings.first { $0.id == "\(group).boost_own" }
         let renderMode = rows.first { local($0) == "render_mode" }
         let spine = rows.first { local($0) == "spine" }
         let spineWidth = rows.first { local($0) == "spine_width" }
@@ -893,6 +898,25 @@ struct WyrmModesPage: View {
             }
             .animation(.easeInOut(duration: 0.22), value: spine?.enabled == true)
             WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake; its width goes from hidden to the snake's own. Snake shadow is the original app's shadow under every snake.")
+
+            // Boost (OM, 2026-10-18): on/off, its style, and whose boost shows.
+            if let boostOn {
+                WSSectionLabel("Boost")
+                WSCard {
+                    WSTypedRow(setting: boostOn, engine: engine)
+                    if boostOn.enabled {
+                        if let boostType { WSTypedRow(setting: boostType, engine: engine) }
+                        if let boostOwn {
+                            WSEnumBlock(title: "Show boost on", detail: "Mine shows only your own boost",
+                                        options: ["Mine", "Everyone"], selected: boostOwn.enabled ? 0 : 1) { index in
+                                engine.write(id: boostOwn.id, values: [index == 0 ? 1 : 0])
+                            }
+                            .wyrmSettingAnchor(boostOwn.id)
+                        }
+                    }
+                }
+                .animation(.easeInOut(duration: 0.22), value: boostOn.enabled)
+            }
 
             WSSectionLabel("Arena colours")
             WSCard { WSRows(rows: colours, engine: engine) }
@@ -1883,7 +1907,12 @@ struct WyrmLayoutEditor: View {
     struct Options: Identifiable {
         let id: String; let title: String; let sliders: [Slider]; var zoomChoice = false
         var colours: [ColourRow] = []
+        /// Tabs under the shared sliders (the chat window, OM 2026-10-18).
+        var tabs: [Tab] = []
     }
+    /// One popup tab: its own sliders and colours; `chatTab` is what the arena shows.
+    struct Tab { let label: String; let chatTab: Int; var sliders: [Slider] = []; var colours: [ColourRow] = [] }
+    @State var optionsTab = 0
 
     private func teamHudSlider(_ label: String, _ key: String) -> Slider {
         Slider(label: label, id: "teamhud.\(key)", range: teamHud.range(key))
@@ -2024,12 +2053,21 @@ struct WyrmLayoutEditor: View {
                                     Slider(label: "OPACITY", id: "layout.chat_opacity", range: 0.05...1),
                                     teamHudSlider("BACK", "chat_panel"),
                                     teamHudSlider("WIDTH", "chat_width"), teamHudSlider("HEIGHT", "chat_height")],
-                          colours: [ColourRow(label: "PLAYER NAME", key: "chat_name"),
-                                    ColourRow(label: "MESSAGES", key: "chat_text"),
-                                    // The ONLINE tab's rows (OM, 2026-10-14); picking
-                                    // one shows that tab in the window.
-                                    ColourRow(label: "ONLINE PLAYER NAME", key: "online_name"),
-                                    ColourRow(label: "ONLINE USERNAME AND SERVER", key: "online_data")]),
+                          // One tab per chat tab and one for the folded button
+                          // (OM, 2026-10-18); the arena shows the tab being set.
+                          tabs: [Tab(label: "Team", chatTab: 0,
+                                     colours: [ColourRow(label: "PLAYER NAME", key: "chat_name"),
+                                               ColourRow(label: "MESSAGES", key: "chat_text")]),
+                                 Tab(label: "Global", chatTab: 1,
+                                     colours: [ColourRow(label: "PLAYER NAME", key: "global_name"),
+                                               ColourRow(label: "MESSAGES", key: "global_text")]),
+                                 Tab(label: "Online", chatTab: 2,
+                                     colours: [ColourRow(label: "PLAYER NAME", key: "online_name"),
+                                               ColourRow(label: "USERNAME AND SERVER", key: "online_data")]),
+                                 Tab(label: "Button", chatTab: 3,
+                                     sliders: [teamHudSlider("SIZE", "chatbtn_scale"), teamHudSlider("OPACITY", "chatbtn_opacity")],
+                                     colours: [ColourRow(label: "TEXT AND BORDER", key: "chatbtn_label"),
+                                               ColourRow(label: "FILL", key: "chatbtn_fill")])]),
                   fallback: HUD.chat.fallback) {
                 RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: chatSize.width, height: chatSize.height)
             }
@@ -2215,7 +2253,49 @@ struct WyrmLayoutEditor: View {
                 if options.sliders.isEmpty && !options.zoomChoice {
                     Text("POSITION ONLY").font(.androidWyrm(11)).tracking(1).foregroundColor(ATheme.quiet)
                 }
-                ForEach(options.sliders, id: \.id) { slider in
+                ForEach(options.sliders, id: \.id) { slider in sliderBlock(slider) }
+                if options.zoomChoice, let orientation = engine.setting("controls.zoom_orientation") {
+                    Text("ORIENTATION").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
+                    WSSegmented(options: ["Horizontal", "Vertical"], selected: orientation.index == 1 ? 1 : 0) {
+                        engine.write(orientation, values: [Double($0)])
+                    }
+                }
+                if !options.tabs.isEmpty {
+                    let shown = options.tabs[min(max(optionsTab, 0), options.tabs.count - 1)]
+                    WSSegmented(options: options.tabs.map(\.label), selected: min(max(optionsTab, 0), options.tabs.count - 1)) { pick in
+                        optionsTab = pick
+                        WyrmIOSSetChatTab(Int32(options.tabs[pick].chatTab))
+                    }
+                    ForEach(shown.sliders, id: \.id) { slider in sliderBlock(slider) }
+                    ForEach(shown.colours, id: \.key) { row in colourBlock(row) }
+                }
+                ForEach(options.colours, id: \.key) { row in colourBlock(row) }
+                HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(ATheme.ink).padding(8) }
+            }
+            .padding(18)
+            .background(GeometryReader { row in
+                Color.clear.preference(key: PopupHeightKey.self, value: row.size.height)
+            })
+            }
+            .frame(width: 300)
+            .frame(height: min(max(popupHeight, 1), max(120, geo.size.height - 28)))
+            .onPreferenceChange(PopupHeightKey.self) { popupHeight = $0 }
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
+            .onAppear {
+                // The chat window opens on its TEAM tab; closing shows the window again.
+                if !options.tabs.isEmpty { optionsTab = 0; WyrmIOSSetChatTab(Int32(options.tabs[0].chatTab)) }
+            }
+            .onDisappear { if !options.tabs.isEmpty { WyrmIOSSetChatTab(-1) } }
+        }
+        }
+        .transition(.opacity.combined(with: .scale(scale: 0.96)))
+    }
+
+    /// One slider row of the long-press card.
+    @ViewBuilder private func sliderBlock(_ slider: Slider) -> some View {
                     Text(slider.label).font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
                     let fallback = slider.id.hasPrefix("layout.key_") ? engine.value(slider.id.hasSuffix("opacity") ? "keys.opacity" : "keys.key_scale", 1)
                         : slider.id.hasPrefix("layout.") && slider.id.hasSuffix("opacity") ? engine.value("controls.opacity", 1) : 1
@@ -2233,14 +2313,10 @@ struct WyrmLayoutEditor: View {
                                                   }),
                                    in: slider.range, step: slider.whole ? 1 : 0.01)
                         .tint(ATheme.ink)
-                }
-                if options.zoomChoice, let orientation = engine.setting("controls.zoom_orientation") {
-                    Text("ORIENTATION").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
-                    WSSegmented(options: ["Horizontal", "Vertical"], selected: orientation.index == 1 ? 1 : 0) {
-                        engine.write(orientation, values: [Double($0)])
-                    }
-                }
-                ForEach(options.colours, id: \.key) { row in
+    }
+
+    /// One colour row of the long-press card.
+    @ViewBuilder private func colourBlock(_ row: ColourRow) -> some View {
                     let selected = Int(row.settingID.map { engine.value($0, 0) } ?? teamHud.value(row.key))
                     let whiteDefault = row.label == "TEXT AND BORDER"
                     let greyFill = row.label == "FILL"
@@ -2263,24 +2339,6 @@ struct WyrmLayoutEditor: View {
                                 }
                         }
                     }
-                }
-                HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(ATheme.ink).padding(8) }
-            }
-            .padding(18)
-            .background(GeometryReader { row in
-                Color.clear.preference(key: PopupHeightKey.self, value: row.size.height)
-            })
-            }
-            .frame(width: 300)
-            .frame(height: min(max(popupHeight, 1), max(120, geo.size.height - 28)))
-            .onPreferenceChange(PopupHeightKey.self) { popupHeight = $0 }
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
-        }
-        }
-        .transition(.opacity.combined(with: .scale(scale: 0.96)))
     }
 
     /// Puts back every position, size and opacity the editor could have moved.

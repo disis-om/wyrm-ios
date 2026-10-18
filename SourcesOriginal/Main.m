@@ -518,7 +518,14 @@ bool WyrmIOSGraphicsLost(void) {
    lifted (OM, 2026-10-14; Android runs the engine on its own thread and never
    had this). The link is added to the common modes too, which include the
    tracking mode. SDL makes a new link whenever the frame interval changes or
-   the app returns, so the current one is checked again every 30 frames. */
+   the app returns, so the current one is checked again every 30 frames.
+
+   It is added every time (OM, 2026-10-18: the Rain panel still froze the
+   match). The old check skipped a link whose address equalled the last one,
+   but SDL frees the old link and the new one is often allocated at the same
+   address, so the match's new link (interval 2 -> 1 on entering the arena)
+   stayed in the default mode only. Adding a link to a mode it is already in
+   changes nothing; the address is kept only to log a new link once. */
 static const void* common_mode_link;
 static void keep_frames_while_tracking(void) {
   UIViewController* sdl = engine_container.engineController;
@@ -529,8 +536,9 @@ static void keep_frames_while_tracking(void) {
   } @catch (NSException* error) {
     return;
   }
-  if (![link isKindOfClass:CADisplayLink.class] || (__bridge const void*)link == common_mode_link) return;
+  if (![link isKindOfClass:CADisplayLink.class]) return;
   [(CADisplayLink*)link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+  if ((__bridge const void*)link == common_mode_link) return;
   common_mode_link = (__bridge const void*)link;
   SDL_Log("Wyrm frames: display link also runs while UIKit tracks touches");
 }

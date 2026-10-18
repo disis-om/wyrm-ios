@@ -45,7 +45,7 @@ enum WyrmTrailsFeature {
     /// video editor). `false` takes Video out of the studio's modes and the
     /// hold-to-record shutter; the video code, the backend route and playback
     /// of any video trail stay. Android: TRAIL_VIDEO_ENABLED.
-    static let videoEnabled = true
+    static let videoEnabled = false // off again (OM, 2026-10-18)
 
     /// Alert kinds that belong to Trails.
     static let alertKinds: Set<String> = ["trail_like", "trail_reply"]
