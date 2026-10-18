@@ -2007,6 +2007,7 @@ struct WyrmCropFrac: Equatable {
 /// as Android's TrailCrop: the box's longer side stays >= a fifth of the photo
 /// (the editor's 5x zoom), Free keeps the output between 1:2 and 2:1, the
 /// other choices keep their shape.
+@MainActor
 enum WyrmCropMath {
     static let minFraction: CGFloat = 0.2
     static let freeMin: CGFloat = 0.5
