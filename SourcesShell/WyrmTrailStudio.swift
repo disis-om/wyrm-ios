@@ -626,6 +626,76 @@ final class WyrmStudioDraft: ObservableObject {
         photoOffset = CGSize(width: min(max(photoOffset.width, -maxX), maxX), height: min(max(photoOffset.height, -maxY), maxY))
     }
 
+    /// Share run / Share skin crop (OM, 2026-10-18), like a photo's: the whole
+    /// board (a square as big as the canvas's long side, the canvas in its
+    /// middle) is shown with a box over it; the box becomes the new frame and
+    /// everything on it moves and scales with it. Built from what the canvas
+    /// held when cropping started, so the chips' own resets change nothing.
+    func shareCropSnapshot(_ size: CGSize) -> WyrmShareCropSnapshot {
+        WyrmShareCropSnapshot(size: size, texts: texts, emojis: emojis, stickers: stickers, strokes: strokes,
+                              shotRect: shotMode && run?.screenshot != nil ? shotRect(in: size) : nil)
+    }
+
+    func shareBoard(_ snap: WyrmShareCropSnapshot) -> UIImage {
+        let side = max(max(snap.size.width, snap.size.height), 1)
+        let k = 1080 / side
+        let out = CGSize(width: 1080, height: 1080)
+        let format = UIGraphicsImageRendererFormat.default()
+        format.scale = 1
+        format.opaque = true
+        return UIGraphicsImageRenderer(size: out, format: format).image { context in
+            let cg = context.cgContext
+            WyrmStudioPalette.ui(background).setFill()
+            cg.fill(CGRect(origin: .zero, size: out))
+            cg.translateBy(x: (side - snap.size.width) / 2 * k, y: (side - snap.size.height) / 2 * k)
+            if shotMode, let shot = run?.screenshot {
+                let r = shotRect(in: snap.size)
+                shot.draw(in: CGRect(x: r.minX * k, y: r.minY * k, width: r.width * k, height: r.height * k))
+            }
+            for sticker in stickers {
+                cg.saveGState()
+                cg.translateBy(x: sticker.center.x * k, y: sticker.center.y * k)
+                cg.rotate(by: CGFloat(sticker.rotation.radians))
+                cg.scaleBy(x: sticker.scale * k, y: sticker.scale * k)
+                drawSticker(sticker, in: cg)
+                cg.restoreGState()
+            }
+            paintTop(cg, k: k, multiply: true)
+        }
+    }
+
+    /// The canvas as a box on its board.
+    func shareStart(_ snap: WyrmShareCropSnapshot) -> WyrmCropFrac {
+        let side = max(max(snap.size.width, snap.size.height), 1)
+        let l = (side - snap.size.width) / 2 / side
+        let t = (side - snap.size.height) / 2 / side
+        return WyrmCropFrac(l: l, t: t, r: l + snap.size.width / side, b: t + snap.size.height / side)
+    }
+
+    func applyShareCrop(_ snap: WyrmShareCropSnapshot, _ c: WyrmCropFrac, width: CGFloat, maxHeight: CGFloat) {
+        let side = max(max(snap.size.width, snap.size.height), 1)
+        let bx = c.l * side - (side - snap.size.width) / 2
+        let by = c.t * side - (side - snap.size.height) / 2
+        let bw = c.w * side, bh = c.h * side
+        guard bw > 1, bh > 1 else { return }
+        if aspect == .free { freeRatio = min(max(bw / bh, 0.5), 2) }
+        let r = ratio
+        let nh = min(width / r, maxHeight)
+        let nw = nh * r
+        let k = nw / bw
+        func move(_ p: CGPoint) -> CGPoint { CGPoint(x: (p.x - bx) * k, y: (p.y - by) * k) }
+        texts = snap.texts.map { (item: WyrmStudioText) -> WyrmStudioText in var t = item; t.center = move(t.center); t.scale *= k; return t }
+        emojis = snap.emojis.map { (item: WyrmStudioEmoji) -> WyrmStudioEmoji in var e = item; e.center = move(e.center); e.scale *= k; return e }
+        stickers = snap.stickers.map { (item: WyrmStudioSticker) -> WyrmStudioSticker in var st = item; st.center = move(st.center); st.scale *= k; return st }
+        strokes = snap.strokes.map { (item: WyrmStudioStroke) -> WyrmStudioStroke in var st = item; st.points = st.points.map(move); st.width *= k; return st }
+        if let rect = snap.shotRect, let shot = run?.screenshot, shot.size.width > 0, shot.size.height > 0 {
+            let rw = rect.width * k, rh = rect.height * k
+            let cover = max(nw / shot.size.width, nh / shot.size.height)
+            shotScale = rw / (shot.size.width * cover)
+            shotOffset = CGSize(width: (rect.minX - bx) * k + rw / 2 - nw / 2, height: (rect.minY - by) * k + rh / 2 - nh / 2)
+        }
+    }
+
     /// The finished picture, 1440 px wide, drawn by the same code as the editor.
     func render(canvas size: CGSize) -> UIImage {
         let k = 1440 / max(size.width, 1)
@@ -1334,13 +1404,15 @@ private struct WyrmStudioEditor: View {
             let origin = CGPoint(x: (proxy.size.width - size.width) / 2, y: (stageHeight - size.height) / 2)
             // A photo, or Share run's screenshot, is cropped on its own stage
             // (WyrmTrailCropStage, 2026-10-18).
-            let cropStage = tool == .crop && video == nil && draft.cropSource != nil
+            let cropStage = tool == .crop && video == nil && draft.image != nil && !draft.sharing
+            // Share run / Share skin: the same cropper over the whole board (OM, 2026-10-18).
+            let shareCrop = tool == .crop && video == nil && draft.sharing
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     canvas(size)
                         .frame(width: size.width, height: size.height)
                         .offset(x: origin.x, y: origin.y)
-                    if tool != .looks && tool != .cover && !cropStage {
+                    if tool != .looks && tool != .cover && !cropStage && !shareCrop {
                         WyrmStageTouches(
                             down: { p, count in touchDown(CGPoint(x: p.x - origin.x, y: p.y - origin.y), count, size) },
                             move: { p, pan, scale, turn, count in
@@ -1348,13 +1420,18 @@ private struct WyrmStudioEditor: View {
                             },
                             up: { all in if all { touchUp(size) } })
                     }
-                    if tool == .crop && video == nil && !cropStage {
+                    if tool == .crop && video == nil && !cropStage && !shareCrop {
                         freeHandles(size, maxWidth: width, maxHeight: stageHeight - 12)
                             .frame(width: size.width, height: size.height)
                             .offset(x: origin.x, y: origin.y)
                     }
                     if cropStage {
                         WyrmTrailCropStage(draft: draft, canvasSize: size, width: width, maxHeight: stageHeight - 12,
+                                           resetTick: cropReset)
+                            .frame(width: proxy.size.width, height: stageHeight)
+                    }
+                    if shareCrop {
+                        WyrmShareCropStage(draft: draft, canvasSize: size, width: width, maxHeight: stageHeight - 12,
                                            resetTick: cropReset)
                             .frame(width: proxy.size.width, height: stageHeight)
                     }
@@ -1760,7 +1837,7 @@ private struct WyrmStudioEditor: View {
                     }.padding(.horizontal, 16)
                 }
                 HStack(spacing: 8) {
-                    if draft.cropSource != nil {
+                    if draft.cropSource != nil || draft.sharing {
                         WyrmStudioChip(label: "Reset", selected: false) { cropReset += 1 }
                     }
                     WyrmStudioChip(label: "Done", selected: true) { tool = .none }
@@ -2210,6 +2287,11 @@ private struct WyrmTrailCropStage: View {
     let width: CGFloat
     let maxHeight: CGFloat
     let resetTick: Int
+    /// Share run / Share skin (OM, 2026-10-18): the whole board to crop, the box
+    /// to start from, and where each box goes.
+    var board: UIImage? = nil
+    var start: WyrmCropFrac? = nil
+    var onSet: ((WyrmCropFrac) -> Void)? = nil
     @State private var crop: WyrmCropFrac?
     @State private var handle: WyrmCropMath.Handle = .none
     @State private var holding = false
@@ -2220,19 +2302,19 @@ private struct WyrmTrailCropStage: View {
 
     var body: some View {
         GeometryReader { geo in
-            if let image = draft.cropSource, image.size.width > 0, image.size.height > 0 {
+            if let image = board ?? draft.cropSource, image.size.width > 0, image.size.height > 0 {
                 let k = image.size.width / image.size.height
                 let pad: CGFloat = 28
                 let fit = min(max(geo.size.width - pad * 2, 1) / image.size.width, max(geo.size.height - pad * 2, 1) / image.size.height)
                 let dw = image.size.width * fit, dh = image.size.height * fit
                 let dl = (geo.size.width - dw) / 2, dt = (geo.size.height - dh) / 2
                 let minW = min(64 / dw, 1), minH = min(64 / dh, 1)
-                let box = crop ?? WyrmCropMath.fromDraft(draft, canvasSize)
+                let box = crop ?? start ?? WyrmCropMath.fromDraft(draft, canvasSize)
                 let frame = CGRect(x: dl + box.l * dw, y: dt + box.t * dh, width: box.w * dw, height: box.h * dh)
                 ZStack(alignment: .topLeading) {
                     Color.black
                     // Looks belong to a photo; the screenshot is drawn as it is.
-                    Image(uiImage: draft.image != nil ? (draft.lookedImage ?? image) : image).resizable()
+                    Image(uiImage: board == nil && draft.image != nil ? (draft.lookedImage ?? image) : image).resizable()
                         .frame(width: dw, height: dh)
                         .offset(x: dl, y: dt)
                     Canvas { ctx, _ in
@@ -2293,7 +2375,7 @@ private struct WyrmTrailCropStage: View {
                         up: { all in if all { holding = false; handle = .none } })
                 }
                 .onAppear {
-                    crop = WyrmCropMath.fromDraft(draft, canvasSize)
+                    crop = start ?? WyrmCropMath.fromDraft(draft, canvasSize)
                     lastAspect = draft.aspect
                     lastReset = resetTick
                 }
@@ -2305,7 +2387,7 @@ private struct WyrmTrailCropStage: View {
 
     private func place(_ next: WyrmCropFrac) {
         crop = next
-        WyrmCropMath.apply(draft, next, width: width, maxHeight: maxHeight)
+        if let onSet { onSet(next) } else { WyrmCropMath.apply(draft, next, width: width, maxHeight: maxHeight) }
     }
 
     /// A new shape from the chips, or Reset: the largest box of that shape.
@@ -2341,5 +2423,49 @@ private struct WyrmTrailCropStage: View {
         if nearB && inX { return .bottom }
         if f.contains(p) { return .inside }
         return .none
+    }
+}
+
+/// What a Share crop starts from (OM, 2026-10-18): the canvas and everything on it.
+struct WyrmShareCropSnapshot {
+    let size: CGSize
+    let texts: [WyrmStudioText]
+    let emojis: [WyrmStudioEmoji]
+    let stickers: [WyrmStudioSticker]
+    let strokes: [WyrmStudioStroke]
+    let shotRect: CGRect?
+}
+
+/// Share run / Share skin crop: the photo cropper over the whole board; the
+/// chosen box becomes the frame when Crop closes (Done or another tool).
+private struct WyrmShareCropStage: View {
+    @ObservedObject var draft: WyrmStudioDraft
+    let canvasSize: CGSize
+    let width: CGFloat
+    let maxHeight: CGFloat
+    let resetTick: Int
+    @State private var snapshot: WyrmShareCropSnapshot?
+    @State private var board: UIImage?
+    @State private var chosen: WyrmCropFrac?
+
+    var body: some View {
+        ZStack {
+            Color.black
+            if let snapshot, let board {
+                WyrmTrailCropStage(draft: draft, canvasSize: canvasSize, width: width, maxHeight: maxHeight,
+                                   resetTick: resetTick, board: board, start: draft.shareStart(snapshot),
+                                   onSet: { chosen = $0 })
+            }
+        }
+        .onAppear {
+            guard snapshot == nil else { return }
+            let snap = draft.shareCropSnapshot(canvasSize)
+            snapshot = snap
+            board = draft.shareBoard(snap)
+            chosen = draft.shareStart(snap)
+        }
+        .onDisappear {
+            if let snapshot, let chosen { draft.applyShareCrop(snapshot, chosen, width: width, maxHeight: maxHeight) }
+        }
     }
 }

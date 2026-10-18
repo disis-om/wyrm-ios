@@ -585,6 +585,10 @@ func wsFormat(_ setting: EngineSetting) -> String {
     case "bool": return setting.enabled ? "On" : "Off"
     case "enum": return setting.options.indices.contains(setting.index) ? setting.options[setting.index] : ""
     case "int": return "\(Int(setting.number.rounded()))"
+    case "float" where setting.id == "arrow.sensitivity":
+        // Arrow Sensitivity shows 0-100% (OM, 2026-10-18).
+        let pct = Int((setting.number * 100).rounded())
+        return pct == 0 ? "Same as original slither" : "\(pct)%"
     case "float": return setting.id == "general.death_hold"
         ? String(format: "%.2f s", setting.number) : String(format: "%.2f", setting.number)
     default: return ""
