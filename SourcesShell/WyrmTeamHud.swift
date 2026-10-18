@@ -27,14 +27,22 @@ final class WyrmTeamHudStore: ObservableObject {
                        "lb_width", "lb_height",
                        // The chat window's ONLINE tab (OM, 2026-10-14): name and
                        // "@username · server" colours, appended likewise.
-                       "online_name", "online_data"]
-    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0]
+                       "online_name", "online_data",
+                       // GLOBAL's own colours and the folded chat button drawn like
+                       // the keys: label + border, fill (9 = grey), size, opacity
+                       // (OM, 2026-10-18), appended likewise.
+                       "global_name", "global_text",
+                       "chatbtn_label", "chatbtn_fill", "chatbtn_scale", "chatbtn_opacity"]
+    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0,
+                                             0, 0, 0, 9, 1, 0.9]
     private static let ranges: [ClosedRange<Double>] = [0.65...1.60, 0.05...1, 220...900, 120...800, 0...8, 0...8,
                                                         240...1000, 150...900, 0...8, 0...8,
                                                         0...1, 0...1, 0...1,
                                                         0...8,
                                                         0.7...2.2, 1...2.2,
-                                                        0...8, 0...8]
+                                                        0...8, 0...8,
+                                                        0...8, 0...8,
+                                                        0...8, 0...9, 0.6...2.5, 0.1...1]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
     /// White, yellow, cyan, green, pink and orange take dark text; black, red light (OM, 2026-10-14).
@@ -70,12 +78,11 @@ final class WyrmTeamHudStore: ObservableObject {
         let key = id.hasPrefix("teamhud.") ? String(id.dropFirst(8)) : id
         guard let index = Self.keys.firstIndex(of: key), next.isFinite else { return }
         var clamped = min(max(next, Self.ranges[index].lowerBound), Self.ranges[index].upperBound)
-        if key.hasSuffix("_name") || key.hasSuffix("_data") || key.hasSuffix("_text") { clamped = clamped.rounded() }
+        if key.hasSuffix("_name") || key.hasSuffix("_data") || key.hasSuffix("_text")
+            || key == "chatbtn_label" || key == "chatbtn_fill" { clamped = clamped.rounded() }
         values[index] = clamped
         UserDefaults.standard.set(clamped, forKey: "wyrm.ios.team-hud.\(key)")
         publish()
-        // An ONLINE colour shows the online players in the window.
-        if key.hasPrefix("online_") { WyrmIOSSetChatTab(2) }
     }
 
     /// Called once at launch: the saved look reaches the engine.
@@ -96,6 +103,11 @@ final class WyrmTeamHudStore: ObservableObject {
             let stored = (d.object(forKey: "wyrm.ios.team-hud.\(Self.keys[index])") as? NSNumber)?.doubleValue
             guard let stored, stored.isFinite else { return Self.defaults[index] }
             return min(max(stored, Self.ranges[index].lowerBound), Self.ranges[index].upperBound)
+        }
+        // GLOBAL used TEAM's colours until 2026-10-18: keep what was chosen.
+        for (global, team) in [("global_name", "chat_name"), ("global_text", "chat_text")]
+        where d.object(forKey: "wyrm.ios.team-hud.\(global)") == nil {
+            if let g = Self.keys.firstIndex(of: global), let t = Self.keys.firstIndex(of: team) { values[g] = values[t] }
         }
     }
 }

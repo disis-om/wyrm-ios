@@ -4810,3 +4810,31 @@ print("Engine 2026-10-14: arena chat tabs")
 import engine_chat_panel_2026_10_14 as _chatpanel_1014
 _chatpanel_1014.apply(OUTPUT, label="engine chat panel 2026-10-14 (iOS)", tree="ios")
 print("Engine 2026-10-14: arena chat panel round 2")
+
+# Beads at the size they are drawn (OM, 2026-10-18): the game atlas gets mip
+# levels 0..4 and its own sampler, so a zoomed-out crowd no longer reads the
+# full atlas for every bead. Same text as Wyrm Android's tree
+# (Scripts/engine_bead_mips_2026_10_18.py).
+import engine_bead_mips_2026_10_18 as _beadmips_1018
+_beadmips_1018.apply(OUTPUT, label="engine bead mips 2026-10-18 (iOS)")
+print("Engine 2026-10-18: bead atlas mipmaps")
+
+# Snake names readable on every floor (OM, 2026-10-18): the floor's mean colour
+# picks a light or dark name with a soft shadow of the other tone. Same text as
+# Wyrm Android's tree (Scripts/engine_names_2026_10_18.py).
+import engine_names_2026_10_18 as _names_1018
+_names_1018.apply(OUTPUT, label="engine names on any floor 2026-10-18 (iOS)")
+print("Engine 2026-10-18: snake names on any floor")
+
+# Light boost glow and "Show boost on: Mine / Everyone" (OM, 2026-10-18). Same
+# text as Wyrm Android's tree (Scripts/engine_boost_2026_10_18.py).
+import engine_boost_2026_10_18 as _boost_1018
+_boost_1018.apply(OUTPUT, label="engine boost 2026-10-18 (iOS)")
+print("Engine 2026-10-18: light boost glow, boost on mine only")
+
+# Chat window (OM, 2026-10-18): GLOBAL colours of its own and a folded chat
+# button drawn like the on-screen keys. Same text as Wyrm Android's tree
+# (Scripts/engine_chat_button_2026_10_18.py).
+import engine_chat_button_2026_10_18 as _chatbtn_1018
+_chatbtn_1018.apply(OUTPUT, label="engine chat button 2026-10-18 (iOS)")
+print("Engine 2026-10-18: GLOBAL colours, chat button like the keys")
