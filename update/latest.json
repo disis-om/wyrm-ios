@@ -1,11 +1,11 @@
 {
   "schemaVersion": 1,
-  "version": "2.1.0",
-  "build": 130,
+  "version": "2.3.0",
+  "build": 135,
   "channel": "latest",
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.1.0-build-130/Wyrm-2.1.0-build-130.ipa",
-  "ipaSize": 48238094,
-  "sha256": "a89b0af978cec7566b474514beb06028257a0d09e7d96ab7bd9959a4cd2059ba",
-  "publishedAt": "2026-10-14T17:52:59Z",
-  "notes": "Fixed a known bug."
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.3.0-build-135/Wyrm-2.3.0-build-135.ipa",
+  "ipaSize": 55169489,
+  "sha256": "8ced8c194abefbe4462055a4537a6a8e8bb737015bc9c6d8684719cef8faf719",
+  "publishedAt": "2026-10-18T19:16:06Z",
+  "notes": "## Wyrm iOS 2.3.0 (135)\n\n### ADDED\n- Shed: a new page that makes fresh skins for you from a short recipe.\n- 19 new arena backgrounds.\n- Arena chat now has Team, Global and Online tabs.\n- The folded chat button looks like your on-screen keys. Set its size, opacity, text and fill colour in Arrange arena UI.\n- Global chat has its own name and message colours.\n- New Boost choice in Modes: show the boost glow on your snake only, or on everyone's.\n- Arrow Sensitivity (Controls \u00e2\u20ac\u00ba Customise arrow movement): 0% moves like the original slither, 100% moves the arrow furthest for a small finger move.\n- Trails: a new camera and gallery, and a better editor.\n- Trails feed tells you when new trails arrive and when you are all caught up.\n\n### CHANGED\n- Much smoother frame rate when the arena is full of long snakes.\n- The game always runs at your screen's fastest refresh rate.\n- Snake names are easy to read on every arena background.\n- The boost glow is lighter.\n- Photos in Trails, Share run and Share skin now use a proper cropper: the whole picture with a box you move, resize and zoom.\n- Video trails are turned off for now.\n\n### REMOVED\n- Settings \u00e2\u20ac\u00ba Performance (no longer needed).\n- The Boost strength slider.\n- The Arrow lag slider (replaced by Sensitivity).\n\n### FIXED\n- The game no longer freezes while you touch the Rain panel.\n- The Seafoam background no longer overflows its tile in the background picker."
 }
