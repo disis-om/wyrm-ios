@@ -4,7 +4,7 @@ With Controls > Customise arrow movement on, the arrow's own lag slider is gone
 and a Sensitivity slider (0..1) multiplies how far the arrow moves for a finger
 move: 0 = 1x, exactly the original's; full = ARROW_SENS_MAX times (a tiny move
 sends the arrow across the screen); the gain grows exponentially in between so
-the slider feels even. Steering follows the arrow itself, as before, so a
+the slider feels even. Full is the first build's half-way (sqrt 12, OM). Steering follows the arrow itself, as before, so a
 higher sensitivity also turns faster. The drawn arrow follows at the
 original's 0.6 a frame, made frame-rate free. With Customise off nothing
 changes (the original motion). Start distance stays.
@@ -46,8 +46,8 @@ PAIRS = {
 """, """    /* Sensitivity replaced Arrow lag (OM, 2026-10-18); `smoothness` stays in
        the file, unread. */
     {"arrow.sensitivity", "controls.arrow", "Sensitivity",
-     "How far the arrow moves for a finger move. 0 moves like the original; "
-     "full sends it across the screen with a tiny move.",
+     "How far the arrow moves for a finger move. 0% moves like the original "
+     "slither; 100% moves it furthest.",
      SETTING_FLOAT, 0.0f, 1.0f, NULL, OWNER_SETTINGS,
      SETTINGS_FIELD(ext.arrow_sens)},
 """),
@@ -58,8 +58,9 @@ PAIRS = {
   state->arrow_vec[0] += x - state->arrow_last[0];
   state->arrow_vec[1] += y - state->arrow_last[1];
 """, """/* Sensitivity (OM, 2026-10-18): the finger's move times this. 0 on the
-   slider = 1x, the original; full = ARROW_SENS_MAX; exponential between. */
-#define ARROW_SENS_MAX 12.0f
+   slider = 1x, the original; full (100%) = ARROW_SENS_MAX, which is what the
+   first build's half-way was (sqrt 12); exponential between. */
+#define ARROW_SENS_MAX 3.4641f
 static float arrow_gain(tenv* env) {
   if (arrow_original_motion()) return 1.0f;
   float s = clampf(env->usr->usrs.ext.arrow_sens, 0.0f, 1.0f);
