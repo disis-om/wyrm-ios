@@ -70,7 +70,7 @@ final class WyrmAdjustPreview: ObservableObject {
     @MainActor
     static func subject(for id: String, engine: WyrmShellStore) -> Subject? {
         switch id {
-        case "arrow.size", "arrow.separation", "arrow.smoothness", "arrow.color", "app.arrow-brightness": return .arrow
+        case "arrow.size", "arrow.separation", "arrow.sensitivity", "arrow.color", "app.arrow-brightness": return .arrow
         case "controls.joystick_size": return .joystick
         case "controls.boost_size": return .boost
         case "controls.zoom_length": return .zoom

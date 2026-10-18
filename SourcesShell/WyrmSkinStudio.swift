@@ -840,15 +840,19 @@ struct WyrmSkinRoot: View {
                         background = item.id; apply(background: item.id)
                     } label: {
                         VStack(alignment: .leading, spacing: 8) {
-                            ZStack {
-                                // Black is the floor itself: true black, as assist mode draws it.
-                                RoundedRectangle(cornerRadius: 13).fill(item.id == 1 ? ATheme.paper : (item.id == 22 ? Color.black : ATheme.ink.opacity(0.05)))
-                                if let image = textures.backgrounds[item.id] {
-                                    Image(decorative: image, scale: 1).resizable().scaledToFill()
-                                } else if item.id == 1 {
-                                    Image(systemName: "circle.slash").foregroundColor(ATheme.quiet)
+                            // Black is the floor itself: true black, as assist mode draws it.
+                            // The tile's size comes from the grid; a wide floor (Seafoam is
+                            // 2:1) fills it as an overlay and never widens the cell.
+                            RoundedRectangle(cornerRadius: 13).fill(item.id == 1 ? ATheme.paper : (item.id == 22 ? Color.black : ATheme.ink.opacity(0.05)))
+                                .frame(maxWidth: .infinity).frame(height: 78)
+                                .overlay {
+                                    if let image = textures.backgrounds[item.id] {
+                                        Image(decorative: image, scale: 1).resizable().scaledToFill()
+                                    } else if item.id == 1 {
+                                        Image(systemName: "circle.slash").foregroundColor(ATheme.quiet)
+                                    }
                                 }
-                            }.frame(height: 78).clipShape(RoundedRectangle(cornerRadius: 13))
+                                .clipShape(RoundedRectangle(cornerRadius: 13))
                             HStack { Text(item.label).font(.androidWyrm(10.5, .semibold)).lineLimit(1); Spacer(); if background == item.id { Image(systemName: "checkmark.circle.fill").font(.system(size: 13)) } }
                         }.padding(8).background(ATheme.card.opacity(0.92)).cornerRadius(16)
                             .overlay(RoundedRectangle(cornerRadius: 16).stroke(background == item.id ? ATheme.ink : ATheme.rule, lineWidth: background == item.id ? 2 : 1))

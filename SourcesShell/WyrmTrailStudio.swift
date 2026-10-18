@@ -406,6 +406,9 @@ final class WyrmStudioDraft: ObservableObject {
     }
 
     var sharing: Bool { run != nil || skinOnly }
+    /// The picture the cropper works on: the photo, or Share run's screenshot
+    /// (OM, 2026-10-18); nil for a canvas or Share skin.
+    var cropSource: UIImage? { image ?? (sharing && shotMode ? run?.screenshot : nil) }
     var video: Bool { mode == .video }
 
     var ratio: CGFloat {
@@ -1329,8 +1332,9 @@ private struct WyrmStudioEditor: View {
             let height = min(width / draft.ratio, stageHeight - 12)
             let size = CGSize(width: height * draft.ratio, height: height)
             let origin = CGPoint(x: (proxy.size.width - size.width) / 2, y: (stageHeight - size.height) / 2)
-            // A photo is cropped on its own stage (WyrmTrailCropStage, 2026-10-18).
-            let cropStage = tool == .crop && draft.image != nil && video == nil && !draft.sharing
+            // A photo, or Share run's screenshot, is cropped on its own stage
+            // (WyrmTrailCropStage, 2026-10-18).
+            let cropStage = tool == .crop && video == nil && draft.cropSource != nil
             VStack(spacing: 0) {
                 ZStack(alignment: .topLeading) {
                     canvas(size)
@@ -1344,7 +1348,7 @@ private struct WyrmStudioEditor: View {
                             },
                             up: { all in if all { touchUp(size) } })
                     }
-                    if tool == .crop && draft.aspect == .free && video == nil && draft.image == nil {
+                    if tool == .crop && video == nil && !cropStage {
                         freeHandles(size, maxWidth: width, maxHeight: stageHeight - 12)
                             .frame(width: size.width, height: size.height)
                             .offset(x: origin.x, y: origin.y)
@@ -1748,13 +1752,15 @@ private struct WyrmStudioEditor: View {
                                     draft.aspect = aspect
                                     draft.photoScale = 1
                                     draft.photoOffset = .zero
+                                    draft.shotScale = 1
+                                    draft.shotOffset = .zero
                                 }
                             }
                         }
                     }.padding(.horizontal, 16)
                 }
                 HStack(spacing: 8) {
-                    if draft.image != nil && !draft.sharing {
+                    if draft.cropSource != nil {
                         WyrmStudioChip(label: "Reset", selected: false) { cropReset += 1 }
                     }
                     WyrmStudioChip(label: "Done", selected: true) { tool = .none }
@@ -1827,7 +1833,10 @@ private struct WyrmStudioEditor: View {
     }
 }
 
-/// Free crop's edges: drag one to reshape the frame; the photo stays covering it.
+/// The frame's crop when there is no picture (a canvas, Share skin): the same
+/// look as the photo cropper (OM, 2026-10-18), a white frame with corner
+/// brackets and edge bars. On Free, the edges and corners reshape the frame
+/// (1:2 to 2:1); the other shapes come from the chips.
 private struct WyrmFreeHandles: View {
     @ObservedObject var draft: WyrmStudioDraft
     let size: CGSize
@@ -1836,32 +1845,68 @@ private struct WyrmFreeHandles: View {
     @State private var cropStart: CGSize?
 
     var body: some View {
+        let free = draft.aspect == .free
         ZStack {
-            ForEach(0..<4, id: \.self) { edge in
-                let horizontal = edge < 2
-                Capsule().fill(Color.white)
-                    .frame(width: horizontal ? 6 : 42, height: horizontal ? 42 : 6)
-                    .shadow(color: .black.opacity(0.35), radius: 3)
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
-                    .position(x: edge == 0 ? 0 : edge == 1 ? size.width : size.width / 2,
-                              y: edge == 2 ? 0 : edge == 3 ? size.height : size.height / 2)
-                    .gesture(DragGesture().onChanged { value in
-                        let start = cropStart ?? size
-                        if cropStart == nil { cropStart = start }
-                        var w = start.width, h = start.height
-                        switch edge {
-                        case 0: w = start.width - value.translation.width * 2
-                        case 1: w = start.width + value.translation.width * 2
-                        case 2: h = start.height - value.translation.height * 2
-                        default: h = start.height + value.translation.height * 2
-                        }
-                        w = min(max(w, 120), maxWidth)
-                        h = min(max(h, 120), maxHeight)
-                        draft.freeRatio = min(max(w / h, 0.5), 2)
-                        draft.clampOffset(in: CGSize(width: h * draft.freeRatio, height: h))
-                    }.onEnded { _ in cropStart = nil })
+            Canvas { ctx, _ in
+                ctx.stroke(Path(CGRect(origin: .zero, size: size)), with: .color(.white.opacity(0.9)), lineWidth: 1.5)
+                let bar: CGFloat = 3
+                let o = bar / 2
+                let arm = min(22, min(size.width, size.height) / 2)
+                let marks: [(CGFloat, CGFloat, CGFloat, CGFloat)] = [(0, 0, 1, 1), (size.width, 0, -1, 1),
+                                                                     (size.width, size.height, -1, -1), (0, size.height, 1, -1)]
+                var corners = Path()
+                for (x, y, sx, sy) in marks {
+                    corners.move(to: CGPoint(x: x + sx * arm, y: y + sy * o))
+                    corners.addLine(to: CGPoint(x: x + sx * o, y: y + sy * o))
+                    corners.addLine(to: CGPoint(x: x + sx * o, y: y + sy * arm))
+                }
+                ctx.stroke(corners, with: .color(.white), style: StrokeStyle(lineWidth: bar, lineCap: .square))
+                if free {
+                    let half = min(12, min(size.width, size.height) / 4)
+                    let w = size.width, h = size.height
+                    var edges = Path()
+                    edges.move(to: CGPoint(x: w / 2 - half, y: o)); edges.addLine(to: CGPoint(x: w / 2 + half, y: o))
+                    edges.move(to: CGPoint(x: w / 2 - half, y: h - o)); edges.addLine(to: CGPoint(x: w / 2 + half, y: h - o))
+                    edges.move(to: CGPoint(x: o, y: h / 2 - half)); edges.addLine(to: CGPoint(x: o, y: h / 2 + half))
+                    edges.move(to: CGPoint(x: w - o, y: h / 2 - half)); edges.addLine(to: CGPoint(x: w - o, y: h / 2 + half))
+                    ctx.stroke(edges, with: .color(.white), style: StrokeStyle(lineWidth: bar, lineCap: .round))
+                }
+            }
+            .shadow(color: .black.opacity(0.35), radius: 3)
+            .allowsHitTesting(false)
+            if free {
+                // 0 left, 1 right, 2 top, 3 bottom, 4... the corners (left/top,
+                // right/top, right/bottom, left/bottom).
+                ForEach(0..<8, id: \.self) { grip in
+                    gripView(grip)
+                }
             }
         }
+    }
+
+    private func gripView(_ grip: Int) -> some View {
+        let left = grip == 0 || grip == 4 || grip == 7
+        let right = grip == 1 || grip == 5 || grip == 6
+        let top = grip == 2 || grip == 4 || grip == 5
+        let bottom = grip == 3 || grip == 6 || grip == 7
+        return Color.clear
+            .frame(width: 44, height: 44).contentShape(Rectangle())
+            .position(x: left ? 0 : right ? size.width : size.width / 2,
+                      y: top ? 0 : bottom ? size.height : size.height / 2)
+            .gesture(DragGesture().onChanged { value in
+                let start = cropStart ?? size
+                if cropStart == nil { cropStart = start }
+                // The frame stays centred, so each side moves twice the finger.
+                var w = start.width, h = start.height
+                if left { w = start.width - value.translation.width * 2 }
+                if right { w = start.width + value.translation.width * 2 }
+                if top { h = start.height - value.translation.height * 2 }
+                if bottom { h = start.height + value.translation.height * 2 }
+                w = min(max(w, 120), maxWidth)
+                h = min(max(h, 120), maxHeight)
+                draft.freeRatio = min(max(w / h, 0.5), 2)
+                draft.clampOffset(in: CGSize(width: h * draft.freeRatio, height: h))
+            }.onEnded { _ in cropStart = nil })
     }
 }
 
@@ -1993,7 +2038,7 @@ private struct WyrmStudioTextEditor: View {
 
 // MARK: - Photo cropper (OM, 2026-10-18)
 
-/// The crop box as fractions of the photo (0...1). Android twin: TrailCrop.kt.
+/// The crop box as fractions of the photo (0...1). Android twin: PhotoCrop.kt.
 struct WyrmCropFrac: Equatable {
     var l: CGFloat, t: CGFloat, r: CGFloat, b: CGFloat
     var w: CGFloat { r - l }
@@ -2004,7 +2049,7 @@ struct WyrmCropFrac: Equatable {
 
 /// The usual phone cropper, written into the draft's frame shape, zoom and pan
 /// so the editor, the overlays and the export keep their numbers. Same rules
-/// as Android's TrailCrop: the box's longer side stays >= a fifth of the photo
+/// as Android PhotoCrop: the box's longer side stays >= a fifth of the photo
 /// (the editor's 5x zoom), Free keeps the output between 1:2 and 2:1, the
 /// other choices keep their shape.
 @MainActor
@@ -2022,10 +2067,10 @@ enum WyrmCropMath {
         var corner: Bool { self == .topLeft || self == .topRight || self == .bottomRight || self == .bottomLeft }
     }
 
-    /// The part of the photo a canvas of `size` shows now.
+    /// The part of the picture a canvas of `size` shows now.
     static func fromDraft(_ draft: WyrmStudioDraft, _ size: CGSize) -> WyrmCropFrac {
-        guard draft.image != nil, size.width > 0, size.height > 0 else { return full }
-        let r = draft.photoRect(in: size)
+        guard draft.cropSource != nil, size.width > 0, size.height > 0 else { return full }
+        let r = draft.image != nil ? draft.photoRect(in: size) : draft.shotRect(in: size)
         guard r.width > 0, r.height > 0 else { return full }
         let c = WyrmCropFrac(l: min(max(-r.minX / r.width, 0), 1), t: min(max(-r.minY / r.height, 0), 1),
                              r: min(max((size.width - r.minX) / r.width, 0), 1), b: min(max((size.height - r.minY) / r.height, 0), 1))
@@ -2044,7 +2089,7 @@ enum WyrmCropMath {
 
     /// Writes `c` into the draft for a canvas laid out as the editor lays it out.
     static func apply(_ draft: WyrmStudioDraft, _ c: WyrmCropFrac, width: CGFloat, maxHeight: CGFloat) {
-        guard let image = draft.image, image.size.width > 0, image.size.height > 0, c.w > 0, c.h > 0 else { return }
+        guard let image = draft.cropSource, image.size.width > 0, image.size.height > 0, c.w > 0, c.h > 0 else { return }
         let iw = image.size.width, ih = image.size.height
         if draft.aspect == .free { draft.freeRatio = min(max(c.w * iw / (c.h * ih), freeMin), freeMax) }
         let ratio = draft.ratio
@@ -2053,9 +2098,16 @@ enum WyrmCropMath {
         let fill = max(w / iw, h / ih)
         let s = min(max(min(w / (iw * fill * c.w), h / (ih * fill * c.h)), 1), 5)
         let pw = iw * fill * s, ph = ih * fill * s
-        draft.photoScale = s
-        draft.photoOffset = CGSize(width: pw * (0.5 - c.cx), height: ph * (0.5 - c.cy))
-        draft.clampOffset(in: CGSize(width: w, height: h))
+        let offset = CGSize(width: pw * (0.5 - c.cx), height: ph * (0.5 - c.cy))
+        if draft.image != nil {
+            draft.photoScale = s
+            draft.photoOffset = offset
+            draft.clampOffset(in: CGSize(width: w, height: h))
+        } else {
+            // The screenshot covers the canvas the same way (shotRect).
+            draft.shotScale = s
+            draft.shotOffset = offset
+        }
     }
 
     static func moved(_ c: WyrmCropFrac, _ dx: CGFloat, _ dy: CGFloat) -> WyrmCropFrac {
@@ -2168,7 +2220,7 @@ private struct WyrmTrailCropStage: View {
 
     var body: some View {
         GeometryReader { geo in
-            if let image = draft.image, image.size.width > 0, image.size.height > 0 {
+            if let image = draft.cropSource, image.size.width > 0, image.size.height > 0 {
                 let k = image.size.width / image.size.height
                 let pad: CGFloat = 28
                 let fit = min(max(geo.size.width - pad * 2, 1) / image.size.width, max(geo.size.height - pad * 2, 1) / image.size.height)
@@ -2179,7 +2231,8 @@ private struct WyrmTrailCropStage: View {
                 let frame = CGRect(x: dl + box.l * dw, y: dt + box.t * dh, width: box.w * dw, height: box.h * dh)
                 ZStack(alignment: .topLeading) {
                     Color.black
-                    Image(uiImage: draft.lookedImage ?? image).resizable()
+                    // Looks belong to a photo; the screenshot is drawn as it is.
+                    Image(uiImage: draft.image != nil ? (draft.lookedImage ?? image) : image).resizable()
                         .frame(width: dw, height: dh)
                         .offset(x: dl, y: dt)
                     Canvas { ctx, _ in
