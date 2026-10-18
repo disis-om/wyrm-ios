@@ -4,7 +4,7 @@ import SwiftUI
 /// `ui/PlayFeel.kt` (PlayFeelStore), same meaning.
 ///
 /// - customArrow: on (the default) the arrow moves with the player's own start
-///   distance and lag; off it moves exactly like slither's (Main.as: start
+///   distance and sensitivity; off it moves exactly like slither's (Main.as: start
 ///   distance, 0.6 catch-up a frame, the 260-unit release drift). Near
 ///   Original always moves like slither's.
 /// - lookAhead: slither's look ahead: the camera sits ahead of the snake

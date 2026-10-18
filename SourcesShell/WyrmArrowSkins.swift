@@ -187,10 +187,10 @@ struct WyrmArrowSettingsCard: View {
         let colour = engine.setting("arrow.color")
         let size = engine.setting("arrow.size")
         let others = engine.settings.filter { $0.group == "controls.arrow" && !["arrow.style", "arrow.color", "arrow.size"].contains($0.id) }
-        // Customise arrow movement (OM, 2026-10-05): the start distance and lag
+        // Customise arrow movement (OM, 2026-10-05): the start distance and sensitivity
         // are the player's while it is on; off, they fold away and the arrow
         // moves exactly like slither's.
-        let movementIDs = ["arrow.separation", "arrow.smoothness"]
+        let movementIDs = ["arrow.separation", "arrow.sensitivity"]
         let movement = others.filter { movementIDs.contains($0.id) }
         let rest = others.filter { !movementIDs.contains($0.id) }
         WSCard {
@@ -214,7 +214,7 @@ struct WyrmArrowSettingsCard: View {
                         value: store.brightness, range: 0.2...1, adjusting: .arrow) { store.setBrightness($0) }
             if store.skin < 0, let colour { WSColourRow(setting: colour, engine: engine) }
             WSBoolRow(title: "Customise arrow movement",
-                      detail: feel.customArrow ? "Your own start distance and lag."
+                      detail: feel.customArrow ? "Your own start distance and sensitivity."
                           : "Off: the arrow moves exactly like slither's, from the start distance to the drift.",
                       on: feel.customArrow) { next in
                 withAnimation(.easeInOut(duration: 0.25)) { feel.setCustomArrow(next) }

@@ -4838,3 +4838,9 @@ print("Engine 2026-10-18: light boost glow, boost on mine only")
 import engine_chat_button_2026_10_18 as _chatbtn_1018
 _chatbtn_1018.apply(OUTPUT, label="engine chat button 2026-10-18 (iOS)")
 print("Engine 2026-10-18: GLOBAL colours, chat button like the keys")
+
+# Arrow Sensitivity in place of Arrow lag (OM, 2026-10-18). Same text as Wyrm
+# Android's tree (Scripts/engine_arrow_sensitivity_2026_10_18.py).
+import engine_arrow_sensitivity_2026_10_18 as _arrowsens_1018
+_arrowsens_1018.apply(OUTPUT, label="engine arrow sensitivity 2026-10-18 (iOS)")
+print("Engine 2026-10-18: arrow Sensitivity")

@@ -1861,9 +1861,20 @@ struct WyrmBuildNotesPage: View {
         }
     }
 
-    /// This release (2.1.0, OM 2026-10-14).
+    /// Everything since the last release, 2.1.0 (2.3.0, OM 2026-10-18).
     static let notes: [String] = [
-        "Fixed a known bug.",
+        "Smoother frame rate when the arena is crowded with long snakes.",
+        "Settings › Performance is gone: the game always runs at your screen's best refresh rate.",
+        "Snake names are easy to read on every arena background.",
+        "A lighter boost glow, and a new choice in Modes: show the boost on your snake only, or on everyone's.",
+        "The arena chat has Team, Global and Online tabs, and the folded chat button looks like your on-screen keys. Set them all in Arrange arena UI.",
+        "Arrow: Customise arrow movement now has Sensitivity instead of Arrow lag. 0 moves like the original game; full sends the arrow across the screen with a tiny move.",
+        "19 new arena backgrounds.",
+        "Shed: a new page that makes fresh skins for you from a short recipe.",
+        "Trails: a new camera and gallery, a better editor, and a proper cropper for photos, Share run and Share skin.",
+        "Trails feed: shows when new trails arrive, and tells you when you are all caught up.",
+        "Fixed the game freezing while the Rain panel was being touched.",
+        "Fixed the Seafoam background overflowing its tile in the background picker.",
     ]
 }
 
