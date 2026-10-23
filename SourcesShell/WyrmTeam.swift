@@ -21,7 +21,7 @@ struct WyrmTeamMember: Identifiable, Equatable {
     func packed(relativeTo currentArena: String) -> String {
         let safeName = name.replacingOccurrences(of: "\t", with: " ")
             .replacingOccurrences(of: "\n", with: " ")
-        let present = arena == currentArena && arena != "_GAME_MENU_" && snakeID > 0
+        let present = arena == currentArena && arena != "_GAME_MENU_"
         // Fields 9 and 10 (OM, 2026-10-04): the NTL key and the arena, for the roster.
         let safeOwner = owner.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
         let server = arena == "_GAME_MENU_" ? "" : arena.replacingOccurrences(of: "\t", with: " ")
@@ -290,6 +290,7 @@ final class WyrmTeamStore: ObservableObject {
     private func poll() async {
         guard !Self.ntlServicesDisabled else { return }
         guard let credentials, let presence = WyrmTeamPresence.current() else { return }
+        let outgoing = queuedMessage
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "auth", value: credentials.auth),
@@ -306,7 +307,7 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "food", value: "false"),
             URLQueryItem(name: "srv", value: presence.arena),
             URLQueryItem(name: "sid", value: "\(presence.snakeID)"),
-            URLQueryItem(name: "msg", value: queuedMessage),
+            URLQueryItem(name: "msg", value: outgoing),
             URLQueryItem(name: "rank", value: "\(presence.rank)"),
             URLQueryItem(name: "an", value: "false"),
             URLQueryItem(name: "dt", value: "Wyrm iOS"),
@@ -318,9 +319,9 @@ final class WyrmTeamStore: ObservableObject {
             // NTL's own version, not Wyrm's (OM, 2026-10-04): the team service
             // answers only a window around NTL's current release (tested live:
             // 9.67-9.70 get the roster; 6.4, 6.4.5, 0.18.31, 9.61, 9.99 do not).
-            // Same as Android TeamService.VERSION. Raise it when NTL moves on.
-            URLQueryItem(name: "ver", value: "9.68"),
-            URLQueryItem(name: "tlm", value: ""),
+            // Same as Android TeamService.VERSION. Raise it when NTL moves on
+            // (2026-10-23: NTL is 9.76 and 9.68 was refused).
+            URLQueryItem(name: "ver", value: "9.76"),
             URLQueryItem(name: "di", value: "0"),
             URLQueryItem(name: "tar", value: ""),
         ]
@@ -337,7 +338,7 @@ final class WyrmTeamStore: ObservableObject {
             packed.withCString { WyrmIOSSetTeamMembers($0) }
             members = decoded
             ingestChat(rows)
-            queuedMessage = ""
+            if queuedMessage == outgoing { queuedMessage = "" }
             lastUpdated = Date()
             state = .connected
             WyrmDiagnostics.record("NTL Team poll accepted members=\(decoded.count)", category: "TEAM")
@@ -353,8 +354,8 @@ final class WyrmTeamStore: ObservableObject {
         let sid = integer(row["sid"])
         let status = decodeEntities(string(row["dt"]).removingPercentEncoding ?? string(row["dt"]))
         return WyrmTeamMember(id: "\(sid):\(nick)", name: displayName(nick),
-                              score: integer(row["score"]), x: integer(row["valx"]),
-                              y: integer(row["valy"]), bot: boolean(row["bot"]),
+                              score: integer(row["score"]), x: coordinate(row["valx"]),
+                              y: coordinate(row["valy"]), bot: boolean(row["bot"]),
                               arena: string(row["srv"]), rank: integer(row["rank"]),
                               snakeID: sid, tag: integer(row["tg"], fallback: -1),
                               owner: decodeEntities(string(row["owner"])),
@@ -423,6 +424,15 @@ final class WyrmTeamStore: ObservableObject {
     }
     private static func integer(_ value: Any?, fallback: Int = 0) -> Int {
         Int(string(value)) ?? fallback
+    }
+    /// A world coordinate. NTL sends `valx`/`valy` as the snake's float
+    /// position ("21543.23"), which `integer` read as 0, so every NTL
+    /// teammate sat at 0,0 and the engine never drew them (OM, 2026-10-23).
+    /// Same as Android's TeamService.coordinate.
+    private static func coordinate(_ value: Any?) -> Int {
+        guard let number = Double(string(value)), number.isFinite,
+              abs(number) < Double(Int32.max) else { return 0 }
+        return Int(number)
     }
     private static func boolean(_ value: Any?) -> Bool {
         let value = string(value).lowercased()

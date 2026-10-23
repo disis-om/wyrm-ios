@@ -4832,6 +4832,13 @@ import engine_boost_2026_10_18 as _boost_1018
 _boost_1018.apply(OUTPUT, label="engine boost 2026-10-18 (iOS)")
 print("Engine 2026-10-18: light boost glow, boost on mine only")
 
+# Boost glow visible again at the reference size, drawn as fewer brighter
+# sprites, Boost strength slider back (OM, 2026-10-23). Same text as Wyrm
+# Android's tree (Scripts/engine_boost_2026_10_23.py).
+import engine_boost_2026_10_23 as _boost_1023
+_boost_1023.apply(OUTPUT, label="engine boost 2026-10-23 (iOS)")
+print("Engine 2026-10-23: boost glow back, lighter, strength slider")
+
 # Chat window (OM, 2026-10-18): GLOBAL colours of its own and a folded chat
 # button drawn like the on-screen keys. Same text as Wyrm Android's tree
 # (Scripts/engine_chat_button_2026_10_18.py).
@@ -4844,3 +4851,15 @@ print("Engine 2026-10-18: GLOBAL colours, chat button like the keys")
 import engine_arrow_sensitivity_2026_10_18 as _arrowsens_1018
 _arrowsens_1018.apply(OUTPUT, label="engine arrow sensitivity 2026-10-18 (iOS)")
 print("Engine 2026-10-18: arrow Sensitivity")
+
+# Same-arena roster names, after the name batch patches.
+import engine_team_2026_10_19 as _team_1019
+_team_1019.apply(OUTPUT)
+
+# Teammates on the minimap as the reference client shows them (OM,
+# 2026-10-23): the map's 0.9 frame, kept on the edge, live place when seen,
+# bright green. Same text as Wyrm Android's tree
+# (Scripts/engine_team_map_2026_10_23.py).
+import engine_team_map_2026_10_23 as _teammap_1023
+_teammap_1023.apply(OUTPUT, label="engine team map 2026-10-23 (iOS)")
+print("Engine 2026-10-23: teammates on the minimap")

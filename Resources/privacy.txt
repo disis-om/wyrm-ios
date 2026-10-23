@@ -1,6 +1,6 @@
 # Wyrm — Privacy
 
-Last updated 13 October 2026. Wyrm is made by OM Rajput. This is the iPhone
+Last updated 23 October 2026. Wyrm is made by OM Rajput. This is the iPhone
 edition of the same document the Android app carries; the parts that differ are
 the ones about how you sign in and where secrets are kept.
 
@@ -129,11 +129,12 @@ account with an analytics dashboard attached.
 Your display name, your username, your in-game name, your avatar, your bio, your
 best score and your kills, and anything you posted in global chat. Friends (players who follow you and whom you follow
 back) see whether you are on Wyrm right now and which arena you play in or last
-played in. Settings › Privacy › **Show my activity to friends** turns that
-off; while it is off you do not see theirs either. While that switch is on,
-signed-in players also see you in the arena chat's **Online** list for a few
-minutes after you use Wyrm: your in-game name, your username and the arena you
-played in; turning the switch off leaves you out of that list. Your email
+played in. Signed-in players also see you in the arena chat's **Online** list
+for a few minutes after you use Wyrm: your in-game name, your username and the
+arena you played in. The same activity (whether you are on Wyrm, the arena you
+play in, your in-game name and username) can also appear on the Wyrm website
+and in the Wyrm Discord bot. This sharing is always on and cannot be turned
+off (since 2026-10-23; the old **Show my activity to friends** switch is gone). Your email
 address is never shown to another player.
 
 ## Deleting messages and Trails
