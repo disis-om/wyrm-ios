@@ -813,8 +813,10 @@ struct WyrmModesPage: View {
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
     /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
     private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_mine", "spine_width", "snake_shadow", "hide_cosmetics"]
-    /// Boost has its own card (OM, 2026-10-18); its strength slider is gone.
-    private static let boostIDs: Set<String> = ["show_boost", "boost_type", "boost_own"]
+    /// Boost has its own card (OM, 2026-10-18); its strength slider is back (2026-10-23).
+    private static let boostIDs: Set<String> = ["show_boost", "boost_type", "boost_strength", "boost_own"]
+    /// Under the Boost card (OM, 2026-10-23); the same words on Android.
+    static let boostPerformanceNote = "Boost glow is the heaviest effect in the arena. Every boosting snake lights up its whole body, so a crowd of boosting snakes can make the game lag and the frame rate drop. If you see lag or FPS drops, set Show boost on to Mine or turn Boost effect off. A lower Boost strength only makes the glow dimmer; it does not make it faster."
 
     var body: some View {
         WSScaffold(title: "Modes", parent: parent, onBack: close) {
@@ -856,6 +858,7 @@ struct WyrmModesPage: View {
         let rest = rows.filter { row in !colours.contains(where: { $0.id == row.id }) && !Self.foodIDs.contains(local(row)) && !Self.dotIDs.contains(local(row)) && local(row) != "bg_scale" && !Self.snakeIDs.contains(local(row)) && !Self.boostIDs.contains(local(row)) }
         let boostOn = rows.first { local($0) == "show_boost" }
         let boostType = rows.first { local($0) == "boost_type" }
+        let boostStrength = rows.first { local($0) == "boost_strength" }
         let boostOwn = engine.settings.first { $0.id == "\(group).boost_own" }
         let renderMode = rows.first { local($0) == "render_mode" }
         let spine = rows.first { local($0) == "spine" }
@@ -906,6 +909,7 @@ struct WyrmModesPage: View {
                     WSTypedRow(setting: boostOn, engine: engine)
                     if boostOn.enabled {
                         if let boostType { WSTypedRow(setting: boostType, engine: engine) }
+                        if let boostStrength { WSTypedRow(setting: boostStrength, engine: engine) }
                         if let boostOwn {
                             WSEnumBlock(title: "Show boost on", detail: "Mine shows only your own boost",
                                         options: ["Mine", "Everyone"], selected: boostOwn.enabled ? 0 : 1) { index in
@@ -916,6 +920,7 @@ struct WyrmModesPage: View {
                     }
                 }
                 .animation(.easeInOut(duration: 0.22), value: boostOn.enabled)
+                WSCaption(Self.boostPerformanceNote)
             }
 
             WSSectionLabel("Arena colours")
@@ -1596,21 +1601,20 @@ struct WyrmNotificationSettingsPage: View {
 // MARK: - Privacy
 
 struct WyrmPrivacyPage: View {
+    /// Settings › Privacy › Activity (OM, 2026-10-23); the same words on Android.
+    static let activitySharedNote = "When you are on Wyrm and which arena you play in are shown to your friends, on the Wyrm website and in the Wyrm Discord bot. This can't be turned off."
     var parent = "Settings"
     let close: () -> Void
     @State var blocks: [WyrmPolicyBlock] = []
     @ObservedObject private var presence = WyrmPresence.shared
     var body: some View {
         WSScaffold(title: "Privacy", parent: parent, onBack: close) {
-            // Signed in: friends' activity sharing (2026-10-09). Off hides yours and theirs.
+            // Activity is always shared (OM, 2026-10-23): the website and the Wyrm
+            // Discord bot show it too, so the switch is gone.
             if !presence.token.isEmpty {
                 WSSectionLabel("Activity", top: 18)
-                WSCard {
-                    WSBoolRow(title: "Show my activity to friends",
-                              detail: "Friends who follow you back see when you are on Wyrm and which arena you play in. Off, you don't see theirs either.",
-                              on: presence.sharing, first: true) { on in presence.setSharing(on) }
-                        .wyrmSettingAnchor("app.share-activity")
-                }
+                WSCaption(Self.activitySharedNote)
+                    .wyrmSettingAnchor("app.share-activity")
             }
             WSSectionLabel("What Wyrm keeps", top: 18)
             WSCard {

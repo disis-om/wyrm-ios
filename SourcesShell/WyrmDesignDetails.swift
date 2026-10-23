@@ -940,7 +940,7 @@ private struct WyrmTeamDetail: View {
     }
     private var statusDetail: String {
         switch team.state {
-        case .connected: return "\(team.members.count) members · NTL 9.68 compatible"
+        case .connected: return "\(team.members.count) members · NTL 9.76 compatible"
         case .connecting: return "Joining your team"
         case .failed(let text): return text
         case .disconnected: return team.saved.isEmpty ? "Use the Auth and Team ID from your NTL Team." : "Pick a saved team from the gear."

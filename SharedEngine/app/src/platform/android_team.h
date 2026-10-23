@@ -28,6 +28,9 @@ void android_team_poll(tenv* env);
 /** Takes one immutable member snapshot for everything drawn this frame. */
 void android_team_begin_frame(void);
 
+/** Same-arena roster membership; sid first, name only when no id is known. */
+bool android_team_is_teammate(tenv* env, int sid, const char* name);
+
 /** Teammates on the minimap, for those in the same arena as this player. */
 void android_team_draw_minimap(tenv* env, float left, float top,
                                float diameter);

@@ -12,12 +12,13 @@ overlay_c = (root / "SharedEngine" / "app" / "src" / "game" / "ui_overlay.c").re
 
 for field in ("auth", "tid", "nick", "score", "valx", "valy", "bot", "sos",
               "food", "srv", "sid", "msg", "rank", "an", "dt", "cs", "tg",
-              "ver", "tlm", "di", "tar"):
+              "ver", "di", "tar"):
     assert f'URLQueryItem(name: "{field}"' in swift, field
 assert "4_000_000_000" in swift
+assert 'URLQueryItem(name: "tlm"' not in swift, "an empty tlm makes NTL reject the roster poll"
 # NTL back on (OM, 2026-10-04): the real tag, this app's own version, and
 # accessories still never sent to NTL.
-assert 'URLQueryItem(name: "ver", value: "9.68")' in swift  # NTL accepts only its own version window
+assert 'URLQueryItem(name: "ver", value: "9.76")' in swift  # NTL accepts only its own version window
 assert 'URLQueryItem(name: "cs", value: "-1")' in swift
 assert 'URLQueryItem(name: "tg", value: "\(presence.tag)")' in swift
 assert "static let ntlServicesDisabled = false" in swift
@@ -62,5 +63,5 @@ for literal in ("3.3332", "0.08333", "0.838", "0.248", "0.2 * mb * chain", "0.05
 
 assert "remaining engine boundary" not in ui
 assert "@AppStorage(\"wyrm.ios.team.id\")" not in ui
-assert "NTL 9.68 compatible" in ui
+assert "NTL 9.76 compatible" in ui
 print("NTL Team/rope contracts verified")

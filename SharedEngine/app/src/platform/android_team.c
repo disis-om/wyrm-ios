@@ -45,7 +45,7 @@ typedef struct team_member {
   /* Team HUD: the NTL key they play under and the arena they are in
      (empty in the menu). */
   char owner[40];
-  char server[48];
+  char server[160];
 } team_member;
 
 static tenv* team_env = NULL;
@@ -519,21 +519,14 @@ static ImU32 team_colour(float r, float g, float b, float a) {
    dot on top of it (OM, 2026-10-06): the same in-game name, ignoring case
    and spaces at the ends, is you. */
 static bool team_member_is_me(tenv* env, const team_member* member) {
-  const char* a = env->usr->usrs.nickname;
-  const char* b = member->name;
-  while (*a == ' ') ++a;
-  while (*b == ' ') ++b;
-  size_t la = strlen(a), lb = strlen(b);
-  while (la > 0 && a[la - 1] == ' ') --la;
-  while (lb > 0 && b[lb - 1] == ' ') --lb;
-  if (la == 0 || la != lb) return false;
-  for (size_t i = 0; i < la; ++i) {
-    char x = a[i], y = b[i];
-    if (x >= 'A' && x <= 'Z') x = (char)(x - 'A' + 'a');
-    if (y >= 'A' && y <= 'Z') y = (char)(y - 'A' + 'a');
-    if (x != y) return false;
+  game_data* game = &env->usr->gdata;
+  int count = tdarray_length(game->data.snakes);
+  for (int i = 0; i < count; ++i) {
+    const snake* me = game->data.snakes + i;
+    if (me->id == game->data.snake_id)
+      return member->sid > 0 && member->sid == me->ntl_id;
   }
-  return true;
+  return false;
 }
 
 /* Is this teammate in the arena this player is in, right now?
@@ -546,34 +539,111 @@ static bool team_member_is_me(tenv* env, const team_member* member) {
  * 10), so the map compares it with the arena being played, every frame. Same
  * address written two ways ("ws://", "/slither", case, spaces) is the same
  * arena. (OM, 2026-10-09: teammates came and went on the minimap.) */
+/* Canonical endpoint: NTL sends host:port, apps may send a websocket URL.
+   Keep the port, ignore URL decoration and IPv6 brackets. Never resolve DNS. */
 static size_t arena_key(const char* in, char* out, size_t cap) {
-  if (!in || !out || cap == 0) return 0;
-  while (*in == ' ') ++in;
-  const char* p = in;
-  const char* scheme = strstr(p, "://");
-  if (scheme) p = scheme + 3;
+  if (!out || cap == 0) return 0;
+  out[0] = '\0';
+  if (!in) return 0;
+  while (*in == ' ' || *in == '\t') ++in;
+  const char* scheme = strstr(in, "://");
+  if (scheme) in = scheme + 3;
+  char host[160];
   size_t n = 0;
-  for (; *p && *p != '/' && n + 1 < cap; ++p) {
-    char c = *p;
-    if (c == ' ') continue;
-    if (c >= 'A' && c <= 'Z') c = (char)(c - 'A' + 'a');
-    out[n++] = c;
+  for (; *in && *in != '/' && *in != '?' && *in != '#'; ++in) {
+    unsigned char c = (unsigned char)*in;
+    if (c <= ' ') continue;
+    if (n + 1 >= sizeof(host)) return 0;
+    host[n++] = c >= 'A' && c <= 'Z' ? (char)(c + 'a' - 'A') : (char)c;
   }
-  out[n] = '\0';
-  return n;
+  host[n] = '\0';
+  if (!n || strcmp(host, "_game_menu_") == 0) return 0;
+  char* address = host;
+  char* port = NULL;
+  if (host[0] == '[') {
+    char* close = strchr(host, ']');
+    if (!close || (close[1] && close[1] != ':')) return 0;
+    if (close[1] == ':') port = close + 2;
+    *close = '\0';
+    address++;
+  } else {
+    char* first = strchr(host, ':');
+    if (first && !strchr(first + 1, ':')) { *first = '\0'; port = first + 1; }
+  }
+  unsigned long number = 444;
+  if (port) {
+    if (!*port) return 0;
+    number = 0;
+    for (const char* p = port; *p; ++p) {
+      if (*p < '0' || *p > '9') return 0;
+      number = number * 10 + (unsigned)(*p - '0');
+      if (number > 65535) return 0;
+    }
+    if (!number) return 0;
+  }
+  if (!*address) return 0;
+  /* Expand hex IPv6 so compressed and full spellings compare alike. */
+  char expanded[80];
+  if (strchr(address, ':')) {
+    unsigned words[8] = {0};
+    int count = 0, gap = -1;
+    const char* p = address;
+    if (*p == ':') { if (p[1] != ':') return 0; gap = 0; p += 2; }
+    while (*p) {
+      if (count >= 8) return 0;
+      unsigned value = 0; int digits = 0;
+      while (*p && *p != ':') {
+        int d = *p >= '0' && *p <= '9' ? *p - '0' : (*p >= 'a' && *p <= 'f' ? *p - 'a' + 10 : -1);
+        if (d < 0 || ++digits > 4) return 0;
+        value = value * 16 + (unsigned)d; ++p;
+      }
+      if (!digits) return 0;
+      words[count++] = value;
+      if (*p) { ++p; if (*p == ':') { if (gap >= 0) return 0; gap = count; ++p; } else if (!*p) return 0; }
+    }
+    if (gap >= 0) {
+      if (count >= 8) return 0;
+      int zeros = 8 - count;
+      for (int i = count - 1; i >= gap; --i) words[i + zeros] = words[i];
+      for (int i = gap; i < gap + zeros; ++i) words[i] = 0;
+    } else if (count != 8) return 0;
+    snprintf(expanded, sizeof(expanded), "%x:%x:%x:%x:%x:%x:%x:%x", words[0], words[1], words[2], words[3], words[4], words[5], words[6], words[7]);
+    address = expanded;
+  }
+  int written = snprintf(out, cap, "%s:%lu", address, number);
+  if (written < 0 || (size_t)written >= cap) { out[0] = '\0'; return 0; }
+  return (size_t)written;
 }
 
 static bool team_member_here(tenv* env, const team_member* member) {
-  /* The member's own arena decides whenever it is known (OM, 2026-10-11:
-     teammates in other arenas showed on the map). `present` is the app's
-     answer from its last poll, up to 4 s old: it said "here" for a teammate
-     who had since moved, or while this player had moved, so it is only the
-     answer for a row that carries no arena. */
   if (!member->server[0]) return member->present;
-  char a[64], b[64];
+  char a[192], b[192];
   if (!arena_key(member->server, a, sizeof(a))) return false;
-  if (!arena_key(env->usr->usrs.ipv4, b, sizeof(b))) return false;
-  return strcmp(a, b) == 0;
+  if (!arena_key(user_settings_arena(&env->usr->usrs), b, sizeof(b))) return false;
+  if (strcmp(a, b) == 0) return true;
+  /* The reference client reports IPv6 as bso.ip + ":" + bso.po, without
+     brackets. Only the NTL member side needs this legacy endpoint spelling. */
+  const char* raw = member->server;
+  const char* last = strrchr(raw, ':');
+  if (raw[0] != '[' && !strstr(raw, "://") && last && strchr(raw, ':') != last) {
+    char endpoint[192];
+    int n = snprintf(endpoint, sizeof(endpoint), "[%.*s]:%s", (int)(last - raw), raw, last + 1);
+    if (n > 0 && (size_t)n < sizeof(endpoint) && arena_key(endpoint, a, sizeof(a)))
+      return strcmp(a, b) == 0;
+  }
+  return false;
+}
+
+bool android_team_is_teammate(tenv* env, int sid, const char* name) {
+  if (!env) return false;
+  for (int i = 0; i < frame_member_count; ++i) {
+    const team_member* member = frame_members + i;
+    if (!team_member_here(env, member)) continue;
+    if (sid > 0 && member->sid > 0) {
+      if (sid == member->sid) return true;
+    } else if (name && name[0] && strcmp(name, member->name) == 0) return true;
+  }
+  return false;
 }
 
 void android_team_draw_minimap(tenv* env, float left, float top,
@@ -1445,7 +1515,7 @@ static void apply_team_members(const char* text) {
   while (*line && count < TEAM_MAX_MEMBERS) {
     const char* end = strchr(line, '\n');
     size_t length = end ? (size_t)(end - line) : strlen(line);
-    char row[320];
+    char row[512];
     if (length >= sizeof(row)) length = sizeof(row) - 1;
     memcpy(row, line, length);
     row[length] = '\0';
