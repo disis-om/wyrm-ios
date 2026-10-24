@@ -1229,6 +1229,9 @@ struct WyrmFoodPage: View {
         return Color(red: red, green: green, blue: blue)
     }
     static let floor = Color(red: 0.086, green: 0.106, blue: 0.133)
+    /// Food textures (OM, 2026-10-25), in the engine's order (fd.slang food_texture).
+    static let textures = ["Wyrm", "Slither app", "Crisp", "Square", "Glossy", "Small"]
+    static let textureNote = "Shape applies to Wyrm and Small. Far away, and when the screen is full of food, every texture is drawn as plain dots so the game stays smooth."
 
     static func isFood(_ s: EngineSetting) -> Bool {
         let local = s.id.components(separatedBy: ".").dropFirst().joined(separator: ".")
@@ -1253,7 +1256,7 @@ struct WyrmFoodPage: View {
         let ordered: [EngineSetting] = order.compactMap(named).filter { $0.id != colour?.id || uniformOn }
         let rest: [EngineSetting] = food.filter { (row: EngineSetting) -> Bool in
             let local = row.id.components(separatedBy: ".").dropFirst().joined(separator: ".")
-            return row.id != style?.id && !order.contains(local)
+            return row.id != style?.id && local != "food_texture" && !order.contains(local)
         }
         let look: [EngineSetting] = ordered + rest
         WSScaffold(title: "Food", parent: parent, onBack: close) {
@@ -1271,6 +1274,23 @@ struct WyrmFoodPage: View {
             .onAppear {
                 let target = WyrmSettingsFocus.shared.target ?? ""
                 if target.hasPrefix("assist.") { mode = 1 } else if target.hasPrefix("normal.") { mode = 0 }
+            }
+
+            // Food texture (OM, 2026-10-25), each mode its own.
+            if let texture = named("food_texture") {
+                WSSectionLabel("Texture")
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
+                    ForEach(Self.textures.indices, id: \.self) { index in
+                        WyrmFoodTile(style: 0, label: Self.textures[index], selected: texture.index == index,
+                                     texture: index) {
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            engine.write(texture, values: [Double(index)])
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+                .wyrmSettingAnchor("\(group).food_texture")
+                WSCaption(Self.textureNote)
             }
 
             WSSectionLabel("Shape")
@@ -1353,9 +1373,52 @@ struct WyrmFoodPreview: View {
 
 /// One shape: a small arena tile with the food glowing in it, its name, and a check when chosen.
 struct WyrmFoodTile: View {
+    /// A texture tile (OM, 2026-10-25): three pellets the way the arena draws that texture.
+    static func textured(_ texture: Int, size: CGSize, into context: inout GraphicsContext) {
+        let r = min(size.width, size.height) * 0.13
+        let spots = [CGPoint(x: size.width * 0.3, y: size.height * 0.38), CGPoint(x: size.width * 0.66, y: size.height * 0.32),
+                     CGPoint(x: size.width * 0.5, y: size.height * 0.68)]
+        for (i, c) in spots.enumerated() {
+            let code = WyrmFoodPage.hueCodes[(i * 3 + 1) % 9]
+            let red = Double((code >> 16) & 0xFF) / 255, green = Double((code >> 8) & 0xFF) / 255, blue = Double(code & 0xFF) / 255
+            let colour = Color(red: red, green: green, blue: blue)
+            func disc(_ center: CGPoint, _ radius: CGFloat) -> Path {
+                Path(ellipseIn: CGRect(x: center.x - radius, y: center.y - radius, width: radius * 2, height: radius * 2))
+            }
+            switch texture {
+            case 1:
+                let low = CGPoint(x: c.x, y: c.y + r * 0.35)
+                context.fill(disc(low, r * 1.5), with: .radialGradient(Gradient(colors: [.black.opacity(0.55), .clear]),
+                                                                      center: low, startRadius: 0, endRadius: r * 1.5))
+                let bright = Color(red: min(red * 1.5, 1), green: min(green * 1.5, 1), blue: min(blue * 1.5, 1))
+                context.fill(disc(c, r * 1.05), with: .radialGradient(Gradient(stops: [.init(color: bright, location: 0),
+                                                                                    .init(color: colour, location: 0.5),
+                                                                                    .init(color: colour.opacity(0.2), location: 1)]),
+                                                                     center: c, startRadius: 0, endRadius: r * 1.05))
+            case 2:
+                context.fill(disc(c, r * 0.9), with: .color(colour))
+            case 3:
+                context.fill(Path(CGRect(x: c.x - r * 0.55, y: c.y - r * 0.55, width: r * 1.1, height: r * 1.1)),
+                             with: .color(colour.opacity(0.6)))
+            case 4:
+                context.fill(disc(c, r * 0.95), with: .color(colour))
+                let hi = CGPoint(x: c.x - r * 0.35, y: c.y - r * 0.4)
+                context.fill(disc(hi, r * 0.55), with: .radialGradient(Gradient(colors: [.white.opacity(0.85), .clear]),
+                                                                      center: hi, startRadius: 0, endRadius: r * 0.55))
+                context.fill(disc(c, r * 0.95), with: .radialGradient(Gradient(colors: [.clear, .black.opacity(0.35)]),
+                                                                     center: c, startRadius: 0, endRadius: r * 0.95))
+            case 5:
+                glowing(0, c, r * 0.6, colour, 1, into: &context)
+            default:
+                glowing(0, c, r, colour, 1, into: &context)
+            }
+        }
+    }
+
     let style: Int
     let label: String
     let selected: Bool
+    var texture: Int? = nil
     let action: () -> Void
 
     var body: some View {
@@ -1363,7 +1426,9 @@ struct WyrmFoodTile: View {
             VStack(spacing: 7) {
                 Canvas { context, size in
                     let r = min(size.width, size.height) * 0.17
-                    if style == 2 {
+                    if let texture {
+                        Self.textured(texture, size: size, into: &context)
+                    } else if style == 2 {
                         for (spot, shape) in [0, 2, 3, 5].enumerated() {
                             let c = CGPoint(x: size.width * (spot % 2 == 0 ? 0.33 : 0.67), y: size.height * (spot < 2 ? 0.33 : 0.67))
                             Self.glowing(shape, c, r * 0.62, WyrmFoodPage.hues[(spot * 2 + 1) % 9], 1, into: &context)
@@ -1966,6 +2031,15 @@ struct WyrmLayoutEditor: View {
                             height: 132 * lbScale * (0.4 + 0.6 * teamHud.value("lb_height")) / scale)
         let statsScale = (1 + Double(min(max(Int(engine.value("general.stats_font", 1)), 0), 2)) * 0.14) * engine.value("layout.stats_scale", 1)
         let chatScale = engine.value("layout.chat_scale", 1)
+        // The engine's own sizes (OM, 2026-10-25): it draws the controls in pixels from the
+        // screen's short side (mobile_controls.c control_scale, mobile_hotkeys.c button_scale).
+        // Each piece's touch frame was a fixed size in points, about twice the drawn key on a
+        // 3x screen: a thick invisible ring that kept keys off the screen's edge and overlapped
+        // the next key, so a drag often caught nothing or the wrong piece.
+        let native = UIScreen.main.nativeBounds
+        let shortPx = Double(min(native.width, native.height))
+        let controlScale = min(max(shortPx / 720, 1.0), 1.55) / Double(scale)
+        let keyUnit = min(max(shortPx / 720, 0.82), 1.45) / Double(scale)
 
         return ZStack {
             // Clear: the AI arena shows through. The near-zero fill still
@@ -1977,22 +2051,23 @@ struct WyrmLayoutEditor: View {
                 // are fixed; only the on-screen buttons (and the zoom bar) move.
                 if engine.setting("controls.joystick_mode")?.index != 2 && !WyrmPlayOrientation.shared.portrait
                     && !WyrmNearOriginalStore.shared.on {
-                    piece("layout.joystick", size, CGSize(width: 112 * joystick, height: 112 * joystick),
+                    piece("layout.joystick", size, CGSize(width: 184 * controlScale * joystick, height: 184 * controlScale * joystick),
                           Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "controls.joystick_size", range: 0.65...1.45),
                                                                               Slider(label: "OPACITY", id: "layout.joystick_opacity", range: 0.05...1)])) {
                         WyrmPaperJoystick(diameter: 112 * joystick, opacity: engine.value("layout.joystick_opacity", baseOpacity))
                     }
                 }
                 if engine.setting("controls.boost_mode")?.index == 1 && !WyrmNearOriginalStore.shared.on {
-                    piece("layout.boost", size, CGSize(width: 86 * boost, height: 86 * boost),
+                    piece("layout.boost", size, CGSize(width: 156 * controlScale * boost, height: 156 * controlScale * boost),
                           Options(id: "boost", title: "BOOST", sliders: [Slider(label: "SIZE", id: "controls.boost_size", range: 0.65...1.45),
                                                                         Slider(label: "OPACITY", id: "layout.boost_opacity", range: 0.05...1)])) {
                         WyrmPaperBoost(diameter: 86 * boost, opacity: engine.value("layout.boost_opacity", baseOpacity))
                     }
                 }
                 if engine.setting("controls.zoom_enabled")?.enabled ?? true {
-                    let length = 190 * zoomLength
-                    piece("layout.zoom", size, CGSize(width: zoomVertical ? 26 : length, height: zoomVertical ? length : 26),
+                    let length = 260 * controlScale * zoomLength
+                    let thick = 58 * controlScale
+                    piece("layout.zoom", size, CGSize(width: zoomVertical ? thick : length, height: zoomVertical ? length : thick),
                           Options(id: "zoom", title: "ZOOM", sliders: [Slider(label: "LENGTH", id: "controls.zoom_length", range: 0.65...1.55),
                                                                       Slider(label: "OPACITY", id: "layout.zoom_opacity", range: 0.05...1)], zoomChoice: true)) {
                         WyrmPaperZoomBar(length: length, vertical: zoomVertical, opacity: engine.value("layout.zoom_opacity", baseOpacity), value: 0.45)
@@ -2001,7 +2076,7 @@ struct WyrmLayoutEditor: View {
             }
             ForEach(engine.hotkeys.filter(\.visible)) { key in
                 let keyScale = engine.value("layout.key_\(key.id)_scale", engine.value("keys.key_scale", 1))
-                keyPiece(key, size, CGSize(width: 104 * keyScale, height: 54 * keyScale),
+                keyPiece(key, size, CGSize(width: 104 * keyUnit * keyScale, height: 54 * keyUnit * keyScale),
                          Options(id: "key-\(key.id)", title: key.name.uppercased(),
                                  sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...5.00),
                                            Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1)],
@@ -2131,7 +2206,8 @@ struct WyrmLayoutEditor: View {
             .contentShape(Rectangle())
             .simultaneousGesture(TapGesture().onEnded { onTap?() })
             .position(centre)
-            .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("wyrm-layout"))
+            // High priority: the drag starts on the first movement, ahead of the tap.
+            .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("wyrm-layout"))
                 .onChanged { value in
                     let start = dragStart[key] ?? centre
                     if dragStart[key] == nil { dragStart[key] = centre }

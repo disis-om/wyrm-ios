@@ -14,11 +14,11 @@
   "app/res/shaders/bin/bdv.spv": "021b20f94ced5497c0715e2689e63d5028311ab37a3d7dd44334430b96d92403",
   "app/res/shaders/bin/bgf.spv": "bc3bc61f0514bf08bfae26df2b0cc051556b52d97e37af0092555eee999e9353",
   "app/res/shaders/bin/bgv.spv": "021b20f94ced5497c0715e2689e63d5028311ab37a3d7dd44334430b96d92403",
-  "app/res/shaders/bin/bpf.spv": "aa618dd54e81837084215aeea404d479f1c7e0065624ae18e64d12feb5df3e41",
+  "app/res/shaders/bin/bpf.spv": "e8bf23315a698cb49d95849c65d3580227bd47c37031cbf10768bd8cb11d0f69",
   "app/res/shaders/bin/bpv.spv": "c3e3096d8184be1eae6a66ac624000e51ccaa9b5e7b143770725bb415705a473",
   "app/res/shaders/bin/bstf.spv": "df6d9ad90aa91f1c5d1a9ea597c856588e7b63b1ef04b6cfc4a8adf69d98e2f7",
   "app/res/shaders/bin/bstv.spv": "2b0ea686c787f400fd5751c3bb9b235f2491a49ae7b7b552716d6e56227d52e0",
-  "app/res/shaders/bin/fdf.spv": "8bd7993d4bd82da6367632b955b1728cc33c6e7199d1e82f26fa2350772958e4",
+  "app/res/shaders/bin/fdf.spv": "cf19177d141655b15119096d45d35f7f7a555fca29e2152f68d8b7aa7af29669",
   "app/res/shaders/bin/fdrf.spv": "76b960ded685a69c51259dba548e3a20a5a46c4cd49fdf45bf1f838666df0916",
   "app/res/shaders/bin/fdrv.spv": "53559a199e6118fb6a0090d9d5402848ae319e920c4dd8d335dbcb1ec11f5105",
   "app/res/shaders/bin/fdv.spv": "acc74b0081900b4277fd8ee321037d77bfc2b011e8a43c0f2b92c5f8b585e2f5",
@@ -30,7 +30,7 @@
   "app/res/shaders/src/bg.slang": "ede3e265c51e6f64ad207bcb8bfb0d21e774e2d54696e23c19bd76b193edd77f",
   "app/res/shaders/src/bp.slang": "ca84821296d13fdbac3eb22d4bc05edaf8bd9289a90550ddcc0897406a6c06b6",
   "app/res/shaders/src/bst.slang": "783b3f6aa78c9bdbb5ba1687c89aa4efd7f74ea3c95106afce628925cb1011eb",
-  "app/res/shaders/src/fd.slang": "f9150f5adc059bf7c2295cd167ae4bc1a8ede09bf6578d601db00539e03fb049",
+  "app/res/shaders/src/fd.slang": "a67a0eb3f2eb3594959274181d250d1cf69a1e51edb151b828d0421836938cc4",
   "app/res/shaders/src/fdr.slang": "a67c2ee64ecf1b08f593e89112a72f3a5a975b80a291a79d5f0a389614a2e8ea",
   "app/res/shaders/src/mm.slang": "3035bb077aff140b267b7c5dd353ea0982c2a6c9698d30c08ae7503281c90a50",
   "app/res/shaders/src/modules/common.slang": "02c9c4288a5f4d5f69a6de6687c6a712c8016f6d22d6ac5e0dcf68d8d0a6b894",
@@ -399,5 +399,7 @@
   "app/src/platform/rain_bridge.c": "2e69a964db8bbd985dc6f24011b9b720ae4e46d8eae301eb83c8ea0b8fece8d5",
   "app/src/platform/rain_bridge.h": "725d01dbef2365033e08039880110a565d60b401e44eafe567baa4b14e7327ed",
   "app/src/network/battledome.c": "ec1c3c5218020bb40a44d34c1187f77e68fd356bef1936037c80478ab671bf8b",
-  "app/src/network/battledome.h": "08a2df53c23dfc15c468569782c64086e372dea9b2dde0991090e98d7d55c3e2"
+  "app/src/network/battledome.h": "08a2df53c23dfc15c468569782c64086e372dea9b2dde0991090e98d7d55c3e2",
+  "app/src/game/wyrm_skin_preview.c": "b2e11b54d0cb2ff9a23329ce190ec9ed9051f22071552be23c86ebb6c92a2e19",
+  "app/src/game/wyrm_skin_preview.h": "fa089731e17577e1439c31d9666232c9a1a5772410af01ef27ae9c5f74c8216a"
 }

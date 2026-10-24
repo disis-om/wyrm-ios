@@ -34,6 +34,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.update.prompted", .keep),
         ("wyrm.ios.tour.", .keep),                  // the app tour was seen on this phone (OM, 2026-10-05)
         ("wyrm.ios.custom-arena", .keep),           // custom arenas: this phone's own id, kept for good (2026-10-24)
+        ("wyrm.ios.notice", .keep),                 // the developer's notice: what this phone was shown (2026-10-25)
         // Account caches and retired things: wiped, never uploaded.
         ("wyrm.ios.backup.", .wipe),                // manual backups, retired 2026-10-01
         ("wyrm.ios.update.backup-first", .wipe),
@@ -166,6 +167,19 @@ final class WyrmAccountSync: ObservableObject {
         }
         if let own = engine?.setting("assist.boost_own") {
             doc["boostOwnAssist"] = (own.values.first ?? 0) >= 0.5
+        }
+        // Food and skin textures (OM, 2026-10-25), account-wide.
+        if let s = engine?.setting("normal.food_texture"), let v = s.values.first, v.isFinite {
+            doc["foodTextureNormal"] = min(max(Int(v.rounded()), 0), 5)
+        }
+        if let s = engine?.setting("assist.food_texture"), let v = s.values.first, v.isFinite {
+            doc["foodTextureAssist"] = min(max(Int(v.rounded()), 0), 5)
+        }
+        if let s = engine?.setting("skin.texture"), let v = s.values.first, v.isFinite {
+            doc["skinTexture"] = min(max(Int(v.rounded()), 0), 4)
+        }
+        if let s = engine?.setting("skin.texture_mine") {
+            doc["skinTextureMine"] = (s.values.first ?? 0) >= 0.5
         }
         // Spine width and snake shadow (OM, 2026-10-09), each mode apart.
         if let width = engine?.setting("normal.spine_width"), let raw = width.values.first, raw.isFinite {
@@ -345,6 +359,17 @@ final class WyrmAccountSync: ObservableObject {
         if let on = doc["spineMineAssist"] as? Bool { engine?.write(id: "assist.spine_mine", values: [on ? 1 : 0]) }
         if let on = doc["boostOwnNormal"] as? Bool { engine?.write(id: "normal.boost_own", values: [on ? 1 : 0]) }
         if let on = doc["boostOwnAssist"] as? Bool { engine?.write(id: "assist.boost_own", values: [on ? 1 : 0]) }
+        // Food and skin textures (OM, 2026-10-25); a missing or unknown value keeps the phone's.
+        if let raw = doc["foodTextureNormal"] as? NSNumber, (0...5).contains(raw.intValue) {
+            engine?.write(id: "normal.food_texture", values: [Double(raw.intValue)])
+        }
+        if let raw = doc["foodTextureAssist"] as? NSNumber, (0...5).contains(raw.intValue) {
+            engine?.write(id: "assist.food_texture", values: [Double(raw.intValue)])
+        }
+        if let raw = doc["skinTexture"] as? NSNumber, (0...4).contains(raw.intValue) {
+            engine?.write(id: "skin.texture", values: [Double(raw.intValue)])
+        }
+        if let on = doc["skinTextureMine"] as? Bool { engine?.write(id: "skin.texture_mine", values: [on ? 1 : 0]) }
         // Spine width and snake shadow (OM, 2026-10-09); a missing key keeps the phone's.
         if let raw = doc["spineWidthNormal"] as? NSNumber, raw.doubleValue.isFinite {
             engine?.write(id: "normal.spine_width", values: [min(max(raw.doubleValue, 0), 1)])

@@ -127,5 +127,10 @@ void WyrmIOSSetArrowSkin(int skin, float brightness);
 void WyrmIOSSetLook(int hair, int hair_rgb, int ears, int glasses);
 /* Twelve ARGB roles in arena_theme_role order; stored atomically. */
 void WyrmIOSSetArenaTheme(const uint32_t* colours, int count, bool dark);
+/* Live Wyrm skin preview (OM, 2026-10-25; game/wyrm_skin_preview.c): one frame
+   of a swimming snake wearing `skin` in a w x h box, as triangles. UI thread only. */
+int wyrm_skin_preview_frame(int skin, float w, float h, double now, float red, float green,
+                            float blue, float* out_xy, uint32_t* out_argb, int max_v,
+                            uint16_t* out_idx, int max_i, int* out_ni);
 VkResult WyrmIOSCreateInstance(const VkInstanceCreateInfo*, const VkAllocationCallbacks*, VkInstance*);
 VkResult WyrmIOSCreateDevice(VkPhysicalDevice, const VkDeviceCreateInfo*, const VkAllocationCallbacks*, VkDevice*);

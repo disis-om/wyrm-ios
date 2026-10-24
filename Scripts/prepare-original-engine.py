@@ -4877,3 +4877,9 @@ print("Engine 2026-10-23: teammates on the minimap")
 import engine_battledome_2026_10_24 as _bd_1024
 _bd_1024.apply(OUTPUT, label="engine battledome 2026-10-24 (iOS)")
 print("Engine 2026-10-24: Battledome texts and dome")
+
+# OM's round of 2026-10-25 (assist hides Wyrm skins, food and skin textures).
+# Same text as Wyrm Android's tree (Scripts/engine_round_2026_10_25.py).
+import engine_round_2026_10_25 as _round_1025
+_round_1025.apply(OUTPUT, label="engine round 2026-10-25 (iOS)")
+print("Engine 2026-10-25: round")

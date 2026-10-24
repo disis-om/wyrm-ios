@@ -101,6 +101,12 @@ struct WyrmDesignRoot: View {
                 && !shareRun.isOpen {
                 WyrmCrashPromptHost().zIndex(100)
             }
+            // The developer's notice (OM, 2026-10-25): in the middle, never over the launch
+            // mark, a match or an editor.
+            if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0
+                && !shareRun.isOpen && !engine.layoutEditorActive {
+                WyrmNoticeHost().zIndex(98)
+            }
             // After an arena drop: asked on the first SwiftUI surface after
             // the match, the Ready Room (landscape) or the portrait app.
             if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && !shareRun.isOpen
@@ -200,6 +206,8 @@ struct WyrmDesignRoot: View {
             WyrmGameSync.shared.start()
             services.observeGameSync()
             WyrmCrashWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            // The developer's notice (OM, 2026-10-25): asked once per start.
+            WyrmNoticeCenter.shared.check()
             WyrmDropWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
             WyrmDropWatch.shared.arenaLookup = { [weak services] endpoint in
                 services?.arenas.first(where: { $0.endpoint == endpoint })
