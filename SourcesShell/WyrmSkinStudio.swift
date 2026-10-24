@@ -414,7 +414,7 @@ struct WyrmSkinRoot: View {
             } else if wyrmSkinWorn && !editingPattern {
                 // A Wyrm skin is worn (OM, 2026-10-13): it moves on the preview.
                 WyrmSkinLive(number: wyrmSkin, still: textures.wyrmSkins[wyrmSkin],
-                             rgb: WyrmAirSkin.groupRGB(draft.wornGroups.first { $0 >= 0 } ?? 0))
+                             rgb: WyrmAirSkin.groupRGB(activeGroups.first { $0 >= 0 } ?? 0))
                     .frame(height: 218)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Preview of your Wyrm skin")
