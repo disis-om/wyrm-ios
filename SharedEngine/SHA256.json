@@ -397,5 +397,7 @@
   "app/src/game/wyrm_skins.c": "435c5b2106bc2c639f16b0d6a06abb7232050984bcd96174aec176d26b5eb4fb",
   "app/src/game/wyrm_skins.h": "1bc6b2e4cff07f423a72f198867c2385c2b10caca006601d717d948be0e28c8a",
   "app/src/platform/rain_bridge.c": "2e69a964db8bbd985dc6f24011b9b720ae4e46d8eae301eb83c8ea0b8fece8d5",
-  "app/src/platform/rain_bridge.h": "725d01dbef2365033e08039880110a565d60b401e44eafe567baa4b14e7327ed"
+  "app/src/platform/rain_bridge.h": "725d01dbef2365033e08039880110a565d60b401e44eafe567baa4b14e7327ed",
+  "app/src/network/battledome.c": "ec1c3c5218020bb40a44d34c1187f77e68fd356bef1936037c80478ab671bf8b",
+  "app/src/network/battledome.h": "08a2df53c23dfc15c468569782c64086e372dea9b2dde0991090e98d7d55c3e2"
 }

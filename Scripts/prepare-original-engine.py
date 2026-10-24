@@ -4752,6 +4752,12 @@ import engine_custom_arena_2026_10_13 as _carena_1013
 _carena_1013.apply(OUTPUT, label="engine custom arena 2026-10-13 (iOS)")
 print("Engine 2026-10-13: custom arena id")
 
+# The custom arena id goes to every arena, as NTL's !idforce (OM, 2026-10-24).
+# Same text as Wyrm Android's tree (Scripts/engine_custom_arena_2026_10_24.py).
+import engine_custom_arena_2026_10_24 as _carena_1024
+_carena_1024.apply(OUTPUT, label="engine custom arena 2026-10-24 (iOS)")
+print("Engine 2026-10-24: custom arena id to every arena")
+
 # Eyes Back locked arenas (OM, 2026-10-13, as NTL VANCED): never runs in an
 # arena that bans it, and says so for 5 s at the top. Same text as Wyrm
 # Android's tree (Scripts/engine_eyes_back_lock_2026_10_13.py).
@@ -4863,3 +4869,11 @@ _team_1019.apply(OUTPUT)
 import engine_team_map_2026_10_23 as _teammap_1023
 _teammap_1023.apply(OUTPUT, label="engine team map 2026-10-23 (iOS)")
 print("Engine 2026-10-23: teammates on the minimap")
+
+# Battledome texts and dome (OM, 2026-10-24): network/battledome.c/.h come from
+# SharedEngine; the hooks (letters joined into strokes on their own food layer,
+# under the snakes; the green dome ring) are the same text as Wyrm Android's
+# tree (Scripts/engine_battledome_2026_10_24.py).
+import engine_battledome_2026_10_24 as _bd_1024
+_bd_1024.apply(OUTPUT, label="engine battledome 2026-10-24 (iOS)")
+print("Engine 2026-10-24: Battledome texts and dome")

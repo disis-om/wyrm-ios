@@ -33,7 +33,7 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.crash.running", .keep),              // + runningVersion: crash detection
         ("wyrm.ios.update.prompted", .keep),
         ("wyrm.ios.tour.", .keep),                  // the app tour was seen on this phone (OM, 2026-10-05)
-        ("wyrm.ios.custom-arena-list.", .keep),     // custom arenas: this phone's copy of the list (2026-10-13)
+        ("wyrm.ios.custom-arena", .keep),           // custom arenas: this phone's own id, kept for good (2026-10-24)
         // Account caches and retired things: wiped, never uploaded.
         ("wyrm.ios.backup.", .wipe),                // manual backups, retired 2026-10-01
         ("wyrm.ios.update.backup-first", .wipe),
@@ -57,7 +57,6 @@ final class WyrmAccountSync: ObservableObject {
         ("wyrm.ios.orientation.", .sync),           // Controls › Play orientation + each orientation's layout
         ("wyrm.ios.device-migrations.", .keep),      // one-time defaults survive log out
         ("wyrm.ios.performance.", .wipe),           // retired 2026-10-18 (Settings › Performance removed): log out clears an old copy
-        ("wyrm.ios.custom-arena.", .sync),          // custom arenas: the player's id (also shared, 2026-10-13)
         ("wyrm.ios.keyboard.", .sync),
         ("wyrm.ios.developer-mode", .sync),
         ("wyrm.ios.stats.", .sync),
@@ -221,8 +220,8 @@ final class WyrmAccountSync: ObservableObject {
             "zoomSpring": WyrmPlayFeelStore.shared.zoomSpring,
             // Controls › Joystick knob (OM, 2026-10-13): the same on every platform.
             "joystickKnobCentre": WyrmPlayFeelStore.shared.knobCentre,
-            // Custom arenas (OM, 2026-10-13): the id community arenas know you by.
-            "customArenaId": WyrmCustomArenas.shared.id,
+            // Custom arenas: since 2026-10-24 the id is the phone's own and not in the
+            // account (an old document's "customArenaId" is skipped on restore).
             "rainSettings": WyrmRain.shared.document,
         ]
     }
@@ -360,8 +359,7 @@ final class WyrmAccountSync: ObservableObject {
         if let ahead = doc["lookAhead"] as? Bool { d.set(ahead, forKey: WyrmPlayFeelStore.lookAheadKey) }
         if let spring = doc["zoomSpring"] as? Bool { d.set(spring, forKey: WyrmPlayFeelStore.zoomSpringKey) }
         if let centre = doc["joystickKnobCentre"] as? Bool { d.set(centre, forKey: WyrmPlayFeelStore.knobCentreKey) }
-        // Custom arenas (OM, 2026-10-13): a missing or bad id keeps the phone's.
-        WyrmCustomArenas.shared.adopt(doc["customArenaId"])
+        // Custom arenas: "customArenaId" in an old document is skipped (2026-10-24).
         // "performanceMode" (Settings › Performance, removed 2026-10-18): an old
         // document may still carry it; it is skipped.
         // The orientation swaps layouts, so it waits for the restored layout (tryRestore).
