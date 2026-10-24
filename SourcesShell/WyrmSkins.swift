@@ -78,49 +78,99 @@ enum WyrmSkins {
     }
 }
 
-/// The worn skin, moving gently and slowly on the Skin page's preview (OM, 2026-10-13):
-/// its frames in turn, each blended into the next. Until the frames are in, the still picture.
+/// The worn skin on the Skin page's preview, live (OM, 2026-10-25): the arena's own skin
+/// drawing (game/wyrm_skin_preview.c) draws a snake that swims, turns and now and then boosts,
+/// every frame, for as long as the page is open. It was a 32-frame picture loop, and the loop
+/// was cut in `onChange`, which read the view's previous `number` and so showed the skin picked
+/// before. Here every frame asks for the `number` it is drawn with. `rgb` is the snake's colour
+/// (strip looks wear it).
 struct WyrmSkinLive: View {
     let number: Int
     let still: CGImage?
-    @State private var frames: [CGImage] = []
-    @State private var loaded = -1
+    var rgb: UInt32 = 0x8B8CF0
+    @State private var mesh = WyrmSkinMesh()
 
     var body: some View {
         TimelineView(.animation) { timeline in
             Canvas { context, size in
-                guard !frames.isEmpty else {
-                    if let still { draw(context, still, in: size, opacity: 1) }
-                    return
+                let now = timeline.date.timeIntervalSinceReferenceDate
+                if !mesh.draw(number, rgb: rgb, now: now, size: size, into: context), let still {
+                    WyrmSkinLive.drawStill(context, still, in: size)
                 }
-                let count = Double(frames.count)
-                let phase = (timeline.date.timeIntervalSinceReferenceDate / WyrmSkins.liveSeconds)
-                    .truncatingRemainder(dividingBy: 1) * count
-                let f0 = min(Int(phase), frames.count - 1)
-                let mix = phase - Double(f0)
-                draw(context, frames[f0], in: size, opacity: 1)
-                if mix > 0.01 { draw(context, frames[(f0 + 1) % frames.count], in: size, opacity: mix) }
             }
         }
         .padding(.horizontal, 18).padding(.vertical, 10)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onAppear(perform: load)
-        .onChange(of: number) { _ in load() }
     }
 
-    private func load() {
-        guard loaded != number else { return }
-        loaded = number
-        frames = WyrmSkins.liveSheetFrames(number)
-    }
-
-    private func draw(_ context: GraphicsContext, _ image: CGImage, in size: CGSize, opacity: Double) {
+    static func drawStill(_ context: GraphicsContext, _ image: CGImage, in size: CGSize) {
         let w = CGFloat(image.width), h = CGFloat(image.height)
         let scale = min(size.width / w, size.height / h)
         let rect = CGRect(x: (size.width - w * scale) / 2, y: (size.height - h * scale) / 2, width: w * scale, height: h * scale)
-        var c = context
-        c.opacity = opacity
-        c.draw(Image(decorative: image, scale: 1), in: rect)
+        context.draw(Image(decorative: image, scale: 1), in: rect)
+    }
+}
+
+/// The live preview's buffers, kept across frames, and its drawing: triangles that share a
+/// colour go into one path, so a frame is a few dozen fills, not thousands.
+final class WyrmSkinMesh {
+    static let maxVertices = 30000
+    private var xy = [Float](repeating: 0, count: maxVertices * 2)
+    private var argb = [UInt32](repeating: 0, count: maxVertices)
+    private var idx = [UInt16](repeating: 0, count: maxVertices * 3)
+
+    /// False when nothing was drawn (no such skin, or a box too small).
+    func draw(_ skin: Int, rgb: UInt32, now: Double, size: CGSize, into context: GraphicsContext) -> Bool {
+        var ni: Int32 = 0
+        let r = Float((rgb >> 16) & 0xFF) / 255, g = Float((rgb >> 8) & 0xFF) / 255, b = Float(rgb & 0xFF) / 255
+        let nv = xy.withUnsafeMutableBufferPointer { pxy in
+            argb.withUnsafeMutableBufferPointer { pc in
+                idx.withUnsafeMutableBufferPointer { pi in
+                    wyrm_skin_preview_frame(Int32(skin), Float(size.width), Float(size.height), now, r, g, b,
+                                            pxy.baseAddress, pc.baseAddress, Int32(WyrmSkinMesh.maxVertices),
+                                            pi.baseAddress, Int32(WyrmSkinMesh.maxVertices * 3), &ni)
+                }
+            }
+        }
+        guard nv > 0, ni >= 3 else { return false }
+        var path = Path()
+        var current: UInt32 = 0
+        var started = false
+        func flush() {
+            guard started else { return }
+            let a = Double((current >> 24) & 0xFF) / 255
+            let color = Color(red: Double((current >> 16) & 0xFF) / 255, green: Double((current >> 8) & 0xFF) / 255,
+                              blue: Double(current & 0xFF) / 255, opacity: a)
+            context.fill(path, with: .color(color))
+            path = Path()
+        }
+        var t = 0
+        let count = Int(ni)
+        while t + 2 < count {
+            let i0 = Int(idx[t]), i1 = Int(idx[t + 1]), i2 = Int(idx[t + 2])
+            t += 3
+            let c = WyrmSkinMesh.mix(argb[i0], argb[i1], argb[i2])
+            if (c >> 24) == 0 { continue }
+            if !started || c != current {
+                flush()
+                current = c
+                started = true
+            }
+            path.move(to: CGPoint(x: CGFloat(xy[2 * i0]), y: CGFloat(xy[2 * i0 + 1])))
+            path.addLine(to: CGPoint(x: CGFloat(xy[2 * i1]), y: CGFloat(xy[2 * i1 + 1])))
+            path.addLine(to: CGPoint(x: CGFloat(xy[2 * i2]), y: CGFloat(xy[2 * i2 + 1])))
+            path.closeSubpath()
+        }
+        flush()
+        return true
+    }
+
+    /// One colour for a triangle: its corners' average (they are equal on solid fills).
+    private static func mix(_ a: UInt32, _ b: UInt32, _ c: UInt32) -> UInt32 {
+        if a == b && b == c { return a }
+        func ch(_ v: UInt32, _ s: UInt32) -> UInt32 { (v >> s) & 0xFF }
+        func avg(_ s: UInt32) -> UInt32 { (ch(a, s) + ch(b, s) + ch(c, s)) / 3 }
+        return (avg(24) << 24) | (avg(16) << 16) | (avg(8) << 8) | avg(0)
     }
 }
 

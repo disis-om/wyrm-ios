@@ -413,7 +413,8 @@ struct WyrmSkinRoot: View {
                     .accessibilityLabel("Preview of the skin you are trying")
             } else if wyrmSkinWorn && !editingPattern {
                 // A Wyrm skin is worn (OM, 2026-10-13): it moves on the preview.
-                WyrmSkinLive(number: wyrmSkin, still: textures.wyrmSkins[wyrmSkin])
+                WyrmSkinLive(number: wyrmSkin, still: textures.wyrmSkins[wyrmSkin],
+                             rgb: WyrmAirSkin.groupRGB(draft.wornGroups.first { $0 >= 0 } ?? 0))
                     .frame(height: 218)
                     .accessibilityElement(children: .ignore)
                     .accessibilityLabel("Preview of your Wyrm skin")
@@ -484,6 +485,7 @@ struct WyrmSkinRoot: View {
                 .replacingOccurrences(of: " ,", with: ","))
         }
         .onAppear {
+            syncSkinTexture()
             textures.prepare()
             if ProcessInfo.processInfo.arguments.contains("--smoke-skin-accessories"), accessory < 0 { accessory = 0 }
             if ProcessInfo.processInfo.arguments.contains("--smoke-skin-tags"), tag < 0 { tag = 0 }
@@ -725,8 +727,25 @@ struct WyrmSkinRoot: View {
     private var patternPanel: some View {
         VStack(spacing: 0) {
             inlineHeader
+            // Skin texture (OM, 2026-10-25): the engine's skin.texture and skin.texture_mine.
+            WyrmSkinTextureSelector(
+                onPick: { engine.write(id: "skin.texture", values: [Double($0)]) },
+                onMine: { engine.write(id: "skin.texture_mine", values: [$0 ? 1 : 0]) })
+                .padding(.bottom, 12)
+                .onAppear(perform: syncSkinTexture)
             WyrmPatternBuilder(textures: textures, groups: customGroups, colors: customColors,
                                showingWheel: showingWheel, onSave: { savePattern($0, colors: $1) })
+        }
+    }
+
+    /// The Skin page's texture follows the engine's settings (account restore included).
+    private func syncSkinTexture() {
+        let texture = WyrmSkinTexture.shared
+        if let raw = engine.settings.first(where: { $0.id == "skin.texture" })?.values.first, raw.isFinite {
+            texture.current = min(max(Int(raw.rounded()), 0), 4)
+        }
+        if let raw = engine.settings.first(where: { $0.id == "skin.texture_mine" })?.values.first {
+            texture.mine = raw >= 0.5
         }
     }
 
@@ -951,6 +970,7 @@ struct WyrmSkinRoot: View {
 
 
 struct WyrmSkinPreview: View {
+    @ObservedObject var skinTexture = WyrmSkinTexture.shared
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
     let colors: [UInt32]
@@ -1072,7 +1092,10 @@ struct WyrmSkinPreview: View {
                     let rgba = codeIndex < colors.count ? colors[codeIndex] : 0
                     let air = WyrmAirSkin.kind(of: rgba)
                     let wyrm = WyrmBead.kind(of: rgba)
-                    guard let bead = wyrm.flatMap({ textures.wyrmBeads[$0] })
+                    // Skin texture (OM, 2026-10-25): a plain bead in the bead's colour.
+                    let plain = skinTexture.bead(rgba == 0 ? WyrmAirSkin.groupRGB(group)
+                                                 : air != nil ? WyrmAirSkin.bodyTint(rgba) : rgba & 0xFF_FFFF)
+                    guard let bead = plain ?? wyrm.flatMap({ textures.wyrmBeads[$0] })
                             ?? air.flatMap({ textures.airBeads[$0] })
                             ?? textures.beads[rgba == 0 ? group : 40] else { continue }
                     let point = segmentPoint(segment, x: x, headY: headY, tailY: tailY,
@@ -1080,7 +1103,8 @@ struct WyrmSkinPreview: View {
                                              segmentsPerRow: segmentsPerRow)
                     let image = Image(decorative: bead, scale: 1)
                     var inked = context
-                    if let wyrm {
+                    if plain != nil {
+                    } else if let wyrm {
                         if WyrmBead.tinted[wyrm] { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
                     } else if air != nil {
                         inked.addFilter(.colorMultiply(Color(rgb: WyrmAirSkin.bodyTint(rgba))))
@@ -1234,6 +1258,7 @@ struct WyrmSkinPreview: View {
 }
 
 struct WyrmMiniSnake: View {
+    @ObservedObject var skinTexture = WyrmSkinTexture.shared
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let groups: [Int]
     var colors: [UInt32] = []
@@ -1247,11 +1272,15 @@ struct WyrmMiniSnake: View {
                 let rgba = colors.isEmpty ? 0 : colors[index % colors.count]
                 let air = WyrmAirSkin.kind(of: rgba)
                 let wyrm = WyrmBead.kind(of: rgba)
-                guard let texture = wyrm.flatMap({ textures.wyrmBeads[$0] })
+                // Skin texture (OM, 2026-10-25): a plain bead in the bead's colour.
+                let plain = skinTexture.bead(rgba == 0 ? WyrmAirSkin.groupRGB(group)
+                                             : air != nil ? WyrmAirSkin.bodyTint(rgba) : rgba & 0xFF_FFFF)
+                guard let texture = plain ?? wyrm.flatMap({ textures.wyrmBeads[$0] })
                         ?? air.flatMap({ textures.airBeads[$0] })
                         ?? textures.beads[rgba == 0 ? group : 40] else { continue }
                 var inked = context
-                if let wyrm {
+                if plain != nil {
+                } else if let wyrm {
                     if WyrmBead.tinted[wyrm] { inked.addFilter(.colorMultiply(Color(rgb: rgba))) }
                 } else if air != nil {
                     inked.addFilter(.colorMultiply(Color(rgb: WyrmAirSkin.bodyTint(rgba))))

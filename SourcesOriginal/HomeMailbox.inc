@@ -277,14 +277,21 @@ void WyrmIOSArenaNoteError(const char* text) {
 }
 
 /* Engine thread, at the drop, before android_home_notify_death. */
-/* A snake the arena ends within this long of spawning was dropped, not
-   beaten: the arena takes it with a 'v' 0.3 to 1 s after it appears. */
-#define APPLE_FAST_DEATH_SEC 1.5
+/*
+ * Arena drop reports (OM, 2026-10-25): only a 'v' (death packet) within
+ * one second of the snake spawning is a drop. A close, an error or a refusal
+ * before the spawn, and any death after that second, is never reported and
+ * shows no card: players were shown "The arena dropped you" after ordinary
+ * quick deaths.
+ */
+#define APPLE_FAST_DEATH_SEC 1.0
 
 static void apple_publish_drop(tenv* env, const char* reason, int death_code, double life);
 
 void WyrmIOSArenaDropped(tenv* env) {
   if (!env) return;
+  /* Not a drop since 2026-10-25 (see the rule above). */
+  if (env) return;
   apple_publish_drop(env, apple_error_text[0] ? "error" : "closed", -1,
                      env->usr->gdata.last_life);
 }
@@ -378,6 +385,8 @@ static void apple_publish_drop(tenv* env, const char* reason, int death_code, do
    same serial guard as a post-spawn drop, which needs a spawn anyway). */
 void WyrmIOSArenaPrespawnClosed(tenv* env, const char* phase) {
   if (!env || !home_mutex) return;
+  /* Not a drop since 2026-10-25 (see the rule above). */
+  if (env) return;
   game_data* gdata = &env->usr->gdata;
   if (gdata->ai_mode || gdata->join_spawned || gdata->closed_by_us ||
       gdata->leaving || gdata->restart_req)
