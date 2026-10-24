@@ -1,33 +1,29 @@
 import Foundation
 import Security
-import UIKit
 
-/// Custom arenas (OM, 2026-10-13). Android twin: `data/CustomArenas.kt`, same
-/// meaning.
+/// Custom arenas (OM, 2026-10-13; reworked 2026-10-24). Android twin:
+/// `data/CustomArenas.kt`, same meaning.
 ///
 /// Community-run arenas know a player by a 16-character id ([0-9A-Za-z]) that
-/// NTL sends right after the challenge answer: 'C' + the id, only to the
-/// arenas on NTL's list (`ntl-slither.com/slither/useplayerid.php?v=<n>`
-/// answers `{"v":n,"d":["ip:port",...]}`; official arenas are not on it).
-/// The engine sends it (network/callback.c, `WyrmIOSSetCustomArenas`).
+/// NTL sends right after the challenge answer: 'C' + the id. The engine sends
+/// it to every arena (network/callback.c, `WyrmIOSSetCustomArenas`), as NTL's
+/// `!idforce` does: NTL 9.76 has no online list any more, so the old list
+/// from `useplayerid.php` was always empty and the id never went out.
 ///
-/// - The id is made once (crypto random, NTL's alphabet, bytes >= 248 thrown
-///   away) and follows the account: `wyrm.ios.custom-arena.id` (sync) and the
-///   shared document key `customArenaId`, the same on every platform.
-/// - The list is this phone's cache (`wyrm.ios.custom-arena-list.*`, keep),
-///   asked for again at most every 6 hours, as NTL does.
+/// The id belongs to this phone (OM, 2026-10-24): made once (crypto random,
+/// NTL's alphabet, bytes >= 248 thrown away) under `idKey`, kept through
+/// restarts, updates, log out and log in (`wyrm.ios.custom-arena` is kept by
+/// WyrmAccountSync), and gone only when the app is deleted (UserDefaults, not
+/// the Keychain). It is not in the account any more. The account-era key and
+/// the old list cache are dropped once, so every phone makes a fresh id with
+/// this update and keeps it.
 final class WyrmCustomArenas {
     static let shared = WyrmCustomArenas()
-    static let idKey = "wyrm.ios.custom-arena.id"
-    private static let linesKey = "wyrm.ios.custom-arena-list.lines"
-    private static let versionKey = "wyrm.ios.custom-arena-list.version"
-    private static let checkedKey = "wyrm.ios.custom-arena-list.checked"
-    private static let listURL = "https://ntl-slither.com/slither/useplayerid.php"
-    private static let every: TimeInterval = 6 * 3600
+    static let idKey = "wyrm.ios.custom-arena.device-id"
+    /// 2026-10-13 to 2026-10-23: the account's id and NTL's list cache.
+    private static let oldKeys = ["wyrm.ios.custom-arena.id", "wyrm.ios.custom-arena-list.lines",
+                                  "wyrm.ios.custom-arena-list.version", "wyrm.ios.custom-arena-list.checked"]
     private static let alphabet = Array("0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz")
-
-    private var fetching = false
-    private var observer: NSObjectProtocol?
 
     private init() {}
 
@@ -35,7 +31,7 @@ final class WyrmCustomArenas {
         id.count == 16 && id.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) }
     }
 
-    /// The player's id, made the first time it is asked for.
+    /// This phone's id, made the first time it is asked for and kept for good.
     var id: String {
         let d = UserDefaults.standard
         if let saved = d.string(forKey: Self.idKey), Self.isValid(saved) { return saved }
@@ -50,65 +46,19 @@ final class WyrmCustomArenas {
             }
         }
         d.set(made, forKey: Self.idKey)
+        Self.oldKeys.forEach { d.removeObject(forKey: $0) }
         return made
     }
 
-    /// The account's id (shared document `customArenaId`); anything else is skipped.
-    func adopt(_ value: Any?) {
-        guard let text = value as? String, Self.isValid(text) else { return }
-        UserDefaults.standard.set(text, forKey: Self.idKey)
-    }
-
-    /// Launch (WyrmShellHost): hand the engine what is saved, then ask for a
-    /// newer list, and again whenever the app comes back.
+    /// Launch (WyrmShellHost): hand the engine the id.
     func start() {
         publish()
-        refresh()
-        if observer == nil {
-            observer = NotificationCenter.default.addObserver(
-                forName: UIApplication.willEnterForegroundNotification, object: nil, queue: .main
-            ) { [weak self] _ in self?.refresh() }
-        }
     }
 
-    /// The id and the list reach the engine (also after a log in or log out).
+    /// The id reaches the engine (also after a log in or log out).
     func publish() {
-        WyrmIOSSetCustomArenas(id, UserDefaults.standard.string(forKey: Self.linesKey) ?? "")
+        WyrmIOSSetCustomArenas(id, "")
     }
 
     func reloadFromDefaults() { publish() }
-
-    /// NTL's list, at most every 6 hours; a newer version replaces the cache.
-    func refresh(force: Bool = false) {
-        let d = UserDefaults.standard
-        let now = Date().timeIntervalSince1970
-        guard !fetching, force || now - d.double(forKey: Self.checkedKey) >= Self.every else { return }
-        var components = URLComponents(string: Self.listURL)!
-        let version = d.integer(forKey: Self.versionKey)
-        components.queryItems = [URLQueryItem(name: "v", value: String(version))]
-        guard let url = components.url else { return }
-        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
-        // The service answers pages from the game's own site only.
-        request.setValue("https://slither.io", forHTTPHeaderField: "Origin")
-        request.setValue("https://slither.io/", forHTTPHeaderField: "Referer")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
-        fetching = true
-        URLSession.shared.dataTask(with: request) { data, response, _ in
-            let ok = (response as? HTTPURLResponse)?.statusCode == 200
-            let json = data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any]
-            DispatchQueue.main.async {
-                self.fetching = false
-                guard ok, let json else { return }
-                d.set(now, forKey: Self.checkedKey)
-                guard let newer = (json["v"] as? NSNumber)?.intValue, newer > version,
-                      let list = json["d"] as? [Any] else { return }
-                let lines = list.compactMap { ($0 as? String)?.trimmingCharacters(in: .whitespaces) }
-                    .filter { !$0.isEmpty && !$0.contains("\n") }
-                d.set(newer, forKey: Self.versionKey)
-                d.set(lines.joined(separator: "\n"), forKey: Self.linesKey)
-                WyrmDiagnostics.record("Custom arena list v\(newer): \(lines.count) arenas", category: "NETWORK")
-                self.publish()
-            }
-        }.resume()
-    }
 }
