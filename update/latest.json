@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "2.4.6",
-  "build": 151,
+  "version": "2.4.8",
+  "build": 153,
   "channel": "latest",
   "mandatory": true,
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.4.6-build-151/Wyrm-2.4.6-build-151.ipa",
-  "ipaSize": 60481390,
-  "sha256": "aa0069c42d8a1977c535a61223941e878a2c77d8e4cee58d4a4a365d43569fbf",
-  "publishedAt": "2026-11-02T15:07:56Z",
-  "notes": "Wyrm Update — Android 8.5.9 / iOS 2.4.6\n\nAPPEARANCE\n• Added new themes and restored all 8 classic Wyrm themes.\n• Softer accents, cleaner cards and reduced heavy shadows.\n• Improved lobby readability, rounded corners and Play buttons.\n• Grape Ice Dark becomes the default once after updating; later choices remain saved.\n\nCONTROLS\n• Added an Arrow “Double tap to boost” toggle.\n• Fixed returning-finger steering: boost continues on the held finger, while a returning steering finger regains control.\n• Improved boost-button handling and joystick touch ownership.\n• Fixed joysticks accept steering across their side of the screen.\n• Wyrm joystick appearance stays consistent while pressed and released.\n• Classic Assist laser follows the steering touch.\n\nARENA & TEXT\n• Improved original-style text rendering across names, leaderboard, stats, key labels, chat and player roster.\n• Continuous snake-name size slider with a real snake preview.\n• Smooth leaderboard size adjustment and improved layout-editor positioning.\n• Separate chat text-size control for TEAM, GLOBAL and ONLINE.\n• Corrected oversized zoom symbols and Near Original server labels.\n• All food textures use one size control and scale with the snake when zooming.\n\nSKINS & iOS\n• Restored Saved skins long-press Edit / Remove actions.\n• Fixed iOS Rain panel drag geometry checks.\n• Improved landscape rotation and keyboard handling."
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.4.8-build-153/Wyrm-2.4.8-build-153.ipa",
+  "ipaSize": 60487211,
+  "sha256": "fdce25405af8888d665b4a56054437c2be36ceff1a0a6595b8cec7ba83d5a913",
+  "publishedAt": "2026-11-02T23:05:13Z",
+  "notes": "minor bugs fixes"
 }
