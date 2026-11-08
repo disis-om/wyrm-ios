@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "2.5.1",
-  "build": 158,
+  "version": "2.5.2",
+  "build": 159,
   "channel": "latest",
   "mandatory": true,
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.5.1-build-158/Wyrm-2.5.1-build-158.ipa",
-  "ipaSize": 88703937,
-  "sha256": "6a2d93e18d97b40eeee4d6aad1b3422ebee3418c5b9374197288424eb7de668f",
-  "publishedAt": "2026-11-08T18:00:58Z",
-  "notes": "ADDED\n- Classic special skins now look like the original game, in the arena and in the Skin preview: one eye, closed eyes, slug, double beads, and the antenna and bulb skins. The one-eye skin has a bigger head shadow.\n- Your own photo as the arena floor. Touch and hold it to delete it.\n- Minimap icons: teammates show their team icon, and friends in the same arena show their Wyrm icon. Change this in Settings \u00e2\u20ac\u00ba Display \u00e2\u20ac\u00ba Minimap icons.\n- Global chat: bold, italic and other formatting, previews for every link, @mentions for any player, and a list of who is active right now.\n- Arena picker: community arenas are in the list now, with search. Tap an arena to play. \"Add IP\" opens a popup. Touch and hold saved arenas to delete several at once.\n- A field where you can paste a skin code.\n- Your arena player ID with a Copy button, under Developer.\n- Near Original shows length, kills and rank at the bottom.\n- Player names in Hindi, Chinese, Arabic and fancy fonts now show in the arena.\n\nCHANGED\n- Smoother frames: a steadier game step in long matches, and the display holds its full frame rate.\n- Snakes no longer lose beads or shadows when the arena is crowded.\n- Auto zoom works like the original game.\n- Tag ropes show on every row of the wardrobe.\n- Your bot stays away from the killer ring at the arena's edge.\n\nREMOVED\n- The \"arena dropped you\" card.\n\nFIXED\n- The keyboard no longer jumps twice in the Ready Room and the arena chat, and it closes when you change page.\n- Chat text with emoji or curly quotes now shows correctly in the arena.\n- The in-game ping now shows correctly.\n- Team identity fix: teammates find you correctly.\n- The Shed screen stayed blurred."
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.5.2-build-159/Wyrm-2.5.2-build-159.ipa",
+  "ipaSize": 88708404,
+  "sha256": "ceab05f4ed35a6b7f5658f5e79aa2b945a14fa29029a414302bc8aefcb2806eb",
+  "publishedAt": "2026-11-08T20:26:28Z",
+  "notes": "Minor bug fix."
 }
