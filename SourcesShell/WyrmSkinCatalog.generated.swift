@@ -100,7 +100,7 @@ enum WyrmSkinCatalog {
         [17, 17, 17, 17, 17, 39, 39, 39, 39, 39],
         [7, 7, 7, 11, 11, 11],
         [16, 16, 11, 11],
-        [4, 4, 4, 4, 9, 9, 9, 9],
+        [9, 9, 9, 9, 32, 32, 32, 32],
     ]
 
     static let accessories: [WyrmAccessoryAsset] = [

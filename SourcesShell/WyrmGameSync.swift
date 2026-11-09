@@ -14,7 +14,7 @@ final class WyrmGameSync {
     static let profileChanged = Notification.Name("WyrmProfileChanged")
     static let achievementsEarned = Notification.Name("WyrmAchievementsEarned")
 
-    private let base = "https://wyrm-api.77-245-76-86.sslip.io"
+    private let base = "https://wyrm-api.165-99-223-123.sslip.io"
     private let session: URLSession
     private var token = ""
     private var playerID = ""

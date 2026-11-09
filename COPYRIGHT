@@ -1,0 +1,44 @@
+Wyrm for iOS
+Copyright (c) 2026 OM Rajput
+
+AUTHOR
+
+Wyrm for iOS is designed, engineered and maintained by OM Rajput. Everything
+original in this repository is his work and his copyright, including:
+
+- the iOS app (Swift and Objective-C): screens, design, animations, themes
+  and the Wyrm keyboard
+- the app's architecture and the way the app and the engine work together
+- accounts, settings sync, social, chat, Trails, alerts and presence
+- team mode, skins, skin studio, tags, accessories and looks
+- controls, modes, the on-screen keys, the layout editors and the play feel
+- the engine preparation scripts, tests and tools in this repository
+- every change and addition he made to the game engine
+- the Wyrm name and the W logo
+
+LICENSE
+
+The game engine (SharedEngine) is a pinned copy of the Wyrm engine, which grew
+out of the open-source Vlither client by for-loop9, licensed under the GNU
+General Public License v3 (see SharedEngine/LICENSE). The original Vlither
+code remains the copyright of its authors. OM Rajput's changes and additions
+are copyright OM Rajput and are shared under the same license.
+
+ENFORCEMENT
+
+OM Rajput's work is protected by copyright. Anyone may use it only on the
+terms of its license: keep this copyright notice, credit OM Rajput, and share
+the full source of anything built from it under the same license. Copying,
+reusing or passing off his work as your own without following those terms
+(for example taking the Eyes Back code, or any other part covered by this
+notice) is copyright infringement, and OM Rajput will take action against it,
+including takedown notices and legal steps.
+
+NOT COVERED BY THIS NOTICE
+
+- Third-party libraries keep their own copyright and license: SDL, MoltenVK,
+  Dear ImGui and cimgui, cglm, stb, Vulkan Memory Allocator, mongoose and the
+  bundled fonts.
+- NTL tag artwork belongs to the authors of the NTL mod.
+- Slither.io game assets, names and trademarks belong to their owners. Their
+  presence does not imply endorsement or affiliation.

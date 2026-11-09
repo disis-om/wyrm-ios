@@ -53,17 +53,20 @@ final class WyrmNearOriginalStore: ObservableObject {
 
 /// Home › Near Original: a loadout row with a switch instead of a chevron.
 struct WyrmNearOriginalRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var store = WyrmNearOriginalStore.shared
     var body: some View {
         VStack(spacing: 0) {
-            Rectangle().fill(ATheme.rowRule).frame(height: 1)
+            Rectangle().fill(wyrmScopedColours.rowRule).frame(height: 1)
             HStack(spacing: 0) {
                 WyrmLoadoutIcon(symbol: "arrow.clockwise")
                 Spacer().frame(width: 12)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("Near Original").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).lineLimit(1)
+                    Text("Near Original").font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                     Text("Slither's own HUD, joystick and arrow. Only on-screen buttons stay movable.")
-                        .font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                        .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)

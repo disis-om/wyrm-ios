@@ -104,6 +104,9 @@ struct WyrmArrowGlyph: View {
 /// "Choose arrow": the engine's drawn styles first, then every image skin,
 /// each drawn exactly as it will look. Tap one to use it.
 struct WyrmArrowPicker: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var store = WyrmArrowSkinStore.shared
     let close: () -> Void
@@ -136,7 +139,7 @@ struct WyrmArrowPicker: View {
                     WSCaption("Size and brightness apply to every arrow; colour applies to the Wyrm arrows.")
                 }
             }
-            .background(ATheme.paper.ignoresSafeArea())
+            .background(wyrmScopedColours.paper.ignoresSafeArea())
             .navigationTitle("Choose arrow")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done", action: close) } }
@@ -177,6 +180,9 @@ struct WyrmArrowPicker: View {
 /// The Controls › arrow block: the chosen arrow with a way into the picker,
 /// then size, brightness and — for the drawn styles — colour.
 struct WyrmArrowSettingsCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var store = WyrmArrowSkinStore.shared
     @ObservedObject var feel = WyrmPlayFeelStore.shared
@@ -199,13 +205,13 @@ struct WyrmArrowSettingsCard: View {
                     WyrmArrowGlyph(codeStyle: style?.index ?? 0, imageSkin: store.skin, colour: colour?.channels ?? [1, 1, 1, 1],
                                    brightness: store.brightness)
                         .frame(width: 64, height: 44).padding(6)
-                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ATheme.well))
+                        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(wyrmScopedColours.well))
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Arrow style").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
-                        Text(currentName(style)).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                        Text("Arrow style").font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
+                        Text(currentName(style)).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                     }
                     Spacer()
-                    Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron)
+                    Text("›").font(.androidWyrm(17)).foregroundColor(wyrmScopedColours.chevron)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 10).contentShape(Rectangle())
             }.buttonStyle(WSPressStyle())

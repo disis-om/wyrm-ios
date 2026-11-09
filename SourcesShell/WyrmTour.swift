@@ -359,6 +359,9 @@ private struct WyrmTourCardHeight: PreferenceKey {
 }
 
 private struct WyrmTourCardBody: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let step: WyrmTourStep
     let index: Int
     let total: Int
@@ -379,8 +382,8 @@ private struct WyrmTourCardBody: View {
             }
         }
         .padding(18)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .shadow(color: .black.opacity(0.25), radius: 18, y: 8)
         // The card answers taps itself, so a tap on it never reaches the app.
         .contentShape(Rectangle())
@@ -392,12 +395,12 @@ private struct WyrmTourCardBody: View {
             // The W draws itself as the welcome arrives.
             WyrmBrandStroke()
                 .trim(from: 0, to: drawn)
-                .stroke(ATheme.ink, style: StrokeStyle(lineWidth: 58 * 0.16, lineCap: .round, lineJoin: .round))
+                .stroke(wyrmScopedColours.ink, style: StrokeStyle(lineWidth: 58 * 0.16, lineCap: .round, lineJoin: .round))
                 .frame(width: 58, height: 58)
                 .animation(.easeInOut(duration: 1.0), value: drawn)
-            Text(step.title).font(.wyrmDisplay(30)).foregroundColor(ATheme.ink)
+            Text(step.title).font(.wyrmDisplay(30)).foregroundColor(wyrmScopedColours.ink)
                 .multilineTextAlignment(.center).padding(.top, 14)
-            Text(step.body).font(.androidWyrm(14.5)).foregroundColor(ATheme.mute)
+            Text(step.body).font(.androidWyrm(14.5)).foregroundColor(wyrmScopedColours.mute)
                 .multilineTextAlignment(.center).lineSpacing(3).padding(.top, 8)
                 .fixedSize(horizontal: false, vertical: true)
             primary("Show me around", wide: true, action: onNext).padding(.top, 20)
@@ -409,9 +412,9 @@ private struct WyrmTourCardBody: View {
     private var done: some View {
         VStack(spacing: 0) {
             WyrmBrandMark(size: 46)
-            Text(step.title).font(.wyrmDisplay(26)).foregroundColor(ATheme.ink)
+            Text(step.title).font(.wyrmDisplay(26)).foregroundColor(wyrmScopedColours.ink)
                 .multilineTextAlignment(.center).padding(.top, 12)
-            Text(step.body).font(.androidWyrm(14)).foregroundColor(ATheme.mute)
+            Text(step.body).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute)
                 .multilineTextAlignment(.center).lineSpacing(3).padding(.top, 8)
                 .fixedSize(horizontal: false, vertical: true)
             primary("Let's play", wide: true, action: onNext).padding(.top, 18)
@@ -423,19 +426,19 @@ private struct WyrmTourCardBody: View {
     private var spotlight: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Text("\(index) of \(total)").font(.androidWyrm(11.5, .semibold)).tracking(0.4).foregroundColor(ATheme.quiet)
+                Text("\(index) of \(total)").font(.androidWyrm(11.5, .semibold)).tracking(0.4).foregroundColor(wyrmScopedColours.quiet)
                     .fixedSize()
                 HStack(spacing: 4) {
                     ForEach(1...max(total, 1), id: \.self) { i in
-                        Circle().fill(i <= index ? ATheme.live : ATheme.rule)
+                        Circle().fill(i <= index ? wyrmScopedColours.live : wyrmScopedColours.rule)
                             .frame(width: i == index ? 8 : 6, height: i == index ? 8 : 6)
                     }
                 }
                 .frame(maxWidth: .infinity)
                 plain("Skip", action: onSkip)
             }
-            Text(step.title).font(.androidWyrm(18, .bold)).foregroundColor(ATheme.ink).padding(.top, 8)
-            Text(step.body).font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(2.5)
+            Text(step.title).font(.androidWyrm(18, .bold)).foregroundColor(wyrmScopedColours.ink).padding(.top, 8)
+            Text(step.body).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).lineSpacing(2.5)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 5)
             HStack {
                 if index > 1 { plain("Back", action: onBack) }
@@ -448,16 +451,16 @@ private struct WyrmTourCardBody: View {
 
     private func primary(_ label: String, wide: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.androidWyrm(14.5, .bold)).foregroundColor(ATheme.onInk)
+            Text(label).font(.androidWyrm(14.5, .bold)).foregroundColor(wyrmScopedColours.onInk)
                 .padding(.horizontal, 20).frame(maxWidth: wide ? .infinity : nil).frame(height: 42)
-                .background(Capsule().fill(ATheme.ink))
+                .background(Capsule().fill(wyrmScopedColours.ink))
         }
         .buttonStyle(WSPressStyle())
     }
 
     private func plain(_ label: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.mute)
+            Text(label).font(.androidWyrm(13.5, .semibold)).foregroundColor(wyrmScopedColours.mute)
                 .padding(.horizontal, 10).frame(height: 34).contentShape(Rectangle())
         }
         .buttonStyle(.plain)

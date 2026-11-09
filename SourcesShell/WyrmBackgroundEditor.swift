@@ -31,6 +31,9 @@ enum WyrmBackgroundSize {
 }
 
 struct WyrmBackgroundSizeEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let onClose: () -> Void
     @State private var original: [Double] = []
@@ -66,9 +69,9 @@ struct WyrmBackgroundSizeEditor: View {
     private var panel: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("ARENA BACKGROUND SIZE").font(.androidWyrm(10, .bold)).tracking(1.2).foregroundColor(ATheme.quiet)
+                Text("ARENA BACKGROUND SIZE").font(.androidWyrm(10, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.quiet)
                 Spacer()
-                Text(WyrmBackgroundSize.label(scale)).font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink).monospacedDigit()
+                Text(WyrmBackgroundSize.label(scale)).font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink).monospacedDigit()
             }
             Slider(value: Binding(
                 get: { WyrmBackgroundSize.slider(of: scale) },
@@ -77,9 +80,9 @@ struct WyrmBackgroundSizeEditor: View {
                     WyrmBackgroundSize.write(scale, engine: engine)
                 }
             ), in: 0...1)
-            .tint(ATheme.ink)
+            .tint(wyrmScopedColours.ink)
             HStack(spacing: 8) {
-                Text("Smaller looks further away").font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                Text("Smaller looks further away").font(.androidWyrm(10.5)).foregroundColor(wyrmScopedColours.quiet)
                 Spacer()
                 action("CANCEL") {
                     engine.write(id: "normal.bg_scale", values: [original.first ?? WyrmBackgroundSize.standard])
@@ -94,15 +97,15 @@ struct WyrmBackgroundSizeEditor: View {
             }
         }
         .padding(.horizontal, 18).padding(.top, 12).padding(.bottom, 10)
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(ATheme.card.opacity(0.96)))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(wyrmScopedColours.card.opacity(0.96)))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(wyrmScopedColours.rule))
     }
 
     private func action(_ label: String, filled: Bool = false, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
-            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? ATheme.onInk : ATheme.quiet)
+            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? wyrmScopedColours.onInk : wyrmScopedColours.quiet)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Capsule().fill(filled ? ATheme.ink : Color.clear))
+                .background(Capsule().fill(filled ? wyrmScopedColours.ink : Color.clear))
         }.buttonStyle(.plain)
     }
 }

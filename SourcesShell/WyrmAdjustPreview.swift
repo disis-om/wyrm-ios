@@ -109,6 +109,9 @@ extension View {
 }
 
 struct WyrmAdjustPreviewCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var store = WyrmAdjustPreview.shared
     @ObservedObject var arrowSkins = WyrmArrowSkinStore.shared
@@ -117,13 +120,13 @@ struct WyrmAdjustPreviewCard: View {
         ZStack {
             if let subject = store.subject {
                 VStack(spacing: 8) {
-                    Text(title(subject)).font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(ATheme.quiet)
+                    Text(title(subject)).font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(wyrmScopedColours.quiet)
                     control(subject).frame(minWidth: 150, minHeight: 70)
                 }
                 .padding(.horizontal, 18).padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.well))
-                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                .shadow(color: .black.opacity(ATheme.dark ? 0.45 : 0.16), radius: 18, y: 8)
+                .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(wyrmScopedColours.well))
+                .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
+                .shadow(color: .black.opacity(wyrmScopedColours.dark ? 0.45 : 0.16), radius: 18, y: 8)
             }
         }
         .padding(.top, 58)

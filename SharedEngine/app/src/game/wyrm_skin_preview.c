@@ -28,6 +28,11 @@
 #define ImDrawList_AddConvexPolyFilled pv_AddConvexPolyFilled
 #define ImDrawList_AddConcavePolyFilled pv_AddConcavePolyFilled
 
+/* Preview-only hooks: arena sampling and animation timing are unchanged. */
+static int pv_pose_segments;
+static double pv_pose_time = -1;
+#define WYRM_SKIN_PREVIEW_SAMPLES pv_pose_segments
+#define WYRM_SKIN_PREVIEW_TIME pv_pose_time
 #include "wyrm_skins.c"
 
 #include <stdint.h>
@@ -167,22 +172,35 @@ static void pv_seg(ImVec2 a, ImVec2 b2, float w, ImU32 c) {
   pv_tri(k, k + 2, k + 3);
 }
 
+/* Connected stroke, as ImGui draws it. Overlapping rectangles/discs made
+   translucent glass/neon strips darker, swollen and visibly beaded at joins. */
 void pv_AddPolyline(ImDrawList* d, const ImVec2* p, int n, ImU32 c, ImDrawFlags flags, float w) {
   (void)d;
-  if (w < 1) w = 1;
-  for (int i = 0; i + 1 < n; i++) pv_seg(p[i], p[i + 1], w, c);
-  if (flags & 1) pv_seg(p[n - 1], p[0], w, c);
-  /* Joins: small discs so thick lines do not crack at the corners. */
-  if (w > 2)
-    for (int i = 1; i + ((flags & 1) ? 0 : 1) < n; i++) {
-      int b = pv_vtx(p[i], c), s = 10;
-      for (int k = 0; k < s; k++) {
-        ImVec2 q = {p[i].x + cosf(6.2831853f * k / s) * w * .5f,
-                    p[i].y + sinf(6.2831853f * k / s) * w * .5f};
-        pv_vtx(q, c);
-      }
-      for (int k = 0; k < s; k++) pv_tri(b, b + 1 + k, b + 1 + (k + 1) % s);
-    }
+  if (n < 2 || w <= 0 || (c >> 24) == 0) return;
+  bool closed = (flags & 1) != 0;
+  int base = pv_list.VtxBuffer.Size;
+  for (int i = 0; i < n; ++i) {
+    int prev = i ? i - 1 : closed ? n - 1 : 0;
+    int next = i + 1 < n ? i + 1 : closed ? 0 : n - 1;
+    float ax = p[i].x - p[prev].x, ay = p[i].y - p[prev].y;
+    float bx = p[next].x - p[i].x, by = p[next].y - p[i].y;
+    float al = hypotf(ax, ay), bl = hypotf(bx, by);
+    if (al > 1e-6f) { ax /= al; ay /= al; }
+    if (bl > 1e-6f) { bx /= bl; by /= bl; }
+    if (al <= 1e-6f) { ax = bx; ay = by; }
+    if (bl <= 1e-6f) { bx = ax; by = ay; }
+    float nx = -(ay + by) * .5f, ny = (ax + bx) * .5f;
+    float norm = nx * nx + ny * ny;
+    float f = norm > 1e-6f ? fminf(1 / norm, 4) * w * .5f : 0;
+    ImVec2 left = {p[i].x + nx * f, p[i].y + ny * f};
+    ImVec2 right = {p[i].x - nx * f, p[i].y - ny * f};
+    pv_vtx(left, c); pv_vtx(right, c);
+  }
+  int count = closed ? n : n - 1;
+  for (int i = 0; i < count; ++i) {
+    int a = base + i * 2, b = base + ((i + 1) % n) * 2;
+    pv_tri(a, b, b + 1); pv_tri(a, b + 1, a + 1);
+  }
 }
 
 /* ---- The swimming snake ---------------------------------------------- */
@@ -246,6 +264,30 @@ static void pv_step(float dt, float t, float radius, bool boosting) {
   }
 }
 
+/* Buffers are per-call outputs. Call only on the UI thread, as the existing
+   preview does. No arena state, socket or ImGui context is accessed. */
+static int pv_export(float* out_xy, uint32_t* out_argb, int max_v,
+                     uint16_t* out_idx, int max_i, int* out_ni) {
+  int nv = pv_list.VtxBuffer.Size;
+  if (nv > max_v) nv = max_v;
+  for (int i = 0; i < nv; i++) {
+    out_xy[2 * i] = pv_v[i].pos.x;
+    out_xy[2 * i + 1] = pv_v[i].pos.y;
+    uint32_t c = pv_v[i].col; /* ImGui: A B G R from the top byte */
+    out_argb[i] = (c & 0xFF000000u) | ((c & 0xFFu) << 16) | (c & 0xFF00u) | ((c >> 16) & 0xFFu);
+  }
+  int ni = 0;
+  for (int i = 0; i + 2 < pv_ni && ni + 3 <= max_i; i += 3) {
+    if (pv_i[i] >= (uint32_t)nv || pv_i[i + 1] >= (uint32_t)nv || pv_i[i + 2] >= (uint32_t)nv)
+      continue;
+    out_idx[ni++] = (uint16_t)pv_i[i];
+    out_idx[ni++] = (uint16_t)pv_i[i + 1];
+    out_idx[ni++] = (uint16_t)pv_i[i + 2];
+  }
+  *out_ni = ni;
+  return nv;
+}
+
 int wyrm_skin_preview_frame(int skin, float w, float h, double now, float red, float green,
                             float blue, float* out_xy, uint32_t* out_argb, int max_v,
                             uint16_t* out_idx, int max_i, int* out_ni) {
@@ -260,6 +302,7 @@ int wyrm_skin_preview_frame(int skin, float w, float h, double now, float red, f
   pv_last = now;
   if (dt < 0 || dt > 0.25f) dt = 0.016f;
 
+  pv_pose_segments = 0; pv_pose_time = now;
   /* Body half-width and length sized to the box, like the old card. */
   float radius = h * 0.075f;
   float length = radius * 26.0f;
@@ -295,27 +338,55 @@ int wyrm_skin_preview_frame(int skin, float w, float h, double now, float red, f
                     boosting, 1.0f, red, green, blue);
   pv_look = look;
 
-  int nv = pv_list.VtxBuffer.Size;
-  if (nv > max_v) nv = max_v;
-  for (int i = 0; i < nv; i++) {
-    out_xy[2 * i] = pv_v[i].pos.x;
-    out_xy[2 * i + 1] = pv_v[i].pos.y;
-    uint32_t c = pv_v[i].col; /* ImGui: A B G R from the top byte */
-    out_argb[i] = (c & 0xFF000000u) | ((c & 0xFFu) << 16) | (c & 0xFF00u) | ((c >> 16) & 0xFFu);
-  }
-  int ni = 0;
-  for (int i = 0; i + 2 < pv_ni && ni + 3 <= max_i; i += 3) {
-    if (pv_i[i] >= (uint32_t)nv || pv_i[i + 1] >= (uint32_t)nv || pv_i[i + 2] >= (uint32_t)nv)
-      continue;
-    out_idx[ni++] = (uint16_t)pv_i[i];
-    out_idx[ni++] = (uint16_t)pv_i[i + 1];
-    out_idx[ni++] = (uint16_t)pv_i[i + 2];
-  }
-  *out_ni = ni;
-  return nv;
+  return pv_export(out_xy, out_argb, max_v, out_idx, max_i, out_ni);
 }
 
-#if defined(__ANDROID__) && !defined(WYRM_IOS)
+/* Draw the actual arena skin on a caller-owned head-first centreline.
+   Unlike the old preview this is stateless: no roaming simulation and no
+   previous skin number, viewport or look direction can leak into another row. */
+int wyrm_skin_preview_pose(int skin, const float* px, const float* py, int n,
+                           float radius, double now, float red, float green,
+                           float blue, int boosting, float* out_xy, uint32_t* out_argb,
+                           int max_v, uint16_t* out_idx, int max_i, int* out_ni) {
+  if (!out_ni) return 0;
+  *out_ni = 0;
+  if (!px || !py || !out_xy || !out_argb || !out_idx || n < 2 || n > 256 ||
+      max_v <= 0 || max_i < 3 || !isfinite(radius) || radius <= 0 ||
+      !isfinite(now) || !pv_wyrm_skin_valid(skin)) return 0;
+  uint8_t vis[256];
+  float qx[256], qy[256];
+  /* Tessellate at the renderer's reference radius, then scale the entire
+     drawing. Pixel floors/curve detail must not fatten smaller chooser rows. */
+  float to_reference = 29.0f / radius, ox = px[0], oy = py[0];
+  for (int i = 0; i < n; ++i) {
+    if (!isfinite(px[i]) || !isfinite(py[i])) return 0;
+    qx[i] = (px[i] - ox) * to_reference;
+    qy[i] = (py[i] - oy) * to_reference;
+    if (!isfinite(qx[i]) || !isfinite(qy[i])) return 0;
+    vis[i] = 2;
+  }
+  /* The chooser is an x-monotone jiggle, not a growing snake. Keep its
+     segment count tied to its rest span; redistribute over the whole curve
+     including the tail, instead of floor(arc length / step) popping a bead. */
+  pv_pose_segments = (int)roundf(fabsf(qx[n - 1] - qx[0]) / (29.0f * 1.05f)) + 1;
+  if (pv_pose_segments < 2) pv_pose_segments = 2;
+  if (pv_pose_segments > 599) pv_pose_segments = 599;
+  pv_pose_time = now;
+  pv_list.VtxBuffer.Size = 0; pv_list.VtxBuffer.Data = pv_v;
+  pv_list._VtxCurrentIdx = 0; pv_ni = 0;
+  float heading = atan2f(qy[0] - qy[1], qx[0] - qx[1]);
+  float look = heading;
+  pv_wyrm_skin_draw(skin, qx, qy, vis, n, 0, 0, 1, 0, 0, 29,
+                    heading, heading, &look, boosting != 0, 1, red, green, blue);
+  for (int i = 0; i < pv_list.VtxBuffer.Size; ++i) {
+    pv_v[i].pos.x = ox + pv_v[i].pos.x / to_reference;
+    pv_v[i].pos.y = oy + pv_v[i].pos.y / to_reference;
+  }
+  return pv_export(out_xy, out_argb, max_v, out_idx, max_i, out_ni);
+}
+
+/* Android and Wyrm Desktop (both WYRM_SDL_JNI); iOS has its own copy. */
+#if defined(WYRM_SDL_JNI) && !defined(WYRM_IOS)
 #include <jni.h>
 
 /* WyrmActivity.nativeWyrmSkinPreview: fills the arrays, returns vertex count
@@ -340,5 +411,34 @@ JNIEXPORT jlong JNICALL Java_com_wyrm_omrajput_WyrmActivity_nativeWyrmSkinPrevie
   if (pc) (*env)->ReleaseIntArrayElements(env, argb, pc, 0);
   if (pxy) (*env)->ReleaseFloatArrayElements(env, xy, pxy, 0);
   return ((jlong)ni << 16) | (jlong)(nv & 0xFFFF);
+}
+
+JNIEXPORT jlong JNICALL Java_com_wyrm_omrajput_WyrmActivity_nativeWyrmSkinPose(
+    JNIEnv* env, jclass clazz, jint skin, jfloatArray xs, jfloatArray ys,
+    jfloat radius, jdouble now, jint rgb, jboolean boosting,
+    jfloatArray xy, jintArray argb, jshortArray idx) {
+  (void)clazz;
+  if (!xs || !ys || !xy || !argb || !idx) return 0;
+  int n = (*env)->GetArrayLength(env, xs);
+  if (n < 2 || n > 256 || (*env)->GetArrayLength(env, ys) != n) return 0;
+  float px[256], py[256];
+  (*env)->GetFloatArrayRegion(env, xs, 0, n, px);
+  (*env)->GetFloatArrayRegion(env, ys, 0, n, py);
+  if ((*env)->ExceptionCheck(env)) return 0;
+  int cap = (*env)->GetArrayLength(env, argb);
+  int capxy = (*env)->GetArrayLength(env, xy) / 2;
+  if (capxy < cap) cap = capxy;
+  int capi = (*env)->GetArrayLength(env, idx);
+  jfloat* pxy = (*env)->GetFloatArrayElements(env, xy, NULL);
+  jint* pc = (*env)->GetIntArrayElements(env, argb, NULL);
+  jshort* pi = (*env)->GetShortArrayElements(env, idx, NULL);
+  int nv = 0, ni = 0;
+  if (pxy && pc && pi) nv = wyrm_skin_preview_pose(skin, px, py, n, radius, now,
+    ((rgb >> 16) & 255) / 255.f, ((rgb >> 8) & 255) / 255.f, (rgb & 255) / 255.f,
+    boosting, pxy, (uint32_t*)pc, cap, (uint16_t*)pi, capi, &ni);
+  if (pi) (*env)->ReleaseShortArrayElements(env, idx, pi, 0);
+  if (pc) (*env)->ReleaseIntArrayElements(env, argb, pc, 0);
+  if (pxy) (*env)->ReleaseFloatArrayElements(env, xy, pxy, 0);
+  return ((jlong)ni << 16) | (nv & 0xFFFF);
 }
 #endif

@@ -139,6 +139,11 @@ void WyrmIOSSetPlayFeel(bool original_arrow, bool look_ahead, int zoom_style) {
 void mobile_controls_set_knob_centre(bool centre);
 void WyrmIOSSetJoystickKnob(bool centre) { mobile_controls_set_knob_centre(centre); }
 
+/* Settings > Display > Auto zoom (OM, 2026-11-09): false keeps the player's
+   own zoom (game/wyrm_extras.c, game/oef.c). */
+void wyrm_extras_set_auto_zoom(bool on);
+void WyrmIOSSetAutoZoom(bool on) { wyrm_extras_set_auto_zoom(on); }
+
 /* Custom arenas (OM, 2026-10-13): the player's id and the arenas that get it
    (network/callback.c, Scripts/engine_custom_arena_2026_10_13.py). */
 void custom_arenas_set(const char* id, const char* list);

@@ -1,0 +1,118 @@
+{
+  "app/src/rendering/spr_renderer.h": [
+    [
+      "void spr_renderer_push(",
+      "spr_renderer* spr_renderer_create_original(tcontext* ctx, int capacity,\n    VkPipelineLayout layout, VkRenderPass pass, bool additive);\nvoid spr_renderer_push("
+    ]
+  ],
+  "app/src/rendering/spr_renderer.c": [
+    [
+      "spr_renderer* spr_renderer_create(tcontext* ctx, int max_instances,\n                                  VkPipelineLayout layout, VkRenderPass pass) {",
+      "static spr_renderer* spr_renderer_create_impl(tcontext* ctx, int max_instances,\n    VkPipelineLayout layout, VkRenderPass pass, bool original, bool additive) {"
+    ],
+    [
+      "tcontext_create_shader(ctx, \"app/res/shaders/bin/sprv.spv\");",
+      "tcontext_create_shader(ctx, original ? \"app/res/shaders/bin/osprv.spv\" : \"app/res/shaders/bin/sprv.spv\");"
+    ],
+    [
+      "tcontext_create_shader(ctx, \"app/res/shaders/bin/sprf.spv\");",
+      "tcontext_create_shader(ctx, original ? \"app/res/shaders/bin/osprf.spv\" : \"app/res/shaders/bin/sprf.spv\");"
+    ],
+    [
+      "                              VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,\n                          .colorBlendOp",
+      "                              additive ? VK_BLEND_FACTOR_ONE : VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA,\n                          .colorBlendOp"
+    ],
+    [
+      "void spr_renderer_push(",
+      "spr_renderer* spr_renderer_create(tcontext* ctx, int capacity,\n    VkPipelineLayout layout, VkRenderPass pass) {\n  return spr_renderer_create_impl(ctx,capacity,layout,pass,false,false);\n}\nspr_renderer* spr_renderer_create_original(tcontext* ctx, int capacity,\n    VkPipelineLayout layout, VkRenderPass pass, bool additive) {\n  return spr_renderer_create_impl(ctx,capacity,layout,pass,true,additive);\n}\nvoid spr_renderer_push("
+    ]
+  ],
+  "app/src/rendering/renderer.h": [
+    [
+      "  texture* tags_tex;",
+      "  texture* original_art_tex;\n  spr_renderer *original_food_shadow, *original_food_add, *original_names,\n               *original_hud, *original_hud_add;\n  texture* tags_tex;"
+    ]
+  ],
+  "app/src/rendering/renderer.c": [
+    [
+      "  r->tags_tex = create_mipmap_texture",
+      "  r->original_art_tex = create_mipmap_texture(ctx, \"app/res/textures/original_art.png\");\n  r->tags_tex = create_mipmap_texture"
+    ],
+    [
+      ".bindingCount = 5,",
+      ".bindingCount = 6,"
+    ],
+    [
+      "                  /* Skin Studio's atlas (OM, 2026-10-12). */",
+      "                  {.binding = 5,\n                   .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,\n                   .descriptorCount = 1,\n                   .stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT},\n                  /* Skin Studio's atlas (OM, 2026-10-12). */"
+    ],
+    [
+      "        ctx->device, 5,",
+      "        ctx->device, 6,"
+    ],
+    [
+      "        ctx->device, 6,\n        (VkWriteDescriptorSet[]){",
+      "        ctx->device, 6,\n        (VkWriteDescriptorSet[]){\n            {.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,\n             .dstSet = r->global_set[i], .dstBinding = 5,\n             .descriptorCount = 1, .descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER,\n             .pImageInfo = &(VkDescriptorImageInfo){r->linear_sampler,r->original_art_tex->view,\n                 VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL}},"
+    ],
+    [
+      "  r->cr = spr_renderer_create(ctx, 1, r->pipeline_layout, env->ctx->renderpass);",
+      "  r->cr = spr_renderer_create(ctx, 1, r->pipeline_layout, env->ctx->renderpass);\n  r->original_food_shadow = spr_renderer_create_original(ctx,MAX_FOOD_INSTANCES,r->pipeline_layout,r->render_pass,false);\n  r->original_food_add = spr_renderer_create_original(ctx,MAX_FOOD_INSTANCES,r->pipeline_layout,r->render_pass,true);\n  r->original_names = spr_renderer_create_original(ctx,32768,r->pipeline_layout,r->render_pass,false);\n  r->original_hud = spr_renderer_create_original(ctx,2048,r->pipeline_layout,r->render_pass,false);\n  r->original_hud_add = spr_renderer_create_original(ctx,2048,r->pipeline_layout,r->render_pass,true);"
+    ],
+    [
+      "  fd_renderer_render(r->fdr, ctx);",
+      "  fd_renderer_render(r->fdr, ctx);\n  spr_renderer_render(r->original_food_shadow,ctx);\n  spr_renderer_render(r->original_food_add,ctx);\n  spr_renderer_render(r->original_names,ctx);"
+    ],
+    [
+      "  mm_renderer_render(r->mmr, ctx);",
+      "  mm_renderer_render(r->mmr, ctx);\n  spr_renderer_render(r->original_hud,ctx);\n  spr_renderer_render(r->original_hud_add,ctx);"
+    ],
+    [
+      "  destroy_texture(ctx, r->tags_tex);",
+      "  destroy_texture(ctx, r->original_art_tex);\n  destroy_texture(ctx, r->tags_tex);"
+    ],
+    [
+      "  fd_renderer_destroy(r->fdr, ctx);",
+      "  spr_renderer_destroy(r->original_food_shadow,ctx);\n  spr_renderer_destroy(r->original_food_add,ctx);\n  spr_renderer_destroy(r->original_names,ctx);\n  spr_renderer_destroy(r->original_hud,ctx);\n  spr_renderer_destroy(r->original_hud_add,ctx);\n  fd_renderer_destroy(r->fdr, ctx);"
+    ],
+    [
+      "  r->cr->num_instances = 0;",
+      "  r->cr->num_instances = 0;\n  r->original_food_shadow->num_instances = 0;\n  r->original_food_add->num_instances = 0;\n  r->original_names->num_instances = 0;\n  r->original_hud->num_instances = 0;\n  r->original_hud_add->num_instances = 0;"
+    ]
+  ],
+  "app/src/game/redraw.c": [
+    [
+      "#include \"redraw.h\"",
+      "#include \"redraw.h\"\n#include \"original_art.h\"\n#include \"../platform/android_home.h\""
+    ],
+    [
+      "        wyrm_food_push(usr->r->fdr, fx + d * 0.5f, fy + d * 0.5f, d, c, fo->fr,\n                       mode->food_flicker * (.5 + .5 * cosf(fo->gfr / 13)),\n                       food_shape(fo, mode->food_type), food_tex, food_crowded);\n      }\n    }\n  } else {\n    for (int i = foods_len - 1; i >= 0; i--) {\n      food* fo = gdata->data.foods + i;\n\n      if (battledome_text_pixel(fo->xx, fo->yy, fo->sz, &bd_cell, &bd_square))\n        continue;\n      if (usrs->hotkeys[HOTKEY_BIG_FOOD].active && fo->sz < 10) continue;\n\n      if (fo->rx >= gdata->data.fpx1 && fo->ry >= gdata->data.fpy1 &&\n          fo->rx <= gdata->data.fpx2 && fo->ry <= gdata->data.fpy2) {\n        float d = gdata->fsz[fo->cv2] * food_scale * fo->rad * mode->food_scale;\n        vec3s c = gdata->cg_colors[fo->cv];\n\n        float fx =\n            mww2 + gdata->data.gsc * (fo->rx - gdata->data.view_xx) - d * 0.5;\n        float fy =\n            mhh2 + gdata->data.gsc * (fo->ry - gdata->data.view_yy) - d * 0.5;\n\n        wyrm_food_push(usr->r->fdr, fx + d * 0.5f, fy + d * 0.5f, d, c, fo->fr,\n                       mode->food_flicker * (.5 + .5 * cosf(fo->gfr / 13)),\n                       food_shape(fo, mode->food_type), food_tex, food_crowded);",
+      "        if (food_tex == 1) {\n          float z = food_scale;\n          float fgsc = 1.2f;\n          original_food(usr->r,fx+d*.5f,fy+d*.5f,fo->sz,fo->rad,z*fgsc,\n                        mode->food_scale,c,fo->fr,mode->uniform_food_color ? -1 : fo->cv);\n        } else\n        wyrm_food_push(usr->r->fdr, fx + d * 0.5f, fy + d * 0.5f, d, c, fo->fr,\n                       mode->food_flicker * (.5 + .5 * cosf(fo->gfr / 13)),\n                       food_shape(fo, mode->food_type), food_tex, food_crowded);\n      }\n    }\n  } else {\n    for (int i = foods_len - 1; i >= 0; i--) {\n      food* fo = gdata->data.foods + i;\n\n      if (battledome_text_pixel(fo->xx, fo->yy, fo->sz, &bd_cell, &bd_square))\n        continue;\n      if (usrs->hotkeys[HOTKEY_BIG_FOOD].active && fo->sz < 10) continue;\n\n      if (fo->rx >= gdata->data.fpx1 && fo->ry >= gdata->data.fpy1 &&\n          fo->rx <= gdata->data.fpx2 && fo->ry <= gdata->data.fpy2) {\n        float d = gdata->fsz[fo->cv2] * food_scale * fo->rad * mode->food_scale;\n        vec3s c = gdata->cg_colors[fo->cv];\n\n        float fx =\n            mww2 + gdata->data.gsc * (fo->rx - gdata->data.view_xx) - d * 0.5;\n        float fy =\n            mhh2 + gdata->data.gsc * (fo->ry - gdata->data.view_yy) - d * 0.5;\n\n        if (food_tex == 1) {\n          float z = food_scale;\n          float fgsc = 1.2f;\n          original_food(usr->r,fx+d*.5f,fy+d*.5f,fo->sz,fo->rad,z*fgsc,\n                        mode->food_scale,c,fo->fr,mode->uniform_food_color ? -1 : fo->cv);\n        } else\n        wyrm_food_push(usr->r->fdr, fx + d * 0.5f, fy + d * 0.5f, d, c, fo->fr,\n                       mode->food_flicker * (.5 + .5 * cosf(fo->gfr / 13)),\n                       food_shape(fo, mode->food_type), food_tex, food_crowded);"
+    ],
+    [
+      "          ntx = ntx - (usrs->snake_scores ? tsize.x : nsize.x) * 0.5f;",
+      "          if (android_home_near_original()) {\n            float z=gdata->data.gsc;\n            float unit=fminf(ctx->size[0],ctx->size[1])/480.0f;\n            float textz=z+((gdata->ai_mode ? .8f : .7f)*unit-z)*.25f;\n            float size=13*z*unit/(textz > .001f ? textz : .001f);\n            vec3s colour=*scolor;\n            for(int j=0;j<3;++j) colour.raw[j] = fminf(255,roundf(127.5f+colour.raw[j]*255*.64f))/255;\n            original_name(usr->r,o->nk,size,ntx,\n                mhh2+(o->yy+o->fy+30+13*o->sc-gdata->data.view_yy)*z,colour,a);\n          } else {\n          ntx = ntx - (usrs->snake_scores ? tsize.x : nsize.x) * 0.5f;"
+    ],
+    [
+      "#endif\n        }\n      }\n\n      if (sct >= 2) {\n        float fang = o->ehang;\n        float ssc = o",
+      "#endif\n          }\n        }\n      }\n\n      if (sct >= 2) {\n        float fang = o->ehang;\n        float ssc = o"
+    ]
+  ],
+  "app/src/game/ui_overlay.c": [
+    [
+      "#include \"ui_overlay.h\"",
+      "#include \"ui_overlay.h\"\n#include \"original_art.h\""
+    ],
+    [
+      "static ImVec2 original_text_size(ImFont* font, float size, const char* text) {\n  ImVec2 out;\n  igPushFont(font, size);\n  igCalcTextSize(&out, text, NULL, false, -1);\n  igPopFont();\n  return out;\n}\n\n/*\n * One leaderboard string as the original draws it (Main.as drawText and the\n * glyph sheets, 26865-27030). The glyphs were cut at 52 px with\n * DropShadowFilter(0, 90, black, 1, 7, 7, strength 24) = a solid black outline\n * about 6 px wide, then DropShadowFilter(3, 90, black, 0.75, 8, 8) = a soft\n * shadow 3 px below. The board draws that outlined glyph, tinted with the\n * snake's colour, at `alpha`, and the bare face again ADDITIVELY at the same\n * alpha (highscore_add_batch). Over the face the sum is bg(1 - a) + 2ca, so the\n * face is drawn here in twice its colour; that is why it reads on any floor.\n */\nstatic void original_text(ImDrawList* draw, ImFont* font, float size,\n                          ImVec2 pos, vec3s colour, float alpha,\n                          const char* text) {\n  if (alpha <= 0.004f) return;\n  float f = size / 52.0f;\n  float outline = 6.0f * f;\n  float drop = 3.0f * f;\n  /* Stamps overlap about three deep: each is weaker so the pile reads as alpha. */\n  float stamp = 1.0f - powf(1.0f - (alpha > 0.999f ? 0.999f : alpha), 1.0f / 3.0f);\n  ImU32 shadow = igColorConvertFloat4ToU32((ImVec4){0, 0, 0, stamp * 0.75f * 0.45f});\n  ImU32 black = igColorConvertFloat4ToU32((ImVec4){0, 0, 0, stamp});\n  for (int i = 0; i < 8; ++i) {\n    float a = 6.2831853f * (i + 0.5f) / 8.0f;\n    float spread = outline + 4.0f * f;\n    ImDrawList_AddText_FontPtr(\n        draw, font, size,\n        (ImVec2){pos.x + cosf(a) * spread, pos.y + drop + sinf(a) * spread},\n        shadow, text, NULL, 0, NULL);\n  }\n  for (int i = 0; i < 12; ++i) {\n    float a = 6.2831853f * i / 12.0f;\n    ImDrawList_AddText_FontPtr(\n        draw, font, size,\n        (ImVec2){pos.x + cosf(a) * outline, pos.y + sinf(a) * outline},\n        black, text, NULL, 0, NULL);\n  }\n  for (int i = 0; i < 6; ++i) {\n    float a = 6.2831853f * (i + 0.5f) / 6.0f;\n    ImDrawList_AddText_FontPtr(\n        draw, font, size,\n        (ImVec2){pos.x + cosf(a) * outline * 0.5f, pos.y + sinf(a) * outline * 0.5f},\n        black, text, NULL, 0, NULL);\n  }\n  float r = colour.x * 2.0f, g = colour.y * 2.0f, b = colour.z * 2.0f;\n  ImU32 face = igColorConvertFloat4ToU32((ImVec4){r > 1.0f ? 1.0f : r,\n                                                  g > 1.0f ? 1.0f : g,\n                                                  b > 1.0f ? 1.0f : b, alpha});\n  ImDrawList_AddText_FontPtr(draw, font, size, pos, face, text, NULL, 0, NULL);\n}\n\n",
+      "static renderer* original_board_renderer;\nstatic ImVec2 original_text_size(ImFont* font,float size,const char* text) {\n  (void)font; return (ImVec2){original_width(text,size),size};\n}\nstatic void original_text(ImDrawList* draw,ImFont* font,float size,ImVec2 pos,\n    vec3s colour,float alpha,const char* text) {\n  (void)draw; (void)font;\n  original_board_text(original_board_renderer,text,size,pos.x,pos.y,colour,alpha);\n}\n\n"
+    ],
+    [
+      "static void draw_original_hud(tenv* env, ImDrawList* draw) {",
+      "static void draw_original_hud(tenv* env, ImDrawList* draw) {\n  original_board_renderer = env->usr->r;"
+    ],
+    [
+      "    /* Your own row (OM, 2026-10-05): a faint plate behind it and the rank and\n       name nudged right, so you see at once where you are. */\n    float me_x = mine ? 6.0f * u : 0.0f;\n    if (mine)\n      ImDrawList_AddRectFilled(\n          draw, (ImVec2){lx - 6.0f * u, y - 1.5f * u},\n          (ImVec2){lx + 247.0f * u, y + size + 2.5f * u},\n          igColorConvertFloat4ToU32((ImVec4){1, 1, 1, 0.14f * original_lb_fade}),\n          6.0f * u, 0);\n",
+      "    float me_x = 0;\n"
+    ]
+  ]
+}

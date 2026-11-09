@@ -8,6 +8,7 @@
 #include "game/backgrounds.h"
 #include "game/studio.h"
 #include "game/tag_count.h"
+#include "game/tags.h"
 #include "game/user_settings.h"
 #include "rendering/renderer.h"
 #include "user.h"
@@ -80,7 +81,7 @@ bool WyrmIOSQueueSkinSelection(int preset, const char* code,
                                int tag, int background) {
   if (!skin_mutex || preset < 0 || preset >= NUM_DEFAULT_SKINS ||
       accessory < -1 || accessory >= NUM_ACCESSORIES ||
-      tag < -1 || tag >= TAG_COUNT ||
+      tag < -1 || tag >= TAG_INDEX_LIMIT || /* fetched tags (2026-10-26) */
       background < 0 || background >= NUM_BACKGROUNDS ||
       color_count < 0 || color_count > MAX_SKIN_CODE_LEN ||
       (color_count > 0 && !colors))

@@ -77,7 +77,7 @@ final class WyrmBadgeStore: ObservableObject {
     func reset() { books = [:]; loading = [] }
 
     private static func fetch(_ id: String, token: String) async throws -> WyrmBadgeBook {
-        guard let url = URL(string: "https://wyrm-api.77-245-76-86.sslip.io/v1/players/\(id)/badges") else { throw URLError(.badURL) }
+        guard let url = URL(string: "https://wyrm-api.165-99-223-123.sslip.io/v1/players/\(id)/badges") else { throw URLError(.badURL) }
         var request = URLRequest(url: url)
         request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Accept")
@@ -91,6 +91,9 @@ final class WyrmBadgeStore: ObservableObject {
 // MARK: - Page
 
 struct WyrmProfilePage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let playerID: String
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
@@ -227,21 +230,21 @@ struct WyrmProfilePage: View {
                 }
             }
             HStack(spacing: 8) {
-                Text(name).font(.androidWyrm(18, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                Text(name).font(.androidWyrm(18, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                 if !own, other?.followsYou == true {
                     Text(other?.isFollowing == true ? "Friends" : "Follows you")
-                        .font(.androidWyrm(10.5, .semibold)).foregroundColor(ATheme.live)
+                        .font(.androidWyrm(10.5, .semibold)).foregroundColor(wyrmScopedColours.live)
                         .padding(.horizontal, 8).padding(.vertical, 3)
-                        .background(Capsule().fill(ATheme.live.opacity(0.14)))
+                        .background(Capsule().fill(wyrmScopedColours.live.opacity(0.14)))
                 }
             }
             .padding(.top, 14)
             if !bio.isEmpty {
-                Text(bio).font(.androidWyrm(13.5)).foregroundColor(ATheme.mute).lineSpacing(2)
+                Text(bio).font(.androidWyrm(13.5)).foregroundColor(wyrmScopedColours.mute).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
             } else if own {
                 Button { open(.editProfile) } label: {
-                    Text("Add a line about how you play").font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.link)
+                    Text("Add a line about how you play").font(.androidWyrm(13.5, .semibold)).foregroundColor(wyrmScopedColours.link)
                 }.buttonStyle(.plain).padding(.top, 4)
             }
             // Best / Kills / Beads chips are off the profile (OM, 2026-10-05).
@@ -254,9 +257,9 @@ struct WyrmProfilePage: View {
     private func stat(_ value: String, _ label: String, action: (() -> Void)?) -> some View {
         Button { action?() } label: {
             VStack(spacing: 2) {
-                Text(value).font(.androidWyrm(18, .bold)).foregroundColor(ATheme.ink).monospacedDigit().lineLimit(1)
+                Text(value).font(.androidWyrm(18, .bold)).foregroundColor(wyrmScopedColours.ink).monospacedDigit().lineLimit(1)
                     .minimumScaleFactor(0.7)
-                Text(label).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                Text(label).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
             }
             .frame(maxWidth: .infinity).contentShape(Rectangle())
         }
@@ -265,12 +268,12 @@ struct WyrmProfilePage: View {
 
     private func chip(_ icon: String, _ label: String, _ value: String) -> some View {
         HStack(spacing: 5) {
-            Image(systemName: icon).font(.system(size: 10.5, weight: .bold)).foregroundColor(ATheme.quiet)
-            Text(label).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
-            Text(value).font(.androidWyrm(12, .bold)).foregroundColor(ATheme.ink)
+            Image(systemName: icon).font(.system(size: 10.5, weight: .bold)).foregroundColor(wyrmScopedColours.quiet)
+            Text(label).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet)
+            Text(value).font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.ink)
         }
         .padding(.horizontal, 10).frame(height: 28)
-        .background(Capsule().fill(ATheme.well))
+        .background(Capsule().fill(wyrmScopedColours.well))
     }
 
     @ViewBuilder private var actions: some View {
@@ -290,7 +293,7 @@ struct WyrmProfilePage: View {
             }
             if other != nil, other?.canMessage != true {
                 Text("You can message each other once you both follow.")
-                    .font(.androidWyrm(11)).foregroundColor(ATheme.quiet).padding(.top, 6)
+                    .font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet).padding(.top, 6)
             }
         }
     }
@@ -298,9 +301,9 @@ struct WyrmProfilePage: View {
     private func profileButton(_ title: String, filled: Bool, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Text(title).font(.androidWyrm(14, .semibold))
-                .foregroundColor(filled ? ATheme.onInk : ATheme.ink)
+                .foregroundColor(filled ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
                 .frame(maxWidth: .infinity).frame(height: 38)
-                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(filled ? ATheme.ink : ATheme.well))
+                .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(filled ? wyrmScopedColours.ink : wyrmScopedColours.well))
                 .opacity(enabled ? 1 : 0.45)
         }
         .buttonStyle(WSPressStyle()).disabled(!enabled)
@@ -322,11 +325,11 @@ struct WyrmProfilePage: View {
         }.map(\.element)
         return VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("BADGES").font(.androidWyrm(10.5, .semibold)).tracking(0.9).foregroundColor(ATheme.quiet)
+                Text("BADGES").font(.androidWyrm(10.5, .semibold)).tracking(0.9).foregroundColor(wyrmScopedColours.quiet)
                 Spacer()
                 if book != nil {
                     Text("\(shownBadges.filter(\.earned).count) of \(shownBadges.count)")
-                        .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.quiet)
+                        .font(.androidWyrm(11.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                 }
             }
             .padding(.horizontal, 18)
@@ -335,8 +338,8 @@ struct WyrmProfilePage: View {
                     if list.isEmpty {
                         ForEach(0..<6, id: \.self) { _ in
                             VStack(spacing: 7) {
-                                Circle().fill(ATheme.well).frame(width: 58, height: 58)
-                                RoundedRectangle(cornerRadius: 4).fill(ATheme.well).frame(width: 48, height: 9)
+                                Circle().fill(wyrmScopedColours.well).frame(width: 58, height: 58)
+                                RoundedRectangle(cornerRadius: 4).fill(wyrmScopedColours.well).frame(width: 48, height: 9)
                             }.frame(width: 70)
                         }
                     } else {
@@ -357,25 +360,25 @@ struct WyrmProfilePage: View {
 
     private func badgeOverlay(_ badge: WyrmBadge) -> some View {
         ZStack(alignment: .bottom) {
-            ATheme.ink.opacity(0.3).ignoresSafeArea()
+            wyrmScopedColours.ink.ignoresSafeArea()
                 .onTapGesture { withAnimation(.easeOut(duration: 0.22)) { badgeShown = nil } }
             VStack(spacing: 12) {
                 WyrmBadgeMedal(badge: badge, size: 92, showsTitle: false)
-                Text(badge.title).font(.androidWyrm(21, .bold)).foregroundColor(ATheme.ink)
-                Text(badge.detail).font(.androidWyrm(14)).foregroundColor(ATheme.mute)
+                Text(badge.title).font(.androidWyrm(21, .bold)).foregroundColor(wyrmScopedColours.ink)
+                Text(badge.detail).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute)
                 if badge.earned {
-                    Text("Earned").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.live)
-                        .padding(.horizontal, 12).padding(.vertical, 5).background(Capsule().fill(ATheme.live.opacity(0.14)))
+                    Text("Earned").font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.live)
+                        .padding(.horizontal, 12).padding(.vertical, 5).background(Capsule().fill(wyrmScopedColours.live.opacity(0.14)))
                 } else {
                     VStack(spacing: 6) {
                         GeometryReader { proxy in
                             ZStack(alignment: .leading) {
-                                Capsule().fill(ATheme.well)
-                                Capsule().fill(ATheme.live).frame(width: max(8, proxy.size.width * badge.fraction))
+                                Capsule().fill(wyrmScopedColours.well)
+                                Capsule().fill(wyrmScopedColours.live).frame(width: max(8, proxy.size.width * badge.fraction))
                             }
                         }.frame(height: 8)
                         Text("\(Int64(badge.progress).wyrmFormatted) of \(Int64(badge.goal).wyrmFormatted)")
-                            .font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.quiet)
+                            .font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                     }.padding(.horizontal, 30)
                 }
                 WSPrimaryButton(label: "Done") { withAnimation(.easeOut(duration: 0.22)) { badgeShown = nil } }
@@ -383,8 +386,8 @@ struct WyrmProfilePage: View {
             }
             .padding(.vertical, 24)
             .frame(maxWidth: 520)
-            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.rule))
+            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(wyrmScopedColours.rule))
             .padding(12)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         }
@@ -399,10 +402,10 @@ struct WyrmProfilePage: View {
                 Image(systemName: "square.grid.3x3.fill").font(.system(size: 13, weight: .semibold))
                 Text("Trails").font(.androidWyrm(13.5, .semibold))
             }
-            .foregroundColor(ATheme.ink)
+            .foregroundColor(wyrmScopedColours.ink)
             .frame(maxWidth: .infinity).frame(height: 44)
-            .overlay(Rectangle().fill(ATheme.ink).frame(width: 90, height: 2), alignment: .bottom)
-            Rectangle().fill(ATheme.rule).frame(height: 1)
+            .overlay(Rectangle().fill(wyrmScopedColours.ink).frame(width: 90, height: 2), alignment: .bottom)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
         }
         .padding(.top, 20)
     }
@@ -420,20 +423,20 @@ struct WyrmProfilePage: View {
             }
             .padding(.top, 2)
             if grid.loading, grid.cursor != nil {
-                ProgressView().tint(ATheme.quiet).padding(.top, 14)
+                ProgressView().tint(wyrmScopedColours.quiet).padding(.top, 14)
             }
         } else if let grid, grid.loaded {
             VStack(spacing: 10) {
                 Image(systemName: grid.failed ? "wifi.exclamationmark" : "square.grid.3x3")
-                    .font(.system(size: 26, weight: .semibold)).foregroundColor(ATheme.quiet)
+                    .font(.system(size: 26, weight: .semibold)).foregroundColor(wyrmScopedColours.quiet)
                 Text(grid.failed ? "Couldn't load trails" : own ? "Share your first trail" : "No trails yet")
-                    .font(.androidWyrm(17, .semibold)).foregroundColor(ATheme.ink)
+                    .font(.androidWyrm(17, .semibold)).foregroundColor(wyrmScopedColours.ink)
                 Text(grid.failed ? "Pull down to try again." : own ? "A photo, a run, a few words. It shows up here and in Trails." : "When \(name) posts, it shows up here.")
-                    .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center)
+                    .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.center)
                 if own && !grid.failed {
                     Button { open(.trailCompose) } label: {
-                        Text("New trail").font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.onInk)
-                            .padding(.horizontal, 22).frame(height: 40).background(Capsule().fill(ATheme.ink))
+                        Text("New trail").font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.onInk)
+                            .padding(.horizontal, 22).frame(height: 40).background(Capsule().fill(wyrmScopedColours.ink))
                     }.buttonStyle(WSPressStyle()).padding(.top, 4)
                 }
             }
@@ -442,7 +445,7 @@ struct WyrmProfilePage: View {
             LazyVGrid(columns: Self.columns, spacing: 2) {
                 ForEach(0..<9, id: \.self) { index in
                     Color.clear.aspectRatio(1, contentMode: .fit)
-                        .background(ATheme.well.opacity(index % 2 == 0 ? 1 : 0.7))
+                        .background(wyrmScopedColours.well.opacity(index % 2 == 0 ? 1 : 0.7))
                 }
             }
             .padding(.top, 2)
@@ -482,16 +485,16 @@ struct WyrmProfilePage: View {
             let centre = CGPoint(x: proxy.size.width / 2, y: proxy.size.height * (own ? 0.38 : 0.44))
             ZStack {
                 Rectangle().fill(.ultraThinMaterial)
-                    .overlay(ATheme.paper.opacity(0.35))
+                    .overlay(wyrmScopedColours.paper.opacity(0.35))
                     .opacity(avatarExpanded ? 1 : 0)
                     .ignoresSafeArea()
                     .onTapGesture { collapseAvatar() }
 
                 VStack(spacing: 4) {
-                    Text(name).font(.androidWyrm(20, .bold)).foregroundColor(ATheme.ink)
-                    if !handle.isEmpty { Text(handle).font(.androidWyrm(13)).foregroundColor(ATheme.quiet) }
+                    Text(name).font(.androidWyrm(20, .bold)).foregroundColor(wyrmScopedColours.ink)
+                    if !handle.isEmpty { Text(handle).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet) }
                     if own, !photoError.isEmpty {
-                        Text(photoError).font(.androidWyrm(12)).foregroundColor(ATheme.badge)
+                        Text(photoError).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge)
                             .multilineTextAlignment(.center).padding(.top, 4).padding(.horizontal, 30)
                     }
                 }
@@ -545,13 +548,13 @@ struct WyrmProfilePage: View {
                     collapseAvatar { open(.editProfile) }
                 }
             } else {
-                Capsule().fill(ATheme.quiet.opacity(0.5)).frame(width: 34, height: 5)
+                Capsule().fill(wyrmScopedColours.quiet).frame(width: 34, height: 5)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .frame(width: optionsOpen ? full : 120, height: optionsHeight)
-        .background(RoundedRectangle(cornerRadius: optionsOpen ? 24 : 23, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: optionsOpen ? 24 : 23, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: optionsOpen ? 24 : 23, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: optionsOpen ? 24 : 23, style: .continuous).stroke(wyrmScopedColours.rule))
         .clipShape(RoundedRectangle(cornerRadius: optionsOpen ? 24 : 23, style: .continuous))
         .shadow(color: Color.black.opacity(0.16), radius: 24, y: 10)
         .opacity(avatarExpanded ? 1 : 0)
@@ -581,6 +584,9 @@ struct WyrmProfilePage: View {
 // MARK: - Pieces
 
 struct WyrmBadgeMedal: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let badge: WyrmBadge
     var size: CGFloat = 58
     var showsTitle = true
@@ -588,23 +594,23 @@ struct WyrmBadgeMedal: View {
     var body: some View {
         VStack(spacing: 7) {
             ZStack {
-                Circle().fill(badge.earned ? ATheme.ink : ATheme.well)
+                Circle().fill(badge.earned ? wyrmScopedColours.ink : wyrmScopedColours.well)
                 if badge.earned {
-                    Circle().stroke(ATheme.live, lineWidth: max(2, size * 0.04)).padding(-size * 0.06)
+                    Circle().stroke(wyrmScopedColours.live, lineWidth: max(2, size * 0.04)).padding(-size * 0.06)
                 } else if badge.fraction > 0 {
                     Circle().trim(from: 0, to: badge.fraction)
-                        .stroke(ATheme.live, style: StrokeStyle(lineWidth: max(2.5, size * 0.05), lineCap: .round))
+                        .stroke(wyrmScopedColours.live, style: StrokeStyle(lineWidth: max(2.5, size * 0.05), lineCap: .round))
                         .rotationEffect(.degrees(-90))
                         .padding(size * 0.04)
                 }
                 Image(systemName: badge.icon).font(.system(size: size * 0.34, weight: .semibold))
-                    .foregroundColor(badge.earned ? ATheme.onInk : ATheme.quiet)
+                    .foregroundColor(badge.earned ? wyrmScopedColours.onInk : wyrmScopedColours.quiet)
             }
             .frame(width: size, height: size)
             .padding(size * 0.06)
             if showsTitle {
                 Text(badge.title).font(.androidWyrm(10.5, .semibold))
-                    .foregroundColor(badge.earned ? ATheme.ink : ATheme.quiet).lineLimit(1)
+                    .foregroundColor(badge.earned ? wyrmScopedColours.ink : wyrmScopedColours.quiet).lineLimit(1)
                     .frame(width: size + 14)
             }
         }
@@ -616,6 +622,9 @@ struct WyrmBadgeMedal: View {
 /// One square in a profile's grid: the thumbnail filling the square, or the
 /// words of a text trail on ink. Beads show when there are any.
 struct WyrmTrailTile: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let trail: WyrmTrail
     @State private var image: UIImage?
 
@@ -628,7 +637,7 @@ struct WyrmTrailTile: View {
     var body: some View {
         Color.clear
             .aspectRatio(1, contentMode: .fit)
-            .background(trail.photo == nil ? ATheme.ink : ATheme.well)
+            .background(trail.photo == nil ? wyrmScopedColours.ink : wyrmScopedColours.well)
             .overlay(content)
             .clipped()
             .overlay(alignment: .topTrailing) {
@@ -646,7 +655,7 @@ struct WyrmTrailTile: View {
             .overlay(alignment: .bottomLeading) {
                 if trail.likeCount > 0 {
                     HStack(spacing: 4) {
-                        Circle().fill(ATheme.live).frame(width: 7, height: 7)
+                        Circle().fill(wyrmScopedColours.live).frame(width: 7, height: 7)
                         Text("\(trail.likeCount)").font(.androidWyrm(11, .bold))
                     }
                     .foregroundColor(.white)
@@ -665,7 +674,7 @@ struct WyrmTrailTile: View {
             }
         } else {
             Text(trail.caption)
-                .font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.onInk)
+                .font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.onInk)
                 .lineLimit(5).multilineTextAlignment(.leading)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                 .padding(9)

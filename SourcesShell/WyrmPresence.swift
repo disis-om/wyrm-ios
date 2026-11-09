@@ -29,7 +29,7 @@ struct WyrmFriendActivity: Equatable {
 @MainActor
 final class WyrmPresence: ObservableObject {
     static let shared = WyrmPresence()
-    private static let base = "https://wyrm-api.77-245-76-86.sslip.io"
+    private static let base = "https://wyrm-api.165-99-223-123.sslip.io"
     private static let idleAfter: TimeInterval = 120
 
     @Published private(set) var friends: [String: WyrmFriendActivity] = [:]
@@ -45,6 +45,10 @@ final class WyrmPresence: ObservableObject {
 
     private var screen = 0
     private var practice = false
+    /// An online match (not Play with AI) on screen: Wyrm friends on the minimap.
+    var inOnlineMatch: Bool { screen == 2 && !practice }
+    /// Any match on screen, Play with AI too: game music and sounds.
+    var inMatch: Bool { screen == 2 }
     private var arena = ""
     private var lastTouch = Date()
     private var idle = false
@@ -216,6 +220,9 @@ func wyrmShortSpan(_ ms: Double) -> String {
 /// long + Join; "Active now"; "Played in Arena 4817 · 2h ago". Same words as
 /// Android's `FriendActivityLine`.
 struct WyrmFriendActivityLine: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let activity: WyrmFriendActivity?
     var size: CGFloat = 11.5
     var showsJoin = true
@@ -233,24 +240,24 @@ struct WyrmFriendActivityLine: View {
         if activity.playing, let arena = activity.arena {
             HStack(spacing: 6) {
                 Text("Playing in \(WyrmPresence.shared.arenaName(arena))")
-                    .font(.androidWyrm(size, .semibold)).foregroundColor(ATheme.live).lineLimit(1)
+                    .font(.androidWyrm(size, .semibold)).foregroundColor(wyrmScopedColours.live).lineLimit(1)
                 WyrmArenaCountryBadge(country: services.country(arena))
                 if let since = activity.since(now) {
-                    Text(wyrmShortSpan(since)).font(.androidWyrm(size)).foregroundColor(ATheme.quiet).lineLimit(1)
+                    Text(wyrmShortSpan(since)).font(.androidWyrm(size)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
                 }
                 if showsJoin {
                     Button { WyrmPresence.shared.onJoin(arena) } label: {
-                        Text("Join").font(.androidWyrm(size, .bold)).foregroundColor(ATheme.onInk)
+                        Text("Join").font(.androidWyrm(size, .bold)).foregroundColor(wyrmScopedColours.onInk)
                             .padding(.horizontal, 10).padding(.vertical, 3)
-                            .background(Capsule().fill(ATheme.ink))
+                            .background(Capsule().fill(wyrmScopedColours.ink))
                     }.buttonStyle(.plain)
                 }
             }
         } else if activity.online {
-            Text("Active now").font(.androidWyrm(size, .semibold)).foregroundColor(ATheme.live).lineLimit(1)
+            Text("Active now").font(.androidWyrm(size, .semibold)).foregroundColor(wyrmScopedColours.live).lineLimit(1)
         } else if let last = activity.lastArena, let at = activity.lastPlayedAt {
             Text("Played in \(WyrmPresence.shared.arenaName(last)) · \(wyrmShortSpan(now.timeIntervalSince(at) * 1000)) ago")
-                .font(.androidWyrm(size)).foregroundColor(ATheme.quiet).lineLimit(1)
+                .font(.androidWyrm(size)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
         }
     }
 }

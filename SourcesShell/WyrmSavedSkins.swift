@@ -85,6 +85,9 @@ final class WyrmSavedSkins: ObservableObject {
 
 /// The top bar while saved skins are selected (Gmail-style): close, the count, Edit (one), Delete.
 struct WyrmSavedSelectionBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let count: Int
     let onClose: () -> Void
     let onEdit: (() -> Void)?
@@ -93,33 +96,33 @@ struct WyrmSavedSelectionBar: View {
     var body: some View {
         HStack(spacing: 0) {
             Button(action: onClose) {
-                Text("✕").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+                Text("✕").font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
                     .frame(width: 40, height: 40)
-                    .background(Circle().fill(ATheme.card))
-                    .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                    .background(Circle().fill(wyrmScopedColours.card))
+                    .overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 1))
                     .contentShape(Circle())
             }
             .buttonStyle(WSPressStyle())
             .accessibilityLabel("Close selection")
             Spacer().frame(width: 12)
-            Text("\(count) selected").font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+            Text("\(count) selected").font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
             Spacer(minLength: 8)
             if let onEdit {
-                action("Edit", ATheme.ink, onEdit)
+                action("Edit", wyrmScopedColours.ink, onEdit)
                 Spacer().frame(width: 8)
             }
-            action("Delete", ATheme.badge, onDelete)
+            action("Remove", wyrmScopedColours.badge, onDelete)
         }
         .padding(.leading, 12).padding(.trailing, 16).padding(.top, 6).padding(.bottom, 14)
-        .background(ATheme.paper)
+        .background(wyrmScopedColours.paper)
     }
 
     private func action(_ label: String, _ colour: Color, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
             Text(label).font(.androidWyrm(13, .bold)).foregroundColor(colour)
                 .padding(.horizontal, 16).padding(.vertical, 9)
-                .background(Capsule().fill(ATheme.card))
-                .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+                .background(Capsule().fill(wyrmScopedColours.card))
+                .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .contentShape(Capsule())
         }
         .buttonStyle(WSPressStyle())
@@ -128,6 +131,9 @@ struct WyrmSavedSelectionBar: View {
 
 /// The saved skins, two to a row, each its own snake; tap / touch and hold.
 struct WyrmSavedSkinsBlock: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var textures: WyrmSkinTextureLibrary
     @ObservedObject private var saved = WyrmSavedSkins.shared
     let selected: Set<String>
@@ -136,14 +142,14 @@ struct WyrmSavedSkinsBlock: View {
 
     var body: some View {
         if saved.list.isEmpty {
-            Text("Play with a custom skin and it is saved here.").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+            Text("Play with a custom skin and it is saved here.").font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 20).padding(.vertical, 4)
         } else {
             VStack(spacing: 0) {
                 Text(selected.isEmpty ? "Tap a skin to wear it. Touch and hold a skin to select it."
                                       : "Tap more skins to select them. Edit works on one skin.")
-                    .font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(2)
+                    .font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 20).padding(.bottom, 8)
@@ -154,13 +160,13 @@ struct WyrmSavedSkinsBlock: View {
                             .padding(.horizontal, 8).padding(.vertical, 6)
                             .aspectRatio(3.4, contentMode: .fit)
                             .background(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(chosen ? ATheme.ink.opacity(0.08) : ATheme.card.opacity(0.92)))
+                                .fill(chosen ? wyrmScopedColours.ink : wyrmScopedColours.card.opacity(0.92)))
                             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 2 : 1))
+                                .stroke(chosen ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: chosen ? 2 : 1))
                             .overlay(alignment: .topTrailing) {
                                 if chosen {
                                     Image(systemName: "checkmark.circle.fill").font(.system(size: 16, weight: .bold))
-                                        .foregroundColor(ATheme.ink).padding(6)
+                                        .foregroundColor(wyrmScopedColours.ink).padding(6)
                                 }
                             }
                             .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))

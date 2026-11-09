@@ -109,7 +109,8 @@ struct WyrmSwingTag: View {
     private var anchor: CGPoint { CGPoint(x: head.x - 8 * unit, y: head.y) }
 
     var body: some View {
-        TimelineView(.animation(paused: reduceMotion)) { timeline in
+        // Always moving (OM, 2026-11-01): the skin tag does not follow Reduce Motion.
+        TimelineView(.animation) { timeline in
             Canvas { context, _ in
                 if rope.lastDate != timeline.date {
                     rope.lastDate = timeline.date

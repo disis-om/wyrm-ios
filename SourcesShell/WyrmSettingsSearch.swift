@@ -42,6 +42,9 @@ extension View {
 }
 
 private struct WyrmSettingBlink: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let id: String
     let inset: CGFloat
     let radius: CGFloat
@@ -52,9 +55,9 @@ private struct WyrmSettingBlink: ViewModifier {
         content
             .overlay(
                 RoundedRectangle(cornerRadius: radius, style: .continuous)
-                    .fill(ATheme.link.opacity(lit ? 0.16 : 0))
+                    .fill(wyrmScopedColours.link.opacity(lit ? 0.16 : 0))
                     .overlay(RoundedRectangle(cornerRadius: radius, style: .continuous)
-                        .stroke(ATheme.link.opacity(lit ? 0.7 : 0), lineWidth: 1.5))
+                        .stroke(wyrmScopedColours.link.opacity(lit ? 0.7 : 0), lineWidth: 1.5))
                     .padding(.horizontal, inset).padding(.vertical, 2)
                     .allowsHitTesting(false)
             )
@@ -99,7 +102,7 @@ enum WyrmSettingsIndex {
     static let controlsIDs = ["controls.joystick_mode", "controls.handedness", "controls.boost_mode",
                               "controls.joystick_size", "controls.boost_size", "controls.opacity"]
     static let botIDs = ["general.bot_circle", "general.bot_radius"]
-    static let modeFood: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "const_food_scale", "uniform_food_color", "food_color"]
+    static let modeFood: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "uniform_food_color", "food_color"]
 
     static func place(_ setting: EngineSetting) -> (WyrmDesignRoute, String)? {
         let id = setting.id, group = setting.group
@@ -155,6 +158,12 @@ enum WyrmSettingsIndex {
                               keywords: "look ahead camera view follow slither boost") {
                 AnyView(WyrmLookAheadSearchRow())
             },
+            WyrmSettingsEntry(id: "app.auto-zoom", title: "Auto zoom",
+                              detail: "The view zooms out as your snake grows. Turn it off to keep your own zoom.",
+                              page: "Display", route: .display,
+                              keywords: "auto zoom automatic zoom out camera view grow size") {
+                AnyView(WyrmAutoZoomSearchRow())
+            },
             WyrmSettingsEntry(id: "app.play-orientation", title: "Play orientation",
                               detail: "Landscape or portrait: the lobby, the match and the layout editor",
                               page: "Controls", route: .controls,
@@ -168,16 +177,12 @@ enum WyrmSettingsIndex {
             },
         ]
         result += [
-            WyrmSettingsEntry(id: "app.theme", title: "Theme", detail: "Paper, dark and colour appearances", page: "Accessibility",
-                              route: .themes, keywords: "appearance dark mode colour color " + WyrmThemeID.allCases.map(\.rawValue).joined(separator: " ")) {
+            WyrmSettingsEntry(id: "app.theme", title: "Theme", detail: "Light, dark and colour appearances", page: "Accessibility",
+                              route: .themes, keywords: "appearance dark mode colour color light auto " + WyrmThemeID.allCases.map { $0.rawValue + " " + $0.displayName }.joined(separator: " ")) {
                 AnyView(WyrmThemeQuickPicker())
             },
-            WyrmSettingsEntry(id: "app.theme-intensity", title: "Theme intensity", detail: "50% is the original look", page: "Accessibility",
+            WyrmSettingsEntry(id: "app.theme-intensity", title: "Theme intensity", detail: "50% is this theme as designed", page: "Accessibility",
                               route: .themes, keywords: "strength richer appearance") { AnyView(WyrmThemeIntensityRow()) },
-            WyrmSettingsEntry(id: "app.keyboard", title: "Keyboard size and transparency", detail: "Also behind the gear key on the keyboard",
-                              page: "Accessibility · Keyboard", route: .themes, keywords: "keys typing opacity bigger smaller") {
-                AnyView(WyrmKeyboardLookRows())
-            },
             WyrmSettingsEntry(id: "app.developer", title: "Developer Mode", detail: "Local diagnostics and export tools", page: "Settings",
                               route: nil, keywords: "logs diagnostics debug") { AnyView(WyrmDeveloperToggle()) },
         ]
@@ -239,6 +244,16 @@ private struct WyrmLookAheadSearchRow: View {
     }
 }
 
+/// Auto zoom, live in search results. The row itself is on Display.
+private struct WyrmAutoZoomSearchRow: View {
+    @ObservedObject var playFeel = WyrmPlayFeelStore.shared
+    var body: some View {
+        WSBoolRow(title: "Auto zoom",
+                  detail: "The view zooms out as your snake grows. Turn it off to keep your own zoom.",
+                  on: playFeel.autoZoom, first: true) { playFeel.setAutoZoom($0) }
+    }
+}
+
 /// The joystick laser switch, live in search results.
 private struct WyrmJoystickLaserSearchRow: View {
     @ObservedObject var store = WyrmJoystickLaserStore.shared
@@ -292,6 +307,9 @@ private struct WyrmNotifyRow: View {
 }
 
 private struct WyrmThemeQuickPicker: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var store = WyrmThemeStore.shared
     var body: some View {
         HStack {
@@ -299,7 +317,7 @@ private struct WyrmThemeQuickPicker: View {
             Spacer()
             Picker("", selection: Binding(get: { store.theme }, set: { store.select($0) })) {
                 ForEach(WyrmThemeID.allCases) { Text($0.displayName).tag($0) }
-            }.pickerStyle(.menu).tint(ATheme.ink)
+            }.pickerStyle(.menu).tint(wyrmScopedColours.ink)
         }.padding(.horizontal, 14).padding(.vertical, 10)
     }
 }
@@ -315,7 +333,10 @@ private struct WyrmThemeIntensityRow: View {
 private struct WyrmDeveloperToggle: View {
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
     var body: some View {
-        WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) { developerMode = $0 }
+        WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) {
+            developerMode = $0
+            WyrmPlayOrientation.shared.publish()
+        }
     }
 }
 
@@ -327,40 +348,30 @@ private struct WyrmBetaUpdatesRow: View {
     }
 }
 
-/// Keyboard size and transparency — the same values as the keyboard's gear key.
-struct WyrmKeyboardLookRows: View {
-    @ObservedObject var keyboard = WyrmKeyboardController.shared
-    var body: some View {
-        VStack(spacing: 0) {
-            WSSliderRow(title: "Keyboard size", valueText: "\(Int((keyboard.scale * 100).rounded()))%",
-                        value: keyboard.scale, range: 0.8...1.3, step: 0.05, first: true) { keyboard.setScale($0) }
-            WSSliderRow(title: "Keyboard transparency", valueText: "\(Int(((1 - keyboard.opacity) * 100).rounded()))%",
-                        value: 1 - keyboard.opacity, range: 0...0.6) { keyboard.setOpacity(1 - $0) }
-        }
-    }
-}
-
 /// The search field at the top of the hub.
 struct WyrmSettingsSearchField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Binding var query: String
     var placeholder: String = "Search settings"
     @FocusState private var focused: Bool
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(ATheme.quiet)
-            TextField(placeholder, text: $query)
-                .font(.androidWyrm(15)).foregroundColor(ATheme.ink)
+            Image(systemName: "magnifyingglass").font(.system(size: 14, weight: .semibold)).foregroundColor(wyrmScopedColours.quiet)
+            TextField(placeholder, text: $query, prompt: wyrmPrompt(placeholder))
+                .font(.androidWyrm(15)).foregroundColor(wyrmScopedColours.ink)
                 .textInputAutocapitalization(.never).disableAutocorrection(true)
                 .submitLabel(.search).focused($focused)
             if !query.isEmpty {
                 Button { withAnimation(.easeOut(duration: 0.18)) { query = "" } } label: {
-                    Image(systemName: "xmark.circle.fill").foregroundColor(ATheme.chevron)
+                    Image(systemName: "xmark.circle.fill").foregroundColor(wyrmScopedColours.chevron)
                 }.buttonStyle(.plain).transition(.opacity.combined(with: .scale))
             }
         }
         .padding(.horizontal, 14).frame(height: 44)
-        .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(focused ? ATheme.ink.opacity(0.35) : ATheme.rule, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(focused ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: 1))
         .padding(.horizontal, 16).padding(.bottom, 14)
         .animation(.easeOut(duration: 0.15), value: focused)
     }
@@ -369,6 +380,9 @@ struct WyrmSettingsSearchField: View {
 /// Results: each card is the page it belongs to, the live control, and an
 /// arrow to go to its place.
 struct WyrmSettingsSearchResults: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let query: String
     @ObservedObject var engine: WyrmShellStore
     let open: (WyrmDesignRoute?) -> Void
@@ -383,22 +397,22 @@ struct WyrmSettingsSearchResults: View {
         }
         VStack(alignment: .leading, spacing: 12) {
             Text(ranked.isEmpty ? "Nothing matches \u{201C}\(query)\u{201D}" : "\(ranked.count) result\(ranked.count == 1 ? "" : "s")")
-                .font(.androidWyrm(11.5, .semibold)).tracking(0.6).foregroundColor(ATheme.quiet)
+                .font(.androidWyrm(11.5, .semibold)).tracking(0.6).foregroundColor(wyrmScopedColours.quiet)
                 .padding(.horizontal, 20)
             ForEach(ranked.prefix(40)) { entry in
                 VStack(alignment: .leading, spacing: 0) {
                     HStack {
-                        Text(entry.page.uppercased()).font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(ATheme.quiet)
+                        Text(entry.page.uppercased()).font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(wyrmScopedColours.quiet)
                         Spacer()
                         Button {
                             UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
                             WyrmSettingsFocus.shared.reveal(entry.id)
                             open(entry.route)
                         } label: {
-                            Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold)).foregroundColor(ATheme.ink)
+                            Image(systemName: "arrow.up.right").font(.system(size: 11, weight: .bold)).foregroundColor(wyrmScopedColours.ink)
                                 .frame(width: 28, height: 28)
-                                .background(Circle().fill(ATheme.well))
-                                .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                                .background(Circle().fill(wyrmScopedColours.well))
+                                .overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 1))
                         }
                         .buttonStyle(WSPressStyle())
                         .accessibilityLabel("Open \(entry.title) on \(entry.page)")
@@ -406,9 +420,9 @@ struct WyrmSettingsSearchResults: View {
                     .padding(.leading, 14).padding(.trailing, 10).padding(.top, 10)
                     entry.control()
                 }
-                .background(ATheme.card)
+                .background(wyrmScopedColours.card)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .padding(.horizontal, 16)
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }

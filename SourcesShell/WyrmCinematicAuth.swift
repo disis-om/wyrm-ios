@@ -61,6 +61,9 @@ private final class WyrmKeyboardMonitor: ObservableObject {
 }
 
 struct WyrmCinematicAuth: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var services: WyrmServiceStore
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -132,10 +135,10 @@ struct WyrmCinematicAuth: View {
         }
         .ignoresSafeArea(.container, edges: .all)
         .ignoresSafeArea(.keyboard, edges: .bottom)
-        .foregroundColor(ATheme.ink)
+        .foregroundColor(wyrmScopedColours.ink)
         .sheet(isPresented: $showingPrivacy) {
             WyrmPrivacyPage(parent: "Back") { showingPrivacy = false }
-                .background(ATheme.paper.ignoresSafeArea())
+                .background(wyrmScopedColours.paper.ignoresSafeArea())
         }
         .animation(motion, value: stage)
         .animation(motion, value: showsKeyboardAction)
@@ -195,7 +198,7 @@ struct WyrmCinematicAuth: View {
             Text("WELCOME TO WYRM")
                 .font(.androidWyrm(11.5, .semibold))
                 .tracking(1.1)
-                .foregroundColor(ATheme.quiet)
+                .foregroundColor(wyrmScopedColours.quiet)
 
             Text("The arena\nand people in it.")
                 .font(.androidWyrm(31, .bold))
@@ -205,7 +208,7 @@ struct WyrmCinematicAuth: View {
 
             Text("A High Performance Engine — plus assist mode, team play, global chat and a live leaderboard.")
                 .font(.androidWyrm(15.5))
-                .foregroundColor(ATheme.mute)
+                .foregroundColor(wyrmScopedColours.mute)
                 .lineSpacing(5)
                 .padding(.top, 11)
 
@@ -220,10 +223,10 @@ struct WyrmCinematicAuth: View {
             } label: {
                 Text("Create account")
                     .font(.androidWyrm(16, .bold))
-                    .foregroundColor(ATheme.onInk)
+                    .foregroundColor(WyrmThemeStore.shared.palette.hero.on.color)
                     .frame(maxWidth: .infinity).frame(height: 52)
-                    .background(Capsule().fill(ATheme.ink))
-                    .shadow(color: ATheme.ink.opacity(0.16), radius: 14, y: 6)
+                    .background(Capsule().fill(WyrmThemeStore.shared.palette.hero.bg.color))
+
             }
             .buttonStyle(WSPressStyle())
             .accessibilityHint("Make a new Wyrm account")
@@ -233,9 +236,9 @@ struct WyrmCinematicAuth: View {
             } label: {
                 Text("Log in")
                     .font(.androidWyrm(16, .semibold))
-                    .foregroundColor(ATheme.ink)
+                    .foregroundColor(wyrmScopedColours.ink)
                     .frame(maxWidth: .infinity).frame(height: 52)
-                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.22), lineWidth: 1.5))
+                    .overlay(Capsule().stroke(wyrmScopedColours.ink, lineWidth: 1.5))
                     .contentShape(Capsule())
             }
             .buttonStyle(WSPressStyle())
@@ -243,8 +246,8 @@ struct WyrmCinematicAuth: View {
             .accessibilityHint("Sign in with an existing Wyrm username and password")
 
             Button { showingPrivacy = true } label: {
-                (Text("By continuing, you agree to Wyrm's ").foregroundColor(ATheme.quiet)
-                    + Text("Privacy Policy").foregroundColor(ATheme.link).underline())
+                (Text("By continuing, you agree to Wyrm's ").foregroundColor(wyrmScopedColours.quiet)
+                    + Text("Privacy Policy").foregroundColor(wyrmScopedColours.link).underline())
                     .font(.androidWyrm(12))
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: .infinity)
@@ -265,13 +268,13 @@ struct WyrmCinematicAuth: View {
                 Text(stageKicker)
                     .font(.androidWyrm(10.5, .bold))
                     .tracking(1.35)
-                    .foregroundColor(ATheme.quiet)
+                    .foregroundColor(wyrmScopedColours.quiet)
 
                 composer
 
                 Text(stageInstruction)
                     .font(.androidWyrm(12.5))
-                    .foregroundColor(ATheme.mute)
+                    .foregroundColor(wyrmScopedColours.mute)
                     .lineSpacing(4)
                     .multilineTextAlignment(.center)
                     .frame(maxWidth: 330)
@@ -279,13 +282,13 @@ struct WyrmCinematicAuth: View {
                 if !account.errorMessage.isEmpty {
                     Text(account.errorMessage)
                         .font(.androidWyrm(12, .semibold))
-                        .foregroundColor(.red)
+                        .foregroundColor(ATheme.badge)
                         .multilineTextAlignment(.center)
                         .transition(.wyrmBlurFade)
                 } else if let validationMessage {
                     Text(validationMessage)
                         .font(.androidWyrm(11.5, .semibold))
-                        .foregroundColor(ATheme.quiet)
+                        .foregroundColor(wyrmScopedColours.quiet)
                         .transition(.wyrmBlurFade)
                 }
             }
@@ -302,8 +305,8 @@ struct WyrmCinematicAuth: View {
         switch stage {
         case .createUsername, .loginUsername:
             HStack(spacing: 5) {
-                Text("@").font(.androidWyrm(22, .semibold)).foregroundColor(ATheme.quiet)
-                TextField("username", text: usernameBinding)
+                Text("@").font(.androidWyrm(22, .semibold)).foregroundColor(wyrmScopedColours.quiet)
+                TextField("username", text: usernameBinding, prompt: wyrmPrompt("username"))
                     .focused($focus, equals: .username)
                     .font(.androidWyrm(21, .semibold))
                     .textInputAutocapitalization(.never)
@@ -321,14 +324,14 @@ struct WyrmCinematicAuth: View {
             }
             .padding(.horizontal, 18)
             .frame(height: 60)
-            .foregroundColor(ATheme.ink)
-            .background(ATheme.card.opacity(0.94))
+            .foregroundColor(wyrmScopedColours.ink)
+            .background(wyrmScopedColours.card.opacity(0.94))
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
-            .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
+            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
+
 
         case .createPassword, .loginPassword:
-            SecureField("Password", text: $password)
+            SecureField("Password", text: $password, prompt: wyrmPrompt("Password"))
                 .focused($focus, equals: .password)
                 .font(.androidWyrm(19, .semibold))
                 .textContentType(stage == .createPassword ? .newPassword : .password)
@@ -336,16 +339,16 @@ struct WyrmCinematicAuth: View {
                 .onSubmit { if actionEnabled { advance() } }
                 .padding(.horizontal, 18)
                 .frame(height: 60)
-                .foregroundColor(ATheme.ink)
-                .background(ATheme.card.opacity(0.94))
+                .foregroundColor(wyrmScopedColours.ink)
+                .background(wyrmScopedColours.card.opacity(0.94))
                 .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
-                .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
+                .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
+
                 .accessibilityLabel(stage == .createPassword ? "Choose password" : "Password")
 
         case .createConfirmation:
             VStack(alignment: .leading, spacing: 9) {
-                SecureField("Password again", text: $confirmation)
+                SecureField("Password again", text: $confirmation, prompt: wyrmPrompt("Password again"))
                     .focused($focus, equals: .confirmation)
                     .font(.androidWyrm(19, .semibold))
                     .textContentType(.newPassword)
@@ -353,11 +356,11 @@ struct WyrmCinematicAuth: View {
                     .onSubmit { if actionEnabled { advance() } }
                     .padding(.horizontal, 18)
                     .frame(height: 60)
-                    .foregroundColor(ATheme.ink)
-                    .background(ATheme.card.opacity(0.94))
+                    .foregroundColor(wyrmScopedColours.ink)
+                    .background(wyrmScopedColours.card.opacity(0.94))
                     .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
-                    .shadow(color: ATheme.ink.opacity(0.045), radius: 22, y: 9)
+                    .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
+
                     .accessibilityLabel("Confirm password")
 
                 passwordConfirmationFeedback
@@ -375,29 +378,29 @@ struct WyrmCinematicAuth: View {
         switch usernameAvailability {
         case .checking:
             ProgressView()
-                .tint(ATheme.quiet)
+                .tint(wyrmScopedColours.quiet)
                 .scaleEffect(0.82)
                 .accessibilityLabel("Checking username availability")
         case .available:
             Image(systemName: "checkmark")
                 .font(.system(size: 12, weight: .black))
-                .foregroundColor(ATheme.onInk)
+                .foregroundColor(wyrmScopedColours.onInk)
                 .frame(width: 25, height: 25)
-                .background(ATheme.live)
+                .background(wyrmScopedColours.live)
                 .clipShape(Circle())
                 .accessibilityLabel("Username available")
         case .taken:
             Image(systemName: "xmark")
                 .font(.system(size: 11, weight: .black))
-                .foregroundColor(.white)
+                .foregroundColor(wyrmScopedColours.paper)
                 .frame(width: 25, height: 25)
-                .background(Color.red.opacity(0.88))
+                .background(wyrmScopedColours.badge)
                 .clipShape(Circle())
                 .accessibilityLabel("Username unavailable")
         case .unavailable:
             Image(systemName: "arrow.clockwise")
                 .font(.system(size: 12, weight: .bold))
-                .foregroundColor(ATheme.quiet)
+                .foregroundColor(wyrmScopedColours.quiet)
                 .accessibilityLabel("Availability check unavailable")
         case .idle:
             EmptyView()
@@ -409,7 +412,7 @@ struct WyrmCinematicAuth: View {
         switch confirmationState {
         case .checking:
             ProgressView()
-                .tint(ATheme.quiet)
+                .tint(wyrmScopedColours.quiet)
                 .scaleEffect(0.76)
                 .frame(width: 22, height: 22)
                 .transition(.wyrmBlurFade)
@@ -418,7 +421,7 @@ struct WyrmCinematicAuth: View {
             WyrmPasswordMatchLabel(
                 text: "Password matched, continue!",
                 systemImage: "checkmark",
-                colour: ATheme.live
+                colour: wyrmScopedColours.live
             )
             .transition(.wyrmBlurFade)
         case .mismatched:
@@ -437,11 +440,11 @@ struct WyrmCinematicAuth: View {
         Button(action: goBack) {
             Image(systemName: "chevron.left")
                 .font(.system(size: 15, weight: .bold))
-                .foregroundColor(ATheme.ink)
+                .foregroundColor(wyrmScopedColours.ink)
                 .frame(width: 46, height: 46)
-                .background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.88))
+                .background(WyrmGlass.native ? Color.clear : wyrmScopedColours.card.opacity(0.88))
                 .clipShape(Circle())
-                .overlay(Circle().stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
+                .overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: WyrmGlass.native ? 0 : 1))
         }
         .modifier(WyrmGlassCircleButton())
         .accessibilityLabel("Back")
@@ -695,9 +698,14 @@ struct WyrmCinematicAuth: View {
             }
 
             guard succeeded else {
-                let usernameFailure = create && account.errorMessage.localizedCaseInsensitiveContains("username")
+                let failure = account.errorMessage
+                let usernameFailure = create && failure.localizedCaseInsensitiveContains("username")
                 enter(usernameFailure ? .createUsername : (create ? .createConfirmation : .loginPassword),
                       focus: usernameFailure ? .username : (create ? .confirmation : .password))
+                // enter() clears the message for a fresh stage; a failed sign-in
+                // must still say why (it was silently erased before).
+                account.errorMessage = failure
+                WyrmDiagnostics.record("auth failed: \(failure)", category: "AUTH")
                 return
             }
 
@@ -749,13 +757,16 @@ struct WyrmSessionTransition: View {
 }
 
 struct WyrmBrandMark: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let size: CGFloat
 
     var body: some View {
         WyrmBrandStroke()
             .stroke(
                 LinearGradient(
-                    colors: [ATheme.ink.opacity(0.76), ATheme.ink],
+                    colors: [wyrmScopedColours.ink, wyrmScopedColours.ink],
                     startPoint: .topLeading,
                     endPoint: .bottomTrailing
                 ),
@@ -766,6 +777,9 @@ struct WyrmBrandMark: View {
 }
 
 private struct WyrmAuthWorkingStatus: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var shimmerOffset: CGFloat = -1.4
@@ -774,11 +788,11 @@ private struct WyrmAuthWorkingStatus: View {
         Text(title)
             .font(.androidWyrm(13, .bold))
             .tracking(0.55)
-            .foregroundColor(ATheme.quiet.opacity(0.58))
+            .foregroundColor(wyrmScopedColours.quiet)
             .overlay {
                 GeometryReader { proxy in
                     LinearGradient(
-                        colors: [.clear, ATheme.ink.opacity(0.96), .clear],
+                        colors: [.clear, wyrmScopedColours.ink, .clear],
                         startPoint: .leading,
                         endPoint: .trailing
                     )
@@ -829,6 +843,9 @@ struct WyrmBrandStroke: Shape {
 }
 
 private struct WyrmDotField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var body: some View {
         Canvas { context, size in
             let spacing: CGFloat = 19
@@ -837,7 +854,7 @@ private struct WyrmDotField: View {
                 var x = spacing / 2
                 while x < size.width {
                     let rect = CGRect(x: x - 1.2, y: y - 1.2, width: 2.4, height: 2.4)
-                    context.fill(Path(ellipseIn: rect), with: .color(ATheme.ink.opacity(0.10)))
+                    context.fill(Path(ellipseIn: rect), with: .color(wyrmScopedColours.ink))
                     x += spacing
                 }
                 y += spacing
@@ -849,6 +866,9 @@ private struct WyrmDotField: View {
 }
 
 private struct WyrmAuthKeyboardAction: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let enabled: Bool
     let action: () -> Void
@@ -864,9 +884,9 @@ private struct WyrmAuthKeyboardAction: View {
             }
             .padding(.leading, 20).padding(.trailing, 16)
             .frame(height: 46)
-            .foregroundColor(enabled ? ATheme.onInk : ATheme.quiet)
-            .background(Capsule().fill(enabled ? ATheme.ink : ATheme.well))
-            .shadow(color: ATheme.ink.opacity(enabled ? 0.14 : 0), radius: 12, y: 5)
+            .foregroundColor(enabled ? wyrmScopedColours.onInk : wyrmScopedColours.quiet)
+            .background(Capsule().fill(enabled ? wyrmScopedColours.ink : wyrmScopedColours.well))
+
             .animation(.easeOut(duration: 0.18), value: enabled)
         }
         .buttonStyle(WSPressStyle())
@@ -883,7 +903,7 @@ private struct WyrmPasswordMatchLabel: View {
         HStack(spacing: 7) {
             Image(systemName: systemImage)
                 .font(.system(size: 9, weight: .black))
-                .foregroundColor(.white)
+                .foregroundColor(wyrmReadableInk(on: colour))
                 .frame(width: 18, height: 18)
                 .background(colour)
                 .clipShape(Circle())

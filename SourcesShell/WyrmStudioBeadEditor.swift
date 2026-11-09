@@ -61,6 +61,9 @@ private final class StudioPaintWork {
 }
 
 struct StudioBeadEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let beadID: String
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let onDone: (_ saved: Bool) -> Void
@@ -119,7 +122,7 @@ struct StudioBeadEditor: View {
                     }
                     .frame(height: min(UIScreen.main.bounds.width - 48, 360))
                     .padding(.horizontal, 24).padding(.vertical, 10)
-                    Text("The front half (right) is what shows along the body.").font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                    Text("The front half (right) is what shows along the body.").font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet)
                         .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 24)
                     Spacer().frame(height: 12)
                     WSSegmented(options: ["Paint", "Look"], selected: panel) { panel = $0 }.padding(.horizontal, 16)
@@ -133,7 +136,7 @@ struct StudioBeadEditor: View {
                 }
             }
         }
-        .background(ATheme.paper.ignoresSafeArea())
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
     }
 
     /// The finished bead as the arena draws it (painting, edge and all): redrawn
@@ -154,9 +157,9 @@ struct StudioBeadEditor: View {
             // The working painting is a copy: closing simply drops it.
             StudioRoundButton(icon: "xmark", size: 38) { onDone(false) }
             VStack(alignment: .leading, spacing: 1) {
-                Text("BEAD").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(ATheme.quiet)
+                Text("BEAD").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.quiet)
                 Text(WyrmStudioArt.finishes[safeIndex: draft.finish] ?? "Bead").font(.androidWyrm(22, .bold))
-                    .foregroundColor(ATheme.ink).lineLimit(1)
+                    .foregroundColor(wyrmScopedColours.ink).lineLimit(1)
             }
             .padding(.horizontal, 12)
             Spacer(minLength: 0)
@@ -205,7 +208,7 @@ struct StudioBeadEditor: View {
             for yy in 0..<16 {
                 for xx in 0..<16 {
                     context.fill(Path(CGRect(x: CGFloat(xx) * cell, y: CGFloat(yy) * cell, width: cell, height: cell)),
-                                 with: .color((xx + yy) % 2 == 0 ? ATheme.card : ATheme.rule.opacity(0.5)))
+                                 with: .color((xx + yy) % 2 == 0 ? wyrmScopedColours.card : wyrmScopedColours.rule.opacity(0.5)))
                 }
             }
             let disc = Path(ellipseIn: CGRect(x: left, y: left, width: 2 * rd, height: 2 * rd))
@@ -217,10 +220,10 @@ struct StudioBeadEditor: View {
             // The part a body shows: the front (+x) half; the back is under the next bead.
             var back = Path()
             back.addArc(center: CGPoint(x: s / 2, y: s / 2), radius: rd, startAngle: .degrees(90), endAngle: .degrees(270), clockwise: false)
-            context.stroke(back, with: .color(ATheme.ink.opacity(0.18)), style: StrokeStyle(lineWidth: 2, dash: [10, 10]))
-            context.stroke(disc, with: .color(ATheme.rule), lineWidth: 1.5)
+            context.stroke(back, with: .color(wyrmScopedColours.ink), style: StrokeStyle(lineWidth: 2, dash: [10, 10]))
+            context.stroke(disc, with: .color(wyrmScopedColours.rule), lineWidth: 1.5)
             if mode != .off {
-                let guide = GraphicsContext.Shading.color(ATheme.link.opacity(0.35))
+                let guide = GraphicsContext.Shading.color(wyrmScopedColours.link.opacity(0.35))
                 var line = Path()
                 line.move(to: CGPoint(x: left, y: s / 2)); line.addLine(to: CGPoint(x: left + 2 * rd, y: s / 2))
                 if mode != .mirror {
@@ -386,9 +389,9 @@ struct StudioBeadEditor: View {
     }
 
     @ViewBuilder private func lookPanel(white: CGImage?) -> some View {
-        Text("Finish").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.ink)
+        Text("Finish").font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.ink)
         finishGrid(white: white)
-        Text("Colour").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.ink)
+        Text("Colour").font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.ink)
         StudioColorPicker(color: draft.color) { draft.color = $0 }
         StudioValueSlider(title: "Hue", value: draft.hue, range: -180...180, shown: { "\(Int($0.rounded()))°" }) { draft.hue = $0 }
         StudioValueSlider(title: "Saturation", value: draft.saturation, range: 0...2, shown: studioPercent) { draft.saturation = $0 }
@@ -424,11 +427,11 @@ struct StudioBeadEditor: View {
                     StudioPicture(image: previews[index])
                         .padding(4)
                         .frame(width: 58, height: 58)
-                        .overlay(Circle().stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 2.5 : 1))
+                        .overlay(Circle().stroke(chosen ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: chosen ? 2.5 : 1))
                         .contentShape(Circle())
                         .onTapGesture { draft.finish = index }
                     Text(WyrmStudioArt.finishes[index]).font(.androidWyrm(9.5, .semibold))
-                        .foregroundColor(chosen ? ATheme.ink : ATheme.quiet)
+                        .foregroundColor(chosen ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                 }
             }
         }

@@ -12,6 +12,9 @@ import UniformTypeIdentifiers
 // MARK: - Hub
 
 struct WyrmSettingsHub: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var theme = WyrmThemeStore.shared
@@ -19,6 +22,7 @@ struct WyrmSettingsHub: View {
     @ObservedObject var support = WyrmSupportStore.shared
     let open: (WyrmDesignRoute) -> Void
     @AppStorage("wyrm.ios.developer-mode") var developerMode = false
+    @ObservedObject private var orientation = WyrmPlayOrientation.shared
     @State var confirming = false
     @ObservedObject var search = WyrmSettingsFocus.shared
 
@@ -27,8 +31,8 @@ struct WyrmSettingsHub: View {
         ScrollView(showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("WYRM").font(.androidWyrm(11.5, .semibold)).tracking(0.92).foregroundColor(ATheme.quiet)
-                    Text("Settings").font(.androidWyrm(30, .bold)).tracking(-0.5).foregroundColor(ATheme.ink)
+                    Text("WYRM").font(.androidWyrm(11.5, .semibold)).tracking(0.92).foregroundColor(wyrmScopedColours.quiet)
+                    Text("Settings").font(.androidWyrm(30, .bold)).tracking(-0.5).foregroundColor(wyrmScopedColours.ink)
                 }.padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 16)
 
                 WyrmSettingsSearchField(query: $search.query)
@@ -42,7 +46,7 @@ struct WyrmSettingsHub: View {
                 Group {
                 group("Arena", [
                     ("Display", "Scores, names, minimap, text sizes", "", .display),
-                    ("Controls", "Steering, boost, zoom bar", engine.setting("controls.joystick_mode")?.index == 2 || WyrmPlayOrientation.shared.portrait ? "Arrow" : "Joystick", .controls),
+                    ("Controls", "Steering, boost, zoom bar", engine.setting("controls.joystick_mode")?.index == 3 ? "Classic" : engine.setting("controls.joystick_mode")?.index == 2 || WyrmPlayOrientation.shared.portrait ? "Arrow" : "Joystick", .controls),
                     ("On-screen buttons", "Which buttons appear and how they fire", engine.hotkeys.isEmpty ? "" : "\(WyrmButtonsContent.allowed(engine.hotkeys).filter(\.visible).count) on", .buttons),
                 ])
                 group("Playing help", [
@@ -55,7 +59,11 @@ struct WyrmSettingsHub: View {
                     ("Notifications", "Invites, team pings, follows", notifications.enabledCount > 0 ? "\(notifications.enabledCount) on" : "", .notificationSettings),
                     ("Privacy", "Who can reach you, what is stored", "", .privacy),
                 ])
-                group("Accessibility", [("Themes", "Paper, dark and colour appearances", theme.theme.displayName, .themes)])
+                group("Accessibility", [
+                    ("Themes", "Light, dark and colour appearances", theme.theme.displayName, .themes),
+                    ("Language", "Wyrm in your language, or your phone's",
+                     WyrmLanguage.shared.chosen == WyrmLanguage.auto ? "Auto" : WyrmLanguage.shared.name(of: WyrmLanguage.shared.chosen), .language),
+                ])
                 group("This device", [(
                     "Updates & version",
                     "Wyrm \(WyrmBuild.version) · your settings are saved to your account",
@@ -66,9 +74,23 @@ struct WyrmSettingsHub: View {
 
                 WSSectionLabel("Developer", top: 0)
                 WSCard {
-                    WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) { developerMode = $0 }
+                    WSBoolRow(title: "Developer Mode", detail: "Local diagnostics and export tools", on: developerMode, first: true) {
+                        developerMode = $0
+                        WyrmPlayOrientation.shared.publish()
+                    }
                         .wyrmSettingAnchor("app.developer")
-                    if developerMode { WSValueRow(title: "Wyrm logs", value: "7 days", onOpen: { open(.developer) }) }
+                    if developerMode {
+                        // The arena player ID (OM, 2026-11-07): right under the switch.
+                        WyrmArenaPlayerIdRow()
+                        // A developer option (OM, 2026-11-01): shown only with Developer
+                        // Mode on; off, the game always turns natively.
+                        WSEnumBlock(title: "Landscape rotation",
+                            detail: "Native turns the iPhone and uses its keyboard. Internal turns Wyrm inside the portrait window and uses Wyrm keys in landscape. Portrait keeps the iPhone keyboard.",
+                            options: ["Native", "Internal"], selected: orientation.internalRotation ? 1 : 0) {
+                                orientation.setInternalRotation($0 == 1)
+                            }
+                        WSValueRow(title: "Wyrm logs", value: "7 days", onOpen: { open(.developer) })
+                    }
                 }
                 Spacer().frame(height: 22)
 
@@ -77,6 +99,10 @@ struct WyrmSettingsHub: View {
                         if confirming { confirming = false; engine.reset(1, message: "All settings reset") } else { confirming = true }
                     }
                 }
+                Text(engine.settingsVersion.isEmpty ? "Wyrm" : "Wyrm · settings format v\(engine.settingsVersion)")
+                    .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
+                    .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 12)
+                }
                 // Log out (OM, 2026-10-01): the very bottom of Settings; asks first.
                 Spacer().frame(height: 22)
                 WSCard {
@@ -84,11 +110,7 @@ struct WyrmSettingsHub: View {
                         WyrmAccountSync.shared.askingLogOut = true
                     }
                 }
-                Text(engine.settingsVersion.isEmpty ? "Wyrm" : "Wyrm · settings format v\(engine.settingsVersion)")
-                    .font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
-                    .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 12)
                 Spacer().frame(height: 102)
-                }
             }
         }
         .wyrmTourScroll(proxy)
@@ -128,12 +150,12 @@ struct WyrmSettingsHub: View {
                         Button { open(row.3) } label: {
                             HStack(spacing: 0) {
                                 VStack(alignment: .leading, spacing: 1) {
-                                    Text(row.0).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
-                                    Text(row.1).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                                    Text(wyrm: row.0).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
+                                    Text(wyrm: row.1).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                                         .fixedSize(horizontal: false, vertical: true)
                                 }.frame(maxWidth: .infinity, alignment: .leading).padding(.trailing, 8)
                                 if !row.2.isEmpty {
-                                    Text(row.2).font(.androidWyrm(14)).foregroundColor(ATheme.quiet).lineLimit(1)
+                                    Text(wyrm: row.2).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
                                     Spacer().frame(width: 6)
                                 }
                                 // The Settings tab's count, on the row that leads to it.
@@ -141,7 +163,7 @@ struct WyrmSettingsHub: View {
                                     WyrmCountBadge(count: support.unseenReplies)
                                     Spacer().frame(width: 8)
                                 }
-                                Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron)
+                                Text("›").font(.androidWyrm(17)).foregroundColor(wyrmScopedColours.chevron)
                             }
                             .padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 56).contentShape(Rectangle())
                         }.buttonStyle(WSPressStyle())
@@ -166,7 +188,7 @@ struct WyrmDisplayPage: View {
     @State var advanced = false
     /// Look ahead (OM, 2026-10-05): lives on Display, not Controls.
     @ObservedObject private var playFeel = WyrmPlayFeelStore.shared
-    private static let basicIDs = ["general.snake_scores", "general.show_own_name", "general.minimap_size", "general.ui_font"]
+    private static let basicIDs = ["general.native_text_style", "general.snake_scores", "general.show_own_name", "general.minimap_size", "general.ui_font"]
 
     var body: some View {
         let basic = Self.basicIDs.compactMap { engine.setting($0) }
@@ -179,6 +201,7 @@ struct WyrmDisplayPage: View {
             WSSectionLabel("Basic", top: 18)
                 .onAppear { if rest.contains(where: { WyrmSettingsFocus.shared.wants($0.id) }) { advanced = true } }
             WSCard { WSRows(rows: basic, engine: engine) }
+            WyrmMinimapIconsSection()
             // Look ahead (OM, 2026-10-05): moved off Controls. Same switch, both modes.
             WSSectionLabel("Camera")
             WSCard {
@@ -186,6 +209,11 @@ struct WyrmDisplayPage: View {
                           detail: "Like slither: the view moves ahead of your snake, toward where it is going, and a little further while boosting.",
                           on: playFeel.lookAhead, first: true) { playFeel.setLookAhead($0) }
                     .wyrmSettingAnchor("app.look-ahead")
+                // Auto zoom (OM, 2026-11-09): off keeps your own zoom.
+                WSBoolRow(title: "Auto zoom",
+                          detail: "The view zooms out as your snake grows. Turn it off to keep your own zoom.",
+                          on: playFeel.autoZoom, first: false) { playFeel.setAutoZoom($0) }
+                    .wyrmSettingAnchor("app.auto-zoom")
             }
             if basic.isEmpty { WSCaption("These controls appear as soon as the engine has started.") }
             if !rest.isEmpty {
@@ -263,6 +291,9 @@ struct WyrmControlsPage: View {
 }
 
 struct WyrmControlsContent: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var orientation = WyrmPlayOrientation.shared
     /// Home › Near Original (OM, 2026-10-02): slither's own joystick, boost and
@@ -278,7 +309,8 @@ struct WyrmControlsContent: View {
         let steering = steeringSetting?.index ?? 0
         // Upright play steers with the arrow only (OM, 2026-10-02; engine
         // mobile_controls_steering_mode); the sideways choice is kept.
-        let arrow = orientation.portrait || steering == 2
+        let arrow = (orientation.portrait && steering != 3) || steering == 2
+        let classic = steering == 3
         let boostMode = engine.setting("controls.boost_mode")
         let boostButton = (boostMode?.index ?? 0) == 1
         let joystickSize = engine.setting("controls.joystick_size")
@@ -287,119 +319,133 @@ struct WyrmControlsContent: View {
         let handedness = engine.setting("controls.handedness")
         let zoomRows = engine.settings.filter { $0.group == "controls.zoom" }
 
+        // The Controls page shares Modes' large-builder risk. Keep each
+        // independently erased section below the variadic tuple threshold.
         VStack(alignment: .leading, spacing: 0) {
-            WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
-
-            // Play orientation (OM, 2026-10-01): the lobby, the match and the editor upright.
-            WSSectionLabel("Play orientation")
-            WSCard {
-                WSEnumBlock(title: "Hold the phone",
-                            detail: "Portrait turns the lobby, the match and the layout editor upright. Each way keeps its own layout.",
-                            options: ["Landscape", "Portrait"], selected: orientation.portrait ? 1 : 0, first: true) { pick in
-                    orientation.switchTo(pick == 1, engine: engine)
-                }
-                .wyrmSettingAnchor("app.play-orientation")
-            }
-
-            WSSectionLabel("Basic · steering")
-            WSCard {
-                if !orientation.portrait {
-                    WSEnumBlock(title: "Steering style", options: ["Joystick", "Arrow"], selected: arrow ? 1 : 0, first: true) { pick in
-                        guard let setting = steeringSetting else { return }
-                        engine.write(setting, values: [pick == 1 ? 2 : Double((0...1).contains(steering) ? steering : 0)])
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                WyrmControlsPreview(engine: engine).padding(.horizontal, 16).padding(.top, 16)
+    
+                // Play orientation (OM, 2026-10-01): the lobby, the match and the editor upright.
+                WSSectionLabel("Play orientation")
+                WSCard {
+                    WSEnumBlock(title: "Hold the phone",
+                                detail: "Portrait turns the lobby, the match and the layout editor upright. Each way keeps its own layout.",
+                                options: ["Landscape", "Portrait"], selected: orientation.portrait ? 1 : 0, first: true) { pick in
+                        orientation.switchTo(pick == 1, engine: engine)
                     }
-                    .wyrmSettingAnchor("controls.joystick_mode")
+                    .wyrmSettingAnchor("app.play-orientation")
                 }
-                if !arrow, !nearOriginal.on, let setting = steeringSetting, setting.options.count >= 2 {
-                    let behaviour = Array(setting.options.prefix(2))
-                    WSValueRow(title: "Joystick behaviour", value: behaviour[min(max(steering, 0), 1)]) {
-                        withAnimation(.easeInOut(duration: 0.25)) { behaviourOpen.toggle() }
-                    }
-                    if behaviourOpen {
-                        WSSegmented(options: behaviour, selected: min(max(steering, 0), 1)) { engine.write(setting, values: [Double($0)]) }
-                            .padding(.horizontal, 14).padding(.bottom, 14)
-                    }
-                    // Joystick knob (OM, 2026-10-13): follows the snake, or back to the centre.
-                    WSEnumBlock(title: "Joystick knob",
-                                detail: playFeel.knobCentre
-                                    ? "At rest the knob goes back to the centre, and a new touch starts with it in the middle."
-                                    : "At rest the knob points where your snake is going, and a new touch starts there.",
-                                options: ["Follows the snake", "Back to centre"],
-                                selected: playFeel.knobCentre ? 1 : 0) { playFeel.setKnobCentre($0 == 1) }
-                        .wyrmSettingAnchor("app.joystick-knob")
-                }
-                // Upright there is no left or right hand (OM, 2026-10-02): the row
-                // hides; the stored choice stays for sideways play.
-                if let handedness, !orientation.portrait {
-                    WSEnumBlock(title: handedness.label, detail: handedness.hint, options: ["Left", "Right"],
-                                selected: min(max(handedness.index, 0), 1)) { engine.write(handedness, values: [Double($0)]) }
-                        .wyrmSettingAnchor(handedness.id)
-                }
-                if let boostMode {
-                    WSEnumBlock(title: "Boost", detail: boostMode.hint, options: boostMode.options,
-                                selected: min(max(boostMode.index, 0), max(boostMode.options.count - 1, 0)),
-                                first: orientation.portrait) { engine.write(boostMode, values: [Double($0)]) }
-                        .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
-                        .wyrmSettingAnchor(boostMode.id)
-                }
-            }
-
-            if orientation.portrait { WSCaption("Upright you always steer with the arrow: the joystick is for sideways play, and your sideways choice is kept. No left or right hand: your first finger steers, a second finger boosts.") }
-
-            if nearOriginal.on { WSCaption("Near Original is on: slither's own joystick, boost button and arrow, at their original places. Only the arrow's size is yours. Turn it off on Home to bring your own back.") }
-
-            WSSectionLabel("Basic · size")
-            WSCard {
-                let sizeRows = [arrow ? nil : joystickSize, boostButton ? boostSize : nil, opacity].compactMap { $0 }
-                WSRows(rows: sizeRows, engine: engine)
-            }
-            .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
-
-            if arrow {
-                WSSectionLabel("Basic · arrow")
-                if nearOriginal.on {
-                    WSCard { if let size = engine.setting("arrow.size") { WSTypedRow(setting: size, engine: engine) } }
-                } else {
-                    WyrmArrowSettingsCard(engine: engine).wyrmSettingAnchor("app.arrow-style", card: true)
-                }
-            }
-
-            if !zoomRows.isEmpty {
-                WSAdvancedFold(label: "Advanced · zoom bar", open: zoomOpen) { withAnimation(.easeInOut(duration: 0.25)) { zoomOpen.toggle() } }
-                if zoomOpen {
-                    WSCard {
-                        WSRows(rows: zoomRows, engine: engine)
-                        // The zoom bar's style (OM, 2026-10-05): the slider, or a
-                        // spring whose knob rests in the middle and springs back.
-                        WSHairline()
-                        VStack(alignment: .leading, spacing: 8) {
-                            // The bar itself, so Slider and Spring can be felt here (OM, 2026-10-05).
-                            WyrmZoomBarActionPreview(
-                                vertical: engine.setting("controls.zoom_orientation")?.index == 1,
-                                springStyle: playFeel.zoomSpring)
-                            Text("Zoom bar style").font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
-                            WSSegmented(options: ["Slider", "Spring"], selected: playFeel.zoomSpring ? 1 : 0) {
-                                playFeel.setZoomSpring($0 == 1)
-                            }
-                            Text(playFeel.zoomSpring
-                                 ? "Push the knob toward + to zoom in, toward - to zoom out; let go and it springs back to the middle."
-                                 : "Slide to the zoom you want; it stays there.")
-                                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
-                                .fixedSize(horizontal: false, vertical: true)
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                WSSectionLabel("Basic · steering")
+                WSCard {
+                    Group {
+                        WSEnumBlock(title: "Steering style", options: ["Joystick", "Arrow", "Classic"], selected: classic ? 2 : (arrow ? 1 : 0), first: true) { pick in
+                            guard let setting = steeringSetting else { return }
+                            engine.write(setting, values: [pick == 2 ? 3 : (pick == 1 ? 2 : Double((0...1).contains(steering) ? steering : 0))])
                         }
-                        .padding(14)
-                        .wyrmSettingAnchor("app.zoom-style")
+                        .wyrmSettingAnchor("controls.joystick_mode")
+                    }
+                    if !arrow, !classic, !nearOriginal.on, let setting = steeringSetting, setting.options.count >= 2 {
+                        let behaviour = Array(setting.options.prefix(2))
+                        WSValueRow(title: "Joystick behaviour", value: behaviour[min(max(steering, 0), 1)]) {
+                            withAnimation(.easeInOut(duration: 0.25)) { behaviourOpen.toggle() }
+                        }
+                        if behaviourOpen {
+                            WSSegmented(options: behaviour, selected: min(max(steering, 0), 1)) { engine.write(setting, values: [Double($0)]) }
+                                .padding(.horizontal, 14).padding(.bottom, 14)
+                        }
+                        // Joystick knob (OM, 2026-10-13): follows the snake, or back to the centre.
+                        WSEnumBlock(title: "Joystick knob",
+                                    detail: playFeel.knobCentre
+                                        ? "At rest the knob goes back to the centre, and a new touch starts with it in the middle."
+                                        : "At rest the knob points where your snake is going, and a new touch starts there.",
+                                    options: ["Follows the snake", "Back to centre"],
+                                    selected: playFeel.knobCentre ? 1 : 0) { playFeel.setKnobCentre($0 == 1) }
+                            .wyrmSettingAnchor("app.joystick-knob")
+                    }
+                    // Upright there is no left or right hand (OM, 2026-10-02): the row
+                    // hides; the stored choice stays for sideways play.
+                    if let handedness, !orientation.portrait {
+                        WSEnumBlock(title: handedness.label, detail: handedness.hint, options: ["Left", "Right"],
+                                    selected: min(max(handedness.index, 0), 1)) { engine.write(handedness, values: [Double($0)]) }
+                            .wyrmSettingAnchor(handedness.id)
+                    }
+                    // Boost (OM, 2026-10-31): no button under the finger any more; the
+                    // engine's boost_mode is now "show the fixed button" (1) or not (0).
+                    if let boostMode {
+                        WSBoolRow(title: "Show boost button",
+                                  detail: "On: hold the boost button to boost. Off: Arrow and Classic use a second finger; joystick uses the opposite half of the screen.",
+                                  on: boostMode.index == 1, first: orientation.portrait) { engine.write(boostMode, values: [$0 ? 1 : 0]) }
+                            .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
+                            .wyrmSettingAnchor(boostMode.id)
                     }
                 }
-            }
-
-            VStack(spacing: 9) {
-                WSPrimaryButton(label: "Arrange the layout") { engine.openLayoutEditor() }
-                WSOutlineButton(label: "Reset positions") {
-                    WyrmPlayOrientation.shared.reset([2], engine: engine, message: "Control positions reset")
+    
+                if orientation.portrait && !classic { WSCaption("Upright you steer with the arrow: the joystick is for sideways play, and your sideways choice is kept. No left or right hand: your first finger steers, a second finger boosts.") }
+    
+                if nearOriginal.on { WSCaption("Near Original is on: slither's own joystick, boost button and arrow, at their original places. Only the arrow's size is yours. Turn it off on Home to bring your own back.") }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                WSSectionLabel("Basic · size")
+                WSCard {
+                    let sizeRows = [(arrow || classic) ? nil : joystickSize, boostButton ? boostSize : nil, opacity].compactMap { $0 }
+                    WSRows(rows: sizeRows, engine: engine)
                 }
-            }.padding(.horizontal, 16).padding(.top, 22)
-            WSCaption("Opens sideways, the way you hold the phone in a match.")
+                .opacity(nearOriginal.on ? 0.38 : 1).allowsHitTesting(!nearOriginal.on)
+    
+                if arrow {
+                    WSSectionLabel("Basic · arrow")
+                    if nearOriginal.on {
+                        WSCard { if let size = engine.setting("arrow.size") { WSTypedRow(setting: size, engine: engine) } }
+                    } else {
+                        WyrmArrowSettingsCard(engine: engine).wyrmSettingAnchor("app.arrow-style", card: true)
+                    }
+                    WSCard {
+                        if let doubleTap = engine.setting("arrow.double_tap_boost") {
+                            WSTypedRow(setting: doubleTap, first: true, engine: engine)
+                        }
+                    }
+                }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                if !zoomRows.isEmpty {
+                    WSAdvancedFold(label: "Advanced · zoom bar", open: zoomOpen) { withAnimation(.easeInOut(duration: 0.25)) { zoomOpen.toggle() } }
+                    if zoomOpen {
+                        WSCard {
+                            WSRows(rows: zoomRows, engine: engine)
+                            // The zoom bar's style (OM, 2026-10-05): the slider, or a
+                            // spring whose knob rests in the middle and springs back.
+                            WSHairline()
+                            VStack(alignment: .leading, spacing: 8) {
+                                // The bar itself, so Slider and Spring can be felt here (OM, 2026-10-05).
+                                WyrmZoomBarActionPreview(
+                                    vertical: engine.setting("controls.zoom_orientation")?.index == 1,
+                                    springStyle: playFeel.zoomSpring)
+                                Text("Zoom bar style").font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
+                                WSSegmented(options: ["Slider", "Spring"], selected: playFeel.zoomSpring ? 1 : 0) {
+                                    playFeel.setZoomSpring($0 == 1)
+                                }
+                                Text(playFeel.zoomSpring
+                                     ? "Push the knob toward + to zoom in, toward - to zoom out; let go and it springs back to the middle."
+                                     : "Slide to the zoom you want; it stays there.")
+                                    .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(14)
+                            .wyrmSettingAnchor("app.zoom-style")
+                        }
+                    }
+                }
+    
+                VStack(spacing: 9) {
+                    WSPrimaryButton(label: "Arrange the layout") { engine.openLayoutEditor() }
+                    WSOutlineButton(label: "Reset positions") {
+                        WyrmPlayOrientation.shared.reset([2], engine: engine, message: "Control positions reset")
+                    }
+                }.padding(.horizontal, 16).padding(.top, 22)
+                WSCaption("Opens sideways, the way you hold the phone in a match.")
+            })
         }
         .onAppear { if zoomRows.contains(where: { WyrmSettingsFocus.shared.wants($0.id) }) { zoomOpen = true } }
     }
@@ -433,6 +479,9 @@ enum WyrmArrowShapes {
 
 /// The controls as they will appear, placed at their saved landscape positions.
 struct WyrmControlsPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject var arrowSkins = WyrmArrowSkinStore.shared
     @ObservedObject var orientation = WyrmPlayOrientation.shared
@@ -444,12 +493,12 @@ struct WyrmControlsPreview: View {
         let arrowStyle = engine.setting("arrow.style")?.index ?? 0
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
-                Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(ATheme.quiet).padding(12)
-                if steering != 2 && !orientation.portrait {
+                Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(wyrmScopedColours.quiet).padding(12)
+                if steering < 2 && !orientation.portrait {
                     WyrmPaperJoystick(diameter: 60 * engine.value("controls.joystick_size", 1), opacity: opacity)
                         .wyrmAdjustPlace(.joystick)
                         .position(previewCentre("layout.joystick", proxy.size, child: 60 * engine.value("controls.joystick_size", 1)))
-                } else {
+                } else if steering != 3 {
                     // The arena's arrow as chosen: a drawn style or an image skin.
                     WyrmArrowGlyph(codeStyle: arrowStyle, imageSkin: arrowSkins.skin, colour: arrowChannels,
                                    brightness: arrowSkins.brightness)
@@ -473,9 +522,9 @@ struct WyrmControlsPreview: View {
         }
         .frame(width: orientation.portrait ? 160 : nil, height: orientation.portrait ? 300 : 190)
         .frame(maxWidth: .infinity)
-        .background(ATheme.well)
+        .background(wyrmScopedColours.well)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
     }
 
     /// `previewItemTopLeft`: the exact normalized centre, clamped so the whole
@@ -498,28 +547,63 @@ struct WyrmPaperJoystick: View {
     let diameter: Double
     var opacity = 1.0
     var body: some View {
+        // The original's joystick (OM, 2026-11-01), as the arena draws it: a #808080
+        // disc and a white knob with black halos; the default 0.62 is its 0.35.
+        let a = min(min(max(opacity, 0.05), 1) * 0.35 / 0.62, 1)
+        let base = diameter * 0.73
+        let knob = base * 0.402
         ZStack {
-            Circle().fill(ATheme.card).overlay(Circle().stroke(ATheme.ink, lineWidth: 1.5))
-            Circle().stroke(ATheme.rule, lineWidth: 1).frame(width: diameter * 0.62, height: diameter * 0.62)
-            Circle().fill(ATheme.ink).frame(width: diameter * 0.42, height: diameter * 0.42)
+            Circle().fill(Color(white: 128 / 255.0).opacity(a)).frame(width: base, height: base)
+                .shadow(color: .black.opacity(a * 0.6), radius: base * 0.06)
+            Circle().fill(Color.white.opacity(a)).frame(width: knob, height: knob)
+                .shadow(color: .black.opacity(a * 0.6), radius: knob * 0.08)
         }
-        .frame(width: diameter, height: diameter).opacity(min(max(opacity, 0), 1))
+        .frame(width: diameter, height: diameter)
     }
 }
 
 struct WyrmPaperBoost: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let diameter: Double
     var opacity = 1.0
     var body: some View {
-        Text("»").font(.androidWyrm(diameter * 0.44, .bold)).foregroundColor(ATheme.ink)
+        // The original boost's triangle, pointing up (OM, 2026-11-01), at the
+        // button's opacity, as the arena draws it (draw_boost).
+        let a = min(max(opacity, 0), 1)
+        ZStack {
+            ForEach(1...4, id: \.self) { i in
+                WyrmBoostTriangle().fill(Color.black.opacity(a * 0.07))
+                    .offset(y: Double(2 + 4 * i) * diameter / 220)
+            }
+            WyrmBoostTriangle().fill(wyrmScopedColours.ink.opacity(a))
+        }
             .frame(width: diameter, height: diameter)
-            .background(Circle().fill(ATheme.card.opacity(min(max(opacity, 0), 1))))
-            .overlay(Circle().stroke(ATheme.ink, lineWidth: 1.5))
+            .background(Circle().fill(wyrmScopedColours.card.opacity(min(max(opacity, 0), 1))))
+            .overlay(Circle().stroke(wyrmScopedColours.ink, lineWidth: 1.5))
+    }
+}
+
+/// boostie's triangle on a disc of radius 110 (Main.as), in the frame's units.
+struct WyrmBoostTriangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        let k = min(rect.width, rect.height) / 220
+        let c = CGPoint(x: rect.midX, y: rect.midY)
+        var p = Path()
+        p.move(to: CGPoint(x: c.x, y: c.y - 41.5 * k))
+        p.addLine(to: CGPoint(x: c.x + 56 * k, y: c.y + 25.5 * k))
+        p.addLine(to: CGPoint(x: c.x - 56 * k, y: c.y + 25.5 * k))
+        p.closeSubpath()
+        return p
     }
 }
 
 /// Slider stays where you leave it. Spring returns to the middle, as in a match.
 struct WyrmZoomBarActionPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let vertical: Bool
     let springStyle: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -540,18 +624,18 @@ struct WyrmZoomBarActionPreview: View {
         let along = vertical ? 1 - shown : shown
         let knobAt = thickness / 2 + travel * along
         VStack(alignment: .leading, spacing: 8) {
-            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
             VStack(spacing: 8) {
                 ZStack {
-                    Capsule().fill(ATheme.card)
+                    Capsule().fill(wyrmScopedColours.card)
                     barFill(length: length, thickness: thickness, knobAt: knobAt)
                     if springStyle { springMarks(length: length, thickness: thickness) }
-                    Circle().fill(ATheme.ink).frame(width: 18, height: 18)
+                    Circle().fill(wyrmScopedColours.ink).frame(width: 18, height: 18)
                         .offset(x: vertical ? 0 : knobAt - length / 2, y: vertical ? knobAt - length / 2 : 0)
                 }
                 .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
                 .clipShape(Capsule())
-                .overlay(Capsule().stroke(ATheme.ink, lineWidth: 1))
+                .overlay(Capsule().stroke(wyrmScopedColours.ink, lineWidth: 1))
                 .frame(width: vertical ? 48 : length, height: vertical ? length : 48)
                 .contentShape(Rectangle())
                 .highPriorityGesture(
@@ -590,15 +674,15 @@ struct WyrmZoomBarActionPreview: View {
                 )
                 .accessibilityLabel("Zoom bar preview")
                 Text("Move the zoom bar to see its action.")
-                    .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                    .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                     .multilineTextAlignment(.center)
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
-            .background(ATheme.well)
+            .background(wyrmScopedColours.well)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         }
         .onDisappear { springTask?.cancel() }
     }
@@ -609,16 +693,16 @@ struct WyrmZoomBarActionPreview: View {
         if springStyle {
             let from = min(mid, knobAt)
             let span = max(1, abs(knobAt - mid))
-            Rectangle().fill(ATheme.track)
+            Rectangle().fill(wyrmScopedColours.track)
                 .frame(width: vertical ? thickness : span, height: vertical ? span : thickness)
                 .offset(x: vertical ? 0 : from - length / 2 + span / 2,
                         y: vertical ? from - length / 2 + span / 2 : 0)
         } else if vertical {
-            Rectangle().fill(ATheme.track)
+            Rectangle().fill(wyrmScopedColours.track)
                 .frame(width: thickness, height: max(1, length - knobAt))
                 .offset(y: knobAt / 2)
         } else {
-            Rectangle().fill(ATheme.track)
+            Rectangle().fill(wyrmScopedColours.track)
                 .frame(width: max(1, knobAt), height: thickness)
                 .offset(x: knobAt / 2 - length / 2)
         }
@@ -632,7 +716,7 @@ struct WyrmZoomBarActionPreview: View {
                 var path = Path()
                 path.move(to: a)
                 path.addLine(to: b)
-                context.stroke(path, with: .color(ATheme.ink), lineWidth: 2.5)
+                context.stroke(path, with: .color(wyrmScopedColours.ink), lineWidth: 2.5)
             }
             if vertical {
                 let x = thickness / 2
@@ -656,6 +740,9 @@ struct WyrmZoomBarActionPreview: View {
 }
 
 struct WyrmPaperZoomBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let length: Double
     var vertical = false
     var opacity = 1.0
@@ -663,22 +750,25 @@ struct WyrmPaperZoomBar: View {
     var body: some View {
         let thickness = 26.0, knob = 18.0, travel = length - thickness
         ZStack(alignment: vertical ? .top : .leading) {
-            Capsule().fill(ATheme.card)
-            Rectangle().fill(ATheme.track)
+            Capsule().fill(wyrmScopedColours.card)
+            Rectangle().fill(wyrmScopedColours.track)
                 .frame(width: vertical ? thickness : length * value, height: vertical ? length * value : thickness)
             // Android's PaperZoomBar: the knob rides the centre line and only
             // travels along the bar, four points in from either end.
-            Circle().fill(ATheme.ink).frame(width: knob, height: knob)
+            Circle().fill(wyrmScopedColours.ink).frame(width: knob, height: knob)
                 .offset(x: vertical ? 0 : travel * value + 4, y: vertical ? travel * value + 4 : 0)
         }
         .frame(width: vertical ? thickness : length, height: vertical ? length : thickness)
         .clipShape(Capsule())
-        .overlay(Capsule().stroke(ATheme.ink, lineWidth: 1))
+        .overlay(Capsule().stroke(wyrmScopedColours.ink, lineWidth: 1))
         .opacity(min(max(opacity, 0), 1))
     }
 }
 
 struct WyrmPaperKey: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     var opacity = 1.0
     var scale = 1.0
@@ -686,13 +776,16 @@ struct WyrmPaperKey: View {
     var colour = 0
     /// The fill, the same palette; 0 = the theme's paper.
     var fill = 9
+    /// LABEL OPACITY (OM, 2026-11-01): the label alone fades.
+    var labelOpacity = 1.0
     var body: some View {
         let swatch: Color? = fill == 9 ? Color(red: 128/255.0, green: 128/255.0, blue: 128/255.0) : (fill > 0 && fill < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[fill] : nil)
         let ink: Color = (colour > 0 && colour < WyrmTeamHudStore.swatches.count ? WyrmTeamHudStore.swatches[colour] : nil) ?? Color.white
-        Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7).foregroundColor(ink)
+        Text(label.uppercased()).font(.androidWyrm(max(5, 12 * scale), .semibold)).tracking(0.7)
+            .foregroundColor(ink.opacity(min(max(labelOpacity, 0), 1)))
             .lineLimit(1).minimumScaleFactor(0.5)
             .frame(width: 104 * scale, height: 54 * scale)
-            .background(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).fill((swatch ?? ATheme.card).opacity(min(max(opacity, 0), 1))))
+            .background(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).fill((swatch ?? wyrmScopedColours.card).opacity(min(max(opacity, 0), 1))))
             .overlay(RoundedRectangle(cornerRadius: 14 * scale, style: .continuous).stroke(ink, lineWidth: 1.25))
     }
 }
@@ -706,6 +799,9 @@ struct WyrmButtonsPage: View {
 }
 
 struct WyrmButtonsContent: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     /// Same allowlist as the Android keys page and the engine.
     static let order = [1, 2, 3, 4, 6, 7, 8, 9, 14, 15] // 14 = Auto restart (OM, 2026-10-05), 15 = Eyes back (OM, 2026-10-06)
@@ -720,7 +816,7 @@ struct WyrmButtonsContent: View {
             WSSectionLabel("Live preview", top: 18)
             GeometryReader { proxy in
                 ZStack(alignment: .topLeading) {
-                    Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(ATheme.quiet).padding(12)
+                    Text("PREVIEW").font(.androidWyrm(9, .bold)).tracking(1.4).foregroundColor(wyrmScopedColours.quiet).padding(12)
                     ForEach(visible) { key in
                         let scale = (size?.number ?? 1) * 0.48
                         WyrmPaperKey(label: key.name, opacity: opacity?.number ?? 1, scale: scale)
@@ -728,9 +824,9 @@ struct WyrmButtonsContent: View {
                     }
                 }
             }
-            .frame(height: 156).background(ATheme.well)
+            .frame(height: 156).background(wyrmScopedColours.well)
             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .padding(.horizontal, 16)
 
             WSSectionLabel("Buttons · \(visible.count) of \(allowed.count) on", top: 18)
@@ -757,16 +853,19 @@ struct WyrmButtonsContent: View {
 
 /// One on-screen button: its name, Toggle/Hold (or a fixed Tap) and whether it shows.
 struct WyrmHotkeyRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let key: EngineHotkey
     @ObservedObject var engine: WyrmShellStore
     var body: some View {
         HStack(spacing: 9) {
-            Text(key.name).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink).frame(maxWidth: .infinity, alignment: .leading)
+            Text(key.name).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink).frame(maxWidth: .infinity, alignment: .leading)
             if key.fixedMode {
-                Text("Tap").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.quiet)
-                    .frame(width: 116, height: 38).background(ATheme.track)
+                Text("Tap").font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.quiet)
+                    .frame(width: 116, height: 38).background(wyrmScopedColours.track)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             } else {
                 WSSegmented(options: ["Toggle", "Hold"], selected: min(max(key.mode, 0), 1), fontSize: 13) { mode in
                     var next = key; next.mode = mode; engine.writeHotkey(next)
@@ -780,13 +879,16 @@ struct WyrmHotkeyRow: View {
 // MARK: - Arena UI
 
 struct WyrmArenaUIContent: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             WSSectionLabel("Arena HUD", top: 18)
             WSCard {
                 Text("Move every screen-space element without changing the arena beneath it.")
-                    .font(.androidWyrm(15.5, .medium)).foregroundColor(ATheme.ink).lineSpacing(5).padding(14)
+                    .font(.androidWyrm(15.5, .medium)).foregroundColor(wyrmScopedColours.ink).lineSpacing(5).padding(14)
                     .fixedSize(horizontal: false, vertical: true)
             }
             WSSectionLabel("Size and type")
@@ -804,12 +906,15 @@ struct WyrmArenaUIContent: View {
 // MARK: - Modes
 
 struct WyrmModesPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     var parent = "Settings"
     let close: () -> Void
     @State var mode = 1
     @State var advanced = true
-    private static let foodIDs: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "const_food_scale", "uniform_food_color", "food_color"]
+    private static let foodIDs: Set<String> = ["food_type", "food_scale", "food_float", "food_flicker", "uniform_food_color", "food_color"]
     private static let dotIDs: Set<String> = ["show_crosshair", "head_dot_size", "head_dot_color"]
     /// Shown in the Snake card, not again under Advanced (OM, 2026-10-05).
     private static let snakeIDs: Set<String> = ["render_mode", "spine", "spine_mine", "spine_width", "snake_shadow", "hide_cosmetics"]
@@ -825,8 +930,8 @@ struct WyrmModesPage: View {
             Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Arena modes").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
-                    Text("Tune the normal arena and the helper view independently.").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                    Text("Arena modes").font(.androidWyrm(16, .semibold)).foregroundColor(wyrmScopedColours.ink)
+                    Text("Tune the normal arena and the helper view independently.").font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                 }.padding(.horizontal, 14).padding(.vertical, 15)
             }
             WSSectionLabel("Choose mode")
@@ -842,6 +947,15 @@ struct WyrmModesPage: View {
             let target = WyrmSettingsFocus.shared.target ?? ""
             if target.hasPrefix("normal.") { mode = 0 } else if target.hasPrefix("assist.") { mode = 1 }
             if target.hasPrefix("general.laser") { advanced = true }
+        }
+        .task {
+            guard ProcessInfo.processInfo.arguments.contains("--smoke-modes") else { return }
+            for pick in [1, 0, 1] {
+                do { try await Task.sleep(nanoseconds: 2_000_000_000) } catch { return }
+                mode = pick
+                do { try await Task.sleep(nanoseconds: 1_000_000_000) } catch { return }
+                NSLog("Wyrm Modes smoke rendered mode=%d rows=%d", pick, engine.settings.count)
+            }
         }
     }
 
@@ -867,87 +981,97 @@ struct WyrmModesPage: View {
         let hideCosmetics = rows.first { local($0) == "hide_cosmetics" }
         let laser = ["general.laser_thickness", "general.laser_color"].compactMap { engine.setting($0) }
 
+        // Build 151 crashes in ViewBuilder's large variadic tuple metadata on
+        // physical iOS runtimes. Erase each small section BEFORE constructing
+        // the outer stack; grouping the same giant tuple afterward is too late.
         VStack(alignment: .leading, spacing: 0) {
-            // Snake look (OM, 2026-10-05): the preview sits on this card, not a landscape page.
-            WSSectionLabel("Snake")
-            WSCard {
-                WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true,
-                                     spineWidth: spineWidth?.number ?? 0.1,
-                                     shadow: shadow?.enabled == true,
-                                     hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
-                if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
-                if let spine { WSTypedRow(setting: spine, engine: engine) }
-                // Whose spine (OM, 2026-10-14): only mine, or every snake's.
-                if let mine = engine.settings.first(where: { $0.id == "\(group).spine_mine" }), spine?.enabled == true {
-                    WSEnumBlock(title: "Show spine on", detail: "Mine shows it on your snake only",
-                                options: ["Mine", "Everyone"], selected: mine.enabled ? 0 : 1) { index in
-                        engine.write(id: mine.id, values: [index == 0 ? 1 : 0])
-                    }
-                    .wyrmSettingAnchor(mine.id)
-                }
-                // Spine width (OM, 2026-10-09): comes out from under the switch
-                // while the spine is on; each mode keeps its own.
-                if let spineWidth, spine?.enabled == true {
-                    WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth.number),
-                                detail: "0 hides it; full is as wide as the snake",
-                                value: min(max(spineWidth.number, 0), 1), range: 0...1) { value in
-                        engine.write(id: spineWidth.id, values: [value])
-                    }
-                    .wyrmSettingAnchor(spineWidth.id)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-                if let shadow { WSTypedRow(setting: shadow, engine: engine) }
-                if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
-            }
-            .animation(.easeInOut(duration: 0.22), value: spine?.enabled == true)
-            WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake; its width goes from hidden to the snake's own. Snake shadow is the original app's shadow under every snake.")
-
-            // Boost (OM, 2026-10-18): on/off, its style, and whose boost shows.
-            if let boostOn {
-                WSSectionLabel("Boost")
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                // Snake look (OM, 2026-10-05): the preview sits on this card, not a landscape page.
+                WSSectionLabel("Snake")
                 WSCard {
-                    WSTypedRow(setting: boostOn, engine: engine)
-                    if boostOn.enabled {
-                        if let boostType { WSTypedRow(setting: boostType, engine: engine) }
-                        if let boostStrength { WSTypedRow(setting: boostStrength, engine: engine) }
-                        if let boostOwn {
-                            WSEnumBlock(title: "Show boost on", detail: "Mine shows only your own boost",
-                                        options: ["Mine", "Everyone"], selected: boostOwn.enabled ? 0 : 1) { index in
-                                engine.write(id: boostOwn.id, values: [index == 0 ? 1 : 0])
+                    WyrmSnakeBodyPreview(mode: renderMode?.index ?? 0, spine: spine?.enabled == true,
+                                         spineWidth: spineWidth?.number ?? 0.1,
+                                         shadow: shadow?.enabled == true,
+                                         hideCosmetics: visibleMode == 1 && hideCosmetics?.enabled == true)
+                    if let renderMode { WSTypedRow(setting: renderMode, engine: engine) }
+                    if let spine { WSTypedRow(setting: spine, engine: engine) }
+                    // Whose spine (OM, 2026-10-14): only mine, or every snake's.
+                    if let mine = engine.settings.first(where: { $0.id == "\(group).spine_mine" }), spine?.enabled == true {
+                        WSEnumBlock(title: "Show spine on", detail: "Mine shows it on your snake only",
+                                    options: ["Mine", "Everyone"], selected: mine.enabled ? 0 : 1) { index in
+                            engine.write(id: mine.id, values: [index == 0 ? 1 : 0])
+                        }
+                        .wyrmSettingAnchor(mine.id)
+                    }
+                    // Spine width (OM, 2026-10-09): comes out from under the switch
+                    // while the spine is on; each mode keeps its own.
+                    if let spineWidth, spine?.enabled == true {
+                        WSSliderRow(title: "Spine width", valueText: WyrmSpineWidth.label(spineWidth.number),
+                                    detail: "0 hides it; full is as wide as the snake",
+                                    value: min(max(spineWidth.number, 0), 1), range: 0...1) { value in
+                            engine.write(id: spineWidth.id, values: [value])
+                        }
+                        .wyrmSettingAnchor(spineWidth.id)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    if let shadow { WSTypedRow(setting: shadow, engine: engine) }
+                    if visibleMode == 1, let hideCosmetics { WSTypedRow(setting: hideCosmetics, engine: engine) }
+                }
+                .animation(.easeInOut(duration: 0.22), value: spine?.enabled == true)
+                WSCaption("Skinless keeps the plain snake's width and length. Only the skin turns see-through. Spine is a white line down every snake; its width goes from hidden to the snake's own. Snake shadow is the original app's shadow under every snake.")
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                // Boost (OM, 2026-10-18): on/off, its style, and whose boost shows.
+                if let boostOn {
+                    WSSectionLabel("Boost")
+                    WSCard {
+                        WSTypedRow(setting: boostOn, engine: engine)
+                        if boostOn.enabled {
+                            if let boostType { WSTypedRow(setting: boostType, engine: engine) }
+                            if let boostStrength { WSTypedRow(setting: boostStrength, engine: engine) }
+                            if let boostOwn {
+                                WSEnumBlock(title: "Show boost on", detail: "Mine shows only your own boost",
+                                            options: ["Mine", "Everyone"], selected: boostOwn.enabled ? 0 : 1) { index in
+                                    engine.write(id: boostOwn.id, values: [index == 0 ? 1 : 0])
+                                }
+                                .wyrmSettingAnchor(boostOwn.id)
                             }
-                            .wyrmSettingAnchor(boostOwn.id)
                         }
                     }
+                    .animation(.easeInOut(duration: 0.22), value: boostOn.enabled)
+                    WSCaption(Self.boostPerformanceNote)
                 }
-                .animation(.easeInOut(duration: 0.22), value: boostOn.enabled)
-                WSCaption(Self.boostPerformanceNote)
-            }
-
-            WSSectionLabel("Arena colours")
-            WSCard { WSRows(rows: colours, engine: engine) }
-
-            // The size slider moved into a live editor over the arena (OM, 2026-10-01).
-            WSSectionLabel("Arena background")
-            WSCard {
-                WSValueRow(title: "Adjust arena background size",
-                           value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
-                           first: true) { engine.openBackgroundEditor() }
-                    .wyrmSettingAnchor("app.bg-size")
-            }
-
-            WSSectionLabel("Joystick guide")
-            WSCard {
-                WyrmHeadDotPreview(size: dotSize?.number ?? 10, colour: dotColour?.channels ?? [1, 1, 1, 1])
-                if let dot { WSTypedRow(setting: dot, engine: engine) }
-                if let dotSize { WSTypedRow(setting: dotSize, engine: engine) }
-                if let dotColour { WSColourRow(setting: dotColour, engine: engine).wyrmSettingAnchor(dotColour.id) }
-            }
-
-            // OM, 2026-10-01: the assist laser for joystick players, with a live preview.
-            if visibleMode == 1 { WyrmJoystickLaserSection(engine: engine) }
-
-            WSAdvancedFold(label: "Advanced · helper lines", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
-            if advanced { WSCard { WSRows(rows: laser + rest, engine: engine) } }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                WSSectionLabel("Arena colours")
+                WSCard { WSRows(rows: colours, engine: engine) }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                // The size slider moved into a live editor over the arena (OM, 2026-10-01).
+                WSSectionLabel("Arena background")
+                WSCard {
+                    WSValueRow(title: "Adjust arena background size",
+                               value: WyrmBackgroundSize.label(engine.value("normal.bg_scale", WyrmBackgroundSize.standard)),
+                               first: true) { engine.openBackgroundEditor() }
+                        .wyrmSettingAnchor("app.bg-size")
+                }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                WSSectionLabel("Joystick guide")
+                WSCard {
+                    WyrmHeadDotPreview(size: dotSize?.number ?? 10, colour: dotColour?.channels ?? [1, 1, 1, 1])
+                    if let dot { WSTypedRow(setting: dot, engine: engine) }
+                    if let dotSize { WSTypedRow(setting: dotSize, engine: engine) }
+                    if let dotColour { WSColourRow(setting: dotColour, engine: engine).wyrmSettingAnchor(dotColour.id) }
+                }
+            })
+            AnyView(VStack(alignment: .leading, spacing: 0) {
+                // OM, 2026-10-01: the assist laser for joystick players, with a live preview.
+                if visibleMode == 1 { WyrmJoystickLaserSection(engine: engine) }
+    
+                WSAdvancedFold(label: "Advanced · helper lines", open: advanced) { withAnimation(.easeInOut(duration: 0.25)) { advanced.toggle() } }
+                if advanced { WSCard { WSRows(rows: laser + rest, engine: engine) } }
+            })
         }
     }
 }
@@ -971,6 +1095,10 @@ enum WyrmSpineWidth {
 /// mode, as in the arena; in assist with "Hide own tag and accessories" on,
 /// the accessory and the look are left off. Same as Android's SnakeBodyPreview.
 struct WyrmSnakeBodyPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    var nameScale: Double? = nil
     let mode: Int
     let spine: Bool
     var spineWidth: Double = 0.1
@@ -987,19 +1115,19 @@ struct WyrmSnakeBodyPreview: View {
         let accessory = hideCosmetics ? -1 : skin.wornAccessory
         let showLook = !hideCosmetics
         VStack(alignment: .leading, spacing: 8) {
-            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            Text("Preview").font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
             Canvas { context, canvas in
-                let total = 160
+                let total = nameScale == nil ? 160 : 28
                 let span = 1 + CGFloat(total - 1) * (8.0 / 48.0) + 0.7
-                let scale = min(canvas.height * 0.34, (canvas.width - 28) / span)
+                let scale = min(nameScale == nil ? canvas.height * 0.34 : 29, (canvas.width - 28) / span)
                 let step = 8 * (scale / 48)
-                let left = (canvas.width - span * scale) / 2
-                let amp = canvas.height * 0.16
+                let left = nameScale == nil ? (canvas.width-span*scale)/2 : canvas.width*0.5-scale*0.5-CGFloat(total-1)*step
+                let amp = canvas.height * (nameScale == nil ? 0.16 : 0.06)
                 // Segment 0 is the tail (left), total - 1 the head (right).
                 func place(_ segment: Int) -> CGPoint {
                     let along = CGFloat(segment) / CGFloat(total - 1)
                     return CGPoint(x: left + scale * 0.5 + CGFloat(segment) * step,
-                                   y: canvas.height * 0.5 + amp * sin(along * 6.2831855 * 1.15))
+                                   y: canvas.height * (nameScale == nil ? 0.5 : 0.3) + amp * sin(along * 6.2831855 * 1.15))
                 }
                 func heading(_ segment: Int) -> CGFloat {
                     let a = place(max(0, segment - 1))
@@ -1150,10 +1278,17 @@ struct WyrmSnakeBodyPreview: View {
                                       ears: look.ears, glasses: look.glasses)
                     }
                 }
+                if let nameScale, let root = Bundle.main.resourceURL,
+                   let image = UIImage(contentsOfFile: root.appendingPathComponent("res/textures/name_size_preview.png").path)?.cgImage {
+                    let factor = CGFloat(13.0/52.0*nameScale)*scale/29
+                    let w = CGFloat(image.width)*factor, h = CGFloat(image.height)*factor
+                    context.draw(Image(decorative: image, scale: 1),
+                        in: CGRect(x: head.x-w/2, y: head.y+scale*0.7, width: w, height: h))
+                }
             }
-            .frame(height: 88).background(ATheme.well)
+            .frame(height: nameScale == nil ? 88 : 128).background(wyrmScopedColours.well)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         }
         .padding(.horizontal, 14).padding(.vertical, 12)
         .onAppear { textures.prepare() }
@@ -1161,24 +1296,27 @@ struct WyrmSnakeBodyPreview: View {
 }
 
 struct WyrmHeadDotPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let size: Double
     let colour: [Double]
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Size relative to snake head").font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+            Text("Size relative to snake head").font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
             Canvas { context, canvas in
                 let head: CGFloat = 22
                 let centre = CGPoint(x: canvas.width * 0.5 - head * 0.35, y: canvas.height * 0.5)
                 // The arena head is 29 world units wide and both it and the dot
                 // share the snake scale, so this ratio survives every zoom.
                 let dot = head * CGFloat(min(max(size, 4), 32)) / 29
-                context.fill(Path(ellipseIn: CGRect(x: centre.x - head, y: centre.y - head, width: head * 2, height: head * 2)), with: .color(ATheme.ink))
+                context.fill(Path(ellipseIn: CGRect(x: centre.x - head, y: centre.y - head, width: head * 2, height: head * 2)), with: .color(wyrmScopedColours.ink))
                 context.fill(Path(ellipseIn: CGRect(x: centre.x + head - dot, y: centre.y - dot, width: dot * 2, height: dot * 2)),
                              with: .color(Color(.sRGB, red: colour[0], green: colour[1], blue: colour[2], opacity: 1)))
             }
-            .frame(height: 74).background(ATheme.well)
+            .frame(height: 74).background(wyrmScopedColours.well)
             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         }.padding(.horizontal, 14).padding(.vertical, 12)
     }
 }
@@ -1186,6 +1324,9 @@ struct WyrmHeadDotPreview: View {
 // MARK: - Bot
 
 struct WyrmBotPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     var body: some View {
@@ -1195,9 +1336,9 @@ struct WyrmBotPage: View {
             Spacer().frame(height: 18)
             WSCard {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Let the bot play").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
+                    Text("Let the bot play").font(.androidWyrm(16, .semibold)).foregroundColor(wyrmScopedColours.ink)
                     Text("Turn it on with the Bot button in a match. It eats, dodges snakes, breaks away with boost when it is surrounded, and coils round itself once it is big.")
-                        .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
+                        .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).fixedSize(horizontal: false, vertical: true)
                 }.padding(.horizontal, 14).padding(.vertical, 15)
             }
             WSSectionLabel("Basic · behaviour")
@@ -1230,12 +1371,12 @@ struct WyrmFoodPage: View {
     }
     static let floor = Color(red: 0.086, green: 0.106, blue: 0.133)
     /// Food textures (OM, 2026-10-25), in the engine's order (fd.slang food_texture).
-    static let textures = ["Wyrm", "Slither app", "Crisp", "Square", "Glossy", "Small"]
-    static let textureNote = "Shape applies to Wyrm and Small. Far away, and when the screen is full of food, every texture is drawn as plain dots so the game stays smooth."
+    static let textures = ["Wyrm", "Slither app", "Crisp", "Square", "Glossy", "Gem", "Candy", "Pixel"]
+    static let textureNote = "Shape applies to Wyrm. Every texture is drawn solid, so food stays clear on light floors."
 
     static func isFood(_ s: EngineSetting) -> Bool {
         let local = s.id.components(separatedBy: ".").dropFirst().joined(separator: ".")
-        return local.hasPrefix("food_") || local == "const_food_scale" || local == "uniform_food_color"
+        return local.hasPrefix("food_") ||  local == "uniform_food_color"
     }
     static func label(_ engine: WyrmShellStore) -> String {
         guard let s = engine.setting("normal.food_type"), s.options.indices.contains(s.index) else { return "Original" }
@@ -1251,7 +1392,7 @@ struct WyrmFoodPage: View {
         let style = named("food_type")
         let uniform = named("uniform_food_color")
         let colour = named("food_color")
-        let order = ["food_scale", "const_food_scale", "uniform_food_color", "food_color", "food_float", "food_flicker"]
+        let order = ["food_scale", "uniform_food_color", "food_color", "food_float", "food_flicker"]
         let uniformOn = uniform?.enabled == true
         let ordered: [EngineSetting] = order.compactMap(named).filter { $0.id != colour?.id || uniformOn }
         let rest: [EngineSetting] = food.filter { (row: EngineSetting) -> Bool in
@@ -1267,7 +1408,12 @@ struct WyrmFoodPage: View {
                                 uniform: uniform?.enabled == true,
                                 uniformColour: colour.map { Color(red: $0.channels[0], green: $0.channels[1], blue: $0.channels[2]) } ?? Self.hues[3],
                                 drift: named("food_float")?.enabled == true,
-                                flicker: named("food_flicker")?.enabled == true)
+                                flicker: named("food_flicker")?.enabled == true,
+                                texture: named("food_texture")?.index ?? 0,
+                                uniformRGB: colour.map { c -> UInt32 in
+                                    func ch(_ v: Double) -> UInt32 { UInt32(max(0, min(255, Int(v * 255)))) }
+                                    return ch(c.channels[0]) << 16 | ch(c.channels[1]) << 8 | ch(c.channels[2])
+                                } ?? 0x80FF80)
                 WSSegmented(options: ["Normal mode", "With assist"], selected: mode) { mode = $0 }
             }
             .padding(.horizontal, 16)
@@ -1293,8 +1439,10 @@ struct WyrmFoodPage: View {
                 WSCaption(Self.textureNote)
             }
 
-            WSSectionLabel("Shape")
-            if let style {
+            // Shape belongs to the Wyrm texture only (OM, 2026-10-26).
+            let wyrmTexture = (named("food_texture")?.index ?? 0) == 0
+            if wyrmTexture { WSSectionLabel("Shape") }
+            if let style, wyrmTexture {
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
                     ForEach(style.options.indices, id: \.self) { index in
                         WyrmFoodTile(style: index, label: style.options[index], selected: style.index == index) {
@@ -1306,7 +1454,7 @@ struct WyrmFoodPage: View {
                 .padding(.horizontal, 16)
                 .wyrmSettingAnchor("\(group).food_type")
             }
-            WSCaption("Mixed uses every shape and keeps each morsel the same shape for its whole life.")
+            if wyrmTexture { WSCaption("Mixed uses every shape and keeps each morsel the same shape for its whole life.") }
 
             WSSectionLabel("Look")
             WSCard { WSRows(rows: look, engine: engine) }
@@ -1319,12 +1467,18 @@ struct WyrmFoodPage: View {
 /// A slice of arena with food on it, drawn by the same rules as the settings.
 /// It moves only when the settings say food moves.
 struct WyrmFoodPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let style: Int
     let scale: Double
     let uniform: Bool
     let uniformColour: Color
     let drift: Bool
     let flicker: Bool
+    /// The food texture (OM, 2026-10-26): shown here too; Wyrm (0) keeps its shapes.
+    var texture = 0
+    var uniformRGB: UInt32 = 0x80FF80
 
     private static let morsels: [(x: Double, y: Double, size: Double, phase: Double, hue: Int, shape: Int)] = {
         var seed: UInt64 = 0x5715
@@ -1355,14 +1509,19 @@ struct WyrmFoodPreview: View {
                     let glow = flicker ? 0.55 + 0.45 * (sin(t * 3 + m.phase * 2) + 1) / 2 : 1
                     let hue = uniform ? uniformColour : WyrmFoodPage.hues[m.hue]
                     let shape = style == 2 ? m.shape : WyrmFoodPage.shape(of: style)
-                    WyrmFoodTile.glowing(shape, c, base * CGFloat(0.65 + m.size * 0.7), hue, glow, into: &context)
+                    if (1...7).contains(texture) {
+                        WyrmFoodTile.pellet(texture, c, base * CGFloat(0.65 + m.size * 0.7),
+                                            uniform ? uniformRGB : WyrmFoodPage.hueCodes[m.hue], into: &context)
+                    } else {
+                        WyrmFoodTile.glowing(shape, c, base * CGFloat(0.65 + m.size * 0.7), hue, glow, into: &context)
+                    }
                 }
             }
         }
         .frame(height: 176)
         .background(WyrmFoodPage.floor)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule))
         .overlay(alignment: .topLeading) {
             Text("LIVE PREVIEW").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(.white.opacity(0.72))
                 .padding(.horizontal, 9).padding(.vertical, 4)
@@ -1373,13 +1532,21 @@ struct WyrmFoodPreview: View {
 
 /// One shape: a small arena tile with the food glowing in it, its name, and a check when chosen.
 struct WyrmFoodTile: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     /// A texture tile (OM, 2026-10-25): three pellets the way the arena draws that texture.
     static func textured(_ texture: Int, size: CGSize, into context: inout GraphicsContext) {
         let r = min(size.width, size.height) * 0.13
         let spots = [CGPoint(x: size.width * 0.3, y: size.height * 0.38), CGPoint(x: size.width * 0.66, y: size.height * 0.32),
                      CGPoint(x: size.width * 0.5, y: size.height * 0.68)]
         for (i, c) in spots.enumerated() {
-            let code = WyrmFoodPage.hueCodes[(i * 3 + 1) % 9]
+            pellet(texture, c, r, WyrmFoodPage.hueCodes[(i * 3 + 1) % 9], into: &context)
+        }
+    }
+
+    /// One pellet in `texture` (fd.slang food_texture), for the tiles and the preview.
+    static func pellet(_ texture: Int, _ c: CGPoint, _ r: CGFloat, _ code: UInt32, into context: inout GraphicsContext) {
             let red = Double((code >> 16) & 0xFF) / 255, green = Double((code >> 8) & 0xFF) / 255, blue = Double(code & 0xFF) / 255
             let colour = Color(red: red, green: green, blue: blue)
             func disc(_ center: CGPoint, _ radius: CGFloat) -> Path {
@@ -1408,11 +1575,45 @@ struct WyrmFoodTile: View {
                 context.fill(disc(c, r * 0.95), with: .radialGradient(Gradient(colors: [.clear, .black.opacity(0.35)]),
                                                                      center: c, startRadius: 0, endRadius: r * 0.95))
             case 5:
-                glowing(0, c, r * 0.6, colour, 1, into: &context)
+                // Gem: a diamond with lit upper facets.
+                func facet(_ a: CGPoint, _ b: CGPoint, _ d: CGPoint, _ f: Double) {
+                    var path = Path(); path.move(to: a); path.addLine(to: b); path.addLine(to: d); path.closeSubpath()
+                    context.fill(path, with: .color(Color(red: min(red * f, 1), green: min(green * f, 1), blue: min(blue * f, 1))))
+                }
+                let top = CGPoint(x: c.x, y: c.y - r), bottom = CGPoint(x: c.x, y: c.y + r)
+                let left = CGPoint(x: c.x - r, y: c.y), right = CGPoint(x: c.x + r, y: c.y)
+                facet(top, c, left, 1.25); facet(top, right, c, 1); facet(left, c, bottom, 0.8); facet(c, right, bottom, 0.62)
+                context.fill(disc(c, r * 0.18), with: .color(.white.opacity(0.35)))
+            case 6:
+                // Candy: white diagonal stripes on the colour.
+                let body = disc(c, r * 0.95)
+                context.fill(body, with: .color(colour))
+                var striped = context
+                striped.clip(to: body)
+                let pale = Color(red: red + (1 - red) * 0.6, green: green + (1 - green) * 0.6, blue: blue + (1 - blue) * 0.6)
+                let step = r * 0.6
+                for k in -4...4 {
+                    let o = CGFloat(k) * step * 2
+                    var line = Path()
+                    line.move(to: CGPoint(x: c.x + o - r * 2, y: c.y + r * 2))
+                    line.addLine(to: CGPoint(x: c.x + o + r * 2, y: c.y - r * 2))
+                    striped.stroke(line, with: .color(pale), lineWidth: step)
+                }
+            case 7:
+                // Pixel: a 4 x 4 block of pixels, lit at the top left.
+                let side = r * 1.6, cell = side / 4
+                for y in 0..<4 {
+                    for x in 0..<4 {
+                        let edge = (x == 0 || y == 0 || x == 3 || y == 3) ? 0.85 : 1.0
+                        let f = (1.22 - 0.1 * Double(x + y)) * edge
+                        context.fill(Path(CGRect(x: c.x - side / 2 + CGFloat(x) * cell, y: c.y - side / 2 + CGFloat(y) * cell,
+                                                 width: cell + 0.5, height: cell + 0.5)),
+                                     with: .color(Color(red: min(red * f, 1), green: min(green * f, 1), blue: min(blue * f, 1))))
+                    }
+                }
             default:
                 glowing(0, c, r, colour, 1, into: &context)
             }
-        }
     }
 
     let style: Int
@@ -1443,16 +1644,16 @@ struct WyrmFoodTile: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(alignment: .topTrailing) {
                     if selected {
-                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.onInk)
-                            .frame(width: 20, height: 20).background(Circle().fill(ATheme.ink)).padding(6)
+                        Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(wyrmScopedColours.onInk)
+                            .frame(width: 20, height: 20).background(Circle().fill(wyrmScopedColours.ink)).padding(6)
                     }
                 }
                 Text(label).font(.androidWyrm(12.5, selected ? .bold : .semibold))
-                    .foregroundColor(selected ? ATheme.ink : ATheme.mute).lineLimit(1)
+                    .foregroundColor(selected ? wyrmScopedColours.ink : wyrmScopedColours.mute).lineLimit(1)
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
         .buttonStyle(WSPressStyle())
@@ -1539,17 +1740,20 @@ struct WyrmFoodIcon: View {
 
 /// Play's loadout well for Food: three morsels in the arena colours.
 struct WyrmFoodWell: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var body: some View {
         Canvas { context, size in
             let r = min(size.width, size.height) * 0.115
             func dot(_ x: CGFloat, _ y: CGFloat, _ radius: CGFloat, _ colour: Color) {
                 context.fill(Path(ellipseIn: CGRect(x: size.width * x - radius, y: size.height * y - radius, width: radius * 2, height: radius * 2)), with: .color(colour))
             }
-            dot(0.32, 0.38, r, ATheme.live)
-            dot(0.68, 0.34, r * 0.82, ATheme.link)
+            dot(0.32, 0.38, r, wyrmScopedColours.live)
+            dot(0.68, 0.34, r * 0.82, wyrmScopedColours.link)
             dot(0.55, 0.69, r * 1.08, Color(red: 0.827, green: 0.545, blue: 0.365))
         }
-        .frame(width: 26, height: 26).background(ATheme.well).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .frame(width: 26, height: 26).background(wyrmScopedColours.well).clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
     }
 }
 
@@ -1560,7 +1764,7 @@ struct WyrmFoodWell: View {
 /// erase a carefully chosen set. Mirrors Android's NotificationPreferences.
 final class WyrmNotificationPrefs: ObservableObject {
     static let shared = WyrmNotificationPrefs()
-    static let knownKinds = ["dm", "invite", "voice_invite", "notice", "broadcast", "event", "update", "feature", "follow", "achievement", "rank", "backup", "trail_like", "trail_reply", "support"]
+    static let knownKinds = ["dm", "invite", "voice_invite", "notice", "broadcast", "event", "update", "feature", "follow", "achievement", "rank", "backup", "trail_like", "trail_reply", "support", "mention"]
     @Published private(set) var status: UNAuthorizationStatus = .notDetermined
     @Published private(set) var revision = 0
 
@@ -1615,6 +1819,7 @@ struct WyrmNotificationSettingsPage: View {
     private static let allGroups: [(String, [(String, String, String)])] = [
         ("People", [("invite", "Arena invites", "Someone sends you a server and key."),
                     ("dm", "Direct messages", "New thread or reply."),
+                    ("mention", "Mentions", "Someone writes your @username in global chat."),
                     ("voice_invite", "Voice invitations", "Private invitations to verified voice rooms."),
                     ("follow", "New followers", "When another player starts following you.")]),
         ("Trails", [("trail_like", "Beads on your trails", "When someone gives a trail you posted a bead."),
@@ -1666,6 +1871,9 @@ struct WyrmNotificationSettingsPage: View {
 // MARK: - Privacy
 
 struct WyrmPrivacyPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     /// Settings › Privacy › Activity (OM, 2026-10-23); the same words on Android.
     static let activitySharedNote = "When you are on Wyrm and which arena you play in are shown to your friends, on the Wyrm website and in the Wyrm Discord bot. This can't be turned off."
     var parent = "Settings"
@@ -1699,25 +1907,25 @@ struct WyrmPrivacyPage: View {
     @ViewBuilder private func blockView(_ block: WyrmPolicyBlock) -> some View {
         switch block {
         case .title(let text):
-            Text(text).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).padding(.top, 20).padding(.bottom, 6)
+            Text(text).font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).padding(.top, 20).padding(.bottom, 6)
         case .heading(let text, let level):
             Text(text).font(.androidWyrm(level == 2 ? 17 : 14, .bold)).tracking(level == 2 ? 0 : 1.2)
-                .foregroundColor(level == 2 ? ATheme.ink : ATheme.quiet).padding(.top, 26).padding(.bottom, 8)
+                .foregroundColor(level == 2 ? wyrmScopedColours.ink : wyrmScopedColours.quiet).padding(.top, 26).padding(.bottom, 8)
         case .paragraph(let text):
-            inline(text).font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(8).padding(.bottom, 12)
+            inline(text).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).lineSpacing(8).padding(.bottom, 12)
                 .fixedSize(horizontal: false, vertical: true)
         case .bullet(let text):
             HStack(alignment: .top, spacing: 10) {
-                Text("—").font(.androidWyrm(14)).foregroundColor(ATheme.quiet)
-                inline(text).font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(8).fixedSize(horizontal: false, vertical: true)
+                Text("—").font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet)
+                inline(text).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).lineSpacing(8).fixedSize(horizontal: false, vertical: true)
             }.padding(.bottom, 10)
         case .pair(let term, let detail):
             VStack(alignment: .leading, spacing: 2) {
-                inline(term).font(.androidWyrm(13, .bold)).foregroundColor(ATheme.ink)
-                inline(detail).font(.androidWyrm(13)).foregroundColor(ATheme.mute).lineSpacing(7).fixedSize(horizontal: false, vertical: true)
+                inline(term).font(.androidWyrm(13, .bold)).foregroundColor(wyrmScopedColours.ink)
+                inline(detail).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).lineSpacing(7).fixedSize(horizontal: false, vertical: true)
             }.padding(.bottom, 12)
         case .rule:
-            Rectangle().fill(ATheme.rule).frame(height: 1).padding(.top, 12).padding(.bottom, 6)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1).padding(.top, 12).padding(.bottom, 6)
         }
     }
 
@@ -1727,7 +1935,7 @@ struct WyrmPrivacyPage: View {
         var result = Text("")
         var bold = false
         for part in text.components(separatedBy: "**") {
-            result = result + (bold ? Text(part).fontWeight(.bold).foregroundColor(ATheme.ink) : Text(part))
+            result = result + (bold ? Text(part).fontWeight(.bold).foregroundColor(wyrmScopedColours.ink) : Text(part))
             bold.toggle()
         }
         return result
@@ -1777,44 +1985,49 @@ enum WyrmPolicyBlock {
 // MARK: - Accessibility
 
 struct WyrmAccessibilityPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let close: () -> Void
     @ObservedObject var store = WyrmThemeStore.shared
     /// A theme change rebuilds the shell; the fold remembers it was open.
     static var rememberedOpen = false
     @State var advancedOpen = WyrmAccessibilityPage.rememberedOpen
+
+    private var modeIndex: Int {
+        switch store.mode {
+        case .light: return 0
+        case .dark: return 1
+        case .auto: return 2
+        }
+    }
+
+    private let visibleThemes: [WyrmThemeID] = [.sand, .linen, .grape, .cyan, .metal3, .midnight, .colonial3,
+        .classic_paper, .classic_graphite, .classic_blush, .classic_sun, .classic_slate, .classic_lilac, .classic_forest, .classic_midnight]
+
     var body: some View {
         WSScaffold(title: "Accessibility", onBack: close) {
             WSSectionLabel("Themes", top: 18)
-            WSCard {
-                ForEach(Array(WyrmThemeID.allCases.enumerated()), id: \.element) { index, theme in
-                    if index > 0 { WSHairline() }
-                    let palette = theme.palette.withIntensity(store.intensity)
-                    Button { withAnimation(.easeInOut(duration: 0.3)) { store.select(theme) } } label: {
-                        HStack(spacing: 0) {
-                            ZStack(alignment: .bottom) {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.paper.color)
-                                    .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(palette.rule.color, lineWidth: 1))
-                                RoundedRectangle(cornerRadius: 6, style: .continuous).fill(palette.card.color)
-                                    .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(palette.rule.color, lineWidth: 1))
-                                    .frame(width: 38, height: 23).frame(maxHeight: .infinity)
-                                HStack(spacing: 3) { ForEach([palette.ink, palette.live, palette.link], id: \.argb) { Circle().fill($0.color).frame(width: 5, height: 5) } }
-                                    .padding(.bottom, 6)
-                            }.frame(width: 58, height: 42)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(theme.displayName).font(.androidWyrm(15.5, store.theme == theme ? .semibold : .regular)).foregroundColor(ATheme.ink)
-                                Text(theme.description).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
-                            }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12)
-                            WSRadio(selected: store.theme == theme)
-                        }.padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 68).contentShape(Rectangle())
-                    }.buttonStyle(WSPressStyle())
-                }
+            WSSegmented(options: ["Light", "Dark", "Auto"], selected: modeIndex) { index in
+                let next: WyrmThemeMode = index == 1 ? .dark : index == 2 ? .auto : .light
+                store.setMode(next)
             }
+            .padding(.horizontal, 16)
             .wyrmSettingAnchor("app.theme", card: true)
             .onAppear {
                 if WyrmSettingsFocus.shared.wants("app.theme-intensity") { advancedOpen = true; Self.rememberedOpen = true }
             }
+            Text("Light and Dark use that version of the theme. Auto follows the phone's light and dark setting.")
+                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(5)
+                .padding(.horizontal, 16).padding(.top, 10)
+            WSCard {
+                    ForEach(Array(visibleThemes.enumerated()), id: \.element) { index, theme in
+                        if index > 0 { WSHairline() }
+                        themeChoice(theme)
+                    }
+            }
             Text("Themes colour the app and arena interface only. Skins, arena background and gameplay stay untouched.")
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
+                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(5)
                 .padding(.horizontal, 16).padding(.top, 12)
             WSAdvancedFold(label: "Advanced settings", open: advancedOpen) {
                 withAnimation(.easeInOut(duration: 0.25)) { advancedOpen.toggle() }
@@ -1823,17 +2036,39 @@ struct WyrmAccessibilityPage: View {
             if advancedOpen {
                 WSCard {
                     WSSliderRow(title: "Theme intensity", valueText: "\(Int((store.intensity * 100).rounded()))%",
-                                detail: "50% is the original theme look. Lower moves towards Paper; higher is richer.",
+                                detail: "50% is this theme as designed. Lower washes towards its own paper. Higher is richer. Text stays readable.",
                                 value: store.intensity, range: 0...1, first: true) { store.setIntensity($0) }
                         .wyrmSettingAnchor("app.theme-intensity")
                     WSHairline()
                     WSOutlineButton(label: "Reset", enabled: abs(store.intensity - 0.5) >= 0.001) { store.setIntensity(0.5) }.padding(14)
                 }
             }
-            WSSectionLabel("Keyboard")
-            WSCard { WyrmKeyboardLookRows() }.wyrmSettingAnchor("app.keyboard", card: true)
-            WSCaption("The Wyrm keyboard follows your theme. Its gear key holds the same two controls, and in the lobby the knob under it drags it anywhere.")
         }
+    }
+
+    private func themeChoice(_ theme: WyrmThemeID) -> some View {
+        let palette = theme.side(mode: store.mode, systemDark: store.systemDark).withIntensity(store.intensity)
+        return Button { withAnimation(.easeInOut(duration: 0.3)) { store.select(theme) } } label: {
+            HStack(spacing: 0) {
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous).fill(palette.paper.color)
+                        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(palette.rule.color, lineWidth: 1))
+                    RoundedRectangle(cornerRadius: 6, style: .continuous).fill(palette.card.color)
+                        .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(palette.rule.color, lineWidth: 1))
+                        .frame(width: 38, height: 23).frame(maxHeight: .infinity)
+                    HStack(spacing: 3) {
+                        ForEach(Array(theme.swatches.enumerated()), id: \.offset) { _, swatch in
+                            Circle().fill(WyrmRGBA(argb: swatch).color).frame(width: 5, height: 5)
+                        }
+                    }.padding(.bottom, 6)
+                }.frame(width: 58, height: 42)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(theme.displayName).font(.androidWyrm(15.5, store.theme == theme ? .semibold : .regular)).foregroundColor(wyrmScopedColours.ink)
+                    Text(theme.description).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
+                }.frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12)
+                WSRadio(selected: store.theme == theme)
+            }.padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 68).contentShape(Rectangle())
+        }.buttonStyle(WSPressStyle())
     }
 }
 
@@ -1843,6 +2078,9 @@ struct WyrmAccessibilityPage: View {
 /// restored `.json` backups; settings now live in the account
 /// (WyrmAccountSync), so only updates, the beta switch and the version remain.
 struct WyrmBackupPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
@@ -1862,15 +2100,17 @@ struct WyrmBackupPage: View {
             Spacer().frame(height: 18)
             if let next = updates.available {
                 WSSectionLabel("Update", top: 0)
-                WSCard {
+                WyrmHeroCard(slot: 1) { wyrmScopedColours in
+WSCard {
                     VStack(alignment: .leading, spacing: 0) {
-                        Text("Wyrm \(next.version) is ready").font(.androidWyrm(18, .semibold)).foregroundColor(ATheme.ink)
+                        Text("Wyrm \(next.version) is ready").font(.androidWyrm(18, .semibold)).foregroundColor(wyrmScopedColours.ink)
                         Text(updateNote.isEmpty ? (next.beta ? "Beta build \(next.build)" : "Build \(next.build)") : updateNote)
-                            .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).padding(.top, 3)
+                            .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet).padding(.top, 3)
                             .fixedSize(horizontal: false, vertical: true)
                         WSPrimaryButton(label: "Update now", enabled: true) { handOff(next) }.padding(.top, 14)
                     }.padding(16)
                 }
+}
             }
 
             WSSectionLabel("Version", top: updates.available == nil ? 0 : 22)
@@ -1913,6 +2153,9 @@ struct WyrmBackupPage: View {
 }
 
 struct WyrmBuildNotesPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let close: () -> Void
     var body: some View {
         WSScaffold(title: "This build", parent: "Backup", onBack: close) {
@@ -1921,8 +2164,8 @@ struct WyrmBuildNotesPage: View {
                 VStack(alignment: .leading, spacing: 10) {
                     ForEach(Self.notes, id: \.self) { line in
                         HStack(alignment: .top, spacing: 10) {
-                            Text("—").foregroundColor(ATheme.quiet)
-                            Text(line).foregroundColor(ATheme.mute).fixedSize(horizontal: false, vertical: true)
+                            Text("—").foregroundColor(wyrmScopedColours.quiet)
+                            Text(line).foregroundColor(wyrmScopedColours.mute).fixedSize(horizontal: false, vertical: true)
                         }.font(.androidWyrm(14)).lineSpacing(5)
                     }
                 }.padding(14)
@@ -1955,6 +2198,9 @@ struct WyrmBuildNotesPage: View {
 /// near-invisible drag targets at the same places, like Android's 0.01 alpha.
 /// Positions are written live; Cancel puts back what was there on entry.
 struct WyrmLayoutEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let onClose: () -> Void
     @State var snapshot: [EngineSetting] = []
@@ -2026,9 +2272,12 @@ struct WyrmLayoutEditor: View {
         let zoomVertical = engine.setting("controls.zoom_orientation")?.index == 1
         let baseOpacity = engine.value("controls.opacity", 1)
         let minimap = min(max(engine.value("general.minimap_size", 300), 128), 512) / scale
-        let lbScale = 1 + Double(min(max(Int(engine.value("general.lb_font", 1)), 0), 2)) * 0.16
-        let lbSize = CGSize(width: 250 * lbScale * teamHud.value("lb_width") / scale,
-                            height: 132 * lbScale * (0.4 + 0.6 * teamHud.value("lb_height")) / scale)
+        let lbScale = min(max(engine.value("general.lb_font", 0.75), 0.25), 3)
+        let boardUnit = Double(min(size.width, size.height)) / 480
+        let boardText = 11 * boardUnit * lbScale / 0.7331
+        let boardTail = max(0, 11*boardUnit*lbScale*84/52-9*boardUnit*teamHud.value("lb_height"))
+        let lbSize = CGSize(width: CGFloat(241 * boardUnit * teamHud.value("lb_width")),
+                            height: CGFloat(3*boardText+16*boardUnit+140*boardUnit*teamHud.value("lb_height")+boardTail))
         let statsScale = (1 + Double(min(max(Int(engine.value("general.stats_font", 1)), 0), 2)) * 0.14) * engine.value("layout.stats_scale", 1)
         let chatScale = engine.value("layout.chat_scale", 1)
         // The engine's own sizes (OM, 2026-10-25): it draws the controls in pixels from the
@@ -2049,12 +2298,27 @@ struct WyrmLayoutEditor: View {
                 // Upright steers with the arrow only (OM, 2026-10-02): no joystick to place.
                 // Near Original (OM, 2026-10-02): the original's joystick, boost and HUD
                 // are fixed; only the on-screen buttons (and the zoom bar) move.
-                if engine.setting("controls.joystick_mode")?.index != 2 && !WyrmPlayOrientation.shared.portrait
-                    && !WyrmNearOriginalStore.shared.on {
-                    piece("layout.joystick", size, CGSize(width: 184 * controlScale * joystick, height: 184 * controlScale * joystick),
-                          Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "controls.joystick_size", range: 0.65...1.45),
-                                                                              Slider(label: "OPACITY", id: "layout.joystick_opacity", range: 0.05...1)])) {
-                        WyrmPaperJoystick(diameter: 112 * joystick, opacity: engine.value("layout.joystick_opacity", baseOpacity))
+                // Near Original's joystick moves and sizes too (OM, 2026-11-01), under its
+                // own ids; until moved it stands at the original's place (Main.as: 150 / 130
+                // units in from the corner on a phone, u = short side / 480).
+                if (engine.setting("controls.joystick_mode")?.index ?? 0) < 2 && !WyrmPlayOrientation.shared.portrait {
+                    if WyrmNearOriginalStore.shared.on {
+                        let nearSize = engine.value("layout.near_joystick_size", 1)
+                        let u = min(size.width, size.height) / 480
+                        let right = engine.value("layout.joystick_x", 0.8) >= 0.5
+                        let home = CGPoint(x: right ? 1 - 150 * u / max(size.width, 1) : 150 * u / max(size.width, 1),
+                                           y: 1 - 130 * u / max(size.height, 1))
+                        piece("layout.near_joystick", size, CGSize(width: 184 * controlScale * nearSize, height: 184 * controlScale * nearSize),
+                              Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "layout.near_joystick_size", range: 0.65...1.45)]),
+                              fallback: home) {
+                            WyrmPaperJoystick(diameter: 112 * nearSize, opacity: 0.62)
+                        }
+                    } else {
+                        piece("layout.joystick", size, CGSize(width: 184 * controlScale * joystick, height: 184 * controlScale * joystick),
+                              Options(id: "joystick", title: "JOYSTICK", sliders: [Slider(label: "SIZE", id: "controls.joystick_size", range: 0.65...1.45),
+                                                                                  Slider(label: "OPACITY", id: "layout.joystick_opacity", range: 0.05...1)])) {
+                            WyrmPaperJoystick(diameter: 112 * joystick, opacity: engine.value("layout.joystick_opacity", baseOpacity))
+                        }
                     }
                 }
                 if engine.setting("controls.boost_mode")?.index == 1 && !WyrmNearOriginalStore.shared.on {
@@ -2079,12 +2343,15 @@ struct WyrmLayoutEditor: View {
                 keyPiece(key, size, CGSize(width: 104 * keyUnit * keyScale, height: 54 * keyUnit * keyScale),
                          Options(id: "key-\(key.id)", title: key.name.uppercased(),
                                  sliders: [Slider(label: "SIZE", id: "layout.key_\(key.id)_scale", range: 0.65...5.00),
-                                           Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1)],
+                                           Slider(label: "OPACITY", id: "layout.key_\(key.id)_opacity", range: 0.05...1),
+                                           // LABEL OPACITY (OM, 2026-11-01): the label alone.
+                                           Slider(label: "LABEL OPACITY", id: "layout.key_\(key.id)_label_opacity", range: 0...1)],
                                  colours: [ColourRow(label: "TEXT AND BORDER", key: "key_\(key.id)_colour", settingID: "layout.key_\(key.id)_colour"),
                                            ColourRow(label: "FILL", key: "key_\(key.id)_fill", settingID: "layout.key_\(key.id)_fill")])) {
                     WyrmPaperKey(label: key.name, opacity: engine.value("layout.key_\(key.id)_opacity", engine.value("keys.opacity", 1)), scale: keyScale,
                                  colour: Int(engine.value("layout.key_\(key.id)_colour", 0)),
-                                 fill: Int(engine.value("layout.key_\(key.id)_fill", 9)))
+                                 fill: Int(engine.value("layout.key_\(key.id)_fill", 9)),
+                                 labelOpacity: engine.value("layout.key_\(key.id)_label_opacity", 1))
                 }
             }
             if !WyrmNearOriginalStore.shared.on {
@@ -2092,18 +2359,17 @@ struct WyrmLayoutEditor: View {
             piece(HUD.minimap.prefix, size, CGSize(width: minimap, height: minimap),
                   Options(id: "minimap", title: "MINIMAP", sliders: [Slider(label: "SIZE", id: "general.minimap_size", range: 128...512, whole: true)]),
                   fallback: HUD.minimap.fallback) {
-                Text("MAP").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink)
+                Text("MAP").font(.androidWyrm(14, .bold)).foregroundColor(wyrmScopedColours.ink)
                     .frame(width: minimap, height: minimap)
-                    .background(Circle().fill(ATheme.card.opacity(0.18)))
-                    .overlay(Circle().stroke(ATheme.ink.opacity(0.76), lineWidth: 3))
+                    .background(Circle().fill(wyrmScopedColours.card.opacity(0.18)))
+                    .overlay(Circle().stroke(wyrmScopedColours.ink, lineWidth: 3))
             }
-            // WIDTH and HEIGHT (OM, 2026-10-13): long names show whole on a wider
-            // board; from a tall enough row they fold onto a second line.
+            // WIDTH controls columns; HEIGHT controls row spacing. Names stay on one line.
             piece(HUD.leaderboard.prefix, size, lbSize,
-                  Options(id: "leaderboard", title: "LEADERBOARD", sliders: [Slider(label: "TEXT SIZE", id: "general.lb_font", range: 0...2, whole: true),
+                  Options(id: "leaderboard", title: "LEADERBOARD", sliders: [Slider(label: "SIZE", id: "general.lb_font", range: 0.25...3),
                                                                             teamHudSlider("WIDTH", "lb_width"),
                                                                             teamHudSlider("HEIGHT", "lb_height")]),
-                  fallback: HUD.leaderboard.fallback, onTap: { engine.toggleEditorLeaderboard() }) {
+                  fallback: HUD.leaderboard.fallback) {
                 panel("LEADERBOARD\n1  Wyrm Player     9503\n2  Northwind       2819\n3  Orbit            418\n4  Meadow           389\n5  Drift            248",
                       lbSize)
             }
@@ -2133,13 +2399,13 @@ struct WyrmLayoutEditor: View {
                           colours: [ColourRow(label: "PLAYER NAME AND SCORE", key: "team_name"),
                                     ColourRow(label: "KEY NAME AND SERVER", key: "team_data")]),
                   fallback: HUD.team.fallback) {
-                RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: teamSize.width, height: teamSize.height)
+                RoundedRectangle(cornerRadius: 14).fill(wyrmScopedColours.card).frame(width: teamSize.width, height: teamSize.height)
             }
             let chatSize = CGSize(width: teamHud.value("chat_width") * chatScale / scale,
                                   height: teamHud.value("chat_height") * chatScale / scale)
             piece(HUD.chat.prefix, size, chatSize,
                   Options(id: "chat", title: "CHAT",
-                          sliders: [Slider(label: "SIZE", id: "layout.chat_scale", range: 0.65...1.60),
+                          sliders: [Slider(label: "TEXT SIZE", id: "layout.chat_text_scale", range: 0.5...2.5), Slider(label: "SIZE", id: "layout.chat_scale", range: 0.65...1.60),
                                     Slider(label: "OPACITY", id: "layout.chat_opacity", range: 0.05...1),
                                     teamHudSlider("BACK", "chat_panel"),
                                     teamHudSlider("WIDTH", "chat_width"), teamHudSlider("HEIGHT", "chat_height")],
@@ -2155,11 +2421,12 @@ struct WyrmLayoutEditor: View {
                                      colours: [ColourRow(label: "PLAYER NAME", key: "online_name"),
                                                ColourRow(label: "USERNAME AND SERVER", key: "online_data")]),
                                  Tab(label: "Button", chatTab: 3,
-                                     sliders: [teamHudSlider("SIZE", "chatbtn_scale"), teamHudSlider("OPACITY", "chatbtn_opacity")],
+                                     sliders: [teamHudSlider("SIZE", "chatbtn_scale"), teamHudSlider("OPACITY", "chatbtn_opacity"),
+                                               teamHudSlider("LABEL OPACITY", "chatbtn_label_opacity")],
                                      colours: [ColourRow(label: "TEXT AND BORDER", key: "chatbtn_label"),
                                                ColourRow(label: "FILL", key: "chatbtn_fill")])]),
                   fallback: HUD.chat.fallback) {
-                RoundedRectangle(cornerRadius: 14).fill(ATheme.card).frame(width: chatSize.width, height: chatSize.height)
+                RoundedRectangle(cornerRadius: 14).fill(wyrmScopedColours.card).frame(width: chatSize.width, height: chatSize.height)
             }
             footerBar(in: size)
             if let options { optionsPopup(options) }
@@ -2169,10 +2436,10 @@ struct WyrmLayoutEditor: View {
     }
 
     private func panel(_ text: String, _ size: CGSize, opacity: Double = 1) -> some View {
-        Text(text).font(.androidWyrm(12)).lineSpacing(6).foregroundColor(ATheme.ink)
+        Text(text).font(.androidWyrm(12)).lineSpacing(6).foregroundColor(wyrmScopedColours.ink)
             .frame(width: size.width, height: size.height, alignment: .topLeading).padding(0)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card.opacity(0.92)))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.card.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .opacity(min(max(opacity, 0.05), 1))
     }
 
@@ -2180,8 +2447,9 @@ struct WyrmLayoutEditor: View {
     private func piece<V: View>(_ prefix: String, _ area: CGSize, _ child: CGSize, _ more: Options,
                                 fallback: CGPoint = CGPoint(x: 0.5, y: 0.7), onTap: (() -> Void)? = nil,
                                 @ViewBuilder content: () -> V) -> some View {
-        let x = engine.setting("\(prefix)_x")?.number ?? fallback.x
-        let y = engine.setting("\(prefix)_y")?.number ?? fallback.y
+        // A negative place means "not moved yet" (Near Original's joystick): the fallback.
+        let x = (engine.setting("\(prefix)_x")?.number).flatMap { $0 >= 0 ? $0 : nil } ?? fallback.x
+        let y = (engine.setting("\(prefix)_y")?.number).flatMap { $0 >= 0 ? $0 : nil } ?? fallback.y
         return draggable(key: prefix, centre: wsPreviewCentre(x: x, y: y, in: area, child: child), area: area, child: child, more: more,
                          onTap: onTap, move: { engine.moveLayout(prefix, x: $0.x, y: $0.y) }, content: content)
     }
@@ -2207,7 +2475,7 @@ struct WyrmLayoutEditor: View {
             .simultaneousGesture(TapGesture().onEnded { onTap?() })
             .position(centre)
             // High priority: the drag starts on the first movement, ahead of the tap.
-            .highPriorityGesture(DragGesture(minimumDistance: 1, coordinateSpace: .named("wyrm-layout"))
+            .highPriorityGesture(DragGesture(minimumDistance: 8, coordinateSpace: .named("wyrm-layout"))
                 .onChanged { value in
                     let start = dragStart[key] ?? centre
                     if dragStart[key] == nil { dragStart[key] = centre }
@@ -2256,7 +2524,7 @@ struct WyrmLayoutEditor: View {
     private func footerKnob(in area: CGSize) -> some View {
         VStack(spacing: 3) {
             ForEach(0..<3, id: \.self) { _ in
-                Capsule().fill(ATheme.quiet).frame(width: 16, height: 2)
+                Capsule().fill(wyrmScopedColours.quiet).frame(width: 16, height: 2)
             }
         }
         .frame(width: 36, height: 36)
@@ -2287,7 +2555,7 @@ struct WyrmLayoutEditor: View {
                 // Upright: the knob sits at the bar's left end, below this card.
                 barHint(arrow: "arrow.down.left")
                     .padding(.horizontal, 12).padding(.vertical, 5)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card.opacity(0.92)))
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.card.opacity(0.92)))
             }
             HStack(spacing: 8) {
                 footerKnob(in: area)
@@ -2308,8 +2576,8 @@ struct WyrmLayoutEditor: View {
                 footerAction("SAVE", filled: true) { onClose() }
             }
             .padding(.leading, 6).padding(.trailing, 8).padding(.vertical, 5)
-            .background(Capsule().fill(ATheme.card.opacity(0.96)))
-            .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+            .background(Capsule().fill(wyrmScopedColours.card.opacity(0.96)))
+            .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
         }
     }
 
@@ -2317,20 +2585,20 @@ struct WyrmLayoutEditor: View {
     /// it an arrow pointing at the grip knob with "drag this knob to move this bar".
     private func barHint(arrow: String) -> some View {
         VStack(alignment: .center, spacing: 2) {
-            Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(ATheme.quiet)
+            Text("HOLD ANY OBJECT FOR MORE OPTIONS").font(.androidWyrm(9)).tracking(0.6).foregroundColor(wyrmScopedColours.quiet)
             HStack(spacing: 4) {
-                Image(systemName: arrow).font(.system(size: 9, weight: .bold)).foregroundColor(ATheme.ink)
+                Image(systemName: arrow).font(.system(size: 9, weight: .bold)).foregroundColor(wyrmScopedColours.ink)
                 Text("DRAG THIS KNOB TO MOVE THIS BAR").font(.androidWyrm(8, .bold)).tracking(0.6)
-                    .foregroundColor(ATheme.ink.opacity(0.8))
+                    .foregroundColor(wyrmScopedColours.ink)
             }
         }
     }
 
     private func footerAction(_ label: String, filled: Bool = false, _ action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? ATheme.onInk : ATheme.quiet)
+            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? wyrmScopedColours.onInk : wyrmScopedColours.quiet)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Capsule().fill(filled && !WyrmGlass.native ? ATheme.ink : Color.clear))
+                .background(Capsule().fill(filled && !WyrmGlass.native ? wyrmScopedColours.ink : Color.clear))
         }.modifier(WyrmGlassButtonModifier(prominent: filled, fallback: PlainButtonStyleShim()))
     }
 
@@ -2340,15 +2608,30 @@ struct WyrmLayoutEditor: View {
             Color.black.opacity(0.001).onTapGesture { self.options = nil }
             ScrollView {
             VStack(alignment: .leading, spacing: 10) {
-                Text(options.title).font(.androidWyrm(13, .bold)).tracking(1.4).foregroundColor(ATheme.ink)
+                Text(options.title).font(.androidWyrm(13, .bold)).tracking(1.4).foregroundColor(wyrmScopedColours.ink)
                 if options.sliders.isEmpty && !options.zoomChoice {
-                    Text("POSITION ONLY").font(.androidWyrm(11)).tracking(1).foregroundColor(ATheme.quiet)
+                    Text("POSITION ONLY").font(.androidWyrm(11)).tracking(1).foregroundColor(wyrmScopedColours.quiet)
                 }
                 ForEach(options.sliders, id: \.id) { slider in sliderBlock(slider) }
                 if options.zoomChoice, let orientation = engine.setting("controls.zoom_orientation") {
-                    Text("ORIENTATION").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
-                    WSSegmented(options: ["Horizontal", "Vertical"], selected: orientation.index == 1 ? 1 : 0) {
-                        engine.write(orientation, values: [Double($0)])
+                    Text("ORIENTATION").font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet)
+                    // Horizontal, Vertical, and each flipped: + and - swap ends (OM, 2026-10-30).
+                    let flip = engine.setting("controls.zoom_flip")
+                    let current = (orientation.index == 1 ? 1 : 0) + ((flip?.enabled ?? false) ? 2 : 0)
+                    let names = ["Horizontal", "Vertical", "Flip horizontal", "Flip vertical"]
+                    LazyVGrid(columns: [GridItem(.flexible(), spacing: 6), GridItem(.flexible(), spacing: 6)], spacing: 6) {
+                        ForEach(0..<4, id: \.self) { pick in
+                            Button {
+                                engine.write(orientation, values: [Double(pick % 2)])
+                                if let flip { engine.write(flip, values: [pick >= 2 ? 1 : 0]) }
+                            } label: {
+                                Text(names[pick]).font(.androidWyrm(12, .bold))
+                                    .foregroundColor(current == pick ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
+                                    .lineLimit(1).minimumScaleFactor(0.8)
+                                    .frame(maxWidth: .infinity).frame(height: 34)
+                                    .background(Capsule().fill(current == pick ? wyrmScopedColours.ink : wyrmScopedColours.well))
+                            }.buttonStyle(.plain)
+                        }
                     }
                 }
                 if !options.tabs.isEmpty {
@@ -2361,7 +2644,7 @@ struct WyrmLayoutEditor: View {
                     ForEach(shown.colours, id: \.key) { row in colourBlock(row) }
                 }
                 ForEach(options.colours, id: \.key) { row in colourBlock(row) }
-                HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(ATheme.ink).padding(8) }
+                HStack { Spacer(); Button("DONE") { self.options = nil }.font(.androidWyrm(10, .bold)).foregroundColor(wyrmScopedColours.ink).padding(8) }
             }
             .padding(18)
             .background(GeometryReader { row in
@@ -2371,8 +2654,8 @@ struct WyrmLayoutEditor: View {
             .frame(width: 300)
             .frame(height: min(max(popupHeight, 1), max(120, geo.size.height - 28)))
             .onPreferenceChange(PopupHeightKey.self) { popupHeight = $0 }
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .shadow(color: .black.opacity(0.18), radius: 24, y: 10)
             .onAppear {
@@ -2387,7 +2670,7 @@ struct WyrmLayoutEditor: View {
 
     /// One slider row of the long-press card.
     @ViewBuilder private func sliderBlock(_ slider: Slider) -> some View {
-                    Text(slider.label).font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
+                    Text(slider.label).font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet)
                     let fallback = slider.id.hasPrefix("layout.key_") ? engine.value(slider.id.hasSuffix("opacity") ? "keys.opacity" : "keys.key_scale", 1)
                         : slider.id.hasPrefix("layout.") && slider.id.hasSuffix("opacity") ? engine.value("controls.opacity", 1) : 1
                     SwiftUI.Slider(value: Binding(get: {
@@ -2403,7 +2686,7 @@ struct WyrmLayoutEditor: View {
                                                       }
                                                   }),
                                    in: slider.range, step: slider.whole ? 1 : 0.01)
-                        .tint(ATheme.ink)
+                        .tint(wyrmScopedColours.ink)
     }
 
     /// One colour row of the long-press card.
@@ -2413,13 +2696,13 @@ struct WyrmLayoutEditor: View {
                     let greyFill = row.label == "FILL"
                     let name = greyFill && selected == 9 ? "Grey" : (whiteDefault && selected == 0 ? "White" : WyrmTeamHudStore.colourNames[min(max(selected, 0), 8)])
                     Text("\(row.label) · \(name.uppercased())")
-                        .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(ATheme.quiet)
+                        .font(.androidWyrm(10, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet)
                     HStack(spacing: greyFill ? 3 : 5) {
                         ForEach(0..<(WyrmTeamHudStore.swatches.count + (greyFill ? 1 : 0)), id: \.self) { index in
-                            Circle().fill(index == 9 ? Color(red: 128/255.0, green: 128/255.0, blue: 128/255.0) : (whiteDefault && index == 0 ? Color.white : (WyrmTeamHudStore.swatches[index] ?? ATheme.ink)))
+                            Circle().fill(index == 9 ? Color(red: 128/255.0, green: 128/255.0, blue: 128/255.0) : (whiteDefault && index == 0 ? Color.white : (WyrmTeamHudStore.swatches[index] ?? wyrmScopedColours.ink)))
                                 .padding(3)
                                 .frame(width: greyFill ? 22 : 24, height: greyFill ? 22 : 24)
-                                .overlay(Circle().stroke(index == selected ? ATheme.ink : ATheme.rule,
+                                .overlay(Circle().stroke(index == selected ? wyrmScopedColours.ink : wyrmScopedColours.rule,
                                                          lineWidth: index == selected ? 2 : 1))
                                 .onTapGesture {
                                     if let id = row.settingID, let setting = engine.setting(id) {
@@ -2436,7 +2719,7 @@ struct WyrmLayoutEditor: View {
     private func cancel() {
         let editable: (String) -> Bool = { id in
             id.hasPrefix("layout.") || id.hasPrefix("hud.") || id == "controls.joystick_size" || id == "controls.boost_size"
-                || id == "controls.zoom_length" || id == "controls.zoom_orientation" || id == "general.minimap_size" || id == "general.lb_font"
+                || id == "controls.zoom_length" || id == "controls.zoom_orientation" || id == "controls.zoom_flip" || id == "general.minimap_size" || id == "general.lb_font"
         }
         for old in snapshot where editable(old.id) {
             if let now = engine.setting(old.id), now.values != old.values { engine.write(now, values: old.values) }

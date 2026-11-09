@@ -13,18 +13,19 @@ import UIKit
 enum WyrmAlertRouting {
     /// Kinds that raise the banner. Trail kinds only while Trails are on.
     static var banners: Set<String> {
-        let all: Set<String> = ["trail_like", "trail_reply", "support", "follow"]
+        let all: Set<String> = ["trail_like", "trail_reply", "support", "follow", "mention"]
         return all.filter { WyrmTrailsFeature.shows(alertKind: $0) }
     }
     /// Kinds whose extra fields are ids for the app, not words for the player.
-    static let social: Set<String> = ["trail_like", "trail_reply", "support", "follow", "voice_invite", "invite", "dm"]
-    static let hiddenMeta: Set<String> = ["actorId", "actorName", "trailId", "reportId", "reportKind", "roomId", "inviteId", "playerId"]
+    static let social: Set<String> = ["trail_like", "trail_reply", "support", "follow", "voice_invite", "invite", "dm", "mention"]
+    static let hiddenMeta: Set<String> = ["actorId", "actorName", "trailId", "reportId", "reportKind", "roomId", "inviteId", "playerId", "messageId", "room"]
 
     static func label(_ kind: String) -> String {
         switch kind {
         case "trail_like": return "BEAD ON YOUR TRAIL"
         case "trail_reply": return "TRAIL REPLY"
         case "support": return "FROM WYRM"
+        case "mention": return "MENTION"
         case "voice_invite": return "VOICE INVITE"
         default: return kind.replacingOccurrences(of: "_", with: " ").uppercased()
         }
@@ -35,6 +36,7 @@ enum WyrmAlertRouting {
         switch kind {
         case "trail_like", "trail_reply": return "View trail"
         case "support": return "See your reports"
+        case "mention": return "View message"
         case "follow": return "View profile"
         default: return nil
         }
@@ -48,6 +50,9 @@ enum WyrmAlertRouting {
             return .trail(id)
         case "support":
             return .supportReports
+        case "mention":
+            // Global chat, where the message is highlighted for you.
+            return .globalChat
         case "follow":
             guard let id = alert.meta["actorId"], !id.isEmpty else { return nil }
             return .profile(id)
@@ -58,6 +63,9 @@ enum WyrmAlertRouting {
 }
 
 struct WyrmInAppBanner: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let alert: WyrmServiceAlert
     let onOpen: () -> Void
     let onDismiss: () -> Void
@@ -68,19 +76,19 @@ struct WyrmInAppBanner: View {
             icon
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(alert.title).font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                    Text(alert.title).font(.androidWyrm(14, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                     Spacer(minLength: 4)
-                    Text("now").font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                    Text("now").font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet)
                 }
                 if !alert.body.isEmpty {
-                    Text(WyrmMarkdownBlock.plainText(alert.body)).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(2)
+                    Text(WyrmMarkdownBlock.plainText(alert.body)).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.mute).lineLimit(2)
                 }
             }
         }
         .padding(12)
         .frame(maxWidth: 560)
-        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule))
         .shadow(color: Color.black.opacity(0.16), radius: 22, y: 10)
         .offset(y: min(0, drag))
         .contentShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -97,19 +105,21 @@ struct WyrmInAppBanner: View {
 
     @ViewBuilder private var icon: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.well)
+            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(wyrmScopedColours.well)
             switch alert.kind {
             case "trail_like":
-                Circle().fill(ATheme.live).frame(width: 16, height: 16)
+                Circle().fill(wyrmScopedColours.live).frame(width: 16, height: 16)
                     .overlay(Circle().fill(Color.white.opacity(0.45)).frame(width: 5, height: 5).offset(x: -3, y: -3))
             case "trail_reply":
-                Image(systemName: "bubble.left.fill").font(.system(size: 16, weight: .semibold)).foregroundColor(ATheme.ink)
+                Image(systemName: "bubble.left.fill").font(.system(size: 16, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
             case "support":
                 WyrmBrandMark(size: 22)
+            case "mention":
+                Image(systemName: "at").font(.system(size: 16, weight: .bold)).foregroundColor(wyrmScopedColours.ink)
             case "follow":
-                Image(systemName: "person.badge.plus").font(.system(size: 16, weight: .semibold)).foregroundColor(ATheme.ink)
+                Image(systemName: "person.badge.plus").font(.system(size: 16, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
             default:
-                Image(systemName: "bell.fill").font(.system(size: 15, weight: .semibold)).foregroundColor(ATheme.ink)
+                Image(systemName: "bell.fill").font(.system(size: 15, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
             }
         }
         .frame(width: 40, height: 40)

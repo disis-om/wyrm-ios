@@ -32,17 +32,20 @@ final class WyrmTeamHudStore: ObservableObject {
                        // the keys: label + border, fill (9 = grey), size, opacity
                        // (OM, 2026-10-18), appended likewise.
                        "global_name", "global_text",
-                       "chatbtn_label", "chatbtn_fill", "chatbtn_scale", "chatbtn_opacity"]
-    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 1, 1, 0, 0,
-                                             0, 0, 0, 9, 1, 0.9]
+                       "chatbtn_label", "chatbtn_fill", "chatbtn_scale", "chatbtn_opacity",
+                       // The chat button's label opacity (OM, 2026-11-01), appended likewise.
+                       "chatbtn_label_opacity"]
+    private static let defaults: [Double] = [1, 1, 340, 210, 0, 0, 400, 270, 0, 0, 1, 1, 1, 0, 0.75, 0.75, 0, 0,
+                                             0, 0, 0, 9, 1, 0.9, 1]
     private static let ranges: [ClosedRange<Double>] = [0.65...1.60, 0.05...1, 220...900, 120...800, 0...8, 0...8,
                                                         240...1000, 150...900, 0...8, 0...8,
                                                         0...1, 0...1, 0...1,
                                                         0...8,
-                                                        0.7...2.2, 1...2.2,
+                                                        0.25...3, 0.25...3,
                                                         0...8, 0...8,
                                                         0...8, 0...8,
-                                                        0...8, 0...9, 0.6...2.5, 0.1...1]
+                                                        0...8, 0...9, 0.6...2.5, 0.1...1,
+                                                        0...1]
     /// The engine's palette; 0 keeps the theme's colour.
     static let colourNames = ["Theme", "White", "Black", "Yellow", "Cyan", "Green", "Pink", "Orange", "Red"]
     /// White, yellow, cyan, green, pink and orange take dark text; black, red light (OM, 2026-10-14).
@@ -99,6 +102,11 @@ final class WyrmTeamHudStore: ObservableObject {
 
     private func read() {
         let d = UserDefaults.standard
+        if !d.bool(forKey: "wyrm.ios.team-hud.lbOriginalV1") {
+            d.set(0.75, forKey: "wyrm.ios.team-hud.lb_width")
+            d.set(0.75, forKey: "wyrm.ios.team-hud.lb_height")
+            d.set(true, forKey: "wyrm.ios.team-hud.lbOriginalV1")
+        }
         values = Self.keys.indices.map { index in
             let stored = (d.object(forKey: "wyrm.ios.team-hud.\(Self.keys[index])") as? NSNumber)?.doubleValue
             guard let stored, stored.isFinite else { return Self.defaults[index] }
@@ -150,6 +158,7 @@ final class WyrmTeamComposer: ObservableObject {
     /// does the bar leave the tree.
     func close() {
         guard open else { return }
+        WyrmKeyboardController.shared.dismiss()
         generation += 1
         let mine = generation
         withAnimation(.easeIn(duration: 0.22)) { shown = false }
@@ -164,6 +173,7 @@ final class WyrmTeamComposer: ObservableObject {
 
     /// The match ended under the bar: gone at once, no slide.
     func closeNow() {
+        WyrmKeyboardController.shared.dismiss()
         generation += 1
         shown = false
         open = false
@@ -173,27 +183,18 @@ final class WyrmTeamComposer: ObservableObject {
 
 /// One line above the keyboard, with Send; a tap outside closes it.
 struct WyrmArenaComposerBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var composer = WyrmTeamComposer.shared
     @ObservedObject var team: WyrmTeamStore
     @ObservedObject private var keyboard = WyrmKeyboardController.shared
-    @ObservedObject private var orientation = WyrmPlayOrientation.shared
     @FocusState private var focused: Bool
-    /// This composer's place in the keyboard's set of sideways canvases.
-    @State private var keyboardHost = UUID()
 
     var body: some View {
-        Group {
-            if orientation.portrait {
-                upright
-            } else {
-                sideways
-            }
-        }
+        nativeComposer
         .onAppear {
-            // Sideways the keys are drawn in the arena's own canvas, as in the
-            // Ready Room (OM, 2026-10-06: no keyboard came up in a sideways
-            // match). Registered before the field takes focus, which asks.
-            keyboard.enterLandscapeHost(keyboardHost)
+            if !composer.global && composer.draft.isEmpty { composer.draft = team.failedDraft }
             // During a match the whole SwiftUI shell is hidden over the engine
             // (Main.m apply_shell_visibility), so this bar was never on screen
             // and its field could not take focus: no keyboard, in either
@@ -202,7 +203,7 @@ struct WyrmArenaComposerBar: View {
             WyrmIOSSetShellOverlay(true)
         }
         .onDisappear {
-            keyboard.leaveLandscapeHost(keyboardHost)
+            focused = false
             WyrmIOSSetShellOverlay(false)
         }
         // The keys follow the bar: up with it, down with it.
@@ -217,56 +218,40 @@ struct WyrmArenaComposerBar: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             guard !keyboard.focused, composer.shown else { return }
             focused = false
-            DispatchQueue.main.async { focused = true }
+            DispatchQueue.main.async { if composer.shown && composer.open { focused = true } }
         }
     }
 
-    /// Playing upright: the phone's own docked keys, the bar rising above them.
-    private var upright: some View {
+    /// Same window coordinates in both native game orientations. The SwiftUI
+    /// keyboard safe area seats this bar above Apple's keyboard automatically.
+    private var nativeComposer: some View {
         ZStack(alignment: .bottom) {
-            Color.black.opacity(0.001)
-                .ignoresSafeArea()
+            Color.black.opacity(0.001).ignoresSafeArea(.container)
                 .onTapGesture { composer.close() }
-            field
-                .frame(maxWidth: 560)
+            VStack(spacing: 6) {
+                if !composer.global && !team.deliveryError.isEmpty {
+                    Text(team.deliveryError).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.ink)
+                        .padding(8).background(wyrmScopedColours.card)
+                }
+                field
+            }.frame(maxWidth: 560)
                 .padding(.horizontal, 12).padding(.bottom, 10)
-                // Rises with the phone's keys and sinks with them (2026-10-09).
+                // This root already ignores UIKit keyboard safe areas. Use the
+                // logical overlap directly; global frames have physical axes
+                // when UIKit keeps the window portrait for internal rotation.
+                .padding(.bottom, keyboard.occlusion)
                 .offset(y: composer.shown ? 0 : 140)
                 .opacity(composer.shown ? 1 : 0)
         }
-    }
-
-    /// Playing sideways: the bar and the Wyrm keys inside the landscape canvas
-    /// the match is drawn in, the bar just above the keys.
-    private var sideways: some View {
-        WyrmLandscapeStage { size, safe in
-            ZStack(alignment: .bottom) {
-                Color.black.opacity(0.001)
-                    .onTapGesture { composer.close() }
-                VStack(spacing: 8) {
-                    field.frame(maxWidth: 560)
-                    if keyboard.embedded && (keyboard.focused || composer.shown) {
-                        WyrmKeyboardView(compact: true)
-                            .frame(width: min(size.width - safe.leading - safe.trailing - 24,
-                                              WyrmKeyboardController.landscapeWidth * keyboard.scale))
-                            .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
-                    }
-                }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 8)
-                // Bar and keys as one sheet: up from the bottom of the arena,
-                // and back down into it after Send (2026-10-09).
-                .offset(y: composer.shown ? 0 : size.height)
-            }
-            .frame(width: size.width, height: size.height)
-        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+        .modifier(WyrmDismissKeyboardOnScroll())
     }
 
     private var field: some View {
             HStack(spacing: 8) {
-                TextField(composer.global ? "Message everyone" : "Message the team", text: $composer.draft)
+                TextField(composer.global ? "Message everyone" : "Message the team", text: $composer.draft, prompt: wyrmPrompt(composer.global ? "Message everyone" : "Message the team"))
                     .font(.androidWyrm(15))
-                    .foregroundColor(ATheme.ink)
+                    .foregroundColor(wyrmScopedColours.ink)
                     .focused($focused)
                     .submitLabel(.send)
                     .onSubmit(send)
@@ -274,15 +259,16 @@ struct WyrmArenaComposerBar: View {
                         if value.count > 280 { composer.draft = String(value.prefix(280)) }
                     }
                 Button(action: send) {
-                    Text("SEND").font(.androidWyrm(12, .bold)).tracking(1.2).foregroundColor(ATheme.onInk)
+                    Text("SEND").font(.androidWyrm(12, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.onInk)
                         .padding(.horizontal, 16).padding(.vertical, 10)
-                        .background(Capsule().fill(ATheme.ink.opacity(blank ? 0.35 : 1)))
+                        .background(Capsule().fill(wyrmScopedColours.ink.opacity(blank ? 0.35 : 1)))
                 }
                 .disabled(blank)
             }
             .padding(.leading, 18).padding(.trailing, 6).padding(.vertical, 6)
-            .background(Capsule().fill(ATheme.card.opacity(0.97)))
-            .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+            .background(Capsule().fill(wyrmScopedColours.card.opacity(0.97)))
+            .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
+            .background(WyrmKeyboardLayoutProbe(kind: "composer"))
     }
 
     private var blank: Bool { composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
@@ -292,7 +278,7 @@ struct WyrmArenaComposerBar: View {
         if composer.global {
             WyrmArenaFeed.shared.sendGlobal(composer.draft)
         } else {
-            team.send(composer.draft)
+            guard team.send(composer.draft) else { return }
         }
         composer.draft = ""
         composer.close()

@@ -98,6 +98,9 @@ struct WyrmInstaller: Identifiable, Equatable {
 
 /// The "Install with" cards under Settings › Updates › Version.
 struct WyrmInstallersSection: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let update: WyrmUpdateInfo?
     @Environment(\.openURL) private var openURL
     @State private var setup: WyrmInstaller?
@@ -116,7 +119,7 @@ struct WyrmInstallersSection: View {
             .padding(.horizontal, 16)
             .id(refresh)
             Text(note.isEmpty ? caption : note)
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                 .padding(.horizontal, 20).padding(.top, 10)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -140,19 +143,19 @@ struct WyrmInstallersSection: View {
                     Spacer(minLength: 4)
                     Text(installed ? (update == nil ? "Installed" : "Update") : "Get")
                         .font(.androidWyrm(10.5, .bold)).tracking(0.4)
-                        .foregroundColor(installed && update != nil ? ATheme.onInk : (installed ? ATheme.live : ATheme.ink))
+                        .foregroundColor(installed && update != nil ? wyrmScopedColours.onInk : (installed ? wyrmScopedColours.live : wyrmScopedColours.ink))
                         .padding(.horizontal, 9).padding(.vertical, 4)
-                        .background(Capsule().fill(installed && update != nil ? ATheme.ink : (installed ? ATheme.live.opacity(0.14) : ATheme.well)))
+                        .background(Capsule().fill(installed && update != nil ? wyrmScopedColours.ink : (installed ? wyrmScopedColours.live.opacity(0.14) : wyrmScopedColours.well)))
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(installer.name).font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.ink)
-                    Text(installer.tagline).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                    Text(installer.name).font(.androidWyrm(15, .semibold)).foregroundColor(wyrmScopedColours.ink)
+                    Text(installer.tagline).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
                 }
             }
             .padding(12)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(WSPressStyle())
@@ -172,6 +175,9 @@ struct WyrmInstallersSection: View {
 }
 
 struct WyrmInstallerIcon: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let installer: WyrmInstaller
     var body: some View {
         Group {
@@ -187,18 +193,21 @@ struct WyrmInstallerIcon: View {
         }
         .frame(width: 42, height: 42)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(ATheme.rule, lineWidth: 0.6))
+        .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 0.6))
     }
     private var monogram: some View {
         ZStack {
-            ATheme.ink
-            Text(String(installer.name.prefix(1))).font(.androidWyrm(20, .bold)).foregroundColor(ATheme.onInk)
+            wyrmScopedColours.ink
+            Text(String(installer.name.prefix(1))).font(.androidWyrm(20, .bold)).foregroundColor(wyrmScopedColours.onInk)
         }
     }
 }
 
 /// Shown when the chosen app is not on this iPhone: its own setup, step by step.
 struct WyrmInstallerSetupSheet: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let installer: WyrmInstaller
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
@@ -208,17 +217,17 @@ struct WyrmInstallerSetupSheet: View {
             HStack(spacing: 14) {
                 WyrmInstallerIcon(installer: installer).scaleEffect(1.25).frame(width: 54, height: 54)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Install \(installer.name) first").font(.androidWyrm(19, .semibold)).foregroundColor(ATheme.ink)
-                    Text("\(installer.name) isn't on this iPhone yet.").font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                    Text("Install \(installer.name) first").font(.androidWyrm(19, .semibold)).foregroundColor(wyrmScopedColours.ink)
+                    Text("\(installer.name) isn't on this iPhone yet.").font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet)
                 }
             }
             .padding(.top, 26)
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(Array(installer.steps.enumerated()), id: \.offset) { index, step in
                     HStack(alignment: .top, spacing: 12) {
-                        Text("\(index + 1)").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.onInk)
-                            .frame(width: 24, height: 24).background(Circle().fill(ATheme.ink))
-                        Text(step).font(.androidWyrm(14.5)).foregroundColor(ATheme.ink)
+                        Text("\(index + 1)").font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.onInk)
+                            .frame(width: 24, height: 24).background(Circle().fill(wyrmScopedColours.ink))
+                        Text(step).font(.androidWyrm(14.5)).foregroundColor(wyrmScopedColours.ink)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                 }
@@ -231,7 +240,7 @@ struct WyrmInstallerSetupSheet: View {
             WSOutlineButton(label: "Done") { dismiss() }.padding(.top, 10)
         }
         .padding(.horizontal, 22).padding(.bottom, 18)
-        .background(ATheme.paper.ignoresSafeArea())
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
         .presentationDetentsIfAvailable()
     }
 }

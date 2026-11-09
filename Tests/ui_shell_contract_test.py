@@ -35,9 +35,9 @@ RUN_CAPTURE_C = (ROOT / "SourcesOriginal" / "AppleRunCapture.inc").read_text(enc
 
 
 checks = {
-    "paper background is one full-bleed colour": "ATheme.paper.ignoresSafeArea()" in COMPONENTS,
+    "paper background is one full-bleed colour": "wyrmScopedColours.paper.ignoresSafeArea()" in COMPONENTS,
     "root shell fills every safe-area edge": MAIN.count(".ignoresSafeArea()") >= 3,
-    "detail routes paint their own full-screen paper canvas": "ATheme.paper.ignoresSafeArea()" in MAIN,
+    "detail routes paint their own full-screen paper canvas": "wyrmScopedColours.paper.ignoresSafeArea()" in MAIN,
     "floating tab bar does not reserve a footer": ".padding(.bottom, 66 + tabBarBottomInset)" not in MAIN,
     "root scroll views can pass behind the floating tab bar": (MAIN + PAGES).count("Spacer().frame(height: 102)") >= 4 and ".padding(.bottom, 108)" in (ROOT / "SourcesShell" / "WyrmSkinStudio.swift").read_text(encoding="utf-8"),
     "tab lens receives drags above tab buttons": ".highPriorityGesture(DragGesture(minimumDistance: 2" in COMPONENTS,
@@ -58,12 +58,12 @@ checks = {
     "loadout opens Play-scoped settings": all(r in MAIN for r in ("open(.playFood)", "open(.playControls)", "open(.playModes)")),
     "restore respects the 128-change engine mailbox": "index % 40 == 0" in ACCOUNT_SYNC and "Task.sleep(nanoseconds: 150_000_000)" in ACCOUNT_SYNC,
     "account settings never carry account or Team secrets": "wyrm.ios.skin." in ACCOUNT_SYNC and "token" not in ACCOUNT_SYNC.split("func platformDocument()")[1].split("// MARK: restore")[0] and "Keychain" not in ACCOUNT_SYNC,
-    "eight Android themes with intensity": THEME.count("case .") >= 16 and "func withIntensity(_ intensity: Double) -> WyrmPalette" in THEME,
+    "22 current plus 8 classic themes with intensity": (ROOT / "SourcesShell/WyrmThemeTables.swift").read_text(encoding="utf-8").count("return (WyrmPalette(") == 30 and "func withIntensity(_ intensity: Double) -> WyrmPalette" in THEME,
     "theme reaches the engine atomically": "arena_theme_set(next, dark)" in SHELL_C and "WyrmIOSSetArenaTheme" in THEME,
     "tab lens lifts and settles with a spring": "lifted" in COMPONENTS and ".interpolatingSpring(stiffness: 240, damping: 10)" in COMPONENTS and "WyrmTabPillMotion" in COMPONENTS and ".zIndex(4)" in COMPONENTS,
     "Ready Room follows Android placement and theme": all(s in LOBBY for s in (
         "Ready room", "Enter the arena", "Selected arena", "Playing as", "Quick settings", "Play with AI", "WyrmBrandStroke()"))
-        and "ATheme.paper" in LOBBY,
+        and "wyrmScopedColours.paper" in LOBBY,
     "shell stays above the engine for lobby and editor": "reported_screen == LOBBY || shell_overlay" in MAIN_M
         and "WyrmEngineScreenChanged" in MAIN_M and "UIColor.clearColor" in MAIN_M,
     "layout editor runs over the original AI editor arena": "pending_ai_editor_enter = true" in MAILBOX
@@ -103,21 +103,58 @@ checks = {
     "no GitHub in player-visible settings copy": "GitHub" not in PAGES and "GitHub" not in KIT,
     "tab drag uses absolute finger location": "value.location.x" in COMPONENTS and "predictedEndTranslation" not in COMPONENTS,
     "tab drag snaps to nearest absolute slot": "nearestIndex(at: value.location.x - inset" in COMPONENTS,
-    "every text field and view gets the Wyrm keyboard": "#selector(getter: UITextField.inputView)" in KEYBOARD
-        and "#selector(getter: UITextView.inputView)" in KEYBOARD and "class_addMethod" in KEYBOARD
+    "text fields keep their native iOS input view": "class_addMethod" not in KEYBOARD
+        and "#selector(getter: UITextField.inputView)" not in KEYBOARD
         and "WyrmKeyboardController.shared.install()" in LEGACY,
-    "keyboard size, transparency and drag position persist": all(k in KEYBOARD for k in (
-        "wyrm.ios.keyboard.scale", "wyrm.ios.keyboard.opacity", "wyrm.ios.keyboard.offset-x", "wyrm.ios.keyboard.offset-y")),
-    "the lobby draws its own sideways keyboard (not upright)": "WyrmKeyboardView(compact: true)" in LOBBY and "keyboard.enterLandscapeHost(keyboardHost)" in LOBBY and "!landscapeHosts.isEmpty && !WyrmPlayOrientation.shared.portrait" in KEYBOARD,
+    "native keyboard frame is converted into window coordinates": "keyboardWillChangeFrameNotification" in KEYBOARD
+        and "window.convert(frame, from: screen.coordinateSpace)" in KEYBOARD and "WyrmIOSSetKeyboardOcclusion" in KEYBOARD,
+    "the lobby reserves one keyboard height and scrolls its name field": "WyrmKeyboardView" not in LOBBY
+        and "visibleHeight(outer.size.height, occlusion: keyboard.occlusion)" in LOBBY and 'reader.scrollTo("lobby-name"' in LOBBY,
     "routes leave the keyboard region so fields rise above it": ".ignoresSafeArea(.container)" in MAIN and "keyboard.focused ? 0 : 1" in MAIN,
-    "chat composer and transcript are shared by global chat and DMs": "WyrmChatComposer(" in SOCIAL and "WyrmChatComposer(" in DETAILS
-        and "WyrmChatTranscript(" in SOCIAL and "WyrmChatTranscript(" in DETAILS and "GlassEffectContainer(spacing: 14)" in CHAT,
+    # Global chat and DMs share one Discord-style room since 2026-10-30 (WyrmDiscordChat.swift).
+    "chat room is shared by global chat and DMs": "WyrmDiscordChat(direct: false" in SOCIAL and "WyrmDiscordChat(direct: true" in DETAILS
+        and "WyrmChatComposer(" in DETAILS and "GlassEffectContainer(spacing: 14)" in CHAT,
     "settings search sits on the hub with live controls": "WyrmSettingsSearchField(query: $search.query)" in PAGES
         and "WSTypedRow(setting: setting, first: true, engine: engine)" in SEARCH and "arrow.up.right" in SEARCH,
     "a search arrow scrolls to its setting and blinks it twice": "proxy.scrollTo(target, anchor: .center)" in KIT
         and "row.wyrmSettingAnchor(setting.id)" in KIT and "for _ in 0..<2" in SEARCH,
     "searched settings open the fold or mode that holds them": PAGES.count("WyrmSettingsFocus.shared") >= 5,
 }
+
+android = ROOT.parent / 'Wyrm Android'
+kotlin = android / 'android/app/src/main/java/com/wyrm/omrajput'
+checks.update({
+    "name picker uses real body preview and continuous slider on iOS":
+        'WyrmSnakeBodyPreview(nameScale: setting.number' in KIT
+        and 'range: 0.5...2.5' in KIT,
+    "preview label resolves from the packaged texture root":
+        'res/textures/name_size_preview.png' in PAGES
+        and 'app/res/textures/name_size_preview.png' not in PAGES,
+    "name and chat size use the shared account keys on iOS":
+        all(key in ACCOUNT_SYNC
+            for key in ['snakeNameScale', 'arenaChatTextScale', 'general.name_font', 'layout.chat_text_scale']),
+    "old three-choice name size has a document migration marker":
+        'nameScaleV1' in ACCOUNT_SYNC,
+    "chat text scale is independent of panel dimensions on iOS":
+        'layout.chat_text_scale' in PAGES and 'TEXT SIZE' in PAGES,
+    "leaderboard editor bounds use the engine's 241-wide ten-row geometry":
+        '241 * boardUnit' in PAGES and '140*boardUnit' in PAGES,
+})
+
+# A standalone iOS CI checkout has no sibling Android project. Keep all iOS
+# assertions above unconditional; exercise the extra parity assertions locally.
+if kotlin.exists():
+    android_overlay = (kotlin / 'ui/WyrmOverlay.kt').read_text(encoding='utf-8')
+    android_sync = (kotlin / 'data/AccountSync.kt').read_text(encoding='utf-8')
+    editor = (kotlin / 'ui/LayoutEditors.kt').read_text(encoding='utf-8')
+    name_picker = (kotlin / 'ui/SnakeNameSizeSetting.kt').read_text(encoding='utf-8')
+    checks['Android name preview is continuous'] = 'SnakeBodyPreview(' in name_picker and 'steps=0' in name_picker.replace(' ', '')
+    checks['Android shared account keys match iOS'] = all(key in android_overlay and key in ACCOUNT_SYNC for key in ['snakeNameScale', 'arenaChatTextScale', 'general.name_font', 'layout.chat_text_scale'])
+    checks['Android legacy name migration marker'] = 'nameScaleV1' in android_sync
+    checks['Android independent chat text control'] = 'layout.chat_text_scale' in editor and 'TEXT SIZE' in editor
+    checks['Android board bounds match engine'] = '241f * boardUnit' in editor and '140f*boardUnit' in editor
+else:
+    print('Sibling Android source absent; local-only Android parity checks skipped')
 
 failed = [name for name, ok in checks.items() if not ok]
 for name, ok in checks.items():

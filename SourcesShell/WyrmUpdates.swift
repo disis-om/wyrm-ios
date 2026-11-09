@@ -20,6 +20,9 @@ struct WyrmUpdateInfo: Equatable {
     let build: Int
     let url: URL
     let beta: Bool
+    /// The manifest says "mandatory", or this build is older than its
+    /// "minimumBuild" (OM, 2026-10-30): the prompt has no Later.
+    var required = false
 }
 
 @MainActor
@@ -33,8 +36,11 @@ final class WyrmUpdateStore: ObservableObject {
     private static let promptedKey = "wyrm.ios.update.prompted"
 
     /// The build to raise the prompt for, if it has not been answered yet.
+    /// A required update is raised on every start until it is installed.
     var promptable: WyrmUpdateInfo? {
-        guard let next = available, next.build != UserDefaults.standard.integer(forKey: Self.promptedKey) else { return nil }
+        guard let next = available else { return nil }
+        if next.required { return next }
+        guard next.build != UserDefaults.standard.integer(forKey: Self.promptedKey) else { return nil }
         return next
     }
 
@@ -98,7 +104,10 @@ final class WyrmUpdateStore: ObservableObject {
               let ipa = URL(string: link),
               ipa.scheme == "https", ipa.host == "github.com",
               ipa.path.hasPrefix(releasePrefix), ipa.path.hasSuffix(".ipa") else { return nil }
-        return WyrmUpdateInfo(version: version, build: build, url: ipa, beta: beta)
+        let installed = Int(WyrmBuild.build) ?? 0
+        let minimum = (object["minimumBuild"] as? Int) ?? 0
+        let required = ((object["mandatory"] as? Bool) ?? false) || installed < minimum
+        return WyrmUpdateInfo(version: version, build: build, url: ipa, beta: beta, required: required)
     }
 }
 
@@ -106,55 +115,68 @@ final class WyrmUpdateStore: ObservableObject {
 /// new build. Its button opens Settings › Updates, where the update starts; the
 /// beta card also says what a beta is and gives a shortcut to switch them off.
 struct WyrmUpdatePrompt: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let info: WyrmUpdateInfo
     let onLater: () -> Void
     let onUpdate: () -> Void
     let onBetaSettings: () -> Void
     @State private var shown = false
+    @Environment(\.openURL) private var openURL
 
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(shown ? 0.38 : 0).ignoresSafeArea()
-                .onTapGesture(perform: onLater)
-            VStack(alignment: .leading, spacing: 0) {
+                .onTapGesture { if !info.required { onLater() } }
+            WyrmHeroCard(slot: 1) { wyrmScopedColours in
+VStack(alignment: .leading, spacing: 0) {
                 HStack(spacing: 7) {
-                    Circle().fill(ATheme.live).frame(width: 6, height: 6)
+                    Circle().fill(wyrmScopedColours.live).frame(width: 6, height: 6)
                     Text(info.beta ? "BETA UPDATE AVAILABLE" : "UPDATE AVAILABLE")
-                        .font(.androidWyrm(11.5, .semibold)).tracking(0.8).foregroundColor(ATheme.live)
+                        .font(.androidWyrm(11.5, .semibold)).tracking(0.8).foregroundColor(wyrmScopedColours.live)
                 }
                 Text(info.beta ? "Wyrm \(info.version) beta" : "Wyrm \(info.version)")
-                    .font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).padding(.top, 9)
+                    .font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).padding(.top, 9)
                 Text("Build \(info.build) is ready. Update from Settings › Updates; it installs through AltStore as always.")
-                    .font(.androidWyrm(13.5)).foregroundColor(ATheme.quiet).padding(.top, 4)
+                    .font(.androidWyrm(13.5)).foregroundColor(wyrmScopedColours.quiet).padding(.top, 4)
                     .fixedSize(horizontal: false, vertical: true)
                 if info.beta {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text("This is a beta update").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink)
+                        Text("This is a beta update").font(.androidWyrm(14, .bold)).foregroundColor(wyrmScopedColours.ink)
                         Text("Beta updates are early builds: you get new features before everyone else, but they can have rough edges or bugs. Stable updates come later, for everyone.")
-                            .font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+                            .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute)
                             .fixedSize(horizontal: false, vertical: true)
-                        Button(action: onBetaSettings) {
+                        if !info.required { Button(action: onBetaSettings) {
                             Text("Don't want beta updates? Turn them off in Settings › Updates ›")
-                                .font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
+                                .font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.link)
                                 .multilineTextAlignment(.leading)
                                 .fixedSize(horizontal: false, vertical: true)
-                        }.buttonStyle(.plain).padding(.top, 6)
+                        }.buttonStyle(.plain).padding(.top, 6) }
                     }
                     .padding(14)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(ATheme.well)
+                    .background(wyrmScopedColours.well)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .padding(.top, 16)
                 }
-                HStack(spacing: 9) {
-                    WSOutlineButton(label: "Later", onClick: onLater)
-                    WSPrimaryButton(label: "Update", onClick: onUpdate)
-                }.padding(.top, 18)
+                if info.required {
+                    // A required update (OM, 2026-10-30): no Later; Update opens its download.
+                    Text("This update is needed to keep playing Wyrm.")
+                        .font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.ink).padding(.top, 14)
+                    WSPrimaryButton(label: "Update now", onClick: { openURL(info.url) }).padding(.top, 14)
+                } else {
+                    HStack(spacing: 9) {
+                        WSOutlineButton(label: "Later", onClick: onLater)
+                        WSPrimaryButton(label: "Update", onClick: onUpdate)
+                    }.padding(.top, 18)
+                }
             }
+}
             .padding(EdgeInsets(top: 20, leading: 18, bottom: 18, trailing: 18))
-            .background(ATheme.card)
+            .background(wyrmScopedColours.card)
             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .shadow(color: .black.opacity(0.18), radius: 24, y: 8)
             .padding(.horizontal, 12).padding(.bottom, 12)
             .offset(y: shown ? 0 : 420)

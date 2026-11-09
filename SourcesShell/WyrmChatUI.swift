@@ -10,6 +10,9 @@ import UIKit
 
 /// A Liquid Glass surface on iOS 26, paper card with a hairline before it.
 private struct WyrmGlassSurface<S: Shape>: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let shape: S
     var tint: Color? = nil
     func body(content: Content) -> some View {
@@ -25,12 +28,15 @@ private struct WyrmGlassSurface<S: Shape>: ViewModifier {
     }
     private func fallback(_ content: Content) -> some View {
         content
-            .background(shape.fill(tint ?? ATheme.card))
-            .overlay(shape.stroke(ATheme.rule, lineWidth: tint == nil ? 1 : 0))
+            .background(shape.fill(tint ?? wyrmScopedColours.card))
+            .overlay(shape.stroke(wyrmScopedColours.rule, lineWidth: tint == nil ? 1 : 0))
     }
 }
 
 struct WyrmChatComposer: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Binding var text: String
     let placeholder: String
     let limit: Int
@@ -48,7 +54,7 @@ struct WyrmChatComposer: View {
             if text.count > limit - 40 {
                 Text("\(max(0, limit - text.count))")
                     .font(.androidWyrm(10.5, .bold)).monospacedDigit()
-                    .foregroundColor(text.count > limit ? ATheme.badge : ATheme.quiet)
+                    .foregroundColor(text.count > limit ? wyrmScopedColours.badge : wyrmScopedColours.quiet)
                     .padding(.trailing, 64)
                     .transition(.opacity)
             }
@@ -96,22 +102,25 @@ struct WyrmChatComposer: View {
     @ViewBuilder
     private var field: some View {
         if #available(iOS 16.0, *) {
-            TextField(placeholder, text: $text, axis: .vertical)
+            TextField(placeholder, text: $text, prompt: wyrmPrompt(placeholder), axis: .vertical)
                 .lineLimit(1...5)
                 .modifier(FieldStyle(focused: $focused, onSubmit: send))
         } else {
-            TextField(placeholder, text: $text)
+            TextField(placeholder, text: $text, prompt: wyrmPrompt(placeholder))
                 .modifier(FieldStyle(focused: $focused, onSubmit: send))
         }
     }
 
     private struct FieldStyle: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
         var focused: FocusState<Bool>.Binding
         let onSubmit: () -> Void
         func body(content: Content) -> some View {
             content
                 .font(.androidWyrm(15))
-                .foregroundColor(ATheme.ink)
+                .foregroundColor(wyrmScopedColours.ink)
                 .focused(focused)
                 .submitLabel(.send)
                 .onSubmit(onSubmit)
@@ -124,18 +133,18 @@ struct WyrmChatComposer: View {
         Button(action: send) {
             ZStack {
                 if sending {
-                    ProgressView().tint(ATheme.onInk).scaleEffect(0.8)
+                    ProgressView().tint(wyrmScopedColours.onInk).scaleEffect(0.8)
                 } else {
                     Image(systemName: "arrow.up")
                         .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(ATheme.onInk)
+                        .foregroundColor(wyrmScopedColours.onInk)
                         .offset(y: launched ? -30 : 0)
                         .opacity(launched ? 0 : 1)
                         .scaleEffect(launched ? 0.6 : 1)
                 }
             }
             .frame(width: 46, height: 46)
-            .modifier(WyrmGlassSurface(shape: Circle(), tint: ATheme.ink))
+            .modifier(WyrmGlassSurface(shape: Circle(), tint: wyrmScopedColours.ink))
             .clipShape(Circle())
             .contentShape(Circle())
         }
@@ -147,8 +156,8 @@ struct WyrmChatComposer: View {
     private var bar: some View {
         ZStack(alignment: .top) {
             Rectangle().fill(.ultraThinMaterial)
-            ATheme.paper.opacity(0.35)
-            Rectangle().fill(ATheme.rule).frame(height: 1)
+            wyrmScopedColours.paper.opacity(0.35)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
         }
         .ignoresSafeArea(.container, edges: .bottom)
     }
@@ -168,7 +177,66 @@ struct WyrmChatComposer: View {
 
 /// Grouped bubbles: consecutive messages from one author share a name line and
 /// tighten up; the last of a group carries its time.
+/// Swipe a bubble right to reply (WhatsApp / Instagram): past 56 pt it answers.
+struct WyrmSwipeToReply<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    let enabled: Bool
+    let onReply: () -> Void
+    @ViewBuilder let content: () -> Content
+    @State private var shift: CGFloat = 0
+
+    var body: some View {
+        content()
+            .offset(x: shift)
+            .overlay(alignment: .leading) {
+                Image(systemName: "arrowshape.turn.up.left.fill").font(.system(size: 13, weight: .bold))
+                    .foregroundColor(wyrmScopedColours.quiet).opacity(Double(min(shift / 56, 1))).offset(x: -24)
+            }
+            .simultaneousGesture(enabled ? DragGesture(minimumDistance: 14)
+                .onChanged { value in
+                    guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                    shift = min(max(0, value.translation.width), 74)
+                }
+                .onEnded { _ in
+                    if shift >= 56 { UIImpactFeedbackGenerator(style: .medium).impactOccurred(); onReply() }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) { shift = 0 }
+                } : nil)
+    }
+}
+
+/// Over the composer: what is being answered or edited, with a close button (2026-10-30).
+struct WyrmComposeTarget: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    let editing: Bool
+    let name: String
+    let body_: String
+    let onCancel: () -> Void
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Capsule().fill(editing ? wyrmScopedColours.link : wyrmScopedColours.live).frame(width: 3, height: 30)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(editing ? "Editing message" : "Replying to \(name)").font(.androidWyrm(12, .bold))
+                    .foregroundColor(editing ? wyrmScopedColours.link : wyrmScopedColours.live)
+                Text(body_).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
+            }
+            Spacer()
+            Button(action: onCancel) { Image(systemName: "xmark").font(.system(size: 13, weight: .bold)).foregroundColor(wyrmScopedColours.quiet).frame(width: 36, height: 36) }
+                .buttonStyle(.plain)
+        }
+        .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
+        .background(wyrmScopedColours.card)
+    }
+}
+
 struct WyrmChatTranscript: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let messages: [WyrmChatItem]
     let myID: String?
     var showsAuthors = true
@@ -177,17 +245,42 @@ struct WyrmChatTranscript: View {
     var onAuthor: ((String) -> Void)? = nil
     var onReport: ((WyrmChatItem) -> Void)? = nil
     var onDelete: ((WyrmChatItem) -> Void)? = nil
+    /// Swipe or hold to reply, hold to edit your own (2026-10-30).
+    var onReply: ((WyrmChatItem) -> Void)? = nil
+    var onEdit: ((WyrmChatItem) -> Void)? = nil
     /// A direct conversation (Instagram's layout): the other player. Their
     /// profile card heads the thread, their face sits beside the last bubble
     /// of each of their runs, and times sit between runs far apart.
     var peer: WyrmServicePlayer? = nil
     var onPeer: (() -> Void)? = nil
+    /// Older messages as you scroll up (OM, 2026-10-30), as Instagram does.
+    var hasOlder = false
+    var loadingOlder = false
+    var onLoadOlder: (() -> Void)? = nil
     private var direct: Bool { onPeer != nil }
+    /// After the first scroll to the bottom; before it the top is "seen" at once.
+    @State private var settled = false
+    /// The message that was first before an older page came in: kept in place.
+    @State private var anchorID: String?
 
     var body: some View {
         ScrollViewReader { reader in
             ScrollView(showsIndicators: false) {
                 LazyVStack(alignment: .leading, spacing: 0) {
+                    if onLoadOlder != nil && (hasOlder || loadingOlder) && !messages.isEmpty {
+                        // Seen near the top: the page before the first message.
+                        HStack {
+                            Spacer()
+                            if loadingOlder { ProgressView().scaleEffect(0.8) }
+                            Spacer()
+                        }
+                        .frame(height: loadingOlder ? 34 : 1)
+                        .onAppear {
+                            guard settled, !loadingOlder else { return }
+                            anchorID = messages.first?.id
+                            onLoadOlder?()
+                        }
+                    }
                     if direct {
                         WyrmDirectIntro(peer: peer, onPeer: { onPeer?() })
                             .padding(.top, messages.isEmpty ? 44 : 12)
@@ -197,7 +290,7 @@ struct WyrmChatTranscript: View {
                     }
                     ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         if direct, let stamp = separator(message, previous: index > 0 ? messages[index - 1] : nil) {
-                            Text(stamp).font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.quiet)
+                            Text(stamp).font(.androidWyrm(11, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                                 .frame(maxWidth: .infinity).padding(.top, 16).padding(.bottom, 4)
                         }
                         row(message, previous: index > 0 ? messages[index - 1] : nil,
@@ -214,7 +307,16 @@ struct WyrmChatTranscript: View {
                 .animation(.spring(response: 0.42, dampingFraction: 0.78), value: messages.map(\.id))
             }
             .modifier(DismissOnScroll())
-            .onAppear { reader.scrollTo("wyrm-chat-bottom", anchor: .bottom) }
+            .onAppear {
+                reader.scrollTo("wyrm-chat-bottom", anchor: .bottom)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { settled = true }
+            }
+            .onChange(of: messages.first?.id) { _ in
+                // An older page arrived above: the message that was first stays where it was.
+                guard let anchorID else { return }
+                self.anchorID = nil
+                reader.scrollTo(anchorID, anchor: .top)
+            }
             .onChange(of: messages.last?.id) { _ in
                 withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) { reader.scrollTo("wyrm-chat-bottom", anchor: .bottom) }
             }
@@ -226,7 +328,7 @@ struct WyrmChatTranscript: View {
 
     private struct DismissOnScroll: ViewModifier {
         func body(content: Content) -> some View {
-            if #available(iOS 16.0, *) { content.scrollDismissesKeyboard(.interactively) } else { content }
+            content.modifier(WyrmDismissKeyboardOnScroll())
         }
     }
 
@@ -263,24 +365,43 @@ struct WyrmChatTranscript: View {
                         // The app's squircle face, as everywhere else (OM, 2026-10-09).
                         WyrmAvatar(initials: initials(message.authorName), size: 18)
                         Text(message.authorUsername.isEmpty ? message.authorName : "\(message.authorName) · @\(message.authorUsername)")
-                            .font(.androidWyrm(10.5, .semibold)).foregroundColor(ATheme.quiet)
+                            .font(.androidWyrm(10.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                     }
                 }.buttonStyle(.plain).padding(.leading, 4)
             }
-            Text(message.body)
-                .font(.androidWyrm(14.5))
-                .foregroundColor(mine ? ATheme.onInk : ATheme.ink)
-                .padding(.horizontal, 14).padding(.vertical, 9)
-                .background(bubble(mine: mine, startsGroup: startsGroup, endsGroup: endsGroup).fill(mine ? ATheme.ink : ATheme.card))
-                .overlay(bubble(mine: mine, startsGroup: startsGroup, endsGroup: endsGroup).stroke(mine ? Color.clear : ATheme.rule, lineWidth: 1))
-                .frame(maxWidth: 290, alignment: mine ? .trailing : .leading)
-                .contextMenu {
-                    Button { UIPasteboard.general.string = message.body } label: { Label("Copy", systemImage: "doc.on.doc") }
-                    if mine, let onDelete { Button(role: .destructive) { onDelete(message) } label: { Label("Delete", systemImage: "trash") } }
-                    if !mine, let onReport { Button(role: .destructive) { onReport(message) } label: { Label("Report", systemImage: "flag") } }
+            if !message.replyID.isEmpty {
+                HStack(spacing: 8) {
+                    Capsule().fill(wyrmScopedColours.live).frame(width: 2, height: 24)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(message.replyName).font(.androidWyrm(10.5, .bold)).foregroundColor(wyrmScopedColours.live).lineLimit(1)
+                        Text(message.replyBody).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
+                    }
                 }
+                .padding(.horizontal, 10).padding(.vertical, 6)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(wyrmScopedColours.ink))
+                .frame(maxWidth: 270, alignment: .leading)
+                .padding(.horizontal, 6)
+            }
+            WyrmSwipeToReply(enabled: onReply != nil, onReply: { onReply?(message) }) {
+                Text(message.body)
+                    .font(.androidWyrm(14.5))
+                    .foregroundColor(mine ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
+                    .padding(.horizontal, 14).padding(.vertical, 9)
+                    .background(bubble(mine: mine, startsGroup: startsGroup, endsGroup: endsGroup).fill(mine ? wyrmScopedColours.ink : wyrmScopedColours.card))
+                    .overlay(bubble(mine: mine, startsGroup: startsGroup, endsGroup: endsGroup).stroke(mine ? Color.clear : wyrmScopedColours.rule, lineWidth: 1))
+                    .frame(maxWidth: 290, alignment: mine ? .trailing : .leading)
+                    .contextMenu {
+                        if let onReply { Button { onReply(message) } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") } }
+                        Button { UIPasteboard.general.string = message.body } label: { Label("Copy", systemImage: "doc.on.doc") }
+                        if mine, let onEdit, !message.body.hasPrefix("##invite:") { Button { onEdit(message) } label: { Label("Edit", systemImage: "pencil") } }
+                        if mine, let onDelete { Button(role: .destructive) { onDelete(message) } label: { Label("Delete", systemImage: "trash") } }
+                        if !mine, let onReport { Button(role: .destructive) { onReport(message) } label: { Label("Report", systemImage: "flag") } }
+                    }
+            }
             if !direct, endsGroup, let time = time(message.createdAt) {
-                Text(time).font(.androidWyrm(9.5)).foregroundColor(ATheme.quiet).padding(.horizontal, 6)
+                Text(message.editedAt.isEmpty ? time : "\(time) · edited").font(.androidWyrm(9.5)).foregroundColor(wyrmScopedColours.quiet).padding(.horizontal, 6)
+            } else if !message.editedAt.isEmpty {
+                Text("edited").font(.androidWyrm(9.5)).foregroundColor(wyrmScopedColours.quiet).padding(.horizontal, 6)
             }
         }
     }
@@ -339,6 +460,9 @@ struct WyrmChatTranscript: View {
 /// The other player at the head of a direct thread (Instagram's empty chat):
 /// face, name, handle, followers, whether you follow each other, View profile.
 struct WyrmDirectIntro: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let peer: WyrmServicePlayer?
     let onPeer: () -> Void
 
@@ -348,20 +472,20 @@ struct WyrmDirectIntro: View {
                 .padding(.bottom, 6)
             Text(peer?.displayName ?? "").font(.androidWyrm(18, .bold)).lineLimit(1)
             if let handle = peer?.handle, !handle.isEmpty {
-                Text(handle).font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                Text(handle).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet)
             }
             if let peer {
-                Text("\(Self.count(peer.followerCount)) followers · Wyrm").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                Text("\(Self.count(peer.followerCount)) followers · Wyrm").font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                 if peer.isFollowing && peer.followsYou {
-                    Text("You follow each other on Wyrm").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                    Text("You follow each other on Wyrm").font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                 } else if peer.followsYou {
-                    Text("Follows you").font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                    Text("Follows you").font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                 }
             }
             Button(action: onPeer) {
-                Text("View profile").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.ink)
+                Text("View profile").font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.ink)
                     .padding(.horizontal, 16).frame(height: 32)
-                    .background(Capsule().fill(ATheme.well))
+                    .background(Capsule().fill(wyrmScopedColours.well))
             }
             .buttonStyle(.plain)
             .padding(.top, 9)
@@ -407,4 +531,9 @@ struct WyrmBubbleShape: Shape {
         path.closeSubpath()
         return path
     }
+}
+
+extension Notification.Name {
+    /// A global or direct message was edited (live socket, 2026-10-30); the open chat re-reads.
+    static let wyrmChatEdited = Notification.Name("wyrm.chat.edited")
 }

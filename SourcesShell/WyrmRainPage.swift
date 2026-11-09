@@ -62,13 +62,16 @@ struct WyrmRainSnakePreview: View {
 
 /// Rain's link in one word, with a dot: Connected (green) or Disconnected (OM, 2026-10-14).
 struct WyrmRainStatusLine: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var rain = WyrmRain.shared
     var ink: Color? = nil
     var body: some View {
         HStack(spacing: 8) {
-            Circle().fill(rain.connected ? ATheme.live : ATheme.quiet).frame(width: 8, height: 8)
+            Circle().fill(rain.connected ? wyrmScopedColours.live : wyrmScopedColours.quiet).frame(width: 8, height: 8)
             Text(!rain.connected ? "Disconnected" : rain.running ? "Connected · \(rain.count) bots" : "Connected")
-                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ink ?? ATheme.ink).lineLimit(1)
+                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ink ?? wyrmScopedColours.ink).lineLimit(1)
         }
     }
 }
@@ -78,6 +81,9 @@ struct WyrmRainStatusLine: View {
 /// each page comes in with the Skin tab's spring, and a page inside has the
 /// round back arrow at the rule's top-left.
 struct WyrmRainPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @ObservedObject private var rain = WyrmRain.shared
@@ -100,15 +106,15 @@ struct WyrmRainPage: View {
             ZStack {
                 HStack {
                     Button(action: close) {
-                        Text("‹ Play").font(.androidWyrm(16)).foregroundColor(ATheme.link)
+                        Text("‹ Play").font(.androidWyrm(16)).foregroundColor(wyrmScopedColours.link)
                             .padding(.horizontal, 6).padding(.vertical, 8).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                     Spacer()
                 }
-                Text("Snakey Rain").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
+                Text("Snakey Rain").font(.androidWyrm(16, .semibold)).foregroundColor(wyrmScopedColours.ink)
             }.frame(height: 40).padding(.horizontal, 14)
             WyrmRainSnakePreview(textures: textures, character: previewed).frame(height: 218)
-            Rectangle().fill(ATheme.rule).frame(height: 1).padding(.horizontal, 20)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1).padding(.horizontal, 20)
             ZStack {
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -143,8 +149,8 @@ struct WyrmRainPage: View {
             .frame(maxHeight: .infinity)
             .clipped()
         }
-        .foregroundColor(ATheme.ink)
-        .background(ATheme.paper.ignoresSafeArea())
+        .foregroundColor(wyrmScopedColours.ink)
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
         .onAppear { textures.prepare() }
     }
 
@@ -152,12 +158,12 @@ struct WyrmRainPage: View {
     private func inlineHeader(_ title: String, back: @escaping () -> Void) -> some View {
         HStack(spacing: 10) {
             Button(action: back) {
-                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundColor(ATheme.ink)
-                    .frame(width: 34, height: 34).background(WyrmGlass.native ? Color.clear : ATheme.card.opacity(0.92)).clipShape(Circle())
+                Image(systemName: "chevron.left").font(.system(size: 13, weight: .bold)).foregroundColor(wyrmScopedColours.ink)
+                    .frame(width: 34, height: 34).background(WyrmGlass.native ? Color.clear : wyrmScopedColours.card.opacity(0.92)).clipShape(Circle())
             }.modifier(WyrmGlassCircleButton()).accessibilityLabel("Back")
             Text(title).font(.androidWyrm(18, .bold)).lineLimit(1)
             Spacer()
-            Text("AUTO-SAVED").font(.androidWyrm(8.5, .bold)).tracking(1).foregroundColor(ATheme.live)
+            Text("AUTO-SAVED").font(.androidWyrm(8.5, .bold)).tracking(1).foregroundColor(wyrmScopedColours.live)
         }.padding(.horizontal, 20).padding(.top, 15).padding(.bottom, 12)
     }
 
@@ -165,8 +171,8 @@ struct WyrmRainPage: View {
 
     private func roundButton(_ symbol: String, _ label: String, enabled: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.onInk)
-                .frame(width: 36, height: 36).background(enabled ? ATheme.ink : ATheme.ink.opacity(0.3)).clipShape(Circle())
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(wyrmScopedColours.onInk)
+                .frame(width: 36, height: 36).background(enabled ? wyrmScopedColours.ink : wyrmScopedColours.ink).clipShape(Circle())
         }.buttonStyle(WSPressStyle()).disabled(!enabled).accessibilityLabel(label)
     }
 
@@ -175,7 +181,7 @@ struct WyrmRainPage: View {
         HStack(spacing: 12) {
             if selection.isEmpty {
                 Text("CHARACTERS · \(list.count)/\(WyrmRain.maxCharacters)").font(.androidWyrm(11.5, .semibold)).tracking(0.92)
-                    .foregroundColor(ATheme.quiet).frame(maxWidth: .infinity, alignment: .leading)
+                    .foregroundColor(wyrmScopedColours.quiet).frame(maxWidth: .infinity, alignment: .leading)
                 roundButton("plus", "Add a character", enabled: list.count < WyrmRain.maxCharacters) {
                     if let made = rain.add() { go(made.id, nil) }
                 }
@@ -183,7 +189,7 @@ struct WyrmRainPage: View {
                 roundButton("xmark", "Cancel") { selection = [] }
                 Text("\(selection.count) selected").font(.androidWyrm(15, .semibold)).frame(maxWidth: .infinity, alignment: .leading)
                 Button("Delete") { rain.remove(selection); selection = [] }
-                    .font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.badge).buttonStyle(.plain)
+                    .font(.androidWyrm(15, .semibold)).foregroundColor(wyrmScopedColours.badge).buttonStyle(.plain)
                     .padding(.horizontal, 10).padding(.vertical, 8)
             }
         }
@@ -206,19 +212,19 @@ struct WyrmRainPage: View {
         return HStack(spacing: 12) {
             if !selection.isEmpty {
                 ZStack {
-                    Circle().stroke(picked ? ATheme.ink : ATheme.chevron, lineWidth: 1.5)
-                    if picked { Circle().fill(ATheme.ink); Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(ATheme.paper) }
+                    Circle().stroke(picked ? wyrmScopedColours.ink : wyrmScopedColours.chevron, lineWidth: 1.5)
+                    if picked { Circle().fill(wyrmScopedColours.ink); Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(wyrmScopedColours.paper) }
                 }.frame(width: 22, height: 22)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(c.label.isEmpty ? "Character" : c.label).font(.androidWyrm(15.5)).foregroundColor(c.enabled ? ATheme.ink : ATheme.quiet).lineLimit(1)
-                Text((c.name.isEmpty ? "No name" : c.name) + (c.enabled ? "" : " · off")).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                Text(c.label.isEmpty ? "Character" : c.label).font(.androidWyrm(15.5)).foregroundColor(c.enabled ? wyrmScopedColours.ink : wyrmScopedColours.quiet).lineLimit(1)
+                Text((c.name.isEmpty ? "No name" : c.name) + (c.enabled ? "" : " · off")).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
             }.frame(maxWidth: .infinity, alignment: .leading)
             WyrmMiniSnake(textures: textures, groups: c.previewGroups, colors: c.previewColors).frame(width: 92, height: 26)
-            if selection.isEmpty { Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron) }
+            if selection.isEmpty { Text("›").font(.androidWyrm(17)).foregroundColor(wyrmScopedColours.chevron) }
         }
         .padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 62)
-        .background(picked ? ATheme.hover : Color.clear)
+        .background(picked ? wyrmScopedColours.hover : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture {
             if selection.isEmpty { go(c.id, nil) }
@@ -231,8 +237,8 @@ struct WyrmRainPage: View {
         VStack(spacing: 0) {
             if !first { WSHairline() }
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
-                TextField(placeholder, text: Binding(get: { value }, set: set))
+                Text(title).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
+                TextField(placeholder, text: Binding(get: { value }, set: set), prompt: wyrmPrompt(placeholder))
                     .font(mono ? .system(size: 15.5, design: .monospaced) : .androidWyrm(15.5))
                     .textInputAutocapitalization(.never).disableAutocorrection(true)
             }.padding(.horizontal, 14).padding(.vertical, 10)
@@ -280,11 +286,11 @@ struct WyrmRainPage: View {
                     Button { update(c) { $0.setSkin("/\(index)") } } label: {
                         HStack(spacing: 12) {
                             Text(String(format: "%02d", index + 1)).font(.androidWyrm(10.5, .bold))
-                                .foregroundColor(c.presetIndex == index ? ATheme.live : ATheme.quiet).frame(width: 24)
+                                .foregroundColor(c.presetIndex == index ? wyrmScopedColours.live : wyrmScopedColours.quiet).frame(width: 24)
                             WyrmMiniSnake(textures: textures, groups: WyrmSkinCatalog.presets[index]).frame(height: 38)
                         }.frame(maxWidth: .infinity).frame(height: 57)
                     }.buttonStyle(.plain).accessibilityLabel("Default skin \(index + 1)")
-                    Rectangle().fill(ATheme.rule).frame(height: 1)
+                    Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
                 }
             }.padding(.horizontal, 20)
         case .tags:
@@ -312,23 +318,23 @@ struct WyrmRainPage: View {
     }
 
     private func check() -> some View {
-        Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(ATheme.paper)
-            .frame(width: 18, height: 18).background(ATheme.ink).clipShape(Circle()).padding(6)
+        Image(systemName: "checkmark").font(.system(size: 10, weight: .heavy)).foregroundColor(wyrmScopedColours.paper)
+            .frame(width: 18, height: 18).background(wyrmScopedColours.ink).clipShape(Circle()).padding(6)
     }
 
     private func noneTile(_ selected: Bool) -> some View {
-        Text("NONE").font(.androidWyrm(9, .bold)).tracking(0.7).foregroundColor(ATheme.ink)
+        Text("NONE").font(.androidWyrm(9, .bold)).tracking(0.7).foregroundColor(wyrmScopedColours.ink)
             .frame(maxWidth: .infinity, maxHeight: .infinity).aspectRatio(1, contentMode: .fit)
-            .background(ATheme.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .background(wyrmScopedColours.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
             .overlay(alignment: .topTrailing) { if selected { check() } }
     }
 
     private func imageTile(_ image: CGImage?, inset: CGFloat, selected: Bool, badge: String?) -> some View {
         WyrmAtlasImage(image: image).padding(inset).aspectRatio(1, contentMode: .fit).frame(maxWidth: .infinity)
-            .background(ATheme.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
-            .overlay(alignment: .bottomTrailing) { if let badge { Text(badge).font(.androidWyrm(7.5, .bold)).foregroundColor(ATheme.quiet).padding(6) } }
+            .background(wyrmScopedColours.card.opacity(0.92)).clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
+            .overlay(RoundedRectangle(cornerRadius: 15, style: .continuous).stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
+            .overlay(alignment: .bottomTrailing) { if let badge { Text(badge).font(.androidWyrm(7.5, .bold)).foregroundColor(wyrmScopedColours.quiet).padding(6) } }
             .overlay(alignment: .topTrailing) { if selected { check() } }
     }
 
@@ -400,6 +406,9 @@ extension EnvironmentValues {
 
 /// WSCard whose fill follows the panel's Back; the edge stays.
 struct WyrmRainCard<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Environment(\.wyrmRainBack) private var back
     @Environment(\.wyrmRainLook) private var look
     let content: Content
@@ -410,9 +419,9 @@ struct WyrmRainCard<Content: View>: View {
         } else {
             VStack(alignment: .leading, spacing: 0) { content }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .background((look?.fill ?? ATheme.card).opacity(back))
+                .background((look?.fill ?? wyrmScopedColours.card).opacity(back))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke((look?.ink ?? ATheme.ink).opacity(0.35), lineWidth: 1))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke((look?.ink ?? wyrmScopedColours.ink).opacity(0.35), lineWidth: 1))
                 .padding(.horizontal, 16)
         }
     }
@@ -446,10 +455,13 @@ struct WyrmRainSliders: View {
 }
 
 private struct WyrmRainColourRows: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject private var rain = WyrmRain.shared
     @Environment(\.wyrmRainLook) private var look
     var body: some View {
-        let ink = look?.ink ?? ATheme.ink
+        let ink = look?.ink ?? wyrmScopedColours.ink
         WyrmRainCard {
             row("panelTextColour", "TEXT AND BORDER", ink)
             row("panelFillColour", "FILL", ink)
@@ -477,6 +489,9 @@ private struct WyrmRainColourRows: View {
 // MARK: Login
 
 struct WyrmRainLoginTab: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject private var rain = WyrmRain.shared
     @State private var personal = false
     @State private var user = ""
@@ -493,10 +508,10 @@ struct WyrmRainLoginTab: View {
                 }
             }
             row("Username") {
-                TextField("Username", text: $user).textContentType(.username)
+                TextField("Username", text: $user, prompt: wyrmPrompt("Username")).textContentType(.username)
             }
             row("Password") {
-                SecureField("Password", text: $pass).textContentType(.password)
+                SecureField("Password", text: $pass, prompt: wyrmPrompt("Password")).textContentType(.password)
             }
         }
         Spacer().frame(height: 14)
@@ -514,8 +529,8 @@ struct WyrmRainLoginTab: View {
         VStack(spacing: 0) {
             WSHairline()
             VStack(alignment: .leading, spacing: 4) {
-                Text(title).font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
-                field().font(.androidWyrm(15.5)).foregroundColor(personal ? ATheme.ink : ATheme.quiet)
+                Text(title).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
+                field().font(.androidWyrm(15.5)).foregroundColor(personal ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                     .textInputAutocapitalization(.never).disableAutocorrection(true).disabled(!personal)
             }.padding(.horizontal, 14).padding(.vertical, 10)
         }
@@ -526,21 +541,24 @@ struct WyrmRainLoginTab: View {
 
 /// A key as the arena draws its own: paper, an ink edge, ink and a green ring while it is on.
 private struct WyrmRainKey: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     let lit: Bool
     let action: () -> Void
     @Environment(\.wyrmRainBack) private var back
     @Environment(\.wyrmRainLook) private var look
     var body: some View {
-        let ink = look?.ink ?? ATheme.ink
-        let fill = look?.fill ?? ATheme.card
+        let ink = look?.ink ?? wyrmScopedColours.ink
+        let fill = look?.fill ?? wyrmScopedColours.card
         Button(action: action) {
             Text(label).font(.androidWyrm(13.5, .semibold)).lineLimit(1).minimumScaleFactor(0.7)
                 .foregroundColor(ink)
                 .padding(.horizontal, 10).frame(maxWidth: .infinity, minHeight: 46)
                 .background(fill.opacity(back))
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(lit ? ATheme.live : ink.opacity(0.6), lineWidth: lit ? 2.5 : 1.5))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(lit ? wyrmScopedColours.live : ink.opacity(0.6), lineWidth: lit ? 2.5 : 1.5))
                 .padding(3)
         }.buttonStyle(WSPressStyle())
     }
@@ -556,6 +574,9 @@ private final class WyrmRainPanelPlacement: ObservableObject {
 }
 
 struct WyrmRainPanel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject private var rain = WyrmRain.shared
     @ObservedObject private var placement = WyrmRainPanelPlacement.shared
     @State private var open = false
@@ -576,8 +597,8 @@ struct WyrmRainPanel: View {
         }
     }
 
-    private var ink: Color { wyrmRainSwatch(Int(rain.config["panelTextColour"] ?? 0), fallback: ATheme.ink) }
-    private var fill: Color { wyrmRainSwatch(Int(rain.config["panelFillColour"] ?? 0), fallback: ATheme.paper) }
+    private var ink: Color { wyrmRainSwatch(Int(rain.config["panelTextColour"] ?? 0), fallback: wyrmScopedColours.ink) }
+    private var fill: Color { wyrmRainSwatch(Int(rain.config["panelFillColour"] ?? 0), fallback: wyrmScopedColours.paper) }
 
     @ViewBuilder private var panel: some View {
         let opacity = min(max(rain.config["panelOpacity"] ?? 1, 0.3), 1)
@@ -618,7 +639,7 @@ struct WyrmRainPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ink.opacity(0.35), lineWidth: 1))
         .environment(\.wyrmRainBack, back)
         .environment(\.wyrmRainLook, WyrmRainPanelLook(ink: ink, fill: fill))
-        .shadow(color: ATheme.ink.opacity(0.12 * back), radius: 18 * back)
+
         .opacity(opacity)
         .onChange(of: rain.panelRequests) { now in if now != seen { seen = now; open.toggle(); layout() } }
         .onChange(of: rain.enabled) { on in if !on { open = false }; layout() }

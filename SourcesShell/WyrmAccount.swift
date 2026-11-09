@@ -29,7 +29,7 @@ struct WyrmPlayer: Decodable, Identifiable {
         avatarKey = try box.decodeIfPresent(String.self, forKey: .avatarKey) ?? "mono-ink"
         // The backend stores uploaded photos as a path on itself.
         let rawAvatar = try box.decodeIfPresent(String.self, forKey: .avatarUrl) ?? ""
-        avatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.77-245-76-86.sslip.io\(rawAvatar)" : rawAvatar
+        avatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.165-99-223-123.sslip.io\(rawAvatar)" : rawAvatar
         bio = try box.decodeIfPresent(String.self, forKey: .bio) ?? ""
         highestScore = try box.decodeIfPresent(Int64.self, forKey: .highestScore) ?? 0
         kills = try box.decodeIfPresent(Int64.self, forKey: .kills) ?? 0
@@ -111,7 +111,7 @@ private enum WyrmKeychain {
 
 private actor WyrmAPI {
     static let shared = WyrmAPI()
-    private let base = URL(string: "https://wyrm-api.77-245-76-86.sslip.io")!
+    private let base = URL(string: "https://wyrm-api.165-99-223-123.sslip.io")!
     private let session: URLSession
 
     init() {
@@ -395,13 +395,16 @@ struct WyrmAccountGate: View {
 }
 
 private struct WyrmAccountLoading: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var body: some View {
         ZStack {
-            ATheme.paper.ignoresSafeArea()
+            wyrmScopedColours.paper.ignoresSafeArea()
             VStack(spacing: 14) {
                 WyrmAccountMark(text: "W")
-                Text("OPENING YOUR DEN").font(.androidWyrm(11, .bold)).tracking(1.8).foregroundColor(ATheme.quiet)
-                ProgressView().tint(ATheme.ink)
+                Text("OPENING YOUR DEN").font(.androidWyrm(11, .bold)).tracking(1.8).foregroundColor(wyrmScopedColours.quiet)
+                ProgressView().tint(wyrmScopedColours.ink)
             }
         }
     }
@@ -410,6 +413,9 @@ private struct WyrmAccountLoading: View {
 private enum WyrmAuthRoute { case welcome, create, login }
 
 private struct WyrmAuthView: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     @State private var route: WyrmAuthRoute = .welcome
     @State private var displayName = ""
@@ -419,17 +425,17 @@ private struct WyrmAuthView: View {
 
     var body: some View {
         ZStack {
-            ATheme.paper.ignoresSafeArea()
-            Circle().fill(ATheme.live.opacity(0.10)).frame(width: 360, height: 360).blur(radius: 3).offset(x: 150, y: -310)
+            wyrmScopedColours.paper.ignoresSafeArea()
+            Circle().fill(wyrmScopedColours.live.opacity(0.10)).frame(width: 360, height: 360).blur(radius: 3).offset(x: 150, y: -310)
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
-                    HStack { WyrmAccountMark(text: "W"); Spacer(); Text("IOS / ACCOUNT").font(.androidWyrm(10.5, .bold)).tracking(1.6).foregroundColor(ATheme.quiet) }
+                    HStack { WyrmAccountMark(text: "W"); Spacer(); Text("IOS / ACCOUNT").font(.androidWyrm(10.5, .bold)).tracking(1.6).foregroundColor(wyrmScopedColours.quiet) }
                     .padding(.top, 28)
                     Spacer().frame(height: route == .welcome ? 104 : 54)
                     Text(route == .welcome ? "The arena,\nand your place in it." : route == .create ? "Make your\nWyrm identity." : "Welcome\nback.")
                         .font(.androidWyrm(40, .bold)).tracking(-1.4).lineSpacing(-4)
                     Text(route == .welcome ? "One profile for your arena name, scores and people. No Google account required." : route == .create ? "Choose a username you will remember. There is no email recovery yet." : "Use the username and password you created.")
-                        .font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(4).padding(.top, 18)
+                        .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).lineSpacing(4).padding(.top, 18)
                     if route != .welcome {
                         VStack(spacing: 12) {
                             if route == .create { WyrmField(title: "DISPLAY NAME", text: $displayName, placeholder: "What people call you") }
@@ -439,7 +445,7 @@ private struct WyrmAuthView: View {
                         }.padding(.top, 28)
                     }
                     if !account.errorMessage.isEmpty {
-                        Text(account.errorMessage).font(.androidWyrm(12.5, .semibold)).foregroundColor(.red).padding(.top, 14)
+                        Text(account.errorMessage).font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.badge).padding(.top, 14)
                     }
                     VStack(spacing: 10) {
                         if route == .welcome {
@@ -452,7 +458,7 @@ private struct WyrmAuthView: View {
                     }.padding(.top, 24)
                 }.padding(.horizontal, 24).padding(.bottom, 40)
             }
-        }.foregroundColor(ATheme.ink)
+        }.foregroundColor(wyrmScopedColours.ink)
     }
 
     private func submit() {
@@ -473,6 +479,9 @@ private struct WyrmAuthView: View {
 }
 
 private struct WyrmOnboardingView: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     @ObservedObject var engine: WyrmShellStore
     @State private var page = 0
@@ -490,33 +499,33 @@ private struct WyrmOnboardingView: View {
 
     var body: some View {
         ZStack {
-            ATheme.paper.ignoresSafeArea()
+            wyrmScopedColours.paper.ignoresSafeArea()
             VStack(alignment: .leading, spacing: 0) {
                 HStack {
-                    Text("SETUP \(page + 1) / 6").font(.androidWyrm(11, .bold)).tracking(1.4).foregroundColor(ATheme.quiet)
+                    Text("SETUP \(page + 1) / 6").font(.androidWyrm(11, .bold)).tracking(1.4).foregroundColor(wyrmScopedColours.quiet)
                     Spacer()
-                    HStack(spacing: 5) { ForEach(0..<6) { Circle().fill($0 <= page ? ATheme.ink : ATheme.rule).frame(width: 6, height: 6) } }
+                    HStack(spacing: 5) { ForEach(0..<6) { Circle().fill($0 <= page ? wyrmScopedColours.ink : wyrmScopedColours.rule).frame(width: 6, height: 6) } }
                 }
                 Spacer()
                 WyrmAccountMark(text: page == 1 ? (account.player?.initials ?? "W") : "W")
                 Text(titles[page]).font(.androidWyrm(35, .bold)).tracking(-1).padding(.top, 22)
-                Text(notes[page]).font(.androidWyrm(14)).foregroundColor(ATheme.mute).lineSpacing(4).padding(.top, 12)
+                Text(notes[page]).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).lineSpacing(4).padding(.top, 12)
                 if page == 1, let player = account.player {
-                    VStack(alignment: .leading, spacing: 5) { Text(player.displayName).font(.androidWyrm(22, .bold)); Text(player.handle).font(.androidWyrm(14)).foregroundColor(ATheme.quiet) }
-                        .padding(18).frame(maxWidth: .infinity, alignment: .leading).background(ATheme.card).cornerRadius(18).padding(.top, 24)
+                    VStack(alignment: .leading, spacing: 5) { Text(player.displayName).font(.androidWyrm(22, .bold)); Text(player.handle).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet) }
+                        .padding(18).frame(maxWidth: .infinity, alignment: .leading).background(wyrmScopedColours.card).cornerRadius(18).padding(.top, 24)
                 }
                 if page == 2 {
                     HStack(spacing: 8) {
                         ForEach(Array(["Dynamic", "Fixed", "Arrow"].enumerated()), id: \.offset) { index, title in
-                            Button { steering = index } label: { Text(title).font(.androidWyrm(12, .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14).background(steering == index ? ATheme.ink : ATheme.card).foregroundColor(steering == index ? ATheme.onInk : ATheme.ink).cornerRadius(13) }.buttonStyle(.plain)
+                            Button { steering = index } label: { Text(title).font(.androidWyrm(12, .semibold)).frame(maxWidth: .infinity).padding(.vertical, 14).background(steering == index ? wyrmScopedColours.ink : wyrmScopedColours.card).foregroundColor(steering == index ? wyrmScopedColours.onInk : wyrmScopedColours.ink).cornerRadius(13) }.buttonStyle(.plain)
                         }
                     }.padding(.top, 24)
                 }
                 Spacer()
                 WyrmPrimaryButton(page == 5 ? "ENTER WYRM" : "CONTINUE", busy: false) { advance() }
-                if page > 0 { Button("Back") { page -= 1 }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.quiet).frame(maxWidth: .infinity).padding(.top, 14) }
+                if page > 0 { Button("Back") { page -= 1 }.font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.quiet).frame(maxWidth: .infinity).padding(.top, 14) }
             }.padding(.horizontal, 24).padding(.vertical, 28)
-        }.foregroundColor(ATheme.ink)
+        }.foregroundColor(wyrmScopedColours.ink)
     }
 
     private func advance() {
@@ -528,6 +537,9 @@ private struct WyrmOnboardingView: View {
 }
 
 struct WyrmProfileView: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     @Environment(\.presentationMode) private var presentation
     @State private var editing = false
@@ -538,20 +550,20 @@ struct WyrmProfileView: View {
             VStack(spacing: 18) {
                 if let player = account.player {
                     WyrmAccountMark(text: player.initials).padding(.top, 24)
-                    VStack(spacing: 3) { Text(player.displayName).font(.androidWyrm(27, .bold)); Text(player.handle).font(.androidWyrm(13)).foregroundColor(ATheme.quiet); Text(player.bio.isEmpty ? "No bio yet" : player.bio).font(.androidWyrm(13)).foregroundColor(ATheme.mute).padding(.top, 6) }
+                    VStack(spacing: 3) { Text(player.displayName).font(.androidWyrm(27, .bold)); Text(player.handle).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet); Text(player.bio.isEmpty ? "No bio yet" : player.bio).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).padding(.top, 6) }
                     HStack(spacing: 0) {
                         WyrmProfileStat(value: "\(player.highestScore)", label: "BEST")
                         WyrmProfileStat(value: "\(player.kills)", label: "KILLS")
                         WyrmProfileStat(value: "\(player.followerCount)", label: "FOLLOWERS")
-                    }.background(ATheme.card).cornerRadius(16)
+                    }.background(wyrmScopedColours.card).cornerRadius(16)
                     WyrmPrimaryButton("EDIT PROFILE", busy: false) { editing = true }
                     WyrmOutlineButton("SIGN OUT") { account.signOut(); presentation.wrappedValue.dismiss() }
-                    Button("Delete account") { confirmDelete = true }.font(.androidWyrm(13, .semibold)).foregroundColor(.red).padding(.top, 6)
+                    Button("Delete account") { confirmDelete = true }.font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.badge).padding(.top, 6)
                 }
-                if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(.red) }
+                if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(ATheme.badge) }
             }.padding(.horizontal, 20).padding(.bottom, 34)
         }
-        .background(ATheme.paper.ignoresSafeArea())
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
         .navigationTitle("Profile").navigationBarTitleDisplayMode(.inline)
         .sheet(isPresented: $editing) { if let player = account.player { WyrmProfileEditor(account: account, player: player) } }
         .alert("Delete this Wyrm account?", isPresented: $confirmDelete) {
@@ -562,6 +574,9 @@ struct WyrmProfileView: View {
 }
 
 private struct WyrmProfileEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     @Environment(\.dismiss) private var dismiss
     @State private var displayName: String
@@ -586,45 +601,63 @@ private struct WyrmProfileEditor: View {
                     WyrmField(title: "DISPLAY NAME", text: $displayName, placeholder: "Display name")
                     WyrmField(title: "USERNAME", text: $username, placeholder: "Username")
                     WyrmField(title: "BIO", text: $bio, placeholder: "150 characters max")
-                    if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(.red).frame(maxWidth: .infinity, alignment: .leading) }
+                    if !account.errorMessage.isEmpty { Text(account.errorMessage).font(.androidWyrm(12)).foregroundColor(ATheme.badge).frame(maxWidth: .infinity, alignment: .leading) }
                     WyrmPrimaryButton("SAVE PROFILE", busy: account.busy) {
                         Task { if await account.update(displayName: displayName, ingameName: ingameName, username: username, bio: bio, avatarKey: avatarKey) { dismiss() } }
                     }
                 }.padding(20)
-            }.background(ATheme.paper).navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
+            }.background(wyrmScopedColours.paper).navigationTitle("Edit profile").navigationBarTitleDisplayMode(.inline)
                 .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } } }
         }
     }
 }
 
 private struct WyrmField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String; @Binding var text: String; let placeholder: String
-    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); TextField(placeholder, text: $text).font(.androidWyrm(15)).textInputAutocapitalization(.never).disableAutocorrection(true).padding(14).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet); TextField(placeholder, text: $text, prompt: wyrmPrompt(placeholder)).font(.androidWyrm(15)).textInputAutocapitalization(.never).disableAutocorrection(true).padding(14).background(wyrmScopedColours.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(wyrmScopedColours.rule)) } }
 }
 
 private struct WyrmSecureField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String; @Binding var text: String; let placeholder: String
-    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(ATheme.quiet); SecureField(placeholder, text: $text).font(.androidWyrm(15)).textContentType(.password).padding(14).background(ATheme.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(ATheme.rule)) } }
+    var body: some View { VStack(alignment: .leading, spacing: 7) { Text(title).font(.androidWyrm(10.5, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet); SecureField(placeholder, text: $text, prompt: wyrmPrompt(placeholder)).font(.androidWyrm(15)).textContentType(.password).padding(14).background(wyrmScopedColours.card).cornerRadius(13).overlay(RoundedRectangle(cornerRadius: 13).stroke(wyrmScopedColours.rule)) } }
 }
 
 private struct WyrmAccountMark: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
-    var body: some View { Text(text).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.onInk).frame(width: 58, height: 58).background(ATheme.ink).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
+    var body: some View { Text(text).font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.onInk).frame(width: 58, height: 58).background(wyrmScopedColours.ink).clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous)) }
 }
 
 private struct WyrmProfileStat: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let value: String; let label: String
-    var body: some View { VStack(spacing: 4) { Text(value).font(.androidWyrm(18, .bold)); Text(label).font(.androidWyrm(9.5, .bold)).tracking(0.8).foregroundColor(ATheme.quiet) }.frame(maxWidth: .infinity).padding(.vertical, 16) }
+    var body: some View { VStack(spacing: 4) { Text(value).font(.androidWyrm(18, .bold)); Text(label).font(.androidWyrm(9.5, .bold)).tracking(0.8).foregroundColor(wyrmScopedColours.quiet) }.frame(maxWidth: .infinity).padding(.vertical, 16) }
 }
 
 private struct WyrmPrimaryButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String; let busy: Bool; let action: () -> Void
     init(_ title: String, busy: Bool, action: @escaping () -> Void) { self.title = title; self.busy = busy; self.action = action }
-    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(ATheme.onInk) } else { Image(systemName: "arrow.right") } }.foregroundColor(ATheme.onInk).padding(.horizontal, 18).frame(height: 54).background(WyrmGlass.native ? Color.clear : ATheme.ink).cornerRadius(15) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WyrmPlainPressStyle())).disabled(busy) }
+    var body: some View { Button(action: action) { HStack { Text(busy ? "PLEASE WAIT" : title).font(.androidWyrm(13, .bold)).tracking(1.1); Spacer(); if busy { ProgressView().tint(wyrmScopedColours.onInk) } else { Image(systemName: "arrow.right") } }.foregroundColor(wyrmScopedColours.onInk).padding(.horizontal, 18).frame(height: 54).background(WyrmGlass.native ? Color.clear : wyrmScopedColours.ink).cornerRadius(15) }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 15, fallback: WyrmPlainPressStyle())).disabled(busy) }
 }
 
 private struct WyrmOutlineButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String; let action: () -> Void
     init(_ title: String, action: @escaping () -> Void) { self.title = title; self.action = action }
-    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(WyrmGlass.native ? Color.clear : ATheme.card).foregroundColor(ATheme.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 15, fallback: WyrmPlainPressStyle())) }
+    var body: some View { Button(action: action) { Text(title).font(.androidWyrm(12.5, .bold)).tracking(0.8).frame(maxWidth: .infinity).frame(height: 52).background(WyrmGlass.native ? Color.clear : wyrmScopedColours.card).foregroundColor(wyrmScopedColours.ink).cornerRadius(15).overlay(RoundedRectangle(cornerRadius: 15).stroke(wyrmScopedColours.rule, lineWidth: WyrmGlass.native ? 0 : 1)) }.modifier(WyrmGlassButtonModifier(radius: 15, fallback: WyrmPlainPressStyle())) }
 }

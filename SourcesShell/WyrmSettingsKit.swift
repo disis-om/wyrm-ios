@@ -21,6 +21,9 @@ struct WSPressStyle: ButtonStyle {
 /// `SettingsDrillScaffold`: back link on the left, title centred, an optional
 /// trailing action and an optional strip of section tabs under the header.
 struct WSScaffold<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var parent = "Settings"
     var trailing: String? = nil
@@ -43,25 +46,25 @@ struct WSScaffold<Content: View>: View {
             ZStack {
                 HStack {
                     Button(action: onBack) {
-                        Text("‹ \(parent)").font(.androidWyrm(16)).foregroundColor(ATheme.link)
+                        Text("‹ \(parent)").font(.androidWyrm(16)).foregroundColor(wyrmScopedColours.link)
                             .padding(.horizontal, 6).padding(.vertical, 8).contentShape(Rectangle())
                     }.buttonStyle(.plain)
                     Spacer()
                     if let trailing, let onTrailing {
                         Button(action: onTrailing) {
                             Text(trailing).font(.androidWyrm(15.5))
-                                .foregroundColor(trailingEnabled ? ATheme.link : ATheme.tabIdle)
+                                .foregroundColor(trailingEnabled ? wyrmScopedColours.link : wyrmScopedColours.tabIdle)
                                 .padding(.horizontal, 8).padding(.vertical, 8)
                         }.buttonStyle(.plain).disabled(!trailingEnabled)
                     }
                 }
-                Text(title).font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink).lineLimit(1)
+                Text(wyrm: title).font(.androidWyrm(16, .semibold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                     .padding(.horizontal, 96)
             }
             .frame(height: 40).padding(.horizontal, 14).padding(.bottom, 10)
-            .background(ATheme.paper.opacity(0.94))
+            .background(wyrmScopedColours.paper.opacity(0.94))
             if let sectionTabs { sectionTabs }
-            Rectangle().fill(ATheme.rule).frame(height: 1)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
             ScrollViewReader { proxy in
                 ScrollView(showsIndicators: false) {
                     VStack(alignment: .leading, spacing: 0) {
@@ -75,8 +78,8 @@ struct WSScaffold<Content: View>: View {
                 .wyrmTourScroll(proxy)
             }
         }
-        .foregroundColor(ATheme.ink)
-        .background(ATheme.paper.ignoresSafeArea())
+        .foregroundColor(wyrmScopedColours.ink)
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
     }
 
     /// Settings search opened this page for one setting: once the page has
@@ -92,38 +95,50 @@ struct WSScaffold<Content: View>: View {
 }
 
 struct WSSectionLabel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     var top: CGFloat = 22
     init(_ text: String, top: CGFloat = 22) { self.text = text; self.top = top }
     var body: some View {
-        Text(text.uppercased()).font(.androidWyrm(11.5, .semibold)).tracking(0.92).foregroundColor(ATheme.quiet)
+        Text(verbatim: wyrmLocalized(text).uppercased()).font(.androidWyrm(11.5, .semibold)).tracking(0.92).foregroundColor(wyrmScopedColours.quiet)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20).padding(.top, top).padding(.bottom, 8)
     }
 }
 
 struct WSCard<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         VStack(alignment: .leading, spacing: 0) { content }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(ATheme.card)
+            .background(wyrmScopedColours.card)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .padding(.horizontal, 16)
     }
 }
 
 struct WSHairline: View {
-    var body: some View { Rectangle().fill(ATheme.rowRule).frame(height: 1) }
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    var body: some View { Rectangle().fill(wyrmScopedColours.rowRule).frame(height: 1) }
 }
 
 struct WSCaption: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(5)
+        Text(wyrm: text).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(5)
             .fixedSize(horizontal: false, vertical: true)
             .padding(.horizontal, 20).padding(.top, 14).padding(.bottom, 8)
     }
@@ -131,27 +146,30 @@ struct WSCaption: View {
 
 /// `AdvancedFold`: a quiet card that opens a block of rarely touched rows.
 struct WSAdvancedFold: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     let open: Bool
     let onToggle: () -> Void
     var body: some View {
         Button(action: onToggle) {
             HStack(spacing: 0) {
-                Text(label.uppercased()).font(.androidWyrm(11, .semibold)).tracking(0.78).foregroundColor(ATheme.ink)
+                Text(verbatim: wyrmLocalized(label).uppercased()).font(.androidWyrm(11, .semibold)).tracking(0.78).foregroundColor(wyrmScopedColours.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                Text(open ? "HIDE" : "SHOW").font(.androidWyrm(9, .semibold)).tracking(0.7).foregroundColor(ATheme.quiet)
+                Text(open ? "HIDE" : "SHOW").font(.androidWyrm(9, .semibold)).tracking(0.7).foregroundColor(wyrmScopedColours.quiet)
                 Spacer().frame(width: 9)
                 Image(systemName: "chevron.down").font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(open ? ATheme.paper : ATheme.ink)
+                    .foregroundColor(open ? wyrmScopedColours.paper : wyrmScopedColours.ink)
                     .rotationEffect(.degrees(open ? 180 : 0))
                     .frame(width: 30, height: 30)
-                    .background(open ? ATheme.ink : ATheme.ink.opacity(0.05))
+                    .background(open ? wyrmScopedColours.ink : wyrmScopedColours.ink)
                     .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
             }
             .padding(.leading, 15).padding(.trailing, 11).frame(minHeight: 52)
-            .background(ATheme.card)
+            .background(wyrmScopedColours.card)
             .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(open ? ATheme.chevron : ATheme.rowRule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(open ? wyrmScopedColours.chevron : wyrmScopedColours.rowRule, lineWidth: 1))
             .contentShape(Rectangle())
         }
         .buttonStyle(WSPressStyle())
@@ -164,12 +182,15 @@ struct WSAdvancedFold: View {
 /// The system switch, so iOS 26 gives it the Liquid Glass thumb that lifts
 /// while it is held and dragged. Tinted with the theme's live colour.
 struct WSInkSwitch: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let on: Bool
     var onToggle: ((Bool) -> Void)? = nil
     var body: some View {
         Toggle("", isOn: Binding(get: { on }, set: { onToggle?($0) }))
             .labelsHidden()
-            .tint(ATheme.live)
+            .tint(wyrmScopedColours.live)
             .fixedSize()
     }
 }
@@ -188,7 +209,7 @@ struct WSSegmented: View {
     var body: some View {
         Picker("", selection: Binding(get: { min(max(selected, 0), max(options.count - 1, 0)) },
                                       set: { next in if next != selected { onSelect(next) } })) {
-            ForEach(options.indices, id: \.self) { index in Text(options[index]).tag(index) }
+            ForEach(options.indices, id: \.self) { index in Text(wyrm: options[index]).tag(index) }
         }
         .pickerStyle(.segmented)
         .labelsHidden()
@@ -196,13 +217,16 @@ struct WSSegmented: View {
 }
 
 struct WSRowText: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let detail: String
     var body: some View {
         VStack(alignment: .leading, spacing: 1) {
-            Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
+            Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
             if !detail.isEmpty {
-                Text(detail).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
+                Text(wyrm: detail).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).fixedSize(horizontal: false, vertical: true)
             }
         }
     }
@@ -231,6 +255,9 @@ struct WSBoolRow: View {
 }
 
 struct WSSliderRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let valueText: String
     var detail = ""
@@ -246,15 +273,15 @@ struct WSSliderRow: View {
             if !first { WSHairline() }
             VStack(alignment: .leading, spacing: 0) {
                 HStack(alignment: .lastTextBaseline) {
-                    Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
+                    Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
                     Spacer()
-                    Text(valueText).font(.androidWyrm(14)).monospacedDigit().foregroundColor(ATheme.mute)
+                    Text(valueText).font(.androidWyrm(14)).monospacedDigit().foregroundColor(wyrmScopedColours.mute)
                 }
                 if !detail.isEmpty {
-                    Text(detail).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).padding(.top, 2)
+                    Text(wyrm: detail).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).padding(.top, 2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                slider.tint(ATheme.ink).padding(.top, 4)
+                slider.tint(wyrmScopedColours.ink).padding(.top, 4)
             }.padding(14)
         }
     }
@@ -274,6 +301,9 @@ struct WSSliderRow: View {
 }
 
 struct WSEnumBlock: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var detail = ""
     let options: [String]
@@ -284,9 +314,9 @@ struct WSEnumBlock: View {
         VStack(spacing: 0) {
             if !first { WSHairline() }
             VStack(alignment: .leading, spacing: 0) {
-                Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
+                Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
                 if !detail.isEmpty {
-                    Text(detail).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).padding(.top, 2)
+                    Text(wyrm: detail).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).padding(.top, 2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 WSSegmented(options: options, selected: selected, onSelect: onSelect).padding(.top, 11)
@@ -296,6 +326,9 @@ struct WSEnumBlock: View {
 }
 
 struct WSValueRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let value: String
     var first = false
@@ -307,13 +340,13 @@ struct WSValueRow: View {
             if !first { WSHairline() }
             Button { onOpen?() } label: {
                 HStack(spacing: 6) {
-                    Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.ink)
+                    Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if !value.isEmpty {
-                        Text(value).font(.androidWyrm(14)).foregroundColor(ATheme.quiet).multilineTextAlignment(.trailing)
+                        Text(value).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.trailing)
                     }
                     WyrmCountBadge(count: badge)
-                    if onOpen != nil { Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron) }
+                    if onOpen != nil { Text("›").font(.androidWyrm(17)).foregroundColor(wyrmScopedColours.chevron) }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 54).contentShape(Rectangle())
             }
@@ -323,6 +356,9 @@ struct WSValueRow: View {
 }
 
 struct WSActionRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var first = false
     var danger = false
@@ -331,7 +367,7 @@ struct WSActionRow: View {
         VStack(spacing: 0) {
             if !first { WSHairline() }
             Button(action: onClick) {
-                Text(title).font(.androidWyrm(15.5)).foregroundColor(danger ? ATheme.badge : ATheme.ink)
+                Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(danger ? wyrmScopedColours.badge : wyrmScopedColours.ink)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(.horizontal, 14).padding(.vertical, 8).frame(minHeight: 52).contentShape(Rectangle())
             }.buttonStyle(WSPressStyle())
@@ -340,6 +376,9 @@ struct WSActionRow: View {
 }
 
 struct WSLinkRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var value = ""
     var first = false
@@ -349,9 +388,9 @@ struct WSLinkRow: View {
             if !first { WSHairline() }
             Button(action: onClick) {
                 HStack {
-                    Text(title).font(.androidWyrm(15.5)).foregroundColor(ATheme.link)
+                    Text(wyrm: title).font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.link)
                     Spacer()
-                    if !value.isEmpty { Text(value).font(.androidWyrm(14)).foregroundColor(ATheme.quiet) }
+                    if !value.isEmpty { Text(value).font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet) }
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 52).contentShape(Rectangle())
             }.buttonStyle(.plain)
@@ -360,14 +399,17 @@ struct WSLinkRow: View {
 }
 
 struct WSPrimaryButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     var enabled = true
     let onClick: () -> Void
     var body: some View {
         Button(action: onClick) {
-            Text(label).font(.androidWyrm(15.5, .semibold)).foregroundColor(ATheme.onInk)
+            Text(wyrm: label).font(.androidWyrm(15.5, .semibold)).foregroundColor(wyrmScopedColours.onInk)
                 .frame(maxWidth: .infinity).frame(height: 46)
-                .background(WyrmGlass.native ? Color.clear : (enabled ? ATheme.ink : ATheme.ink.opacity(0.35)))
+                .background(WyrmGlass.native ? Color.clear : (enabled ? wyrmScopedColours.ink : wyrmScopedColours.ink))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         }
         .modifier(WyrmGlassButtonModifier(prominent: true, radius: 12, fallback: WSPressStyle()))
@@ -376,15 +418,18 @@ struct WSPrimaryButton: View {
 }
 
 struct WSOutlineButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     var enabled = true
     let onClick: () -> Void
     var body: some View {
         Button(action: onClick) {
-            Text(label).font(.androidWyrm(15)).foregroundColor(enabled ? ATheme.mute : ATheme.tabIdle)
+            Text(wyrm: label).font(.androidWyrm(15)).foregroundColor(enabled ? wyrmScopedColours.mute : wyrmScopedColours.tabIdle)
                 .frame(maxWidth: .infinity).frame(height: 46)
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
+                    .stroke(wyrmScopedColours.rule, lineWidth: WyrmGlass.native ? 0 : 1))
                 .contentShape(Rectangle())
         }
         .modifier(WyrmGlassButtonModifier(radius: 12, fallback: WSPressStyle()))
@@ -394,11 +439,14 @@ struct WSOutlineButton: View {
 
 /// Radio mark used by Food shapes and Themes.
 struct WSRadio: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let selected: Bool
     var body: some View {
         ZStack {
-            Circle().stroke(selected ? ATheme.ink : ATheme.chevron, lineWidth: 1.5)
-            if selected { Circle().fill(ATheme.ink).frame(width: 12, height: 12) }
+            Circle().stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.chevron, lineWidth: 1.5)
+            if selected { Circle().fill(wyrmScopedColours.ink).frame(width: 12, height: 12) }
         }.frame(width: 22, height: 22)
     }
 }
@@ -407,6 +455,9 @@ struct WSRadio: View {
 
 /// Hue first, then strength and brightness, exactly as the Android mixer.
 struct WSColourRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let setting: EngineSetting
     var first = false
     @ObservedObject var engine: WyrmShellStore
@@ -425,8 +476,8 @@ struct WSColourRow: View {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color(.sRGB, red: c[0], green: c[1], blue: c[2], opacity: 1))
                         .frame(width: 26, height: 26)
-                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
-                    Text("›").font(.androidWyrm(17)).foregroundColor(ATheme.chevron)
+                        .overlay(RoundedRectangle(cornerRadius: 8, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
+                    Text("›").font(.androidWyrm(17)).foregroundColor(wyrmScopedColours.chevron)
                         .rotationEffect(.degrees(open ? 90 : 0))
                 }
                 .padding(.horizontal, 14).padding(.vertical, 9).frame(minHeight: 54).contentShape(Rectangle())
@@ -458,7 +509,7 @@ struct WSColourRow: View {
 
     private func shade(_ label: String, _ value: Double, _ colors: [Color], _ pick: @escaping (Double) -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(label).font(.androidWyrm(11.5, .semibold)).tracking(0.6).foregroundColor(ATheme.quiet)
+            Text(wyrm: label).font(.androidWyrm(11.5, .semibold)).tracking(0.6).foregroundColor(wyrmScopedColours.quiet)
             WSGradientTrack(fraction: value, colors: colors, dragging: $dragging, onPick: pick)
         }
     }
@@ -474,6 +525,9 @@ struct WSColourRow: View {
     private func emit() {
         let rgb = Self.hsvToRgb(hsv.h, hsv.s, hsv.v)
         engine.write(setting, values: setting.type == "color4" ? [rgb.0, rgb.1, rgb.2, alpha] : [rgb.0, rgb.1, rgb.2])
+        // A colour the player picks is theirs from now on; until then the arrow
+        // takes the snake's colour, as slither's does (OM, 2026-11-01).
+        if setting.id == "arrow.color" { engine.write(id: "arrow.colour_own", values: [1]) }
     }
 
     static func rgbToHsv(_ r: Double, _ g: Double, _ b: Double) -> (h: Double, s: Double, v: Double) {
@@ -507,6 +561,9 @@ struct WSColourRow: View {
 }
 
 struct WSGradientTrack: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let fraction: Double
     let colors: [Color]
     @Binding var dragging: Bool
@@ -517,9 +574,9 @@ struct WSGradientTrack: View {
             let run = max(proxy.size.width - knob, 1)
             ZStack(alignment: .leading) {
                 Capsule().fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
-                    .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
-                Circle().fill(ATheme.ink).frame(width: knob, height: knob)
-                    .overlay(Circle().stroke(ATheme.card, lineWidth: 2))
+                    .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
+                Circle().fill(wyrmScopedColours.ink).frame(width: knob, height: knob)
+                    .overlay(Circle().stroke(wyrmScopedColours.card, lineWidth: 2))
                     .shadow(color: .black.opacity(0.18), radius: 2, y: 1)
                     .offset(x: run * CGFloat(min(max(fraction, 0), 1)))
             }
@@ -545,7 +602,17 @@ struct WSTypedRow: View {
     var body: some View { row.wyrmSettingAnchor(setting.id) }
 
     @ViewBuilder private var row: some View {
-        switch setting.type {
+        if setting.id == "general.name_font" {
+            WyrmSnakeBodyPreview(nameScale: setting.number, mode: 0, spine: false, hideCosmetics: true)
+            WSSliderRow(title: "Player names", valueText: String(format: "%.0f%%", setting.number*100),
+                detail: "Name size relative to the snake", value: setting.number, range: 0.5...2.5,
+                first: first) { engine.write(setting, values: [$0]) }
+        } else if setting.id == "general.lb_font" {
+            WSSliderRow(title: setting.label, valueText: String(format: "%.0f%%", setting.number*100),
+                detail: setting.hint, value: setting.number, range: 0.25...3, first: first) {
+                engine.write(setting, values: [$0])
+            }
+        } else { switch setting.type {
         case "bool":
             WSBoolRow(title: setting.label, detail: setting.hint, on: setting.enabled, first: first) {
                 engine.write(setting, values: [$0 ? 1 : 0])
@@ -565,7 +632,7 @@ struct WSTypedRow: View {
                         adjusting: WyrmAdjustPreview.subject(for: setting.id, engine: engine)) { raw in
                 engine.write(setting, values: [whole ? raw.rounded() : raw])
             }
-        }
+        } }
     }
 }
 
@@ -593,4 +660,89 @@ func wsFormat(_ setting: EngineSetting) -> String {
         ? String(format: "%.2f s", setting.number) : String(format: "%.2f", setting.number)
     default: return ""
     }
+}
+
+/// Settings › Developer (OM, 2026-11-07): this phone's arena player ID (the
+/// 16-character id NTL calls the player ID, sent to every arena Wyrm joins;
+/// WyrmCustomArenas), with Copy. Shown under Developer Mode when it is on.
+/// Android twin: ArenaPlayerIdRow in DeveloperScreen.kt.
+struct WyrmArenaPlayerIdRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    @State private var copied = false
+
+    var body: some View {
+        let id = WyrmCustomArenas.shared.id
+        return VStack(spacing: 0) {
+            WSHairline()
+            VStack(alignment: .leading, spacing: 0) {
+                Text(wyrm: "Arena player ID").font(.androidWyrm(15.5)).foregroundColor(wyrmScopedColours.ink)
+                Text(wyrm: "Sent to every arena you join. Community arenas know you by it.")
+                    .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, 2)
+                HStack(spacing: 10) {
+                    Text(id)
+                        .font(.system(size: 15, weight: .semibold, design: .monospaced))
+                        .tracking(0.6)
+                        .foregroundColor(wyrmScopedColours.ink)
+                        .textSelection(.enabled)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.7)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Button {
+                        UIPasteboard.general.string = id
+                        copied = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) { copied = false }
+                    } label: {
+                        Text(wyrm: copied ? "Copied" : "Copy")
+                            .font(.androidWyrm(14, .semibold))
+                            .foregroundColor(wyrmScopedColours.onInk)
+                            .padding(.horizontal, 16).frame(minHeight: 34)
+                            .background(Capsule().fill(wyrmScopedColours.ink))
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(WSPressStyle())
+                    .accessibilityLabel(copied ? "Arena player ID copied" : "Copy arena player ID")
+                }
+                .padding(.top, 10)
+            }
+            .padding(.horizontal, 14).padding(.vertical, 12)
+        }
+    }
+}
+
+/// A one-line field that takes focus when it appears (popups such as Add IP,
+/// OM 2026-11-07). The placeholder uses the theme's quiet ink at full
+/// strength so it reads on every theme.
+struct WyrmFocusedField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    let placeholder: String
+    @Binding var text: String
+    var onDone: () -> Void = {}
+    @FocusState private var focused: Bool
+
+    var body: some View {
+        TextField("", text: $text, prompt: Text(placeholder).foregroundColor(wyrmScopedColours.mute))
+            .font(.androidWyrm(15))
+            .foregroundColor(wyrmScopedColours.ink)
+            .keyboardType(.numbersAndPunctuation)
+            .textInputAutocapitalization(.never)
+            .disableAutocorrection(true)
+            .submitLabel(.done)
+            .focused($focused)
+            .onSubmit(onDone)
+            .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) { focused = true } }
+    }
+}
+
+/// A field's placeholder in the theme's mute ink (OM, 2026-11-07: search bars
+/// and composers had placeholders that sank into the theme). UIKit's own
+/// placeholder grey follows the system, not Wyrm's theme; mute is held at
+/// 4.5:1 or better on paper, card and well in every theme (WyrmTheme.resecured).
+func wyrmPrompt<S: StringProtocol>(_ text: S) -> Text {
+    Text(String(text)).foregroundColor(WyrmThemeColours(palette: WyrmThemeStore.shared.palette).mute)
 }

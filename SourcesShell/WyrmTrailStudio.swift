@@ -789,6 +789,9 @@ struct WyrmSystemCamera: UIViewControllerRepresentable {
 /// first with the modes under it, the gallery from its corner, then the
 /// editor on a dark stage, then the caption.
 struct WyrmTrailStudio: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
     /// Share run: the finished run to share. The studio then opens straight
@@ -857,7 +860,7 @@ struct WyrmTrailStudio: View {
 
     var body: some View {
         ZStack {
-            (dark ? Color.black : ATheme.paper).ignoresSafeArea()
+            (dark ? Color.black : wyrmScopedColours.paper).ignoresSafeArea()
             VStack(spacing: 0) {
                 if !cameraPage && !galleryPage { header }
                 if step == .edit && draft.run != nil { shareModeBar.padding(.bottom, 10) }
@@ -877,7 +880,7 @@ struct WyrmTrailStudio: View {
                 }
             }
         }
-        .foregroundColor(dark ? .white : ATheme.ink)
+        .foregroundColor(dark ? .white : wyrmScopedColours.ink)
         .overlay(alignment: .top) { WyrmTrailToast(store: store) }
         .onAppear {
             store.token = { [weak account] in account?.sessionToken ?? "" }
@@ -977,11 +980,11 @@ struct WyrmTrailStudio: View {
             Button { back() } label: {
                 Image(systemName: step == .pick || (draft.sharing && step == .edit) ? "xmark" : "chevron.left")
                     .font(.system(size: 16, weight: .bold)).frame(width: 38, height: 38)
-                    .foregroundColor(dark ? .white : ATheme.ink)
-                    .background(Circle().fill(dark ? Color.white.opacity(0.14) : ATheme.well))
+                    .foregroundColor(dark ? .white : wyrmScopedColours.ink)
+                    .background(Circle().fill(dark ? Color.white.opacity(0.14) : wyrmScopedColours.well))
             }.buttonStyle(.plain)
             Spacer()
-            Text(title).font(.androidWyrm(16, .bold)).foregroundColor(dark ? .white : ATheme.ink)
+            Text(title).font(.androidWyrm(16, .bold)).foregroundColor(dark ? .white : wyrmScopedColours.ink)
             Spacer()
             actionButton
         }
@@ -1012,9 +1015,9 @@ struct WyrmTrailStudio: View {
         }()
         let label = (step == .caption || (step == .pick && pickMode == .text)) ? "Post" : "Next"
         Button { advance() } label: {
-            Text(label).font(.androidWyrm(14, .bold)).foregroundColor(dark ? .black : ATheme.onInk)
+            Text(label).font(.androidWyrm(14, .bold)).foregroundColor(dark ? .black : wyrmScopedColours.onInk)
                 .padding(.horizontal, 18).frame(height: 36)
-                .background(Capsule().fill((dark ? Color.white : ATheme.ink).opacity(ready ? 1 : 0.3)))
+                .background(Capsule().fill((dark ? Color.white : wyrmScopedColours.ink).opacity(ready ? 1 : 0.3)))
         }
         .buttonStyle(WSPressStyle())
         .disabled(!ready)
@@ -1033,9 +1036,9 @@ struct WyrmTrailStudio: View {
                 }
             }
             .padding(3)
-            .background(Capsule().fill(ATheme.well))
+            .background(Capsule().fill(wyrmScopedColours.well))
             if !hasShot {
-                Text("No screenshot for this run").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+                Text("No screenshot for this run").font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet)
             }
         }
         .padding(.horizontal, 16)
@@ -1048,9 +1051,9 @@ struct WyrmTrailStudio: View {
             withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) { action() }
         } label: {
             Text(label).font(.androidWyrm(13.5, .bold))
-                .foregroundColor(selected ? ATheme.onInk : ATheme.ink)
+                .foregroundColor(selected ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
                 .frame(maxWidth: .infinity).frame(height: 32)
-                .background(Capsule().fill(selected ? ATheme.ink : Color.clear))
+                .background(Capsule().fill(selected ? wyrmScopedColours.ink : Color.clear))
                 .opacity(enabled ? 1 : 0.4)
                 .contentShape(Capsule())
         }
@@ -1193,13 +1196,16 @@ struct WyrmStudioRoundButton: View {
 
 /// A text trail: the page opens with the keyboard up.
 private struct WyrmTextTrailComposer: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var draft: WyrmStudioDraft
     @FocusState private var focused: Bool
     var body: some View {
         VStack(spacing: 0) {
             ZStack(alignment: .topLeading) {
                 if draft.caption.isEmpty {
-                    Text("Leave a thought…").font(.wyrmDisplay(28)).foregroundColor(ATheme.quiet)
+                    Text("Leave a thought…").font(.wyrmDisplay(28)).foregroundColor(wyrmScopedColours.quiet)
                         .padding(.horizontal, 6).padding(.vertical, 10)
                 }
                 TextEditor(text: $draft.caption)
@@ -1210,12 +1216,12 @@ private struct WyrmTextTrailComposer: View {
             }
             .padding(14)
             .frame(maxHeight: .infinity)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .contentShape(Rectangle())
             .onTapGesture { focused = true }
             .padding(.horizontal, 14)
-            Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
+            Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(wyrmScopedColours.quiet)
                 .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.vertical, 10)
         }
         .onAppear { DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { focused = true } }
@@ -1223,6 +1229,9 @@ private struct WyrmTextTrailComposer: View {
 }
 
 private struct WyrmStudioCaption: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var draft: WyrmStudioDraft
     let rendered: UIImage?
     @FocusState private var focused: Bool
@@ -1235,7 +1244,7 @@ private struct WyrmStudioCaption: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     ZStack(alignment: .topLeading) {
                         if draft.caption.isEmpty {
-                            Text("Write a caption…").font(.androidWyrm(15)).foregroundColor(ATheme.quiet)
+                            Text("Write a caption…").font(.androidWyrm(15)).foregroundColor(wyrmScopedColours.quiet)
                                 .padding(.horizontal, 5).padding(.vertical, 8)
                         }
                         TextEditor(text: $draft.caption)
@@ -1246,18 +1255,18 @@ private struct WyrmStudioCaption: View {
                     }
                 }
                 .padding(14)
-                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
+                .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .padding(.horizontal, 14).padding(.top, 8)
-                Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
+                Text("\(draft.caption.count)/500").font(.androidWyrm(11)).monospacedDigit().foregroundColor(wyrmScopedColours.quiet)
                     .frame(maxWidth: .infinity, alignment: .trailing).padding(.horizontal, 20).padding(.top, 6)
                 if draft.sharing {
                     // Share run: whether others may try the player's skin from this post.
                     WSBoolRow(title: "Share my skin",
                               detail: "Others can try your skin from this post. Turn it off to keep it to yourself.",
                               on: draft.shareSkin, first: true) { draft.shareSkin = $0 }
-                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
-                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
+                        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .padding(.horizontal, 14).padding(.top, 14)
                 }
             }
@@ -1360,6 +1369,9 @@ private struct WyrmCropFollower: View {
 /// the photo; on a video a tap plays or pauses. Words and stickers are thrown
 /// into the bin at the bottom to delete them.
 private struct WyrmStudioEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var draft: WyrmStudioDraft
     @Binding var canvasSize: CGSize
     /// Share run's skin sticker appears once these are ready.
@@ -1446,7 +1458,7 @@ private struct WyrmStudioEditor: View {
                 bottom
                     .frame(maxWidth: .infinity)
                     .frame(height: bottomBar)
-                    .background(sheet ? RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card) : nil)
+                    .background(sheet ? RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card) : nil)
                     .padding(.horizontal, sheet ? 8 : 0)
                     .padding(.bottom, sheet ? 6 : 0)
             }
@@ -1988,6 +2000,9 @@ private struct WyrmFreeHandles: View {
 }
 
 struct WyrmStudioChip: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     let selected: Bool
     var dark = false
@@ -1995,22 +2010,25 @@ struct WyrmStudioChip: View {
     var body: some View {
         Button(action: action) {
             Text(label).font(.androidWyrm(12.5, .bold))
-                .foregroundColor(dark ? (selected ? .black : .white) : (selected ? ATheme.onInk : ATheme.ink))
+                .foregroundColor(dark ? (selected ? .black : .white) : (selected ? wyrmScopedColours.onInk : wyrmScopedColours.ink))
                 .padding(.horizontal, 13).frame(height: 32)
-                .background(Capsule().fill(dark ? (selected ? Color.white : Color.black.opacity(0.42)) : (selected ? ATheme.ink : ATheme.well)))
+                .background(Capsule().fill(dark ? (selected ? Color.white : Color.black.opacity(0.42)) : (selected ? wyrmScopedColours.ink : wyrmScopedColours.well)))
         }.buttonStyle(.plain)
     }
 }
 
 /// Stickers, Snapchat-style: a sheet of emoji; one tap places it in the middle.
 private struct WyrmStudioEmojiSheet: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let pick: (String) -> Void
     let close: () -> Void
     var body: some View {
         ZStack(alignment: .bottom) {
             Color.black.opacity(0.5).ignoresSafeArea().onTapGesture(perform: close)
             VStack(alignment: .leading, spacing: 10) {
-                Text("Stickers").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+                Text("Stickers").font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
                 ScrollView(showsIndicators: false) {
                     LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 4), count: 6), spacing: 4) {
                         ForEach(WyrmStudioEmoji.all, id: \.self) { emoji in
@@ -2026,7 +2044,7 @@ private struct WyrmStudioEmojiSheet: View {
                 .frame(maxHeight: 250)
             }
             .padding(16)
-            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(ATheme.card))
+            .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(wyrmScopedColours.card))
         }
     }
 }
