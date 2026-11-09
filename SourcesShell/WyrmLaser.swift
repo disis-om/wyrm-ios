@@ -38,18 +38,22 @@ final class WyrmJoystickLaserStore: ObservableObject {
     }
 
     func setLength(_ value: Double) {
-        length = min(max(value, Self.range.lowerBound), Self.range.upperBound)
+        length = Self.safeLength(value)
         UserDefaults.standard.set(length, forKey: Self.lengthKey)
         publish()
     }
 
-    static func label(_ length: Double) -> String { "\(Int(length * 100))%" }
+    private static func safeLength(_ value: Double) -> Double {
+        value.isFinite ? min(max(value, range.lowerBound), range.upperBound) : defaultLength
+    }
+
+    static func label(_ length: Double) -> String { "\(Int(safeLength(length) * 100))%" }
 
     private func read() {
         let defaults = UserDefaults.standard
         on = defaults.object(forKey: Self.onKey) as? Bool ?? true
         let stored = defaults.object(forKey: Self.lengthKey) as? Double ?? Self.defaultLength
-        length = min(max(stored, Self.range.lowerBound), Self.range.upperBound)
+        length = Self.safeLength(stored)
     }
 }
 
@@ -86,6 +90,9 @@ struct WyrmJoystickLaserSection: View {
 /// will draw (length a share of the short side; thickness in screen pixels,
 /// scaled to this slice).
 struct WyrmJoystickLaserPreview: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let length: Double
     let on: Bool
     let colour: Color
@@ -94,7 +101,7 @@ struct WyrmJoystickLaserPreview: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Live preview: the line goes where your snake goes, at this length")
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
             TimelineView(.animation) { timeline in
                 Canvas { context, size in
                     let screen = UIScreen.main.bounds.size
@@ -145,7 +152,7 @@ struct WyrmJoystickLaserPreview: View {
             .frame(height: 150)
             .background(Color(red: 0.043, green: 0.055, blue: 0.071))
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule))
+            .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule))
             .overlay(alignment: .topLeading) {
                 if !on {
                     Text("OFF").font(.androidWyrm(10, .bold)).tracking(1.2).foregroundColor(.white.opacity(0.6)).padding(10)

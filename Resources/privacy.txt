@@ -129,7 +129,11 @@ account with an analytics dashboard attached.
 Your display name, your username, your in-game name, your avatar, your bio, your
 best score and your kills, and anything you posted in global chat. Friends (players who follow you and whom you follow
 back) see whether you are on Wyrm right now and which arena you play in or last
-played in. Signed-in players also see you in the arena chat's **Online** list
+played in. While a friend plays in the same arena as you, your place in that arena
+(and the minimap icon you chose) goes to them about once a second so they see you
+on their minimap, and theirs comes to you; the server passes it on and does not
+store it. Photos you add as your own arena floor stay on your phone and are never
+uploaded. Signed-in players also see you in the arena chat's **Online** list
 for a few minutes after you use Wyrm: your in-game name, your username and the
 arena you played in. The same activity (whether you are on Wyrm, the arena you
 play in, your in-game name and username) can also appear on the Wyrm website

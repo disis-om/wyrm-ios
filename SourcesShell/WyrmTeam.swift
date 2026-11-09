@@ -17,6 +17,8 @@ struct WyrmTeamMember: Identifiable, Equatable {
     /// From the player's own NTL status line, when their client sends one.
     var fps: Int? = nil
     var ping: Int? = nil
+    /// The NTL minimap icon they chose (`di`), 1000 = NTL's dot (OM, 2026-11-07).
+    var icon: Int = 1000
 
     func packed(relativeTo currentArena: String) -> String {
         let safeName = name.replacingOccurrences(of: "\t", with: " ")
@@ -26,7 +28,7 @@ struct WyrmTeamMember: Identifiable, Equatable {
         let safeOwner = owner.replacingOccurrences(of: "\t", with: " ").replacingOccurrences(of: "\n", with: " ")
         let server = arena == "_GAME_MENU_" ? "" : arena.replacingOccurrences(of: "\t", with: " ")
         return [safeName, "\(x)", "\(y)", "\(score)", "\(rank)", bot ? "1" : "0",
-                present ? "1" : "0", "\(snakeID)", "\(tag)", safeOwner, server].joined(separator: "\t")
+                present ? "1" : "0", "\(snakeID)", "\(tag)", safeOwner, server, "\(icon)"].joined(separator: "\t")
     }
 }
 
@@ -113,7 +115,7 @@ private enum WyrmTeamKeychain {
     }
 }
 
-private struct WyrmTeamPresence {
+struct WyrmTeamPresence {
     let nickname: String
     let score: Int
     let x: Int
@@ -158,6 +160,14 @@ final class WyrmTeamStore: ObservableObject {
     private var credentials: WyrmTeamCredentials?
     private var loop: Task<Void, Never>?
     private var queuedMessage = ""
+    @Published private(set) var sending = false
+    @Published private(set) var failedDraft = ""
+    @Published private(set) var deliveryError = ""
+    private let clientIdentity = String(UUID().uuidString.replacingOccurrences(of: "-", with: "").prefix(8))
+    private var pollInFlight = false
+    private var pollGeneration = 0
+    private var messageAttempted = false
+    private var pendingPolls = 0
     /// Every message ever received, for the folded arena window's unread count.
     private var chatTotal = 0
 
@@ -171,7 +181,7 @@ final class WyrmTeamStore: ObservableObject {
         }
         packed.withCString { WyrmIOSSetTeamChat($0) }
     }
-    private var seenMessages = Set<String>()
+    private var lastMessages: [String: String] = [:]
     private let endpoint = URL(string: "https://ntl-slither.com/slither/ntlplay-mt.php")!
     private let session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
@@ -257,24 +267,35 @@ final class WyrmTeamStore: ObservableObject {
     }
 
     private func stop() {
+        pollGeneration += 1
+        queuedMessage = ""; sending = false; failedDraft = ""; deliveryError = ""
+        messageAttempted = false; pendingPolls = 0
         loop?.cancel()
         loop = nil
         credentials = nil
         teamID = ""
         members = []
         chat = []
-        seenMessages = []
+        lastMessages = [:]
         state = .disconnected
         "".withCString { WyrmIOSSetTeamMembers($0) }
         publishChat()
     }
 
-    func send(_ text: String) {
-        guard !Self.ntlServicesDisabled else { return }
-        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !value.isEmpty, value.count <= 280 else { return }
+    @discardableResult
+    func send(_ text: String) -> Bool {
+        guard !sending else { return false }
+        guard !Self.ntlServicesDisabled, credentials != nil,
+              WyrmTeamPresence.current() != nil else {
+            state = .failed("Connect a team before sending.")
+            return false
+        }
+        let value = text.components(separatedBy: .newlines).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !value.isEmpty, value.count <= 280 else { return false }
         queuedMessage = value
+        messageAttempted = false; pendingPolls = 0; sending = true; failedDraft = ""; deliveryError = ""
         Task { await poll() }
+        return true
     }
 
     private func beginLoop() {
@@ -288,9 +309,14 @@ final class WyrmTeamStore: ObservableObject {
     }
 
     private func poll() async {
-        guard !Self.ntlServicesDisabled else { return }
+        guard !Self.ntlServicesDisabled, !pollInFlight, !Task.isCancelled else { return }
         guard let credentials, let presence = WyrmTeamPresence.current() else { return }
-        let outgoing = queuedMessage
+        pollInFlight = true
+        defer { pollInFlight = false }
+        let generation = pollGeneration
+        let pending = queuedMessage
+        let outgoing = messageAttempted ? "" : pending
+        if !outgoing.isEmpty { messageAttempted = true }
         var components = URLComponents(url: endpoint, resolvingAgainstBaseURL: false)!
         components.queryItems = [
             URLQueryItem(name: "auth", value: credentials.auth),
@@ -298,7 +324,7 @@ final class WyrmTeamStore: ObservableObject {
             // Eight characters, then the name: the service keeps only what
             // follows the first eight (NTL sends a random id there). Sent bare,
             // a name lost its first eight letters. Same prefix as Android.
-            URLQueryItem(name: "nick", value: "WYRMPLYR" + presence.nickname),
+            URLQueryItem(name: "nick", value: clientIdentity + presence.nickname),
             URLQueryItem(name: "score", value: "\(presence.score)"),
             URLQueryItem(name: "valx", value: "\(presence.x)"),
             URLQueryItem(name: "valy", value: "\(presence.y)"),
@@ -307,7 +333,7 @@ final class WyrmTeamStore: ObservableObject {
             URLQueryItem(name: "food", value: "false"),
             URLQueryItem(name: "srv", value: presence.arena),
             URLQueryItem(name: "sid", value: "\(presence.snakeID)"),
-            URLQueryItem(name: "msg", value: outgoing),
+            URLQueryItem(name: "msg", value: Self.wireMessage(outgoing)),
             URLQueryItem(name: "rank", value: "\(presence.rank)"),
             URLQueryItem(name: "an", value: "false"),
             URLQueryItem(name: "dt", value: "Wyrm iOS"),
@@ -320,14 +346,22 @@ final class WyrmTeamStore: ObservableObject {
             // answers only a window around NTL's current release (tested live:
             // 9.67-9.70 get the roster; 6.4, 6.4.5, 0.18.31, 9.61, 9.99 do not).
             // Same as Android TeamService.VERSION. Raise it when NTL moves on
-            // (2026-10-23: NTL is 9.76 and 9.68 was refused).
-            URLQueryItem(name: "ver", value: "9.76"),
-            URLQueryItem(name: "di", value: "0"),
+            // Public NTL 9.78 package verified 2026-11-04; no game packet change.
+            URLQueryItem(name: "ver", value: "9.78"),
+            // Your minimap icon in NTL's numbering (OM, 2026-11-07); 1000 = its dot.
+            URLQueryItem(name: "di", value: "\(WyrmMinimapIcons.shared.ntl)"),
             URLQueryItem(name: "tar", value: ""),
         ]
+        // PHP form decoding treats a literal '+' as a space.
+        components.percentEncodedQuery = components.percentEncodedQuery?.replacingOccurrences(of: "+", with: "%2B")
         guard let url = components.url else { return }
         do {
-            let (data, response) = try await session.data(from: url)
+            var request = URLRequest(url: url)
+            request.cachePolicy = .reloadIgnoringLocalCacheData
+            request.setValue("application/json", forHTTPHeaderField: "Accept")
+            request.setValue("http://slither.io/", forHTTPHeaderField: "Referer")
+            let (data, response) = try await session.data(for: request)
+            guard generation == pollGeneration, !Task.isCancelled else { return }
             guard (response as? HTTPURLResponse)?.statusCode == 200 else {
                 throw URLError(.badServerResponse)
             }
@@ -338,13 +372,29 @@ final class WyrmTeamStore: ObservableObject {
             packed.withCString { WyrmIOSSetTeamMembers($0) }
             members = decoded
             ingestChat(rows)
-            if queuedMessage == outgoing { queuedMessage = "" }
+            let acknowledged = !pending.isEmpty && rows.contains { row in
+                Self.string(row["nick"]).count > 8 && String(Self.string(row["nick"]).prefix(8)) == clientIdentity &&
+                Self.messageLines(Self.string(row["msg"])).contains(pending)
+            }
+            if acknowledged && queuedMessage == pending {
+                queuedMessage = ""; sending = false
+            }
             lastUpdated = Date()
             state = .connected
             WyrmDiagnostics.record("NTL Team poll accepted members=\(decoded.count)", category: "TEAM")
         } catch {
+            guard generation == pollGeneration, !Task.isCancelled else { return }
             state = .failed("Could not reach NTL Team")
             WyrmDiagnostics.record("NTL Team poll failed type=\(String(describing: type(of: error)))", category: "TEAM")
+        }
+        if !pending.isEmpty && queuedMessage == pending {
+            pendingPolls += 1
+            if pendingPolls >= 3 {
+                // Do not replay a possibly accepted message after a timeout.
+                failedDraft = pending; queuedMessage = ""; sending = false
+                deliveryError = "Message not confirmed. Draft kept; check chat before retrying."
+                state = .failed(deliveryError)
+            }
         }
     }
 
@@ -360,7 +410,8 @@ final class WyrmTeamStore: ObservableObject {
                               snakeID: sid, tag: integer(row["tg"], fallback: -1),
                               owner: decodeEntities(string(row["owner"])),
                               fps: firstNumber(in: status, pattern: #"FPS:\s*(\d+)"#),
-                              ping: firstNumber(in: status, pattern: #"@\s*(\d+)\s*(?:\(\d+\))?\s*ms"#))
+                              ping: firstNumber(in: status, pattern: #"@\s*(\d+)\s*(?:\(\d+\))?\s*ms"#),
+                              icon: integer(row["di"], fallback: 1000))
     }
 
     private static func firstNumber(in text: String, pattern: String) -> Int? {
@@ -374,6 +425,19 @@ final class WyrmTeamStore: ObservableObject {
     /// `&nbsp` with no semicolon), and & < > " ' as their entities.
     /// Names and messages can arrive escaped twice (`&amp;nbsp;`), so a second
     /// pass runs when the first still leaves an entity, as on Android.
+    private static func wireMessage(_ text: String) -> String {
+        text.replacingOccurrences(of: "&", with: "&amp;")
+            .replacingOccurrences(of: "<", with: "&lt;")
+            .replacingOccurrences(of: ">", with: "&gt;")
+            .replacingOccurrences(of: " ", with: "&nbsp;")
+    }
+
+    private static func messageLines(_ text: String) -> [String] {
+        text.replacingOccurrences(of: "(?i)<br\\s*/?>", with: "\n", options: .regularExpression)
+            .components(separatedBy: .newlines)
+            .map { decodeEntities($0).trimmingCharacters(in: .whitespacesAndNewlines) }
+    }
+
     static func decodeEntities(_ text: String) -> String {
         let once = decodeEntitiesOnce(text)
         return once.range(of: "&[a-zA-Z]{2,8};?|&#[0-9]{2,6};", options: .regularExpression) == nil
@@ -403,13 +467,14 @@ final class WyrmTeamStore: ObservableObject {
             // NTL's own notices come from the all-zero nick.
             let author = nick == "00000000" ? "NTL" : Self.displayName(nick)
             let raw = Self.string(row["msg"])
-            for line in raw.replacingOccurrences(of: "<br>", with: "\n")
-                .split(separator: "\n").map(String.init) {
-                let body = Self.decodeEntities(line).trimmingCharacters(in: .whitespaces)
+            let previous = lastMessages[nick] ?? ""
+            lastMessages[nick] = raw
+            guard raw != previous else { continue }
+            let fresh = raw.hasPrefix(previous) ? String(raw.dropFirst(previous.count)) : raw
+            for body in Self.messageLines(fresh) {
                 guard !body.isEmpty else { continue }
-                let key = "\(author)\u{1f}\(body)"
-                guard seenMessages.insert(key).inserted else { continue }
-                chat.append(WyrmTeamChatLine(id: key, author: author, body: body))
+                // Same words after an empty/reset report are a new message.
+                chat.append(WyrmTeamChatLine(id: UUID().uuidString, author: author, body: body))
                 chatTotal += 1
             }
         }

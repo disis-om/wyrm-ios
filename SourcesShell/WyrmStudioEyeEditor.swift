@@ -23,6 +23,9 @@ private final class EyeTouch {
 }
 
 struct StudioEyeEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let skin: WyrmStudioSkin
     let image: (String) -> CGImage?
     let onDone: () -> Void
@@ -54,14 +57,14 @@ struct StudioEyeEditor: View {
                         } else {
                             Spacer().frame(height: 18)
                             Text(eyes.isEmpty ? "No eyes. Add one, or keep the snake blind." : "Tap an eye to style it.")
-                                .font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                                .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet)
                         }
                         Spacer().frame(height: 60)
                     }
                     .padding(.horizontal, 20)
                 }
             }
-            .background(ATheme.paper.ignoresSafeArea())
+            .background(wyrmScopedColours.paper.ignoresSafeArea())
 
             if let menuEye = eyes[safeIndex: menuFor] {
                 let target = menuFor
@@ -75,8 +78,8 @@ struct StudioEyeEditor: View {
         HStack(spacing: 0) {
             StudioRoundButton(icon: "xmark", size: 38) { onDone() }
             VStack(alignment: .leading, spacing: 1) {
-                Text("EYES · \(eyes.count) / \(WyrmStudio.maxEyes)").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(ATheme.quiet)
-                Text(skin.name).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                Text("EYES · \(eyes.count) / \(WyrmStudio.maxEyes)").font(.androidWyrm(9.5, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.quiet)
+                Text(skin.name).font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
             }
             .padding(.horizontal, 12)
             Spacer(minLength: 0)
@@ -106,7 +109,7 @@ struct StudioEyeEditor: View {
                         let unit = bead / 29
                         let headPoint = CGPoint(x: size.width * 0.58, y: size.height * 0.5)
                         context.fill(Path(CGRect(origin: .zero, size: size)), with: .radialGradient(
-                            Gradient(colors: [ATheme.ink.opacity(0.05), .clear]), center: headPoint,
+                            Gradient(colors: [wyrmScopedColours.ink, .clear]), center: headPoint,
                             startRadius: 0, endRadius: size.width * 0.6))
                         let look = CGPoint(x: 1.2 + 0.8 * cos(time * 0.8), y: 1.6 * sin(time * 0.6))
                         drawStudioSnake(context, skin: skin, count: 16, bead: bead,
@@ -117,7 +120,7 @@ struct StudioEyeEditor: View {
                             let c = CGPoint(x: headPoint.x + CGFloat(e.fwd) * unit, y: headPoint.y + CGFloat(e.side) * unit)
                             let r = CGFloat(max(e.white, e.pupil)) * unit + 6
                             context.stroke(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: 2 * r, height: 2 * r)),
-                                           with: .color(ATheme.link), lineWidth: 3)
+                                           with: .color(wyrmScopedColours.link), lineWidth: 3)
                         }
                     }
                 }
@@ -127,7 +130,7 @@ struct StudioEyeEditor: View {
                     .onEnded { _ in touch.active = false; touch.generation += 1 })
 
                 Text("Drag an eye to move it. Touch and hold an eye to delete, copy or mirror it.")
-                    .font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet).lineSpacing(2)
+                    .font(.androidWyrm(10.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.leading, 14).padding(.top, 12).padding(.trailing, 120)
                     .allowsHitTesting(false)
@@ -142,9 +145,9 @@ struct StudioEyeEditor: View {
             }
         }
         .frame(height: 290)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(ATheme.card))
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(wyrmScopedColours.card))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .padding(.horizontal, 16)
     }
 
@@ -295,11 +298,11 @@ struct StudioEyeEditor: View {
                             .padding(9)
                             .frame(width: 52, height: 52)
                             .background(Circle().fill(Color(studio: eye.whiteColor)))
-                            .overlay(Circle().stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 2.5 : 1))
+                            .overlay(Circle().stroke(chosen ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: chosen ? 2.5 : 1))
                             .contentShape(Circle())
                             .onTapGesture { edit(selected) { var e = $0; e.pupilShape = index; return e } }
                         Text(WyrmStudioArt.pupilShapes[index]).font(.androidWyrm(9.5, .semibold))
-                            .foregroundColor(chosen ? ATheme.ink : ATheme.quiet)
+                            .foregroundColor(chosen ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                     }
                 }
             }
@@ -342,7 +345,7 @@ struct StudioEyeEditor: View {
     }
 
     private func sectionTitle(_ text: String) -> some View {
-        Text(text.uppercased()).font(.androidWyrm(10.5, .bold)).tracking(1.1).foregroundColor(ATheme.quiet)
+        Text(text.uppercased()).font(.androidWyrm(10.5, .bold)).tracking(1.1).foregroundColor(wyrmScopedColours.quiet)
             .padding(.bottom, 8)
     }
 }

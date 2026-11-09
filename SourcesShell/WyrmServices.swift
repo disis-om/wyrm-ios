@@ -32,7 +32,7 @@ struct WyrmServicePlayer: Identifiable, Equatable {
         displayName = json.string("displayName", fallback: "Unnamed")
         avatarKey = json.string("avatarKey", fallback: "mono-ink")
         let rawAvatar = json.string("avatarUrl")
-        avatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.77-245-76-86.sslip.io\(rawAvatar)" : rawAvatar
+        avatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.165-99-223-123.sslip.io\(rawAvatar)" : rawAvatar
         bio = json.string("bio")
         highestScore = json.int64("highestScore")
         kills = json.int64("kills")
@@ -85,6 +85,24 @@ struct WyrmChatItem: Identifiable, Equatable {
     let authorUsername: String
     /// The author's in-game name; blank when they never set one (arena chat, 2026-10-14).
     var authorIngame: String = ""
+    /// When its sender last edited it (2026-10-30); empty if never.
+    var editedAt: String = ""
+    /// A global reply's quote (2026-10-30): the message it answers.
+    var replyID: String = ""
+    var replyBody: String = ""
+    var replyName: String = ""
+    /* Chat, the next level (OM, 2026-10-30; backend chat-plus.mjs). */
+    /// The author's face (global messages); blank for direct ones.
+    var authorAvatarURL: String = ""
+    var reactions: [WyrmChatReaction] = []
+    /// When a DEV account pinned it; blank if not pinned.
+    var pinned: String = ""
+    /// "DEV" beside the name for the accounts that run Wyrm.
+    var badge: String = ""
+    /// The players this global message mentions (`@username`).
+    var mentions: [String] = []
+    /// A direct message: when the other player read it; blank if not yet.
+    var readAt: String = ""
 
     /// For lines that do not come from the Wyrm API, such as NTL Team chat.
     init(id: String, body: String, createdAt: String, authorID: String, authorName: String, authorUsername: String) {
@@ -92,7 +110,8 @@ struct WyrmChatItem: Identifiable, Equatable {
         self.authorID = authorID; self.authorName = authorName; self.authorUsername = authorUsername
     }
 
-    init(_ json: [String: Any], direct: Bool = false) {
+    /// [meID] works out "mine" on reactions from the live socket (it sends `playerIds`).
+    init(_ json: [String: Any], direct: Bool = false, meID: String = "") {
         id = json.string("id")
         body = json.string("body")
         createdAt = json.string("createdAt")
@@ -100,7 +119,61 @@ struct WyrmChatItem: Identifiable, Equatable {
         authorName = json.string("displayName", fallback: "Player")
         authorUsername = json.string("username")
         authorIngame = json.string("ingameName")
+        editedAt = json.string("editedAt")
+        if let reply = json["replyTo"] as? [String: Any] {
+            replyID = reply.string("id"); replyBody = reply.string("body"); replyName = reply.string("name", fallback: "someone")
+        }
+        let rawAvatar = json.string("avatarUrl")
+        authorAvatarURL = rawAvatar.hasPrefix("/") ? "https://wyrm-api.165-99-223-123.sslip.io\(rawAvatar)" : rawAvatar
+        reactions = WyrmChatReaction.list(json["reactions"], meID: meID)
+        pinned = json.string("pinned")
+        badge = json.string("badge")
+        readAt = json.string("readAt")
+        mentions = (json["mentions"] as? [Any])?.compactMap { $0 as? String } ?? []
     }
+}
+
+/// One emoji under a message: how many, and whether you are one of them.
+struct WyrmChatReaction: Equatable, Hashable {
+    let emoji: String
+    let count: Int
+    let mine: Bool
+
+    /// The API sends `mine`; the live socket sends `playerIds` for every app to read itself.
+    static func list(_ raw: Any?, meID: String) -> [WyrmChatReaction] {
+        guard let rows = raw as? [[String: Any]] else { return [] }
+        return rows.compactMap { row in
+            let emoji = row["emoji"] as? String ?? ""
+            let count = (row["count"] as? NSNumber)?.intValue ?? 0
+            let mine: Bool
+            if let ids = row["playerIds"] as? [Any] { mine = !meID.isEmpty && ids.contains { ($0 as? String) == meID } }
+            else { mine = (row["mine"] as? Bool) ?? ((row["mine"] as? NSNumber)?.boolValue ?? false) }
+            return emoji.isEmpty || count <= 0 ? nil : WyrmChatReaction(emoji: emoji, count: count, mine: mine)
+        }
+    }
+}
+
+/// One player under a reaction (who reacted, OM 2026-10-31).
+struct WyrmReactionPerson: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let username: String
+    let avatarURL: String
+}
+
+/// A GIF or sticker from KLIPY, through the backend (the key never ships in the app).
+struct WyrmGifItem: Identifiable, Equatable {
+    let id: String
+    let preview: String
+    let url: String
+    let width: Int
+    let height: Int
+}
+
+/// Someone typing, until the time the line goes away (6 s after their last signal).
+struct WyrmTyping: Equatable {
+    let name: String
+    let until: Date
 }
 
 /// A player seen on Wyrm lately, for the arena chat's ONLINE tab (OM, 2026-10-14).
@@ -249,18 +322,21 @@ private extension Dictionary where Key == String, Value == Any {
 /// 160 px PNG) with rounded corners and a hairline edge, then its code. Draws
 /// nothing while the country is unknown; a quiet plate until the picture lands.
 struct WyrmArenaCountryBadge: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let country: String
 
     var body: some View {
         if country.count == 2, let url = URL(string: "https://flagcdn.com/w160/\(country.lowercased()).png") {
             HStack(spacing: 5) {
                 AsyncImage(url: url) { phase in
-                    if let image = phase.image { image.resizable().scaledToFill() } else { ATheme.well }
+                    if let image = phase.image { image.resizable().scaledToFill() } else { wyrmScopedColours.well }
                 }
                 .frame(width: 20, height: 14)
                 .clipShape(RoundedRectangle(cornerRadius: 3, style: .continuous))
-                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(ATheme.ink.opacity(0.14), lineWidth: 0.5))
-                Text(country).font(.androidWyrm(10.5, .bold)).tracking(0.6).foregroundColor(ATheme.quiet)
+                .overlay(RoundedRectangle(cornerRadius: 3, style: .continuous).stroke(wyrmScopedColours.ink, lineWidth: 0.5))
+                Text(country).font(.androidWyrm(10.5, .bold)).tracking(0.6).foregroundColor(wyrmScopedColours.quiet)
             }
         }
     }
@@ -294,7 +370,7 @@ enum WyrmArenaFeedAPI {
 
 private actor WyrmServiceClient {
     static let shared = WyrmServiceClient()
-    private let base = "https://wyrm-api.77-245-76-86.sslip.io"
+    private let base = "https://wyrm-api.165-99-223-123.sslip.io"
     private let session: URLSession
 
     init() {
@@ -331,7 +407,19 @@ private actor WyrmServiceClient {
     }
 
     func leaderboard(sort: String, token: String) async throws -> [WyrmServicePlayer] {
-        try await request("/v1/leaderboard?sort=\(sort)", token: token).array("players").map(WyrmServicePlayer.init)
+        // Every open account (OM, 2026-10-31); a server before then still sends its top 200.
+        try await request("/v1/leaderboard?sort=\(sort)&limit=20000", token: token).array("players").map(WyrmServicePlayer.init)
+    }
+
+    /// `/v1/players/online?now=1` (2026-11-07): `count` and the sharing players.
+    func onlineNow(token: String) async throws -> [String: Any] {
+        try await request("/v1/players/online?now=1", token: token)
+    }
+
+    /// `/v1/link-preview` (2026-11-07): the server's reading of a page's Open Graph tags.
+    func linkPreview(_ url: String, token: String) async throws -> [String: Any] {
+        let encoded = url.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        return try await request("/v1/link-preview?url=\(encoded)", token: token)
     }
 
     func search(_ query: String, token: String) async throws -> [WyrmServicePlayer] {
@@ -351,8 +439,69 @@ private actor WyrmServiceClient {
         _ = try await request(direct ? "/v1/direct/messages/\(id)" : "/v1/chat/messages/\(id)", method: "DELETE", token: token)
     }
 
-    func globalMessages(token: String) async throws -> [WyrmChatItem] {
-        try await request("/v1/chat/messages", token: token).array("messages").map { WyrmChatItem($0) }
+    /// `before`: the older page, ending just before that message's time (scrolling up, 2026-10-30).
+    /// 40 a page: the room opens on the newest 40 and loads more as you scroll up.
+    func globalMessages(before: String? = nil, token: String) async throws -> [WyrmChatItem] {
+        try await request("/v1/chat/messages?limit=40" + Self.pageQuery(before).replacingOccurrences(of: "?", with: "&"), token: token)
+            .array("messages").map { WyrmChatItem($0) }
+    }
+
+    /// Adds or takes back one emoji; the message's reactions after it.
+    func react(messageID: String, emoji: String, direct: Bool, token: String) async throws -> [WyrmChatReaction] {
+        let path = direct ? "/v1/direct/messages/\(messageID)/reactions" : "/v1/chat/messages/\(messageID)/reactions"
+        return WyrmChatReaction.list(try await request(path, method: "POST", body: ["emoji": emoji], token: token)["reactions"], meID: "")
+    }
+
+    /// Who reacted with each emoji, in the order they did (Discord's hold on a reaction).
+    func whoReacted(messageID: String, direct: Bool, token: String) async throws -> [(String, [WyrmReactionPerson])] {
+        let path = direct ? "/v1/direct/messages/\(messageID)/reactions" : "/v1/chat/messages/\(messageID)/reactions"
+        return try await request(path, token: token).array("reactions").compactMap { group in
+            let emoji = group.string("emoji")
+            let people: [WyrmReactionPerson] = ((group["players"] as? [[String: Any]]) ?? []).map { p in
+                let raw = p.string("avatarUrl")
+                let name = p.string("displayName")
+                return WyrmReactionPerson(id: p.string("id"), name: name.isEmpty ? p.string("username", fallback: "Player") : name,
+                                          username: p.string("username"),
+                                          avatarURL: raw.hasPrefix("/") ? "https://wyrm-api.165-99-223-123.sslip.io" + raw : raw)
+            }
+            return emoji.isEmpty || people.isEmpty ? nil : (emoji, people)
+        }
+    }
+
+    /// Pinned global messages, and whether this account may pin.
+    func chatPins(token: String) async throws -> ([WyrmChatItem], Bool) {
+        let json = try await request("/v1/chat/pins", token: token)
+        return (json.array("messages").map { WyrmChatItem($0) }, json.bool("canPin"))
+    }
+
+    func setPinned(messageID: String, pinned: Bool, token: String) async throws {
+        _ = try await request("/v1/chat/messages/\(messageID)/pin", method: pinned ? "POST" : "DELETE", token: token)
+    }
+
+    /// Global chat, or one direct conversation when [playerID] is given.
+    func searchChat(_ query: String, playerID: String?, token: String) async throws -> [WyrmChatItem] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        if let playerID {
+            return try await request("/v1/direct/\(playerID)/search?q=\(q)", token: token).array("messages").map { WyrmChatItem($0, direct: true) }
+        }
+        return try await request("/v1/chat/search?q=\(q)", token: token).array("messages").map { WyrmChatItem($0) }
+    }
+
+    /// GIFs or stickers: trending, or a search. Empty on any failure (no key, KLIPY down).
+    func gifs(stickers: Bool, query: String, token: String) async -> [WyrmGifItem] {
+        let q = query.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        guard let json = try? await request("/v1/gifs?kind=\(stickers ? "stickers" : "gifs")&q=\(q)", token: token) else { return [] }
+        return json.array("items").compactMap { row in
+            let item = WyrmGifItem(id: row.string("id"), preview: row.string("preview"), url: row.string("url"),
+                                   width: row.int("width", fallback: 1), height: row.int("height", fallback: 1))
+            return item.url.hasPrefix("https://") && item.preview.hasPrefix("https://") ? item : nil
+        }
+    }
+
+    static func pageQuery(_ before: String?) -> String {
+        guard let before, !before.isEmpty,
+              let value = before.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { return "" }
+        return "?before=" + value
     }
 
     /// Players on Wyrm in the last few minutes who share their activity.
@@ -363,8 +512,15 @@ private actor WyrmServiceClient {
         }
     }
 
-    func sendGlobal(body: String, token: String) async throws {
-        _ = try await request("/v1/chat/messages", method: "POST", body: ["body": body, "channel": "global"], token: token)
+    func sendGlobal(body: String, replyToID: String? = nil, token: String) async throws {
+        var payload: [String: Any] = ["body": body, "channel": "global"]
+        if let replyToID { payload["replyToId"] = replyToID }
+        _ = try await request("/v1/chat/messages", method: "POST", body: payload, token: token)
+    }
+
+    /// Edits the player's own global or direct message (2026-10-30).
+    func editChatMessage(_ id: String, body: String, direct: Bool, token: String) async throws {
+        _ = try await request(direct ? "/v1/direct/messages/\(id)" : "/v1/chat/messages/\(id)", method: "PATCH", body: ["body": body], token: token)
     }
 
     func report(messageID: String, reason: String, token: String) async throws {
@@ -375,8 +531,8 @@ private actor WyrmServiceClient {
         try await request("/v1/direct", token: token).array("conversations").compactMap(WyrmConversation.init)
     }
 
-    func directMessages(playerID: String, token: String) async throws -> [WyrmChatItem] {
-        try await request("/v1/direct/\(playerID)/messages", token: token).array("messages").map { WyrmChatItem($0, direct: true) }
+    func directMessages(playerID: String, before: String? = nil, token: String) async throws -> [WyrmChatItem] {
+        try await request("/v1/direct/\(playerID)/messages" + Self.pageQuery(before), token: token).array("messages").map { WyrmChatItem($0, direct: true) }
     }
 
     func sendDirect(playerID: String, body: String, token: String) async throws {
@@ -772,12 +928,222 @@ final class WyrmServiceStore: ObservableObject {
     private var token = ""
     private var sessionRevision = UUID()
     private var deletedChatIDs: Set<String> = []
+    /* Older pages loaded by scrolling up (OM, 2026-10-30), kept apart so each
+       poll's newest page never drops them. */
+    @Published private(set) var globalOlder: [WyrmChatItem] = []
+    @Published private(set) var threadOlder: [WyrmChatItem] = []
+    @Published private(set) var globalHasOlder = true
+    @Published private(set) var threadOlderMore = true
+    @Published private(set) var olderLoading = false
+    private var olderThreadID = ""
+    /* Chat, the next level (OM, 2026-10-30): pins, typing, reactions from the live socket. */
+    @Published private(set) var chatPins: [WyrmChatItem] = []
+    @Published private(set) var canPinChat = false
+    /// Who is typing in global chat, and in direct threads (by the sender's id).
+    @Published private(set) var typingGlobal: [String: WyrmTyping] = [:]
+    @Published private(set) var typingDirect: [String: WyrmTyping] = [:]
+
+    /// The message in place of the one with its id, or added (oldest first).
+    private func merged(_ item: WyrmChatItem, into list: [WyrmChatItem]) -> [WyrmChatItem] {
+        if let index = list.firstIndex(where: { $0.id == item.id }) {
+            var copy = list
+            copy[index] = item
+            return copy
+        }
+        return (list + [item]).sorted { $0.createdAt < $1.createdAt }
+    }
+
+    /// A newly read page, keeping reactions the socket already told for messages it holds.
+    private func keepLive(_ page: [WyrmChatItem]) -> [WyrmChatItem] {
+        page.filter { !deletedChatIDs.contains($0.id) }
+    }
+
+    /// What the live socket tells about chat (2026-10-30): new messages, reactions, pins, typing.
+    func applyChatEvent(_ event: [String: Any]) {
+        let me = preparedPlayerID ?? ""
+        switch event.string("type") {
+        case "chat.message":
+            guard let row = event["message"] as? [String: Any] else { return }
+            let item = WyrmChatItem(row, meID: me)
+            guard !item.id.isEmpty, !deletedChatIDs.contains(item.id) else { return }
+            globalChat = merged(item, into: globalChat)
+            typingGlobal[item.authorID] = nil
+        case "direct.message":
+            guard let row = event["directMessage"] as? [String: Any] else { return }
+            let item = WyrmChatItem(row, direct: true, meID: me)
+            guard !item.id.isEmpty, !deletedChatIDs.contains(item.id) else { return }
+            let peer = row.string("senderId") == me ? row.string("recipientId") : row.string("senderId")
+            if !peer.isEmpty, currentThread == peer { messages = merged(item, into: messages) }
+            typingDirect[item.authorID] = nil
+        case "chat.reaction":
+            let id = event.string("messageId")
+            let reactions = WyrmChatReaction.list(event["reactions"], meID: me)
+            func swap(_ list: inout [WyrmChatItem]) {
+                guard let index = list.firstIndex(where: { $0.id == id }) else { return }
+                list[index].reactions = reactions
+            }
+            swap(&globalChat); swap(&globalOlder); swap(&messages); swap(&threadOlder); swap(&chatPins)
+        case "chat.pins":
+            Task { await refreshPins() }
+        case "typing":
+            let who = event.string("playerId")
+            guard !who.isEmpty, who != me else { return }
+            let line = WyrmTyping(name: event.string("name", fallback: "Someone"), until: Date().addingTimeInterval(6))
+            if event.string("room") == "direct" { typingDirect[who] = line } else { typingGlobal[who] = line }
+        default:
+            break
+        }
+    }
+
+    /// The thread on screen, so a direct message from the socket lands only in its own thread.
+    var currentThread = ""
+
+    /// Names typing now, oldest signal first; stale ones fall away.
+    func typingNames(direct peer: String?) -> [String] {
+        let now = Date()
+        if let peer { return typingDirect[peer].map { $0.until > now ? [$0.name] : [] } ?? [] }
+        return typingGlobal.values.filter { $0.until > now }.sorted { $0.until < $1.until }.map(\.name)
+    }
+
+    /// Drops typing lines whose 6 s have run out (the open room calls it every second).
+    func pruneTyping() {
+        let now = Date()
+        if typingGlobal.values.contains(where: { $0.until <= now }) { typingGlobal = typingGlobal.filter { $0.value.until > now } }
+        if typingDirect.values.contains(where: { $0.until <= now }) { typingDirect = typingDirect.filter { $0.value.until > now } }
+    }
+
+    func refreshPins() async {
+        guard !token.isEmpty, let answer = try? await WyrmServiceClient.shared.chatPins(token: token) else { return }
+        chatPins = answer.0
+        canPinChat = answer.1
+    }
+
+    func setPinned(_ message: WyrmChatItem, pinned: Bool) async {
+        await perform {
+            try await WyrmServiceClient.shared.setPinned(messageID: message.id, pinned: pinned, token: self.token)
+            await self.refreshPins()
+            self.globalChat = self.keepLive(try await WyrmServiceClient.shared.globalMessages(token: self.token))
+        }
+    }
+
+    /// A tap on an emoji: shown at once, then the server's count replaces it.
+    func react(_ message: WyrmChatItem, emoji: String, direct: Bool) async {
+        func guess(_ list: inout [WyrmChatItem]) {
+            guard let index = list.firstIndex(where: { $0.id == message.id }) else { return }
+            var rows = list[index].reactions
+            if let at = rows.firstIndex(where: { $0.emoji == emoji }) {
+                let row = rows[at]
+                let count = row.count + (row.mine ? -1 : 1)
+                if count <= 0 { rows.remove(at: at) } else { rows[at] = WyrmChatReaction(emoji: emoji, count: count, mine: !row.mine) }
+            } else {
+                rows.append(WyrmChatReaction(emoji: emoji, count: 1, mine: true))
+            }
+            list[index].reactions = rows
+        }
+        func apply(_ rows: [WyrmChatReaction], _ list: inout [WyrmChatItem]) {
+            guard let index = list.firstIndex(where: { $0.id == message.id }) else { return }
+            list[index].reactions = rows
+        }
+        if direct { guess(&messages); guess(&threadOlder) } else { guess(&globalChat); guess(&globalOlder) }
+        guard !token.isEmpty else { return }
+        do {
+            let rows = try await WyrmServiceClient.shared.react(messageID: message.id, emoji: emoji, direct: direct, token: token)
+            if direct { apply(rows, &messages); apply(rows, &threadOlder) } else { apply(rows, &globalChat); apply(rows, &globalOlder) }
+        } catch {
+            errorMessage = error.localizedDescription
+            if direct { apply(message.reactions, &messages); apply(message.reactions, &threadOlder) }
+            else { apply(message.reactions, &globalChat); apply(message.reactions, &globalOlder) }
+        }
+    }
+
+    func whoReacted(_ message: WyrmChatItem, direct: Bool) async -> [(String, [WyrmReactionPerson])] {
+        guard !token.isEmpty else { return [] }
+        return (try? await WyrmServiceClient.shared.whoReacted(messageID: message.id, direct: direct, token: token)) ?? []
+    }
+
+    /// Global chat's "{n} active" (OM, 2026-11-07): who has Wyrm open right now.
+    /// A server without `now` answers its 5-minute list; the count is its length.
+    func onlineNow() async -> (count: Int, people: [WyrmChatPerson])? {
+        guard !token.isEmpty, let json = try? await WyrmServiceClient.shared.onlineNow(token: token) else { return nil }
+        let people = json.array("players").map {
+            WyrmChatPerson(id: $0.string("playerId"),
+                           name: [$0.string("displayName"), $0.string("ingameName"), $0.string("username")].first { !$0.isEmpty } ?? "Player",
+                           username: $0.string("username"), arena: $0.string("arena"))
+        }
+        let count = (json["count"] as? NSNumber)?.intValue ?? people.count
+        return (count, people)
+    }
+
+    /// @ suggestions from every player (OM, 2026-11-07).
+    func mentionSearch(_ query: String) async -> [WyrmMentionable] {
+        guard !token.isEmpty else { return [] }
+        return ((try? await WyrmServiceClient.shared.search(query, token: token)) ?? [])
+            .filter { !$0.username.isEmpty }
+            .map { WyrmMentionable(username: $0.username, name: $0.displayName.isEmpty ? $0.username : $0.displayName, avatarURL: $0.avatarURL) }
+    }
+
+    /// A chat link's embed, read by the server (OM, 2026-11-07).
+    func linkPreview(_ url: String) async -> WyrmLinkPreview? {
+        guard !token.isEmpty, let json = try? await WyrmServiceClient.shared.linkPreview(url, token: token),
+              json["error"] == nil else { return nil }
+        let image = json.string("image")
+        return WyrmLinkPreview(url: url, title: json.string("title"), description: json.string("description"),
+                               image: image.hasPrefix("https://") ? image : "", siteName: json.string("siteName"))
+    }
+
+    func searchChat(_ query: String, playerID: String?) async -> [WyrmChatItem] {
+        guard !token.isEmpty, query.trimmingCharacters(in: .whitespaces).count >= 2 else { return [] }
+        return ((try? await WyrmServiceClient.shared.searchChat(query, playerID: playerID, token: token)) ?? [])
+            .filter { !deletedChatIDs.contains($0.id) }
+    }
+
+    func gifs(stickers: Bool, query: String) async -> [WyrmGifItem] {
+        guard !token.isEmpty else { return [] }
+        return await WyrmServiceClient.shared.gifs(stickers: stickers, query: query, token: token)
+    }
+
+    /// The newest page with the older ones before it, each message once, oldest first.
+    private func joinPages(_ older: [WyrmChatItem], _ latest: [WyrmChatItem]) -> [WyrmChatItem] {
+        if older.isEmpty { return latest }
+        var seen = Set<String>()
+        return (latest + older).filter { !deletedChatIDs.contains($0.id) && seen.insert($0.id).inserted }
+            .sorted { $0.createdAt < $1.createdAt }
+    }
+    var shownGlobalChat: [WyrmChatItem] { joinPages(globalOlder, globalChat) }
+    func shownThread(_ playerID: String) -> [WyrmChatItem] { joinPages(olderThreadID == playerID ? threadOlder : [], messages) }
+    func threadHasOlder(_ playerID: String) -> Bool { olderThreadID != playerID || threadOlderMore }
+
+    /// Scrolled near the top: the page before the first message shown (60 a page).
+    func loadOlder(playerID: String?) async {
+        guard !olderLoading, !token.isEmpty else { return }
+        if let playerID, olderThreadID != playerID { olderThreadID = playerID; threadOlder = []; threadOlderMore = true }
+        let shown = playerID.map { shownThread($0) } ?? shownGlobalChat
+        guard let before = shown.first?.createdAt, !before.isEmpty else { return }
+        olderLoading = true
+        defer { olderLoading = false }
+        do {
+            if let playerID {
+                let page = try await WyrmServiceClient.shared.directMessages(playerID: playerID, before: before, token: token)
+                guard olderThreadID == playerID else { return }
+                threadOlder = page.filter { !deletedChatIDs.contains($0.id) } + threadOlder
+                threadOlderMore = page.count >= 60
+            } else {
+                let page = try await WyrmServiceClient.shared.globalMessages(before: before, token: token)
+                globalOlder = page.filter { !deletedChatIDs.contains($0.id) } + globalOlder
+                globalHasOlder = page.count >= 40
+            }
+        } catch {
+            // Quiet: the next scroll to the top asks again.
+        }
+    }
 
     func dropChatMessage(_ id: String) {
         guard !id.isEmpty else { return }
         deletedChatIDs.insert(id)
         globalChat.removeAll { $0.id == id }
         messages.removeAll { $0.id == id }
+        globalOlder.removeAll { $0.id == id }
+        threadOlder.removeAll { $0.id == id }
     }
 
     func deleteChatMessage(_ message: WyrmChatItem, direct: Bool) async {
@@ -830,6 +1196,16 @@ final class WyrmServiceStore: ObservableObject {
         deletedChatIDs.removeAll()
         globalChat = []
         messages = []
+        globalOlder = []
+        threadOlder = []
+        globalHasOlder = true
+        threadOlderMore = true
+        olderThreadID = ""
+        chatPins = []
+        canPinChat = false
+        typingGlobal = [:]
+        typingDirect = [:]
+        currentThread = ""
         sessionRevision = UUID()
         token = ""
         clearPublishedSession()
@@ -921,14 +1297,29 @@ final class WyrmServiceStore: ObservableObject {
         globalUnread = 0
     }
 
-    func sendGlobal(_ body: String) async -> Bool {
+    func sendGlobal(_ body: String, replyTo: WyrmChatItem? = nil) async -> Bool {
         var sent = false
         await perform {
-            try await WyrmServiceClient.shared.sendGlobal(body: body, token: self.token)
+            try await WyrmServiceClient.shared.sendGlobal(body: body, replyToID: replyTo?.id, token: self.token)
             sent = true
             self.globalChat = (try await WyrmServiceClient.shared.globalMessages(token: self.token)).filter { !self.deletedChatIDs.contains($0.id) }
         }
         return sent
+    }
+
+    /// Saves an edit of the player's own message, then reads that list again.
+    func editChatMessage(_ message: WyrmChatItem, body: String, direct: Bool, playerID: String? = nil) async -> Bool {
+        var saved = false
+        await perform {
+            try await WyrmServiceClient.shared.editChatMessage(message.id, body: body, direct: direct, token: self.token)
+            saved = true
+            if direct, let playerID {
+                self.messages = (try await WyrmServiceClient.shared.directMessages(playerID: playerID, token: self.token)).filter { !self.deletedChatIDs.contains($0.id) }
+            } else if !direct {
+                self.globalChat = (try await WyrmServiceClient.shared.globalMessages(token: self.token)).filter { !self.deletedChatIDs.contains($0.id) }
+            }
+        }
+        return saved
     }
 
     func report(_ message: WyrmChatItem, reason: String) async {

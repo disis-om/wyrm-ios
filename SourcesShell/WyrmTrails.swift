@@ -146,12 +146,28 @@ struct WyrmTrailComment: Decodable, Identifiable, Equatable {
     let createdAt: String
     let mine: Bool
     let author: WyrmTrailAuthor
+    /// Threads (Instagram's way, 2026-10-30): the top comment it sits under (nil for a top comment),
+    /// its reply count, whom a reply answers, and when it was edited.
+    var parentId: String? = nil
+    var replyCount: Int? = nil
+    var replyTo: WyrmTrailReplyTo? = nil
+    var editedAt: String? = nil
+
+    var isReply: Bool { !(parentId ?? "").isEmpty }
+    var replies: Int { replyCount ?? 0 }
+}
+
+struct WyrmTrailReplyTo: Decodable, Equatable {
+    let commentId: String?
+    let playerId: String?
+    let username: String?
 }
 
 private struct WyrmTrailPage: Decodable { let trails: [WyrmTrail]; let nextCursor: String? }
 private struct WyrmTrailEnvelope: Decodable { let trail: WyrmTrail }
 private struct WyrmTrailCommentPage: Decodable { let comments: [WyrmTrailComment]; let nextCursor: String? }
 private struct WyrmTrailCommentPosted: Decodable { let comment: WyrmTrailComment; let commentCount: Int }
+private struct WyrmTrailCommentEdited: Decodable { let comment: WyrmTrailComment }
 private struct WyrmTrailLike: Decodable { let liked: Bool; let likeCount: Int }
 private struct WyrmTrailMedia: Decodable { let id: String }
 private struct WyrmTrailOK: Decodable {}
@@ -178,7 +194,7 @@ enum WyrmTrailPostPhase: Equatable {
 
 final class WyrmTrailsClient {
     static let shared = WyrmTrailsClient()
-    static let base = "https://wyrm-api.77-245-76-86.sslip.io"
+    static let base = "https://wyrm-api.165-99-223-123.sslip.io"
     private let session: URLSession
 
     private init() {
@@ -408,14 +424,26 @@ final class WyrmTrailsClient {
         let _: WyrmTrailOK = try await send("/v1/trails/\(id)/report", method: "POST", json: ["reason": reason], token: token)
     }
 
+    /// The trail's top comments, each with its reply count.
     fileprivate func comments(_ id: String, cursor: String?, token: String) async throws -> WyrmTrailCommentPage {
-        var query = [URLQueryItem(name: "limit", value: "40")]
+        var query = [URLQueryItem(name: "limit", value: "40"), URLQueryItem(name: "threaded", value: "1")]
         if let cursor { query.append(URLQueryItem(name: "cursor", value: cursor)) }
         return try await send("/v1/trails/\(id)/comments", query: query, token: token)
     }
 
-    fileprivate func comment(_ id: String, body: String, token: String) async throws -> WyrmTrailCommentPosted {
-        try await send("/v1/trails/\(id)/comments", method: "POST", json: ["body": body], token: token)
+    /// One thread's replies, oldest first.
+    fileprivate func replies(_ id: String, commentId: String, token: String) async throws -> WyrmTrailCommentPage {
+        try await send("/v1/trails/\(id)/comments/\(commentId)/replies", query: [URLQueryItem(name: "limit", value: "40")], token: token)
+    }
+
+    fileprivate func comment(_ id: String, body: String, replyToId: String? = nil, token: String) async throws -> WyrmTrailCommentPosted {
+        var json: [String: Any] = ["body": body]
+        if let replyToId { json["replyToId"] = replyToId }
+        return try await send("/v1/trails/\(id)/comments", method: "POST", json: json, token: token)
+    }
+
+    fileprivate func editComment(_ id: String, commentId: String, body: String, token: String) async throws -> WyrmTrailCommentEdited {
+        try await send("/v1/trails/\(id)/comments/\(commentId)", method: "PATCH", json: ["body": body], token: token)
     }
 
     fileprivate func deleteComment(_ id: String, commentId: String, token: String) async throws {
@@ -462,6 +490,9 @@ final class WyrmTrailImages {
 
 /// A trail photo: its thumbnail at once, the full image when it lands.
 struct WyrmTrailImage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let full: String
     let thumb: String
     let aspect: CGFloat
@@ -475,7 +506,7 @@ struct WyrmTrailImage: View {
         Color.clear
             .aspectRatio(aspect, contentMode: .fit)
             .frame(maxWidth: .infinity)
-            .background(ATheme.well)
+            .background(wyrmScopedColours.well)
             .overlay(Group {
                 if let shown = image ?? preview {
                     Image(uiImage: shown).resizable().scaledToFit().transition(.opacity)
@@ -576,6 +607,9 @@ final class WyrmTrailsStore: ObservableObject {
     /// The clip being posted, whose own copy goes once it is posted or dropped.
     private var pendingClip: WyrmTrailClip?
     @Published private(set) var comments: [String: [WyrmTrailComment]] = [:]
+    /// Threads (2026-10-30): a top comment's replies, loaded when "View replies" opens, keyed by its id.
+    @Published private(set) var threadReplies: [String: [WyrmTrailComment]] = [:]
+    @Published private(set) var openThreads: Set<String> = []
     @Published var toast = ""
 
     /// Trails opened from somewhere other than the feed (a profile grid, an
@@ -999,11 +1033,46 @@ final class WyrmTrailsStore: ObservableObject {
         comments[id] = page.comments
     }
 
-    func reply(_ id: String, body: String) async -> Bool {
+    func loadReplies(_ id: String, commentId: String) async {
+        if !openThreads.contains(commentId) { openThreads.insert(commentId) }
+        guard let page = try? await WyrmTrailsClient.shared.replies(id, commentId: commentId, token: token()) else { return }
+        threadReplies[commentId] = page.comments
+    }
+
+    func hideReplies(_ commentId: String) { openThreads.remove(commentId) }
+
+    /// A comment, or with `answering` a reply in that comment's thread.
+    func reply(_ id: String, body: String, answering: WyrmTrailComment? = nil) async -> Bool {
         do {
-            let posted = try await WyrmTrailsClient.shared.comment(id, body: body, token: token())
-            comments[id, default: []].append(posted.comment)
+            let posted = try await WyrmTrailsClient.shared.comment(id, body: body, replyToId: answering?.id, token: token())
+            if let root = posted.comment.parentId, !root.isEmpty {
+                threadReplies[root, default: []].append(posted.comment)
+                openThreads.insert(root)
+                if let index = comments[id]?.firstIndex(where: { $0.id == root }) {
+                    comments[id]?[index].replyCount = (comments[id]?[index].replyCount ?? 0) + 1
+                }
+            } else {
+                comments[id, default: []].append(posted.comment)
+            }
             patch(id) { $0.commentCount = posted.commentCount }
+            return true
+        } catch {
+            toast = message(error)
+            return false
+        }
+    }
+
+    /// Edits the player's own comment or reply (2026-10-30).
+    func editReply(_ id: String, comment: WyrmTrailComment, body: String) async -> Bool {
+        do {
+            var saved = try await WyrmTrailsClient.shared.editComment(id, commentId: comment.id, body: body, token: token()).comment
+            if let index = comments[id]?.firstIndex(where: { $0.id == saved.id }) {
+                saved.replyCount = comments[id]?[index].replyCount
+                comments[id]?[index] = saved
+            }
+            if let root = comment.parentId, let index = threadReplies[root]?.firstIndex(where: { $0.id == saved.id }) {
+                threadReplies[root]?[index] = saved
+            }
             return true
         } catch {
             toast = message(error)
@@ -1014,8 +1083,15 @@ final class WyrmTrailsStore: ObservableObject {
     func deleteReply(_ id: String, commentId: String) async {
         do {
             try await WyrmTrailsClient.shared.deleteComment(id, commentId: commentId, token: token())
+            let top = comments[id]?.first { $0.id == commentId }
+            let root = threadReplies.first { $0.value.contains { $0.id == commentId } }?.key
             comments[id]?.removeAll { $0.id == commentId }
-            patch(id) { $0.commentCount = max(0, $0.commentCount - 1) }
+            if let root, let index = comments[id]?.firstIndex(where: { $0.id == root }) {
+                comments[id]?[index].replyCount = max(0, (comments[id]?[index].replyCount ?? 0) - 1)
+                threadReplies[root]?.removeAll { $0.id == commentId }
+            }
+            if top != nil { threadReplies[commentId] = nil }
+            patch(id) { $0.commentCount = max(0, $0.commentCount - 1 - (top?.replies ?? 0)) }
         } catch { toast = message(error) }
     }
 
@@ -1060,6 +1136,9 @@ enum WyrmTrailTime {
 
 /// Wyrm's like: a bead that fills with the theme's live colour and pops.
 struct WyrmTrailBead: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let liked: Bool
     let count: Int
     let action: () -> Void
@@ -1076,9 +1155,9 @@ struct WyrmTrailBead: View {
         } label: {
             HStack(spacing: 7) {
                 ZStack {
-                    Circle().stroke(liked ? ATheme.live : ATheme.quiet, lineWidth: 1.6)
+                    Circle().stroke(liked ? wyrmScopedColours.live : wyrmScopedColours.quiet, lineWidth: 1.6)
                     Circle()
-                        .fill(RadialGradient(colors: [Color.white.opacity(0.85), ATheme.live], center: UnitPoint(x: 0.35, y: 0.3),
+                        .fill(RadialGradient(colors: [Color.white.opacity(0.85), wyrmScopedColours.live], center: UnitPoint(x: 0.35, y: 0.3),
                                              startRadius: 0, endRadius: 9))
                         .scaleEffect(liked ? 1 : 0.01)
                         .opacity(liked ? 1 : 0)
@@ -1087,10 +1166,10 @@ struct WyrmTrailBead: View {
                 .scaleEffect(pop ? 1.35 : 1)
                 Text(count == 0 ? "Like" : "\(count)")
                     .font(.androidWyrm(13, .semibold)).monospacedDigit()
-                    .foregroundColor(liked ? ATheme.ink : ATheme.mute)
+                    .foregroundColor(liked ? wyrmScopedColours.ink : wyrmScopedColours.mute)
             }
             .padding(.horizontal, 12).frame(height: 34)
-            .background(Capsule().fill(liked ? ATheme.live.opacity(0.14) : ATheme.well))
+            .background(Capsule().fill(liked ? wyrmScopedColours.live.opacity(0.14) : wyrmScopedColours.well))
             .animation(.spring(response: 0.3, dampingFraction: 0.55), value: liked)
             .animation(.spring(response: 0.22, dampingFraction: 0.5), value: pop)
         }
@@ -1100,6 +1179,9 @@ struct WyrmTrailBead: View {
 }
 
 private struct WyrmTrailRepliesPill: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let count: Int
     let action: () -> Void
     var body: some View {
@@ -1108,9 +1190,9 @@ private struct WyrmTrailRepliesPill: View {
                 Image(systemName: "text.bubble").font(.system(size: 13, weight: .semibold))
                 Text(count == 0 ? "Reply" : "\(count)").font(.androidWyrm(13, .semibold)).monospacedDigit()
             }
-            .foregroundColor(ATheme.mute)
+            .foregroundColor(wyrmScopedColours.mute)
             .padding(.horizontal, 12).frame(height: 34)
-            .background(Capsule().fill(ATheme.well))
+            .background(Capsule().fill(wyrmScopedColours.well))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Replies, \(count)")
@@ -1119,6 +1201,9 @@ private struct WyrmTrailRepliesPill: View {
 
 /// One trail in the feed: who and when, the photo, then the caption and actions.
 struct WyrmTrailCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let trail: WyrmTrail
     var expanded = false
     let onOpen: () -> Void
@@ -1139,9 +1224,9 @@ struct WyrmTrailCard: View {
                     HStack(spacing: 10) {
                         WyrmAvatar(initials: trail.author.initials, size: 34, url: trail.author.avatarURL)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(trail.author.name).font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.ink).lineLimit(1)
+                            Text(trail.author.name).font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                             Text([trail.author.handle, WyrmTrailTime.short(trail.createdAt)].filter { !$0.isEmpty }.joined(separator: " · "))
-                                .font(.androidWyrm(11)).foregroundColor(ATheme.quiet).lineLimit(1)
+                                .font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
                         }
                     }
                 }.buttonStyle(.plain)
@@ -1153,7 +1238,7 @@ struct WyrmTrailCard: View {
                         Button { reporting = true } label: { Label("Report", systemImage: "flag") }
                     }
                 } label: {
-                    Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold)).foregroundColor(ATheme.quiet)
+                    Image(systemName: "ellipsis").font(.system(size: 15, weight: .semibold)).foregroundColor(wyrmScopedColours.quiet)
                         .frame(width: 34, height: 34).contentShape(Rectangle())
                 }
             }
@@ -1172,7 +1257,7 @@ struct WyrmTrailCard: View {
                     WyrmTrailTextBody(text: trail.caption)
                 }
                 Circle()
-                    .fill(RadialGradient(colors: [Color.white.opacity(0.9), ATheme.live], center: UnitPoint(x: 0.35, y: 0.3),
+                    .fill(RadialGradient(colors: [Color.white.opacity(0.9), wyrmScopedColours.live], center: UnitPoint(x: 0.35, y: 0.3),
                                          startRadius: 0, endRadius: 46))
                     .frame(width: 84, height: 84)
                     .shadow(color: .black.opacity(0.25), radius: 12, y: 4)
@@ -1192,7 +1277,7 @@ struct WyrmTrailCard: View {
 
             if !trail.caption.isEmpty && trail.photo != nil {
                 Text(trail.caption)
-                    .font(.androidWyrm(14.5)).foregroundColor(ATheme.ink).lineSpacing(3)
+                    .font(.androidWyrm(14.5)).foregroundColor(wyrmScopedColours.ink).lineSpacing(3)
                     .lineLimit(expanded ? nil : 4)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 16).padding(.top, 12)
@@ -1209,9 +1294,9 @@ struct WyrmTrailCard: View {
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 14)
         }
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .background(GeometryReader { proxy in Color.clear.onAppear { cardSize = proxy.size }.onChange(of: proxy.size) { cardSize = $0 } })
         .opacity(dying ? 0 : 1)
         .scaleEffect(dying ? 0.92 : 1)
@@ -1247,6 +1332,9 @@ extension WyrmTrailCard {
 /// scatters into food when it dies in the arena, each piece coloured from the
 /// photo where it lay. The food drifts out, glows and fades.
 struct WyrmTrailFoodBurst: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let colours: [Color]
     let size: CGSize
     private struct Piece { let start: CGPoint; let velocity: CGVector; let radius: CGFloat; let colour: Color; let delay: Double }
@@ -1290,7 +1378,7 @@ struct WyrmTrailFoodBurst: View {
                     let dx = x - size.width / 2, dy = y - size.height / 2
                     let spread = CGFloat.random(in: 40...120)
                     let length = max(hypot(dx, dy), 1)
-                    let colour = colours.isEmpty ? ATheme.live : colours[(row * columns + column) % colours.count]
+                    let colour = colours.isEmpty ? wyrmScopedColours.live : colours[(row * columns + column) % colours.count]
                     made.append(Piece(start: CGPoint(x: x, y: y),
                                       velocity: CGVector(dx: dx / length * spread + .random(in: -20...20),
                                                          dy: dy / length * spread + .random(in: -30...20)),
@@ -1325,6 +1413,9 @@ struct WyrmTrailFoodBurst: View {
 
 /// Upload progress as a snake of beads that fills with the live colour.
 struct WyrmTrailBeadProgress: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let progress: Double?
     var body: some View {
         TimelineView(.animation) { timeline in
@@ -1337,7 +1428,7 @@ struct WyrmTrailBeadProgress: View {
                         let lit = progress.map { Double(index) < $0 * Double(count) } ?? (Int(t * 12) % count == index)
                         let wave = sin(t * 7 - Double(index) * 0.55) * 3
                         Circle()
-                            .fill(lit ? ATheme.live : ATheme.well)
+                            .fill(lit ? wyrmScopedColours.live : wyrmScopedColours.well)
                             .frame(width: gap * 0.78, height: gap * 0.78)
                             .overlay(Circle().fill(Color.white.opacity(lit ? 0.35 : 0)).scaleEffect(0.4).offset(x: -gap * 0.12, y: -gap * 0.12))
                             .offset(x: CGFloat(index) * gap, y: CGFloat(wave))
@@ -1353,41 +1444,47 @@ struct WyrmTrailBeadProgress: View {
 /// A text trail: the words themselves, set large, with the live colour's
 /// trail mark beside them.
 struct WyrmTrailTextBody: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
-            Capsule().fill(ATheme.live).frame(width: 4)
+            Capsule().fill(wyrmScopedColours.live).frame(width: 4)
             Text(text)
                 .font(.wyrmDisplay(text.count < 90 ? 26 : 20))
-                .foregroundColor(ATheme.ink).lineSpacing(4)
+                .foregroundColor(wyrmScopedColours.ink).lineSpacing(4)
                 .fixedSize(horizontal: false, vertical: true)
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 18).padding(.vertical, 16)
-        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.well))
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(wyrmScopedColours.well))
         .padding(.horizontal, 8)
     }
 }
 
 /// Grey blocks the shape of a trail while the first page loads.
 private struct WyrmTrailPlaceholder: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @State private var dim = false
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                RoundedRectangle(cornerRadius: 10).fill(ATheme.well).frame(width: 34, height: 34)
+                RoundedRectangle(cornerRadius: 10).fill(wyrmScopedColours.well).frame(width: 34, height: 34)
                 VStack(alignment: .leading, spacing: 6) {
-                    Capsule().fill(ATheme.well).frame(width: 120, height: 10)
-                    Capsule().fill(ATheme.well).frame(width: 70, height: 8)
+                    Capsule().fill(wyrmScopedColours.well).frame(width: 120, height: 10)
+                    Capsule().fill(wyrmScopedColours.well).frame(width: 70, height: 8)
                 }
             }
-            RoundedRectangle(cornerRadius: 16).fill(ATheme.well).aspectRatio(1, contentMode: .fit)
-            Capsule().fill(ATheme.well).frame(width: 200, height: 10)
+            RoundedRectangle(cornerRadius: 16).fill(wyrmScopedColours.well).aspectRatio(1, contentMode: .fit)
+            Capsule().fill(wyrmScopedColours.well).frame(width: 200, height: 10)
         }
         .padding(14)
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .padding(.horizontal, 14)
         .opacity(dim ? 0.55 : 1)
         .onAppear { withAnimation(.easeInOut(duration: 0.9).repeatForever()) { dim = true } }
@@ -1397,6 +1494,9 @@ private struct WyrmTrailPlaceholder: View {
 /// The trail being posted: its photo dimmed under the upload's progress,
 /// or, if it failed, a way to try again.
 struct WyrmTrailPendingCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let image: UIImage?
     let caption: String
     let phase: WyrmTrailPostPhase
@@ -1421,15 +1521,15 @@ struct WyrmTrailPendingCard: View {
                     if let image {
                         Image(uiImage: image).resizable().scaledToFill()
                     } else {
-                        ZStack { ATheme.well; Image(systemName: "text.quote").font(.system(size: 20, weight: .semibold)).foregroundColor(ATheme.live) }
+                        ZStack { wyrmScopedColours.well; Image(systemName: "text.quote").font(.system(size: 20, weight: .semibold)).foregroundColor(wyrmScopedColours.live) }
                     }
                 }
                 .frame(width: 58, height: 58)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .opacity(0.85)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.androidWyrm(14.5, .semibold)).monospacedDigit().foregroundColor(ATheme.ink)
-                    Text(caption.isEmpty ? "Photo" : caption).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).lineLimit(1)
+                    Text(title).font(.androidWyrm(14.5, .semibold)).monospacedDigit().foregroundColor(wyrmScopedColours.ink)
+                    Text(caption.isEmpty ? "Photo" : caption).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.mute).lineLimit(1)
                 }
                 Spacer(minLength: 0)
             }
@@ -1443,9 +1543,9 @@ struct WyrmTrailPendingCard: View {
             }
         }
         .padding(14)
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .modifier(WyrmTrailWobble(active: phase.busy))
         .padding(.horizontal, 14)
         .onChange(of: progress) { value in
@@ -1483,6 +1583,9 @@ private struct WyrmTrailWobble: ViewModifier {
 // MARK: - Feed
 
 struct WyrmTrailsFeed: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     /// Nil on the Trails tab (OM, 2026-10-04): no Back there.
     var close: (() -> Void)? = nil
@@ -1506,7 +1609,7 @@ struct WyrmTrailsFeed: View {
                             // The very first open: what is happening, above the card shapes.
                             HStack(spacing: 10) {
                                 ProgressView()
-                                Text("Loading trails\u{2026}").font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.quiet)
+                                Text("Loading trails\u{2026}").font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                             }
                             .padding(.top, 6)
                             ForEach(0..<3, id: \.self) { _ in WyrmTrailPlaceholder() }
@@ -1536,7 +1639,7 @@ struct WyrmTrailsFeed: View {
                             }
                         }
                         if !store.error.isEmpty && store.trails.isEmpty {
-                            Text(store.error).font(.androidWyrm(12)).foregroundColor(ATheme.badge).padding(.horizontal, 20)
+                            Text(store.error).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge).padding(.horizontal, 20)
                         }
                         Spacer().frame(height: 110)
                     }
@@ -1568,7 +1671,7 @@ struct WyrmTrailsFeed: View {
             }
         }
         .background(WyrmPaperBackground().ignoresSafeArea())
-        .foregroundColor(ATheme.ink)
+        .foregroundColor(wyrmScopedColours.ink)
         .onChange(of: scenePhase) { phase in
             if phase == .active {
                 WyrmTrailFeedPlayer.shared.resume()
@@ -1593,9 +1696,9 @@ struct WyrmTrailsFeed: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("THE WYRM COMMUNITY").font(.androidWyrm(10.5, .bold)).tracking(1.15).foregroundColor(ATheme.quiet)
-            Text("Trails").font(.wyrmDisplay(34)).foregroundColor(ATheme.ink)
-            Text("Show off your skins, kills and best moments.").font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+            Text("THE WYRM COMMUNITY").font(.androidWyrm(10.5, .bold)).tracking(1.15).foregroundColor(wyrmScopedColours.quiet)
+            Text("Trails").font(.wyrmDisplay(34)).foregroundColor(wyrmScopedColours.ink)
+            Text("Show off your skins, kills and best moments.").font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 20).padding(.top, 10).padding(.bottom, 4)
@@ -1604,16 +1707,16 @@ struct WyrmTrailsFeed: View {
     private var empty: some View {
         VStack(spacing: 10) {
             Image(systemName: "point.topleft.down.curvedto.point.bottomright.up")
-                .font(.system(size: 30, weight: .semibold)).foregroundColor(ATheme.live)
-            Text("No trails yet").font(.wyrmDisplay(22)).foregroundColor(ATheme.ink)
+                .font(.system(size: 30, weight: .semibold)).foregroundColor(wyrmScopedColours.live)
+            Text("No trails yet").font(.wyrmDisplay(22)).foregroundColor(wyrmScopedColours.ink)
             Text("Be the first to leave one. Share a skin, a big run or a moment from the arena.")
-                .font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).multilineTextAlignment(.center)
             newButton(large: true).padding(.top, 10)
         }
         .padding(22)
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .padding(.horizontal, 14)
     }
 
@@ -1625,7 +1728,7 @@ struct WyrmTrailsFeed: View {
                 if let close = close {
                     Button(action: close) {
                         HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
-                            .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                            .font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.link)
                     }
                 }
                 Spacer()
@@ -1640,24 +1743,24 @@ struct WyrmTrailsFeed: View {
             }
         }
         .padding(.horizontal, 16).frame(height: 52)
-        .background(ATheme.paper)
-        .overlay(Rectangle().fill(ATheme.rule).frame(height: 1), alignment: .bottom)
+        .background(wyrmScopedColours.paper)
+        .overlay(Rectangle().fill(wyrmScopedColours.rule).frame(height: 1), alignment: .bottom)
         .animation(.spring(response: 0.4, dampingFraction: 0.8), value: store.trails.isEmpty)
     }
 
     /// The next page did not come: say so, and let the reader try again (OM, 2026-10-17).
     private var moreFailed: some View {
         VStack(spacing: 10) {
-            Text("Couldn't load more trails").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.mute)
+            Text("Couldn't load more trails").font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.mute)
             Button { Task { await store.retryMore() } } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.clockwise").font(.system(size: 13, weight: .semibold))
                     Text("Try again").font(.androidWyrm(13, .bold))
                 }
-                .foregroundColor(ATheme.ink)
+                .foregroundColor(wyrmScopedColours.ink)
                 .padding(.horizontal, 16).frame(height: 34)
-                .background(Capsule().fill(ATheme.card))
-                .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+                .background(Capsule().fill(wyrmScopedColours.card))
+                .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
             }
             .buttonStyle(.plain)
         }
@@ -1667,15 +1770,15 @@ struct WyrmTrailsFeed: View {
     /// The end of the feed, Instagram's "You're all caught up" (OM, 2026-10-17).
     private func caughtUp(showTop: Bool, top: @escaping () -> Void) -> some View {
         VStack(spacing: 6) {
-            Circle().stroke(ATheme.live, lineWidth: 1.5).frame(width: 44, height: 44)
-                .overlay(Image(systemName: "checkmark").font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.live))
+            Circle().stroke(wyrmScopedColours.live, lineWidth: 1.5).frame(width: 44, height: 44)
+                .overlay(Image(systemName: "checkmark").font(.system(size: 18, weight: .semibold)).foregroundColor(wyrmScopedColours.live))
                 .padding(.bottom, 2)
-            Text("You're all caught up").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+            Text("You're all caught up").font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text("You've seen every trail. New ones show up at the top.").font(.androidWyrm(12.5))
-                .foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .foregroundColor(wyrmScopedColours.mute).multilineTextAlignment(.center)
             if showTop {
                 Button(action: top) {
-                    Text("Back to top").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.link)
+                    Text("Back to top").font(.androidWyrm(13, .bold)).foregroundColor(wyrmScopedColours.link)
                         .padding(.horizontal, 10).padding(.vertical, 6)
                 }
                 .buttonStyle(.plain)
@@ -1695,9 +1798,9 @@ struct WyrmTrailsFeed: View {
                 Image(systemName: "arrow.up").font(.system(size: 12, weight: .bold))
                 Text(label).font(.androidWyrm(13, .bold))
             }
-            .foregroundColor(ATheme.onInk)
+            .foregroundColor(wyrmScopedColours.onInk)
             .padding(.horizontal, 16).frame(height: 36)
-            .background(Capsule().fill(ATheme.ink))
+            .background(Capsule().fill(wyrmScopedColours.ink))
             .shadow(color: .black.opacity(0.18), radius: 10, y: 4)
         }
         .buttonStyle(.plain)
@@ -1709,9 +1812,9 @@ struct WyrmTrailsFeed: View {
                 Image(systemName: "plus").font(.system(size: large ? 15 : 12, weight: .bold))
                 Text(large ? "Leave a trail" : "New").font(.androidWyrm(large ? 15 : 13, .bold))
             }
-            .foregroundColor(ATheme.onInk)
+            .foregroundColor(wyrmScopedColours.onInk)
             .padding(.horizontal, large ? 22 : 14).frame(height: large ? 50 : 34)
-            .background(Capsule().fill(ATheme.ink))
+            .background(Capsule().fill(wyrmScopedColours.ink))
             .shadow(color: .black.opacity(large ? 0.18 : 0.12), radius: large ? 16 : 8, y: large ? 6 : 3)
         }
         .buttonStyle(WSPressStyle())
@@ -1719,14 +1822,17 @@ struct WyrmTrailsFeed: View {
 }
 
 struct WyrmTrailToast: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var store: WyrmTrailsStore
     var body: some View {
         Group {
             if !store.toast.isEmpty {
                 Text(store.toast)
-                    .font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.onInk)
+                    .font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.onInk)
                     .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
                     .padding(.top, 60)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .onAppear {
@@ -1747,6 +1853,9 @@ struct WyrmTrailToast: View {
 /// Trails at the top of Social: the newest photos, so there is always a
 /// reason to look, and one tap to leave your own.
 struct WyrmTrailsTeaser: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     let open: (WyrmDesignRoute) -> Void
     /// Unread likes and replies on your trails (the badge trail, OM 2026-10-01).
@@ -1759,26 +1868,26 @@ struct WyrmTrailsTeaser: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Trails").font(.wyrmDisplay(24)).foregroundColor(ATheme.ink)
+                        Text("Trails").font(.wyrmDisplay(24)).foregroundColor(wyrmScopedColours.ink)
                         Text(badge > 0 ? "\(badge) new on your trails" : trails.isEmpty ? "Show off your skins, kills and best moments." : "New from the Wyrm community")
-                            .font(.androidWyrm(12.5)).foregroundColor(badge > 0 ? ATheme.badge : ATheme.mute)
+                            .font(.androidWyrm(12.5)).foregroundColor(badge > 0 ? wyrmScopedColours.badge : wyrmScopedColours.mute)
                     }
                     Spacer()
                     WyrmCountBadge(count: badge)
-                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundColor(ATheme.chevron)
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).foregroundColor(wyrmScopedColours.chevron)
                 }
                 HStack(spacing: 8) {
                     ForEach(0..<4, id: \.self) { index in
                         ZStack {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.well)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous).fill(wyrmScopedColours.well)
                             if index < trails.count, let thumb = trails[index].thumbUrl {
                                 WyrmTrailImage(full: thumb, thumb: thumb, aspect: 1)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             } else if index < trails.count {
-                                Text(trails[index].caption).font(.wyrmDisplay(11)).foregroundColor(ATheme.ink)
+                                Text(trails[index].caption).font(.wyrmDisplay(11)).foregroundColor(wyrmScopedColours.ink)
                                     .lineLimit(4).padding(6)
                             } else if index == 0 && trails.isEmpty {
-                                Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(ATheme.quiet)
+                                Image(systemName: "plus").font(.system(size: 16, weight: .bold)).foregroundColor(wyrmScopedColours.quiet)
                             }
                         }
                         .aspectRatio(1, contentMode: .fit)
@@ -1786,9 +1895,9 @@ struct WyrmTrailsTeaser: View {
                 }
             }
             .padding(16)
-            .background(ATheme.card)
+            .background(wyrmScopedColours.card)
             .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .padding(.horizontal, 16).padding(.bottom, 14)
         }
         .buttonStyle(WSPressStyle())
@@ -1801,6 +1910,9 @@ struct WyrmTrailsTeaser: View {
 // MARK: - One trail, with its replies
 
 struct WyrmTrailDetail: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let trailID: String
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
@@ -1808,6 +1920,8 @@ struct WyrmTrailDetail: View {
     @ObservedObject private var store = WyrmTrailsStore.shared
     @State private var draft = ""
     @State private var sending = false
+    @State private var answering: WyrmTrailComment?
+    @State private var editing: WyrmTrailComment?
 
     var body: some View {
         WyrmDetailChrome(title: "Trail", onBack: close) {
@@ -1824,17 +1938,45 @@ struct WyrmTrailDetail: View {
                         let replies = store.comments[trailID] ?? []
                         if replies.isEmpty {
                             Text("No replies yet. Be the first to say something.")
-                                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20)
                         } else {
                             VStack(spacing: 0) {
-                                ForEach(replies) { reply in replyRow(reply) }
+                                ForEach(replies) { reply in
+                                    replyRow(reply, nested: false)
+                                    let open = store.openThreads.contains(reply.id)
+                                    if open {
+                                        ForEach(store.threadReplies[reply.id] ?? []) { child in replyRow(child, nested: true) }
+                                    }
+                                    if reply.replies > 0 {
+                                        // Instagram's "——  View 3 replies" under a comment.
+                                        Button {
+                                            if open { store.hideReplies(reply.id) } else { Task { await store.loadReplies(trailID, commentId: reply.id) } }
+                                        } label: {
+                                            HStack(spacing: 10) {
+                                                Rectangle().fill(wyrmScopedColours.quiet).frame(width: 24, height: 1)
+                                                Text(open ? "Hide replies" : "View \(reply.replies) \(reply.replies == 1 ? "reply" : "replies")")
+                                                    .font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.quiet)
+                                                Spacer()
+                                            }
+                                            .padding(.leading, 58).padding(.top, 2).padding(.bottom, 8)
+                                        }.buttonStyle(.plain)
+                                    }
+                                }
                             }
                         }
                         Spacer().frame(height: 24)
                     }
                 }
-                WyrmChatComposer(text: $draft, placeholder: "Reply to this trail", limit: 300, sending: sending, onSend: send)
+                if let target = editing ?? answering {
+                    WyrmComposeTarget(editing: editing != nil, name: target.author.handle.isEmpty ? target.author.name : target.author.handle,
+                                      body_: target.body) {
+                        if editing != nil { draft = "" }
+                        editing = nil; answering = nil
+                    }
+                }
+                WyrmChatComposer(text: $draft, placeholder: answering.map { "Reply to \($0.author.handle.isEmpty ? $0.author.name : $0.author.handle)" } ?? "Reply to this trail",
+                                 limit: 300, sending: sending, onSend: send)
             }
         }
         .onAppear { store.token = { [weak account] in account?.sessionToken ?? "" } }
@@ -1845,29 +1987,41 @@ struct WyrmTrailDetail: View {
         .overlay(alignment: .top) { WyrmTrailToast(store: store) }
     }
 
-    private func replyRow(_ reply: WyrmTrailComment) -> some View {
+    private func replyRow(_ reply: WyrmTrailComment, nested: Bool) -> some View {
         HStack(alignment: .top, spacing: 10) {
             Button { open(.profile(reply.author.playerId)) } label: {
-                WyrmAvatar(initials: reply.author.initials, size: 30, url: reply.author.avatarURL)
+                WyrmAvatar(initials: reply.author.initials, size: nested ? 24 : 30, url: reply.author.avatarURL)
             }.buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
-                    Text(reply.author.name).font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.ink)
+                    Text(reply.author.name).font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.ink)
                     if reply.author.playerId == store.trail(trailID)?.author.playerId {
-                        Text("AUTHOR").font(.androidWyrm(8.5, .bold)).tracking(0.8).foregroundColor(ATheme.live)
+                        Text("AUTHOR").font(.androidWyrm(8.5, .bold)).tracking(0.8).foregroundColor(wyrmScopedColours.live)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Capsule().fill(ATheme.live.opacity(0.14)))
+                            .background(Capsule().fill(wyrmScopedColours.live.opacity(0.14)))
                     }
-                    Text(WyrmTrailTime.short(reply.createdAt)).font(.androidWyrm(10.5)).foregroundColor(ATheme.quiet)
+                    Text(WyrmTrailTime.short(reply.createdAt)).font(.androidWyrm(10.5)).foregroundColor(wyrmScopedColours.quiet)
                 }
-                Text(reply.body).font(.androidWyrm(13.5)).foregroundColor(ATheme.ink).lineSpacing(2)
+                (Text(reply.replyTo?.username.map { "@\($0) " } ?? "").foregroundColor(wyrmScopedColours.link).fontWeight(.semibold)
+                 + Text(reply.body).foregroundColor(wyrmScopedColours.ink))
+                    .font(.androidWyrm(13.5)).lineSpacing(2)
                     .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 14) {
+                    Button { editing = nil; answering = reply } label: {
+                        Text("Reply").font(.androidWyrm(11.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
+                    }.buttonStyle(.plain)
+                    if !(reply.editedAt ?? "").isEmpty { Text("Edited").font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet) }
+                }
             }
             Spacer(minLength: 0)
         }
-        .padding(.horizontal, 18).padding(.vertical, 9)
+        .padding(.leading, nested ? 58 : 18).padding(.trailing, 18).padding(.vertical, 9)
         .contentShape(Rectangle())
         .contextMenu {
+            Button { editing = nil; answering = reply } label: { Label("Reply", systemImage: "arrowshape.turn.up.left") }
+            if reply.mine {
+                Button { answering = nil; editing = reply; draft = reply.body } label: { Label("Edit reply", systemImage: "pencil") }
+            }
             if reply.mine || store.trail(trailID)?.mine == true {
                 Button(role: .destructive) { Task { await store.deleteReply(trailID, commentId: reply.id) } } label: {
                     Label("Delete reply", systemImage: "trash")
@@ -1880,8 +2034,13 @@ struct WyrmTrailDetail: View {
         let body = draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !body.isEmpty, !sending else { return }
         sending = true
+        let target = answering, edit = editing
         Task {
-            if await store.reply(trailID, body: body) { draft = "" }
+            if let edit {
+                if await store.editReply(trailID, comment: edit, body: body) { draft = ""; editing = nil }
+            } else if await store.reply(trailID, body: body, answering: target) {
+                draft = ""; answering = nil
+            }
             sending = false
         }
     }
@@ -1894,6 +2053,9 @@ struct WyrmTrailDetail: View {
 /// says plainly that Trails is being finished and what it will bring. Android
 /// twin: `TrailsComingSoonScreen` (TrailsComingSoon.kt), same copy.
 struct WyrmTrailsComingSoon: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     /// Nil on the Trails tab (OM, 2026-10-04): no Back there.
     var close: (() -> Void)? = nil
 
@@ -1904,7 +2066,7 @@ struct WyrmTrailsComingSoon: View {
                     if let close = close {
                         Button(action: close) {
                             HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }
-                                .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link)
+                                .font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.link)
                         }
                     }
                     Spacer()
@@ -1912,7 +2074,7 @@ struct WyrmTrailsComingSoon: View {
                 Text("Trails").font(.androidWyrm(16, .semibold))
             }
             .padding(.horizontal, 16).frame(height: 52)
-            .background(ATheme.paper)
+            .background(wyrmScopedColours.paper)
 
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -1921,10 +2083,10 @@ struct WyrmTrailsComingSoon: View {
                     Spacer().frame(height: 22)
                     WyrmCapsLabel("In development")
                     Spacer().frame(height: 6)
-                    Text("Trails is still growing.").font(.wyrmDisplay(34)).foregroundColor(ATheme.ink)
+                    Text("Trails is still growing.").font(.wyrmDisplay(34)).foregroundColor(wyrmScopedColours.ink)
                     Spacer().frame(height: 10)
                     Text("Trails is where your best runs will live: the moment, the skin and the numbers, shared with everyone who plays Wyrm. We've switched it off for a little while so we can finish it properly instead of handing you something half-baked.")
-                        .font(.androidWyrm(15)).lineSpacing(4).foregroundColor(ATheme.mute)
+                        .font(.androidWyrm(15)).lineSpacing(4).foregroundColor(wyrmScopedColours.mute)
                         .fixedSize(horizontal: false, vertical: true)
 
                     Spacer().frame(height: 24)
@@ -1948,43 +2110,43 @@ struct WyrmTrailsComingSoon: View {
                         row("square.grid.3x3", "Your trails on your profile",
                             "Every run you share, in one grid, so your profile tells your story.")
                     }
-                    .background(ATheme.card)
+                    .background(wyrmScopedColours.card)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                    .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
 
                     Spacer().frame(height: 16)
                     HStack(spacing: 14) {
-                        Image(systemName: "bell").font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.ink)
+                        Image(systemName: "bell").font(.system(size: 18, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("We'll tell you the moment it's ready.").font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.ink)
-                            Text("Until then, go make a run worth sharing.").font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+                            Text("We'll tell you the moment it's ready.").font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.ink)
+                            Text("Until then, go make a run worth sharing.").font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute)
                         }
                         Spacer(minLength: 0)
                     }
                     .padding(.horizontal, 16).padding(.vertical, 14)
-                    .background(ATheme.well)
+                    .background(wyrmScopedColours.well)
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                     Spacer().frame(height: 110)
                 }
                 .padding(.horizontal, 20)
             }
         }
-        .background(ATheme.paper.ignoresSafeArea())
-        .foregroundColor(ATheme.ink)
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
+        .foregroundColor(wyrmScopedColours.ink)
     }
 
     private var rule: some View {
-        Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, 66)
+        Rectangle().fill(wyrmScopedColours.rowRule).frame(height: 1).padding(.leading, 66)
     }
 
     private func row(_ icon: String, _ title: String, _ detail: String) -> some View {
         HStack(alignment: .top, spacing: 14) {
-            Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundColor(ATheme.ink)
+            Image(systemName: icon).font(.system(size: 16, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
                 .frame(width: 36, height: 36)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ATheme.well))
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(wyrmScopedColours.well))
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.ink)
-                Text(detail).font(.androidWyrm(13)).foregroundColor(ATheme.mute)
+                Text(title).font(.androidWyrm(15, .semibold)).foregroundColor(wyrmScopedColours.ink)
+                Text(detail).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute)
                     .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
@@ -1995,6 +2157,9 @@ struct WyrmTrailsComingSoon: View {
 
 /// A snake of beads gliding along a dotted trail, forever.
 private struct WyrmTrailsComingHero: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var body: some View {
         TimelineView(.animation) { timeline in
             Canvas { context, size in
@@ -2010,7 +2175,7 @@ private struct WyrmTrailsComingHero: View {
                     let p = at(Double(i) / 80)
                     if i == 0 { trail.move(to: p) } else { trail.addLine(to: p) }
                 }
-                context.stroke(trail, with: .color(ATheme.quiet.opacity(0.45)),
+                context.stroke(trail, with: .color(wyrmScopedColours.quiet),
                                style: StrokeStyle(lineWidth: 2, lineCap: .round, dash: [1, 9]))
                 for k in 0..<5 {
                     let a: Double = (Double(k) * 72.0 + 18.0) * Double.pi / 180.0
@@ -2018,7 +2183,7 @@ private struct WyrmTrailsComingHero: View {
                     let fy: Double = h * (0.2 + 0.12 * cos(a))
                     let f = CGPoint(x: fx, y: fy)
                     context.fill(Path(ellipseIn: CGRect(x: f.x - 3, y: f.y - 3, width: 6, height: 6)),
-                                 with: .color(ATheme.quiet.opacity(0.22)))
+                                 with: .color(wyrmScopedColours.quiet))
                 }
                 let t = timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 5.2) / 5.2
                 let bead: Double = h * 0.07
@@ -2028,7 +2193,7 @@ private struct WyrmTrailsComingHero: View {
                     let c = at(p)
                     let r: Double = bead * (1.0 - Double(i) * 0.025)
                     context.fill(Path(ellipseIn: CGRect(x: c.x - r, y: c.y - r, width: r * 2, height: r * 2)),
-                                 with: .color(ATheme.ink.opacity(1 - Double(i) / 14)))
+                                 with: .color(wyrmScopedColours.ink.opacity(1 - Double(i) / 14)))
                 }
                 let c = at(t), ahead = at(t + 0.01)
                 let dx = Double(ahead.x - c.x), dy = Double(ahead.y - c.y)
@@ -2040,13 +2205,13 @@ private struct WyrmTrailsComingHero: View {
                     let e = CGPoint(x: ex, y: ey)
                     let r: Double = bead * 0.26
                     context.fill(Path(ellipseIn: CGRect(x: e.x - r, y: e.y - r, width: r * 2, height: r * 2)),
-                                 with: .color(ATheme.well))
+                                 with: .color(wyrmScopedColours.well))
                 }
             }
         }
         .frame(height: 150)
         .frame(maxWidth: .infinity)
-        .background(ATheme.well)
+        .background(wyrmScopedColours.well)
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .accessibilityHidden(true)
     }
@@ -2054,6 +2219,9 @@ private struct WyrmTrailsComingHero: View {
 
 /// Sketched ✓ · Built ✓ · Polishing (now) · In your hands.
 private struct WyrmTrailsStages: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @State private var pulse = false
 
     var body: some View {
@@ -2071,16 +2239,16 @@ private struct WyrmTrailsStages: View {
     private func chip(_ name: String, _ state: Int) -> some View {
         HStack(spacing: 5) {
             if state == 2 {
-                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.onInk)
+                Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(wyrmScopedColours.onInk)
             } else if state == 1 {
-                Circle().fill(ATheme.ink.opacity(pulse ? 1 : 0.35)).frame(width: 7, height: 7)
+                Circle().fill(wyrmScopedColours.ink.opacity(pulse ? 1 : 0.35)).frame(width: 7, height: 7)
             }
             Text(name).font(.androidWyrm(11, .bold)).lineLimit(1).minimumScaleFactor(0.8)
-                .foregroundColor(state == 2 ? ATheme.onInk : state == 1 ? ATheme.ink : ATheme.quiet)
+                .foregroundColor(state == 2 ? wyrmScopedColours.onInk : state == 1 ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
         }
         .padding(.vertical, 9).padding(.horizontal, 6)
         .frame(maxWidth: .infinity)
-        .background(Capsule().fill(state == 2 ? ATheme.ink : ATheme.card))
-        .overlay(Capsule().stroke(state == 1 ? ATheme.ink : ATheme.rule, lineWidth: 1))
+        .background(Capsule().fill(state == 2 ? wyrmScopedColours.ink : wyrmScopedColours.card))
+        .overlay(Capsule().stroke(state == 1 ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: 1))
     }
 }

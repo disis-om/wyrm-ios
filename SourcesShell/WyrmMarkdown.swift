@@ -28,8 +28,36 @@ indirect enum WyrmMarkdownBlock: Equatable {
     case code(String, String)
     case rule
     case table([String], [Align], [[String]])
+    /// A picture (2026-10-30): url, alt words, title (`w=60 a=center` sets its layout).
+    case image(String, String, String)
 
     // MARK: Parsing
+
+    /// A paragraph's words, then each of its pictures as a block of its own.
+    static func paragraphBlocks(_ text: String) -> [WyrmMarkdownBlock] {
+        // A picture's address on a line by itself is the picture too (OM pastes links).
+        let bare = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if WyrmNoticeStyle.isPictureAddress(bare) { return [.image(bare, "", "")] }
+        guard text.contains("!["),
+              let regex = try? NSRegularExpression(pattern: "!\\[([^\\]]*)\\]\\((\\S+?)(?:\\s+\"([^\"]*)\")?\\)") else {
+            return [.paragraph(text)]
+        }
+        let ns = text as NSString
+        let matches = regex.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        guard !matches.isEmpty else { return [.paragraph(text)] }
+        var words = ""
+        var last = 0
+        var pictures: [WyrmMarkdownBlock] = []
+        for match in matches {
+            words += ns.substring(with: NSRange(location: last, length: match.range.location - last))
+            last = match.range.location + match.range.length
+            let title = match.range(at: 3).location == NSNotFound ? "" : ns.substring(with: match.range(at: 3))
+            pictures.append(.image(ns.substring(with: match.range(at: 2)), ns.substring(with: match.range(at: 1)), title))
+        }
+        words += ns.substring(from: last)
+        let trimmed = words.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed.isEmpty ? [] : [.paragraph(words)]) + pictures
+    }
 
     static func parse(_ source: String) -> [WyrmMarkdownBlock] {
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n").replacingOccurrences(of: "\r", with: "\n")
@@ -133,7 +161,7 @@ indirect enum WyrmMarkdownBlock: Equatable {
                 if t.contains("|"), i + 1 < lines.count, tableSeparator(lines[i + 1]) != nil { break }
                 text.append(next); i += 1
             }
-            if !text.isEmpty { blocks.append(.paragraph(text.joined(separator: "\n"))) }
+            if !text.isEmpty { blocks.append(contentsOf: paragraphBlocks(text.joined(separator: "\n"))) }
         }
         return blocks
     }
@@ -230,6 +258,7 @@ indirect enum WyrmMarkdownBlock: Equatable {
                 case .code(_, let text): return [text]
                 case .table(let header, _, let rows): return ([header] + rows).map { $0.map(flat).joined(separator: " · ") }
                 case .space, .rule: return []
+                case .image(_, let alt, _): return alt.isEmpty ? [] : [alt]
                 }
             }
         }
@@ -251,9 +280,14 @@ indirect enum WyrmMarkdownBlock: Equatable {
 
 /// A notification's body (or any Markdown) in Wyrm's type, block by block.
 struct WyrmMarkdown: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let source: String
     var size: CGFloat = 12.5
     var ink: Color = ATheme.mute
+    /// Pictures drawn in the message (the notice popup, OM 2026-10-30); elsewhere their words.
+    var images = false
 
     var body: some View {
         blocks(WyrmMarkdownBlock.parse(source))
@@ -271,7 +305,7 @@ struct WyrmMarkdown: View {
             let sizes: [CGFloat] = [22, 18, 15.5, 14, 13, 12.5]
             return AnyView(Text(WyrmMarkdownBlock.inline(text))
                 .font(.androidWyrm(sizes[min(max(level, 1), 6) - 1], .bold))
-                .foregroundColor(ATheme.ink)
+                .foregroundColor(wyrmScopedColours.ink)
                 .fixedSize(horizontal: false, vertical: true)
                 .padding(.top, level <= 2 ? 4 : 1))
         case .paragraph(let text):
@@ -296,35 +330,41 @@ struct WyrmMarkdown: View {
             })
         case .quote(let inner):
             return AnyView(HStack(alignment: .top, spacing: 10) {
-                RoundedRectangle(cornerRadius: 1).fill(ATheme.link.opacity(0.7)).frame(width: 2.5)
+                RoundedRectangle(cornerRadius: 1).fill(wyrmScopedColours.link.opacity(0.7)).frame(width: 2.5)
                 blocks(inner)
             }.fixedSize(horizontal: false, vertical: true))
         case .code(let language, let text):
             return AnyView(VStack(alignment: .leading, spacing: 5) {
                 if !language.isEmpty {
-                    Text(language.uppercased()).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(ATheme.quiet)
+                    Text(language.uppercased()).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(wyrmScopedColours.quiet)
                 }
                 ScrollView(.horizontal, showsIndicators: false) {
-                    Text(text).font(.system(size: max(size - 1, 10), design: .monospaced)).foregroundColor(ATheme.ink)
+                    Text(text).font(.system(size: max(size - 1, 10), design: .monospaced)).foregroundColor(wyrmScopedColours.ink)
                         .fixedSize(horizontal: true, vertical: true)
                         .padding(12)
                 }
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(ATheme.well))
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(wyrmScopedColours.well))
             })
         case .rule:
-            return AnyView(Rectangle().fill(ATheme.rule).frame(height: 1).padding(.vertical, 4))
+            return AnyView(Rectangle().fill(wyrmScopedColours.rule).frame(height: 1).padding(.vertical, 4))
+        case .image(let url, let alt, let title):
+            if images {
+                let layout = WyrmNoticeStyle.imageLayout(title)
+                return AnyView(WyrmNoticeImage(url: url, alt: alt, width: layout.width, align: layout.align))
+            }
+            return AnyView(Text(alt).italic().font(.androidWyrm(size)).foregroundColor(wyrmScopedColours.quiet))
         case .table(let header, let aligns, let rows):
             let columns = max(header.count, rows.map(\.count).max() ?? 0)
             return AnyView(ScrollView(.horizontal, showsIndicators: false) {
                 VStack(spacing: 0) {
                     tableRow(header, aligns: aligns, columns: columns, header: true)
                     ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
-                        Rectangle().fill(ATheme.rule).frame(height: 1)
+                        Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
                         tableRow(row, aligns: aligns, columns: columns, header: false)
                     }
                 }
-                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(wyrmScopedColours.card))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
             })
         }
@@ -334,13 +374,13 @@ struct WyrmMarkdown: View {
     private func marker(_ item: WyrmMarkdownBlock.Item) -> some View {
         switch item.marker {
         case .bullet:
-            Text(["•", "◦", "▪"][item.depth % 3]).font(.androidWyrm(size, .bold)).foregroundColor(ATheme.quiet)
+            Text(["•", "◦", "▪"][item.depth % 3]).font(.androidWyrm(size, .bold)).foregroundColor(wyrmScopedColours.quiet)
         case .number(let n):
-            Text("\(n).").font(.androidWyrm(size, .semibold)).foregroundColor(ATheme.quiet).monospacedDigit()
+            Text("\(n).").font(.androidWyrm(size, .semibold)).foregroundColor(wyrmScopedColours.quiet).monospacedDigit()
         case .task(let done):
             Image(systemName: done ? "checkmark.square.fill" : "square")
                 .font(.system(size: size, weight: .semibold))
-                .foregroundColor(done ? ATheme.live : ATheme.quiet)
+                .foregroundColor(done ? wyrmScopedColours.live : wyrmScopedColours.quiet)
         }
     }
 
@@ -350,12 +390,12 @@ struct WyrmMarkdown: View {
                 let align = column < aligns.count ? aligns[column] : .leading
                 Text(WyrmMarkdownBlock.inline(column < row.count ? row[column] : ""))
                     .font(.androidWyrm(header ? size - 0.5 : size, header ? .bold : .regular))
-                    .foregroundColor(header ? ATheme.ink : ink)
+                    .foregroundColor(header ? wyrmScopedColours.ink : ink)
                     .multilineTextAlignment(align == .center ? .center : align == .trailing ? .trailing : .leading)
                     .frame(minWidth: 96, maxWidth: 220,
                            alignment: align == .center ? .center : align == .trailing ? .trailing : .leading)
                     .padding(.horizontal, 10).padding(.vertical, 8)
-                    .background(header ? ATheme.well : Color.clear)
+                    .background(header ? wyrmScopedColours.well : Color.clear)
             }
         }
     }

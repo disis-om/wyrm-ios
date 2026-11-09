@@ -337,6 +337,9 @@ enum WyrmTrailCut {
 /// a transition button at each cut, and Split / Delete. A drag on the
 /// timeline scrubs; a drag on the chosen piece's ends trims it.
 struct WyrmTrailTimelineBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var session: WyrmTrailVideoSession
     @ObservedObject var edit: WyrmTrailEdit
     @State private var frames: [UIImage] = []
@@ -346,7 +349,7 @@ struct WyrmTrailTimelineBar: View {
             HStack(spacing: 10) {
                 iconButton(session.playing ? "pause.fill" : "play.fill") { session.togglePlay() }
                 Text("\(wyrmTrailClock(session.playhead)) / \(wyrmTrailClock(edit.totalMs))")
-                    .font(.androidWyrm(12.5, .bold)).monospacedDigit().foregroundColor(ATheme.ink)
+                    .font(.androidWyrm(12.5, .bold)).monospacedDigit().foregroundColor(wyrmScopedColours.ink)
                 Spacer()
                 iconButton(edit.muted ? "speaker.slash.fill" : "speaker.wave.2.fill") { session.toggleSound() }
             }
@@ -354,7 +357,7 @@ struct WyrmTrailTimelineBar: View {
             if edit.transitionAt >= 0 && edit.transitionAt < edit.segments.count - 1 {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 8) {
-                        Text("Transition").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.mute)
+                        Text("Transition").font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.mute)
                         ForEach(WyrmTrailTransition.allCases, id: \.self) { kind in
                             WyrmTrailPill(label: kind.rawValue, selected: edit.segments[edit.transitionAt].after == kind) {
                                 UISelectionFeedbackGenerator().selectionChanged()
@@ -387,7 +390,7 @@ struct WyrmTrailTimelineBar: View {
                     Spacer()
                     Text(String(format: "%.1f s of %d s", Double(edit.totalMs) / 1000, Int(wyrmTrailVideoMaxMs / 1000)))
                         .font(.androidWyrm(11.5, .semibold))
-                        .foregroundColor(edit.totalMs >= wyrmTrailVideoMaxMs ? ATheme.badge : ATheme.quiet)
+                        .foregroundColor(edit.totalMs >= wyrmTrailVideoMaxMs ? wyrmScopedColours.badge : wyrmScopedColours.quiet)
                 }
             }
         }
@@ -400,8 +403,8 @@ struct WyrmTrailTimelineBar: View {
             UISelectionFeedbackGenerator().selectionChanged()
             action()
         } label: {
-            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(ATheme.ink)
-                .frame(width: 36, height: 36).background(Circle().fill(ATheme.well))
+            Image(systemName: symbol).font(.system(size: 14, weight: .bold)).foregroundColor(wyrmScopedColours.ink)
+                .frame(width: 36, height: 36).background(Circle().fill(wyrmScopedColours.well))
         }
         .buttonStyle(.plain)
     }
@@ -409,6 +412,9 @@ struct WyrmTrailTimelineBar: View {
 
 /// The pieces side by side, each as wide as it is long; a diamond at each cut.
 private struct WyrmTrailPieces: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var session: WyrmTrailVideoSession
     @ObservedObject var edit: WyrmTrailEdit
     let frames: [UIImage]
@@ -510,12 +516,12 @@ private struct WyrmTrailPieces: View {
                 } label: {
                     ZStack {
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .fill(on || kind != .none ? ATheme.ink : ATheme.card)
-                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(ATheme.ink, lineWidth: 1.5))
+                            .fill(on || kind != .none ? wyrmScopedColours.ink : wyrmScopedColours.card)
+                            .overlay(RoundedRectangle(cornerRadius: 6, style: .continuous).stroke(wyrmScopedColours.ink, lineWidth: 1.5))
                             .frame(width: 22, height: 22)
                             .rotationEffect(.degrees(45))
                         Text(kind == .none ? "+" : String(kind.rawValue.prefix(1)))
-                            .font(.androidWyrm(11, .bold)).foregroundColor(on || kind != .none ? ATheme.onInk : ATheme.ink)
+                            .font(.androidWyrm(11, .bold)).foregroundColor(on || kind != .none ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
                     }
                     .frame(width: 32, height: 32)
                     .contentShape(Rectangle())
@@ -537,7 +543,7 @@ private struct WyrmTrailPieces: View {
                     let ms = s.startMs + Int64((CGFloat(t) + 0.5) / CGFloat(tiles) * CGFloat(s.lengthMs))
                     let index = frames.isEmpty ? -1 : min(max(Int(CGFloat(ms) / CGFloat(max(session.clip.durationMs, 1)) * CGFloat(frames.count)), 0), frames.count - 1)
                     Group {
-                        if index >= 0 { Image(uiImage: frames[index]).resizable().scaledToFill() } else { ATheme.well }
+                        if index >= 0 { Image(uiImage: frames[index]).resizable().scaledToFill() } else { wyrmScopedColours.well }
                     }
                     .frame(width: width / CGFloat(tiles), height: 48)
                     .clipped()
@@ -577,6 +583,9 @@ private struct WyrmTrailPieces: View {
 /// it. While the window is dragged the picture above shows that frame, and
 /// the window itself shows it too.
 struct WyrmTrailCoverBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var session: WyrmTrailVideoSession
     @ObservedObject var edit: WyrmTrailEdit
     let done: () -> Void
@@ -586,8 +595,8 @@ struct WyrmTrailCoverBar: View {
     var body: some View {
         VStack(spacing: 10) {
             HStack(spacing: 8) {
-                Text("Cover").font(.androidWyrm(14, .bold)).foregroundColor(ATheme.ink)
-                Text("Drag to pick the picture people see first").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+                Text("Cover").font(.androidWyrm(14, .bold)).foregroundColor(wyrmScopedColours.ink)
+                Text("Drag to pick the picture people see first").font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet)
                     .lineLimit(1).minimumScaleFactor(0.8)
                 Spacer()
                 WyrmTrailPill(label: "Done", selected: true, action: done)
@@ -599,7 +608,7 @@ struct WyrmTrailCoverBar: View {
                 let x = CGFloat(edit.coverMs) / total * (width - window)
                 ZStack(alignment: .leading) {
                     HStack(spacing: 0) {
-                        if frames.isEmpty { ATheme.well } else {
+                        if frames.isEmpty { wyrmScopedColours.well } else {
                             ForEach(frames.indices, id: \.self) { i in
                                 Image(uiImage: frames[i]).resizable().scaledToFill()
                                     .frame(width: width / CGFloat(frames.count), height: 48).clipped()
@@ -610,7 +619,7 @@ struct WyrmTrailCoverBar: View {
                     .overlay(Color.black.opacity(0.35))
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                     ZStack {
-                        ATheme.well
+                        wyrmScopedColours.well
                         if let shown = cover ?? nearest(total) { Image(uiImage: shown).resizable().scaledToFill() }
                     }
                     .frame(width: window, height: 70)
@@ -663,6 +672,9 @@ struct WyrmTrailCoverBar: View {
 
 /// The crop shapes for a video, and Done.
 struct WyrmTrailCropBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var edit: WyrmTrailEdit
     let done: () -> Void
     var body: some View {
@@ -682,12 +694,15 @@ struct WyrmTrailCropBar: View {
                 if !edit.crop.untouched { WyrmTrailPill(label: "Reset", selected: false) { edit.crop = WyrmTrailCrop() } }
                 WyrmTrailPill(label: "Done", selected: true, action: done)
             }
-            Text("Drag and pinch the video to frame it").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+            Text("Drag and pinch the video to frame it").font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet)
         }
     }
 }
 
 struct WyrmTrailPill: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     let selected: Bool
     var symbol: String? = nil
@@ -698,9 +713,9 @@ struct WyrmTrailPill: View {
                 if let symbol { Image(systemName: symbol).font(.system(size: 12, weight: .bold)) }
                 Text(label).font(.androidWyrm(12.5, .bold))
             }
-            .foregroundColor(selected ? ATheme.onInk : ATheme.ink)
+            .foregroundColor(selected ? wyrmScopedColours.onInk : wyrmScopedColours.ink)
             .padding(.horizontal, 13).frame(height: 32)
-            .background(Capsule().fill(selected ? ATheme.ink : ATheme.well))
+            .background(Capsule().fill(selected ? wyrmScopedColours.ink : wyrmScopedColours.well))
         }
         .buttonStyle(.plain)
     }

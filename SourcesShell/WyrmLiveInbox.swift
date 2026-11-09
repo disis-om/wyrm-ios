@@ -7,11 +7,14 @@ import Foundation
 @MainActor
 final class WyrmLiveInbox {
     static let shared = WyrmLiveInbox()
-    private static let url = URL(string: "wss://wyrm-api.77-245-76-86.sslip.io/v1/me/live")!
+    private static let url = URL(string: "wss://wyrm-api.165-99-223-123.sslip.io/v1/me/live")!
 
     /// Called with the kind ("" = catch up on everything after a reconnect).
     var onInbox: (String) -> Void = { _ in }
     var onMessageDeleted: (String) -> Void = { _ in }
+    /// Chat pushed live (2026-10-30): new messages, reactions, pins and who is typing.
+    var onChatEvent: ([String: Any]) -> Void = { _ in }
+    private var lastTyping: [String: Date] = [:]
     private var task: URLSessionWebSocketTask?
     private var token = ""
     private var running = false
@@ -29,6 +32,27 @@ final class WyrmLiveInbox {
         guard let data = try? JSONSerialization.data(withJSONObject: body, options: [.sortedKeys]),
               let json = String(data: data, encoding: .utf8), json != presence else { return }
         presence = json
+        task?.send(.string(json)) { _ in }
+    }
+
+    /// Friends on the minimap (OM, 2026-11-07, backend friend-locations.mjs): the
+    /// server says when a mutual follow plays in your arena; then your place goes
+    /// out about once a second. Friends' places go to WyrmFriendMarks.
+    private(set) var locationWanted = false
+    func sendLocation(x: Int, y: Int, icon: Int) {
+        guard locationWanted else { return }
+        task?.send(.string("{\"type\":\"loc\",\"x\":\(x),\"y\":\(y),\"icon\":\(icon)}")) { _ in }
+    }
+
+    /// "I am typing" (global, or to one player), at most once every 2.5 s; the server throttles too.
+    func sendTyping(to playerID: String?) {
+        let key = playerID ?? "global"
+        if let last = lastTyping[key], Date().timeIntervalSince(last) < 2.5 { return }
+        lastTyping[key] = Date()
+        var body: [String: Any] = ["type": "typing", "room": playerID == nil ? "global" : "direct"]
+        if let playerID { body["to"] = playerID }
+        guard let data = try? JSONSerialization.data(withJSONObject: body),
+              let json = String(data: data, encoding: .utf8) else { return }
         task?.send(.string(json)) { _ in }
     }
 
@@ -79,9 +103,23 @@ final class WyrmLiveInbox {
               let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let type = event["type"] as? String else { return }
         switch type {
+        case "chat.edited", "direct.edited":
+            // Someone edited a message: the open lists read again (2026-10-30).
+            DispatchQueue.main.async { NotificationCenter.default.post(name: .wyrmChatEdited, object: type) }
         case "chat.deleted", "direct.deleted":
             if let id = event["id"] as? String { onMessageDeleted(id) }
+        case "chat.message", "direct.message", "chat.reaction", "chat.pins", "typing":
+            onChatEvent(event)
+        case "loc.want":
+            locationWanted = event["on"] as? Bool ?? false
+        case "friend.loc":
+            if let id = event["id"] as? String {
+                WyrmFriendMarks.shared.record(id: id, x: (event["x"] as? NSNumber)?.intValue ?? 0,
+                                              y: (event["y"] as? NSNumber)?.intValue ?? 0,
+                                              icon: (event["icon"] as? NSNumber)?.intValue ?? 0)
+            }
         case "live.ready":
+            locationWanted = false
             if let presence { task?.send(.string(presence)) { _ in } }
             onInbox("")
         case "inbox":

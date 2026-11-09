@@ -1,6 +1,9 @@
 import SwiftUI
 
 struct WyrmDesignRoot: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @StateObject private var engine = WyrmShellStore()
     @StateObject private var account = WyrmAccountStore()
     @StateObject private var services = WyrmServiceStore()
@@ -27,7 +30,7 @@ struct WyrmDesignRoot: View {
     }
 
     private var settingsSmoke: Bool {
-        arguments.contains("--smoke-settings") || arguments.contains("--smoke-developer") || arguments.contains("--smoke-backup")
+        arguments.contains("--smoke-settings") || arguments.contains("--smoke-developer") || arguments.contains("--smoke-backup") || arguments.contains("--smoke-modes") || arguments.contains("--smoke-controls")
     }
 
     private var socialSmoke: Bool {
@@ -57,8 +60,8 @@ struct WyrmDesignRoot: View {
         "\(String(describing: account.phase)):\(account.player?.id ?? "none")"
     }
 
-    /// The Ready Room and the layout editor sit above the rotated engine
-    /// surface; the portrait shell underneath is kept alive but hidden.
+    /// The Ready Room/editor share the native game window; the persistent
+    /// app shell is kept alive but hidden until the return to portrait.
     private var engineOverlay: Bool {
         engine.layoutEditorActive || engine.engineScreen == WyrmShellStore.lobbyScreen
             // The arena's team composer: only the bar over the match (OM, 2026-10-06).
@@ -82,9 +85,12 @@ struct WyrmDesignRoot: View {
                     WyrmLayoutEditor(engine: engine) { engine.closeLayoutEditor() }
                 }
             } else if engine.engineScreen == WyrmShellStore.lobbyScreen && !shareRun.isOpen {
-                // Not under Share run: its sideways keyboard would take the
-                // studio's typing.
+                // Share run owns focus while its portrait studio is open.
+                // The stage places itself above the keys from the measured keyboard
+                // (WyrmLandscapeStage); SwiftUI must not move it a second time
+                // (OM, 2026-11-07: the room slid up and the keys went under it).
                 WyrmReadyRoom(engine: engine, services: services)
+                    .ignoresSafeArea(.keyboard)
             }
             // Share run (OM, 2026-09-30): the Trails studio in its share mode,
             // portrait like all of UIKit, over the Home the lobby returned to.
@@ -107,15 +113,24 @@ struct WyrmDesignRoot: View {
                 && !shareRun.isOpen && !engine.layoutEditorActive {
                 WyrmNoticeHost().zIndex(98)
             }
+            // Events (2026-10-30): the join question and the wait for the start,
+            // over the portrait app only.
+            if !launchSyncing && account.phase != .restoring && !engineOverlay && engine.engineScreen == 0 && !shareRun.isOpen {
+                WyrmEventOverlays(engine: engine).zIndex(97)
+            }
             // After an arena drop: asked on the first SwiftUI surface after
             // the match, the Ready Room (landscape) or the portrait app.
             if !launchSyncing && account.phase != .restoring && !engine.layoutEditorActive && !shareRun.isOpen
                 && (engine.engineScreen == 0 || engine.engineScreen == WyrmShellStore.lobbyScreen) {
                 WyrmDropPromptHost(landscape: engine.engineScreen == WyrmShellStore.lobbyScreen && !playOrientation.portrait).zIndex(99)
             }
+            WyrmInternalKeyboardOverlay().zIndex(200)
             // Writing to the team from the arena (OM, 2026-10-04); the match plays on.
             if teamComposer.open && engine.engineScreen == 2 {
-                WyrmArenaComposerBar(team: team).zIndex(105)
+                // The bar adds the measured keyboard overlap itself (WyrmTeamHud
+                // nativeComposer); SwiftUI's own keyboard lift on top of it sent
+                // the chat up twice as far (OM, 2026-11-07). Ignore it here.
+                WyrmArenaComposerBar(team: team).ignoresSafeArea(.keyboard).zIndex(105)
             }
             // The GPU device was lost: the engine can draw nothing more this run.
             if engine.graphicsLost {
@@ -166,6 +181,9 @@ struct WyrmDesignRoot: View {
                 ).zIndex(113)
             }
         }
+        // The engine overlays reserve keyboard space themselves; never resize
+        // the whole hosting root and expose the clear/black SDL underlay.
+        .ignoresSafeArea(engineOverlay ? .all : [], edges: .all)
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: accountSync.askingLogOut)
         // The account keeps a current copy of the settings: saved whenever the app leaves the screen.
         .onChange(of: scenePhase) { phase in
@@ -180,6 +198,7 @@ struct WyrmDesignRoot: View {
         // A match that ends with the team composer open closes it, so the
         // shell is never left shown over a later screen.
         .onChange(of: engine.engineScreen) { screen in
+            WyrmKeyboardController.shared.dismiss()
             if screen != 2 && teamComposer.open { teamComposer.closeNow() }
             WyrmPresence.shared.engineScreen(screen)
         }
@@ -203,6 +222,9 @@ struct WyrmDesignRoot: View {
         }
         .task {
             team.start()
+            // Skin textures decoded in the background shortly after launch, so the
+            // Skin tab opens with its skins, not eyes first (OM, 2026-11-07).
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) { WyrmSkinTextureLibrary.prewarm() }
             WyrmGameSync.shared.start()
             services.observeGameSync()
             WyrmCrashWatch.shared.token = { [weak account] in account?.sessionToken ?? "" }
@@ -213,6 +235,10 @@ struct WyrmDesignRoot: View {
                 services?.arenas.first(where: { $0.endpoint == endpoint })
             }
             WyrmSupportStore.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            // Events (2026-10-30): signed in, an event's page also lists friends.
+            WyrmEventsStore.shared.token = { [weak account] in account?.sessionToken ?? "" }
+            // The beads and the last events list are ready before Home draws.
+            WyrmEventBeads.shared.preload()
             accountSync.engine = engine
         }
         .task(id: sessionLifecycleID) {
@@ -241,6 +267,7 @@ struct WyrmDesignRoot: View {
                 WyrmSkinTrial.shared.end()
                 WyrmBadgeStore.shared.reset()
                 WyrmSupportStore.shared.reset()
+                WyrmEventsStore.shared.clearAll()
                 // Nothing of this account stays on the phone: defaults, engine settings, looks.
                 accountSync.wipeDevice()
                 try? await Task.sleep(nanoseconds: 920_000_000)
@@ -298,7 +325,9 @@ struct WyrmDesignRoot: View {
                     services: services,
                     initialTab: .settings,
                     initialRoute: arguments.contains("--smoke-developer") ? .developer
-                        : arguments.contains("--smoke-backup") ? .backup : nil
+                        : arguments.contains("--smoke-backup") ? .backup
+                        : arguments.contains("--smoke-modes") ? .modes
+                        : arguments.contains("--smoke-controls") ? .playControls : nil
                 )
             } else if teamSmoke {
                 WyrmDesignMain(engine: engine, account: account, services: services,
@@ -343,11 +372,14 @@ struct WyrmDesignRoot: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(ATheme.paper.ignoresSafeArea())
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
     }
 }
 
 private struct WyrmDesignLaunch: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @State private var visible = false
 
     var body: some View {
@@ -360,8 +392,8 @@ private struct WyrmDesignLaunch: View {
                 Text("WYRM")
                     .font(.androidWyrm(11, .bold))
                     .tracking(3)
-                    .foregroundColor(ATheme.quiet)
-                ProgressView().tint(ATheme.ink).padding(.top, 16)
+                    .foregroundColor(wyrmScopedColours.quiet)
+                ProgressView().tint(wyrmScopedColours.ink).padding(.top, 16)
             }
         }
         .ignoresSafeArea()
@@ -374,6 +406,9 @@ private struct WyrmDesignLaunch: View {
 /// The GPU device was lost (Vulkan VK_ERROR_DEVICE_LOST, OM 2026-10-06): the
 /// game can draw nothing more this run. Says so plainly, saves, closes Wyrm.
 struct WyrmGraphicsLostCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let onClose: () -> Void
     @State private var closing = false
 
@@ -383,9 +418,9 @@ struct WyrmGraphicsLostCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 WyrmCapsLabel("Graphics stopped")
                 Text("Wyrm needs a restart")
-                    .font(.wyrmDisplay(26)).foregroundColor(ATheme.ink)
+                    .font(.wyrmDisplay(26)).foregroundColor(wyrmScopedColours.ink)
                 Text("Your iPhone stopped Wyrm's graphics, so the game cannot draw any more. Close Wyrm and open it again to keep playing. Your settings are saved first.")
-                    .font(.androidWyrm(14)).foregroundColor(ATheme.quiet)
+                    .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.quiet)
                     .fixedSize(horizontal: false, vertical: true)
                 Button {
                     guard !closing else { return }
@@ -393,17 +428,17 @@ struct WyrmGraphicsLostCard: View {
                     onClose()
                 } label: {
                     Text(closing ? "SAVING" : "CLOSE WYRM")
-                        .font(.androidWyrm(13, .bold)).tracking(1.2).foregroundColor(ATheme.onInk)
+                        .font(.androidWyrm(13, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.onInk)
                         .frame(maxWidth: .infinity).padding(.vertical, 14)
-                        .background(Capsule().fill(ATheme.ink))
+                        .background(Capsule().fill(wyrmScopedColours.ink))
                 }
                 .disabled(closing)
                 .padding(.top, 6)
             }
             .padding(22)
             .frame(maxWidth: 380)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .padding(24)
         }
     }

@@ -149,7 +149,7 @@ enum WyrmSupportKind: String, CaseIterable, Identifiable {
 
 enum WyrmSupportClient {
     /// Also the target of the drop report's `apiMs` reachability probe.
-    static let apiHost = "wyrm-api.77-245-76-86.sslip.io"
+    static let apiHost = "wyrm-api.165-99-223-123.sslip.io"
     private static let base = "https://" + apiHost
     private static let session: URLSession = {
         let configuration = URLSessionConfiguration.ephemeral
@@ -229,6 +229,7 @@ struct WyrmCrashRecord: Codable, Equatable, Identifiable {
     var stack: String
     var appVersion: String
     var build: String
+    var screen: String? = nil
     var sent = false
 }
 
@@ -252,7 +253,10 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
     var token: () -> String = { "" }
     /// Where the player is, for the report.
     var screen = "Launch" {
-        didSet { if !Self.isSupportScreen(screen) { lastRealScreen = screen } }
+        didSet {
+            if !Self.isSupportScreen(screen) { lastRealScreen = screen }
+            UserDefaults.standard.set(screen, forKey: Self.runningKey + "Screen")
+        }
     }
     /// The last screen outside Help & feedback (and the Settings hub, the
     /// usual way in): a report written there is about this screen, not about
@@ -319,7 +323,10 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
 
     private static func setRunning(_ running: Bool) {
         UserDefaults.standard.set(running, forKey: Self.runningKey)
-        if running { UserDefaults.standard.set(WyrmSupportContext.build, forKey: Self.versionKey) }
+        if running {
+            UserDefaults.standard.set(WyrmSupportContext.build, forKey: Self.versionKey)
+            UserDefaults.standard.set(WyrmSupportContext.appVersion, forKey: Self.runningKey + "AppVersion")
+        }
     }
 
     /// Called from the uncaught-exception handler, on the crashing thread.
@@ -338,6 +345,9 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
         // The crashed run's build, not this one's: an update in between must
         // not blame the new build.
         let crashedBuild = UserDefaults.standard.string(forKey: Self.versionKey) ?? WyrmSupportContext.build
+        let crashedVersion = UserDefaults.standard.string(forKey: Self.runningKey + "AppVersion")
+            ?? (crashedBuild == WyrmSupportContext.build ? WyrmSupportContext.appVersion : "unknown")
+        let crashedScreen = UserDefaults.standard.string(forKey: Self.runningKey + "Screen")
         // When it crashed, not when this launch found it: the file was
         // written at the crash, so its modification date is the crash time.
         func writtenAt(_ url: URL) -> Date {
@@ -353,15 +363,15 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
         if let exception, !exception.isEmpty {
             let first = exception.split(separator: "\n").first.map(String.init) ?? "Exception"
             record = WyrmCrashRecord(at: exceptionAt, cause: "exception", title: String(first.prefix(160)), stack: exception,
-                                     appVersion: WyrmSupportContext.appVersion, build: crashedBuild)
+                                     appVersion: crashedVersion, build: crashedBuild, screen: crashedScreen)
         } else if let signal, !signal.isEmpty {
             let first = signal.split(separator: "\n").first.map(String.init) ?? "signal"
             let name = first.replacingOccurrences(of: "signal ", with: "")
             record = WyrmCrashRecord(at: signalAt, cause: "signal", title: "Stopped by \(name)", stack: signal,
-                                     appVersion: WyrmSupportContext.appVersion, build: crashedBuild)
+                                     appVersion: crashedVersion, build: crashedBuild, screen: crashedScreen)
         } else if ranAway {
             record = WyrmCrashRecord(cause: "closed", title: "Wyrm closed while it was on screen", stack: "",
-                                     appVersion: WyrmSupportContext.appVersion, build: crashedBuild)
+                                     appVersion: crashedVersion, build: crashedBuild, screen: crashedScreen)
         }
         guard let record else { return }
         WyrmDiagnostics.record("crash watch: last run ended by \(record.cause)", category: "CRASH")
@@ -394,7 +404,8 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
     /// Sends one record; true when the server has it.
     @MainActor
     func send(_ record: WyrmCrashRecord, note: String) async -> Bool {
-        var context = WyrmSupportContext.current(screen: screen)
+        var context = WyrmSupportContext.current(screen: record.screen ?? "Unknown (previous launch)")
+        context["appVersion"] = record.appVersion
         context["crashCause"] = record.cause
         context["crashedBuild"] = record.build
         context["crashedAt"] = ISO8601DateFormatter().string(from: record.at)
@@ -419,6 +430,42 @@ final class WyrmCrashWatch: NSObject, ObservableObject {
 
 @available(iOS 14.0, *)
 extension WyrmCrashWatch: MXMetricManagerSubscriber {
+    /// A pretty-printed recursive tree used to consume 40K before its crash
+    /// reason or image names arrived. Flatten bounded frames first, retaining
+    /// UUID + offset for symbolication and putting the reason before the tree.
+    private static func diagnosticSummary(_ crash: MXCrashDiagnostic) -> String {
+        guard let raw = try? JSONSerialization.jsonObject(with: crash.jsonRepresentation()) as? [String: Any] else {
+            return "MetricKit diagnostic could not be decoded"
+        }
+        var lines = ["MetricKit crash", "build: \(crash.metaData.applicationBuildVersion)"]
+        if let exception = crash.exceptionType { lines.append("exception: \(exception)") }
+        if let signal = crash.signal { lines.append("signal: \(signal)") }
+        if let reason = crash.terminationReason { lines.append("termination: \(reason)") }
+        var remaining = 160
+        func walk(_ frames: [[String: Any]], depth: Int) {
+            guard depth < 128, remaining > 0 else { return }
+            for frame in frames {
+                guard remaining > 0 else { break }
+                remaining -= 1
+                let name = frame["binaryName"] as? String ?? "image"
+                let uuid = frame["binaryUUID"] as? String ?? "unknown"
+                let offset = (frame["offsetIntoBinaryTextSegment"] as? NSNumber)?.stringValue ?? "?"
+                lines.append("\(name) uuid=\(uuid) offset=\(offset)")
+                walk(frame["subFrames"] as? [[String: Any]] ?? [], depth: depth + 1)
+            }
+        }
+        if let tree = raw["callStackTree"] as? [String: Any],
+           let stacks = tree["callStacks"] as? [[String: Any]] {
+            // The faulting thread comes first, even if the payload lists it last.
+            for stack in stacks.sorted(by: { ($0["threadAttributed"] as? Bool == true ? 0 : 1) < ($1["threadAttributed"] as? Bool == true ? 0 : 1) }) {
+                guard remaining > 0 else { break }
+                lines.append(stack["threadAttributed"] as? Bool == true ? "crashing thread:" : "other thread:")
+                walk(stack["callStackRootFrames"] as? [[String: Any]] ?? [], depth: 0)
+            }
+        }
+        return String(lines.joined(separator: "\n").prefix(38_000))
+    }
+
     /// iOS's own crash diagnostics arrive on a later launch. One for a crash
     /// the watch already caught is added to that record; a new one (a crash
     /// the handlers could not see) becomes its own.
@@ -427,23 +474,26 @@ extension WyrmCrashWatch: MXMetricManagerSubscriber {
         guard let newest = crashes.last else { return }
         let payload = newest.0
         let crash = newest.1
-        let json = String(decoding: crash.jsonRepresentation(), as: UTF8.self)
+        let summary = Self.diagnosticSummary(crash)
         let reason = [crash.exceptionType.map { "exception \($0)" }, crash.signal.map { "signal \($0)" }, crash.terminationReason]
             .compactMap { $0 }.joined(separator: " · ")
         let window = payload.timeStampBegin.addingTimeInterval(-60)...payload.timeStampEnd.addingTimeInterval(60)
         Task { @MainActor in
             if let current = self.prompt, window.contains(current.at) || current.cause == "closed" {
                 var merged = current
-                merged.stack = (current.stack.isEmpty ? "" : current.stack + "\n\n") + "--- iOS diagnostics ---\n" + String(json.prefix(40_000))
+                merged.stack = String(current.stack.prefix(20_000)) + "\n\n--- iOS diagnostics ---\n" + summary
                 if current.cause == "closed" { merged.cause = "metrickit"; merged.title = reason.isEmpty ? current.title : reason }
                 self.keep(merged)
                 self.prompt = merged
                 return
             }
             if let last = self.last, last.sent, window.contains(last.at) { return }
+            let build = crash.metaData.applicationBuildVersion
+            let version = self.last.flatMap { $0.build == build ? $0.appVersion : nil }
+                ?? (build == WyrmSupportContext.build ? WyrmSupportContext.appVersion : "unknown")
             let record = WyrmCrashRecord(cause: "metrickit", title: reason.isEmpty ? "Wyrm crashed" : String(reason.prefix(160)),
-                                         stack: "--- iOS diagnostics ---\n" + String(json.prefix(40_000)),
-                                         appVersion: crash.metaData.applicationBuildVersion, build: crash.metaData.applicationBuildVersion)
+                                         stack: "--- iOS diagnostics ---\n" + summary,
+                                         appVersion: version, build: build)
             self.keep(record)
             self.prompt = record
             self.launchCheck()

@@ -17,14 +17,17 @@ enum WyrmVoiceFeature {
 
 /// A room's picture: the Wyrm mark on ink for official rooms, else the creator's avatar.
 struct WyrmVoiceRoomArt: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let room: WyrmVoiceRoom
     let size: CGFloat
     var body: some View {
         if room.managedPublic {
             ZStack {
-                RoundedRectangle(cornerRadius: size * 0.30, style: .continuous).fill(ATheme.ink)
+                RoundedRectangle(cornerRadius: size * 0.30, style: .continuous).fill(wyrmScopedColours.ink)
                 WyrmBrandStroke()
-                    .stroke(ATheme.onInk, style: StrokeStyle(lineWidth: size * 0.60 * 0.16, lineCap: .round, lineJoin: .round))
+                    .stroke(wyrmScopedColours.onInk, style: StrokeStyle(lineWidth: size * 0.60 * 0.16, lineCap: .round, lineJoin: .round))
                     .frame(width: size * 0.60, height: size * 0.60)
             }
             .frame(width: size, height: size)
@@ -70,23 +73,29 @@ struct WyrmVoiceLiveBars: View {
 
 /// "3 in" on green for a live room, "Quiet" otherwise.
 struct WyrmVoiceLivePill: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let room: WyrmVoiceRoom
     var body: some View {
         if room.active {
             HStack(spacing: 6) {
-                WyrmVoiceLiveBars(colour: ATheme.live, playing: true, height: 11)
-                Text("\(room.activeCount) in").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.live)
+                WyrmVoiceLiveBars(colour: wyrmScopedColours.live, playing: true, height: 11)
+                Text("\(room.activeCount) in").font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.live)
             }
             .padding(.horizontal, 10).padding(.vertical, 6)
-            .background(Capsule().fill(ATheme.live.opacity(0.13)))
+            .background(Capsule().fill(wyrmScopedColours.live.opacity(0.13)))
         } else {
-            Text("Quiet").font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.quiet)
+            Text("Quiet").font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.quiet)
         }
     }
 }
 
 /// A room in the list: art, name, who made it and how to get in, and whether it is live.
 struct WyrmVoiceRoomCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let room: WyrmVoiceRoom
     let action: () -> Void
     private var subtitle: String {
@@ -101,21 +110,21 @@ struct WyrmVoiceRoomCard: View {
             HStack(spacing: 13) {
                 WyrmVoiceRoomArt(room: room, size: 48)
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(room.name).font(.androidWyrm(15.5, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                    Text(room.name).font(.androidWyrm(15.5, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                     HStack(spacing: 5) {
                         if !room.managedPublic && !room.mine && !room.member {
-                            Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold)).foregroundColor(ATheme.quiet)
+                            Image(systemName: "lock.fill").font(.system(size: 10, weight: .semibold)).foregroundColor(wyrmScopedColours.quiet)
                         }
-                        Text(subtitle).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                        Text(subtitle).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
                     }
                 }
                 Spacer(minLength: 6)
                 WyrmVoiceLivePill(room: room)
             }
             .padding(.horizontal, 14).padding(.vertical, 13)
-            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
+            .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
             .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(room.active ? ATheme.live.opacity(0.35) : ATheme.rule, lineWidth: 1))
+                .stroke(room.active ? wyrmScopedColours.live.opacity(0.35) : wyrmScopedColours.rule, lineWidth: 1))
             .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
         }
         .buttonStyle(WSPressStyle())
@@ -125,13 +134,16 @@ struct WyrmVoiceRoomCard: View {
 
 /// A section title for the voice pages, with an optional quiet note on the right.
 struct WyrmVoiceSectionTitle: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var note = ""
     var body: some View {
         HStack(alignment: .lastTextBaseline) {
-            Text(title).font(.androidWyrm(17, .bold)).foregroundColor(ATheme.ink)
+            Text(title).font(.androidWyrm(17, .bold)).foregroundColor(wyrmScopedColours.ink)
             Spacer()
-            if !note.isEmpty { Text(note).font(.androidWyrm(12)).foregroundColor(ATheme.quiet) }
+            if !note.isEmpty { Text(note).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet) }
         }
         .padding(.horizontal, 22).padding(.top, 22).padding(.bottom, 6)
     }
@@ -140,6 +152,9 @@ struct WyrmVoiceSectionTitle: View {
 /// The private room's code in eight boxes, then how to get one:
 /// "Don't have a code? Ask <creator> for it." (the name opens their profile).
 struct WyrmVoiceRoomCodeField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Binding var code: String
     let creator: String
     let error: String
@@ -148,9 +163,9 @@ struct WyrmVoiceRoomCodeField: View {
     @FocusState private var focused: Bool
     var body: some View {
         VStack(spacing: 0) {
-            Text("Enter the room code").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+            Text("Enter the room code").font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text("This room is private. Its code has 8 letters and numbers.")
-                .font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center).padding(.top, 4)
+                .font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.center).padding(.top, 4)
             ZStack {
                 // The real field, unseen: focus, keyboard and paste. The boxes show the code.
                 TextField("", text: Binding(get: { code }, set: { typed in
@@ -166,11 +181,11 @@ struct WyrmVoiceRoomCodeField: View {
                         let filled = index < characters.count
                         let current = focused && index == characters.count
                         Text(filled ? String(characters[index]) : "")
-                            .font(.system(size: 19, weight: .bold, design: .monospaced)).foregroundColor(ATheme.ink)
+                            .font(.system(size: 19, weight: .bold, design: .monospaced)).foregroundColor(wyrmScopedColours.ink)
                             .frame(width: 36, height: 46)
-                            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(filled ? ATheme.card : ATheme.well))
+                            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(filled ? wyrmScopedColours.card : wyrmScopedColours.well))
                             .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-                                .stroke(!error.isEmpty ? Color.red : current ? ATheme.ink : ATheme.rule, lineWidth: current || !error.isEmpty ? 1.5 : 1))
+                                .stroke(!error.isEmpty ? Color.red : current ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: current || !error.isEmpty ? 1.5 : 1))
                     }
                 }
                 .allowsHitTesting(false)
@@ -179,12 +194,12 @@ struct WyrmVoiceRoomCodeField: View {
             .onTapGesture { focused = true }
             .padding(.top, 14)
             if !error.isEmpty {
-                Text(error).font(.androidWyrm(12)).foregroundColor(.red).multilineTextAlignment(.center).padding(.top, 8)
+                Text(error).font(.androidWyrm(12)).foregroundColor(ATheme.badge).multilineTextAlignment(.center).padding(.top, 8)
             }
             Button(action: askCreator) {
-                (Text("Don't have a code? Ask ").foregroundColor(ATheme.mute)
-                 + Text(creator.isEmpty ? "the room's creator" : creator).fontWeight(.bold).foregroundColor(ATheme.link)
-                 + Text(" for it.").foregroundColor(ATheme.mute))
+                (Text("Don't have a code? Ask ").foregroundColor(wyrmScopedColours.mute)
+                 + Text(creator.isEmpty ? "the room's creator" : creator).fontWeight(.bold).foregroundColor(wyrmScopedColours.link)
+                 + Text(" for it.").foregroundColor(wyrmScopedColours.mute))
                     .font(.androidWyrm(13)).multilineTextAlignment(.center)
                     .padding(.horizontal, 10).padding(.vertical, 6)
             }
@@ -197,29 +212,35 @@ struct WyrmVoiceRoomCodeField: View {
 
 /// The room's facts in one quiet row: who can enter, how many are in, how many fit.
 struct WyrmVoiceFacts: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let room: WyrmVoiceRoom
     var body: some View {
         let access = room.managedPublic ? "Open" : room.gate != "open" ? "Closed" : "Code"
         let facts: [(String, String)] = [(access, "Access"), ("\(room.activeCount)", "Inside"), ("\(room.capacity)", "Fits")]
         HStack(spacing: 0) {
             ForEach(Array(facts.enumerated()), id: \.offset) { index, fact in
-                if index > 0 { Rectangle().fill(ATheme.rule).frame(width: 1, height: 30) }
+                if index > 0 { Rectangle().fill(wyrmScopedColours.rule).frame(width: 1, height: 30) }
                 VStack(spacing: 2) {
-                    Text(fact.0).font(.androidWyrm(16, .bold)).foregroundColor(ATheme.ink)
-                    Text(fact.1).font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                    Text(fact.0).font(.androidWyrm(16, .bold)).foregroundColor(wyrmScopedColours.ink)
+                    Text(fact.1).font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet)
                 }
                 .frame(maxWidth: .infinity).padding(.vertical, 10)
             }
         }
         .frame(minHeight: 64)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .padding(.horizontal, 20)
     }
 }
 
 /// A round call control: filled while on, a quiet well otherwise; red for Leave.
 struct WyrmVoiceDockButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let symbol: String
     let label: String
     var on = false
@@ -229,10 +250,10 @@ struct WyrmVoiceDockButton: View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Image(systemName: symbol).font(.system(size: 20, weight: .semibold))
-                    .foregroundColor(danger || on ? .white : ATheme.ink)
+                    .foregroundColor(danger || on ? .white : wyrmScopedColours.ink)
                     .frame(width: 56, height: 56)
-                    .background(Circle().fill(danger ? Color(red: 0.898, green: 0.282, blue: 0.302) : on ? ATheme.ink : ATheme.well))
-                Text(label).font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.mute)
+                    .background(Circle().fill(danger ? Color(red: 0.898, green: 0.282, blue: 0.302) : on ? wyrmScopedColours.ink : wyrmScopedColours.well))
+                Text(label).font(.androidWyrm(11, .semibold)).foregroundColor(wyrmScopedColours.mute)
             }
         }
         .buttonStyle(WSPressStyle())

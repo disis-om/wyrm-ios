@@ -59,6 +59,9 @@ extension View {
 /// photo moves under it in any direction and zooms with a pinch. The window
 /// is always full. What is framed is exactly what is sent (256 px JPEG).
 struct WyrmPhotoCropper: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let image: UIImage
     let onCancel: () -> Void
     let onUse: (Data) -> Void
@@ -86,17 +89,17 @@ struct WyrmPhotoCropper: View {
         VStack(spacing: 0) {
             ZStack {
                 HStack {
-                    Button("Cancel", action: onCancel).font(.androidWyrm(16)).foregroundColor(ATheme.link)
+                    Button("Cancel", action: onCancel).font(.androidWyrm(16)).foregroundColor(wyrmScopedColours.link)
                     Spacer()
                 }
-                Text("Crop photo").font(.androidWyrm(16, .semibold)).foregroundColor(ATheme.ink)
+                Text("Crop photo").font(.androidWyrm(16, .semibold)).foregroundColor(wyrmScopedColours.ink)
             }.frame(height: 52).padding(.horizontal, 20)
-            Rectangle().fill(ATheme.rule).frame(height: 1)
+            Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
             GeometryReader { geo in
                 stage(geo.size)
             }
             Text("Drag the photo to any side and pinch to zoom. What is inside the frame is what everyone sees.")
-                .font(.androidWyrm(12)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
+                .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet).fixedSize(horizontal: false, vertical: true)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.top, 14)
             HStack(spacing: 10) {
                 WSOutlineButton(label: "Cancel", onClick: onCancel).frame(maxWidth: .infinity)
@@ -105,7 +108,7 @@ struct WyrmPhotoCropper: View {
                 }.frame(maxWidth: .infinity).layoutPriority(1)
             }.padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 18)
         }
-        .background(ATheme.paper.ignoresSafeArea())
+        .background(wyrmScopedColours.paper.ignoresSafeArea())
     }
 
     private func stage(_ area: CGSize) -> some View {
@@ -120,15 +123,15 @@ struct WyrmPhotoCropper: View {
                 p.addRect(CGRect(origin: .zero, size: area))
                 p.addRoundedRect(in: hole, cornerSize: CGSize(width: side * 0.3, height: side * 0.3), style: .continuous)
             }
-            .fill(ATheme.paper.opacity(0.72), style: FillStyle(eoFill: true))
+            .fill(wyrmScopedColours.paper.opacity(0.72), style: FillStyle(eoFill: true))
             .allowsHitTesting(false)
             RoundedRectangle(cornerRadius: side * 0.3, style: .continuous)
-                .stroke(ATheme.ink.opacity(0.85), lineWidth: 2)
+                .stroke(wyrmScopedColours.ink, lineWidth: 2)
                 .frame(width: side, height: side)
                 .allowsHitTesting(false)
         }
         .frame(width: area.width, height: area.height)
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipped()
         .contentShape(Rectangle())
         .gesture(

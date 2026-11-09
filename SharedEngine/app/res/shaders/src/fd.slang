@@ -70,9 +70,10 @@ float shape_metric(float2 p, float shape) {
 /* Food textures (OM, 2026-10-25; game/redraw.c wyrm_food_push): `shape`
    carries texture * 16 + shape. 0 Wyrm (the shapes above), 1 Slither app (a
    bright-centred orb, the AIR client's food), 2 Crisp (a plain dot), 3
-   Square (see-through, NTL's), 4 Glossy (a lit ball), 5 Light (one cheap
-   dot that fills its quad: far away or a crowded screen), 6 the Slither
-   app's shadow (drawn first, with plain alpha blending). */
+   Square (NTL's), 4 Glossy (a lit ball), 5 Gem (a cut stone; Small until
+   2026-10-26), 6 the Slither app's shadow (drawn first). Every pellet is
+   solid (OM, 2026-10-26): the food pipeline blends normally, and only the
+   edge's anti-aliasing is see-through. */
 float4 food_texture(vs_output input, float tex) {
   float2 q = input.uv * 2 - 1;
   float d = length(q);
@@ -80,8 +81,7 @@ float4 food_texture(vs_output input, float tex) {
   if (tex < 1.5) {
     float f = lerp(0.45, 0.5, input.flicker);
     float t = d / f;
-    float a = t < 0.5 ? 1.0 : lerp(1.0, 0.2, saturate((t - 0.5) / 0.5));
-    a *= smoothstep(0.0, EDGE_SOFTNESS, (f - d) / p);
+    float a = smoothstep(0.0, EDGE_SOFTNESS, (f - d) / p);
     float3 bright = min(input.color.rgb * 1.5, 1.0);
     return float4(lerp(bright, input.color.rgb, saturate(t / 0.5)), input.color.a * a);
   }
@@ -92,7 +92,7 @@ float4 food_texture(vs_output input, float tex) {
   if (tex < 3.5) {
     float m = max(abs(q.x), abs(q.y));
     float pm = length(float2(ddx(m), ddy(m)));
-    float a = smoothstep(0.0, EDGE_SOFTNESS, (0.9 - m) / pm) * 0.6;
+    float a = smoothstep(0.0, EDGE_SOFTNESS, (0.9 - m) / pm);
     return float4(input.color.rgb, input.color.a * a);
   }
   if (tex < 4.5) {
@@ -105,11 +105,36 @@ float4 food_texture(vs_output input, float tex) {
     return float4(saturate(input.color.rgb * diff + spec), input.color.a * a);
   }
   if (tex < 5.5) {
-    float a = smoothstep(0.0, EDGE_SOFTNESS, (0.9 - d) / p);
-    return float4(input.color.rgb, input.color.a * a);
+    // Gem: a diamond with lit upper facets and a bright table.
+    float m = abs(q.x) + abs(q.y);
+    float pm = length(float2(ddx(m), ddy(m)));
+    float a = smoothstep(0.0, EDGE_SOFTNESS, (0.5 - m) / pm);
+    float facet = q.y < 0 ? (q.x < 0 ? 1.25 : 1.0) : (q.x < 0 ? 0.8 : 0.62);
+    float table = 1 - smoothstep(0.12, 0.2, m);
+    float3 c = saturate(input.color.rgb * facet + table * 0.35);
+    return float4(c, input.color.a * a);
   }
-  float sa = (1 - smoothstep(0.25, 0.9, d)) * 0.55;
-  return float4(0, 0, 0, input.color.a * sa);
+  if (tex < 6.5) {
+    float sa = (1 - smoothstep(0.25, 0.9, d)) * 0.55;
+    return float4(0, 0, 0, input.color.a * sa);
+  }
+  float a = smoothstep(0.0, EDGE_SOFTNESS, (0.45 - d) / p);
+  float2 s = q / 0.45;
+  if (tex < 7.5) {
+    // Candy (2026-10-26): white diagonal stripes on the colour.
+    float stripe = step(0.5, frac((s.x + s.y) * 1.6));
+    float3 c = lerp(input.color.rgb, lerp(input.color.rgb, float3(1, 1, 1), 0.6), stripe);
+    c *= lerp(1.0, 0.8, smoothstep(0.7, 1.0, length(s)));
+    return float4(saturate(c), input.color.a * a);
+  }
+  // Pixel (2026-10-26): a 4 x 4 block of pixels, lit at the top left.
+  float m = max(abs(q.x), abs(q.y));
+  float pm = length(float2(ddx(m), ddy(m)));
+  float pa = smoothstep(0.0, EDGE_SOFTNESS, (0.4 - m) / pm);
+  float2 cell = floor(saturate(q / 0.8 + 0.5) * 4);
+  float shade = 1.22 - 0.1 * (cell.x + cell.y);
+  float edge = (cell.x < 0.5 || cell.y < 0.5 || cell.x > 2.5 || cell.y > 2.5) ? 0.85 : 1.0;
+  return float4(saturate(input.color.rgb * shade * edge), input.color.a * pa);
 }
 
 float4 fs_main(vs_output input) {
@@ -124,7 +149,7 @@ float4 fs_main(vs_output input) {
     float inner = smoothstep(0.0, EDGE_SOFTNESS, (f * 0.70 - d) / p);
     a = max(0.0, outer - inner);
   } else {
-    a = smoothstep(0.0, EDGE_SOFTNESS, (f - d) / p) * 0.7;
+    a = smoothstep(0.0, EDGE_SOFTNESS, (f - d) / p);
   }
 
   float glow = input.shape >= 0.5 && input.shape < 1.5

@@ -119,6 +119,97 @@ final class WyrmSkinMesh {
     private var argb = [UInt32](repeating: 0, count: maxVertices)
     private var idx = [UInt16](repeating: 0, count: maxVertices * 3)
 
+    /// The actual game renderer on the wardrobe's head-first jiggle path; no roaming simulation.
+    /// Runs the native pose into this mesh's buffers; (vertices, indices), or nil.
+    private func pose(_ skin: Int, points: [CGPoint], radius: CGFloat, rgb: UInt32, now: Double) -> (Int, Int)? {
+        guard points.count >= 2, points.count <= 256 else { return nil }
+        let xs = points.map { Float($0.x) }, ys = points.map { Float($0.y) }
+        var count: Int32 = 0
+        let vertices = xs.withUnsafeBufferPointer { px in ys.withUnsafeBufferPointer { py in
+            xy.withUnsafeMutableBufferPointer { output in argb.withUnsafeMutableBufferPointer { colors in
+                idx.withUnsafeMutableBufferPointer { indices in
+                    wyrm_skin_preview_pose(Int32(skin), px.baseAddress, py.baseAddress, Int32(points.count), Float(radius), now,
+                        Float((rgb >> 16) & 255) / 255, Float((rgb >> 8) & 255) / 255, Float(rgb & 255) / 255,
+                        (now + Double(skin) * 0.17).truncatingRemainder(dividingBy: 9) > 7.2 ? 1 : 0,
+                        output.baseAddress, colors.baseAddress, Int32(Self.maxVertices),
+                        indices.baseAddress, Int32(Self.maxVertices * 3), &count)
+                }
+            }}
+        }}
+        guard vertices > 0, count >= 3 else { return nil }
+        return (Int(vertices), min(Int(count), Self.maxVertices * 3))
+    }
+
+    /// The same posed mesh handed to the wardrobe's GPU pass (WyrmWardrobeGPU).
+    func appendPosed(_ skin: Int, points: [CGPoint], radius: CGFloat, rgb: UInt32,
+                     now: Double, opacity: Double, into gpu: WyrmWardrobeGPU) {
+        guard let (vertices, count) = pose(skin, points: points, radius: radius, rgb: rgb, now: now) else { return }
+        xy.withUnsafeBufferPointer { p in argb.withUnsafeBufferPointer { c in idx.withUnsafeBufferPointer { i in
+            gpu.append(xy: p, argb: c, vertexCount: vertices, idx: i, indexCount: count, opacity: opacity)
+        }}}
+    }
+
+    /// CoreGraphics fallback when Metal is unavailable.
+    func drawPosed(_ skin: Int, points: [CGPoint], radius: CGFloat, rgb: UInt32,
+                   now: Double, into context: GraphicsContext) {
+        guard let (vertices, count) = pose(skin, points: points, radius: radius, rgb: rgb, now: now) else { return }
+        context.withCGContext { cg in
+            let space = CGColorSpaceCreateDeviceRGB()
+            func components(_ value: UInt32) -> [CGFloat] {
+                [CGFloat((value >> 16) & 255) / 255, CGFloat((value >> 8) & 255) / 255,
+                 CGFloat(value & 255) / 255, CGFloat((value >> 24) & 255) / 255]
+            }
+            var solid = CGMutablePath(), solidColor: UInt32?
+            func flush() {
+                if let color = solidColor {
+                    cg.setFillColor(CGColor(colorSpace: space, components: components(color))!)
+                    cg.addPath(solid); cg.fillPath(); solid = CGMutablePath()
+                }
+                solidColor = nil
+            }
+            for triangle in stride(from: 0, to: count - 2, by: 3) {
+                let ids = (0..<3).map { Int(idx[triangle + $0]) }
+                guard ids.allSatisfy({ $0 < vertices }) else { continue }
+                let p = ids.map { CGPoint(x: CGFloat(xy[2 * $0]), y: CGFloat(xy[2 * $0 + 1])) }
+                let color = ids.map { argb[$0] }
+                let path = CGMutablePath(); path.move(to: p[0]); path.addLine(to: p[1]); path.addLine(to: p[2]); path.closeSubpath()
+                if color[0] == color[1] && color[1] == color[2] {
+                    if solidColor != color[0] { flush(); solidColor = color[0] }
+                    solid.addPath(path); continue
+                }
+                flush()
+                // Native quads use two paint stops. Solve their affine gradient over
+                // each triangle instead of flattening it to a single averaged colour.
+                let c = color.map(components)
+                let pairs = [(0,1), (0,2), (1,2)]
+                let pair = pairs.max { a, b in
+                    zip(c[a.0], c[a.1]).map { pair in pow(pair.0 - pair.1, 2) }.reduce(0, +) <
+                    zip(c[b.0], c[b.1]).map { pair in pow(pair.0 - pair.1, 2) }.reduce(0, +)
+                }!
+                let lo = c[pair.0], hi = c[pair.1]
+                let delta = zip(hi, lo).map { $0.0 - $0.1 }
+                let norm = delta.map { $0 * $0 }.reduce(0, +)
+                let t = c.map { value in zip(zip(value, lo).map { $0.0 - $0.1 }, delta).map { $0.0 * $0.1 }.reduce(0, +) / max(norm, 0.000001) }
+                let dx1 = p[1].x - p[0].x, dy1 = p[1].y - p[0].y
+                let dx2 = p[2].x - p[0].x, dy2 = p[2].y - p[0].y
+                let determinant = dx1 * dy2 - dx2 * dy1
+                if abs(determinant) < 0.000001 { continue }
+                let gx = ((t[1] - t[0]) * dy2 - (t[2] - t[0]) * dy1) / determinant
+                let gy = (dx1 * (t[2] - t[0]) - dx2 * (t[1] - t[0])) / determinant
+                let length = gx * gx + gy * gy
+                guard length > 0.0000001,
+                      let a = CGColor(colorSpace: space, components: lo), let b = CGColor(colorSpace: space, components: hi),
+                      let gradient = CGGradient(colorsSpace: space, colors: [a, b] as CFArray, locations: [0, 1]) else { continue }
+                let start = CGPoint(x: p[0].x - gx * t[0] / length, y: p[0].y - gy * t[0] / length)
+                cg.saveGState(); cg.addPath(path); cg.clip()
+                cg.drawLinearGradient(gradient, start: start, end: CGPoint(x: start.x + gx / length, y: start.y + gy / length),
+                                      options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+                cg.restoreGState()
+            }
+            flush()
+        }
+    }
+
     /// False when nothing was drawn (no such skin, or a box too small).
     func draw(_ skin: Int, rgb: UInt32, now: Double, size: CGSize, into context: GraphicsContext) -> Bool {
         var ni: Int32 = 0
@@ -190,6 +281,9 @@ struct WyrmSkinPicture: View {
 
 /// One picker tile: the skin's picture and its name.
 struct WyrmSkinTile: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let selected: Bool
     let label: String
     let image: CGImage?
@@ -202,22 +296,22 @@ struct WyrmSkinTile: View {
                     if let image {
                         Image(decorative: image, scale: 1).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
                     } else {
-                        Text("NONE").font(.androidWyrm(9, .bold)).tracking(0.7).foregroundColor(ATheme.ink)
+                        Text("NONE").font(.androidWyrm(9, .bold)).tracking(0.7).foregroundColor(wyrmScopedColours.ink)
                     }
                     if selected {
                         Image(systemName: "checkmark.circle.fill").font(.system(size: 16, weight: .bold))
-                            .foregroundColor(ATheme.ink)
+                            .foregroundColor(wyrmScopedColours.ink)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 Text(label).font(.androidWyrm(11.5, .semibold))
-                    .foregroundColor(selected ? ATheme.ink : ATheme.quiet).lineLimit(1)
+                    .foregroundColor(selected ? wyrmScopedColours.ink : wyrmScopedColours.quiet).lineLimit(1)
             }
             .padding(.horizontal, 6).padding(.top, 6).padding(.bottom, 8)
             .aspectRatio(1.45, contentMode: .fit)
-            .background(RoundedRectangle(cornerRadius: 15).fill(ATheme.card.opacity(0.92)))
-            .overlay(RoundedRectangle(cornerRadius: 15).stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+            .background(RoundedRectangle(cornerRadius: 15).fill(wyrmScopedColours.card.opacity(0.92)))
+            .overlay(RoundedRectangle(cornerRadius: 15).stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 15))
         }
         .buttonStyle(.plain)
@@ -228,6 +322,9 @@ struct WyrmSkinTile: View {
 
 /// The Wyrm skins page: None, the creatures, then the strip looks.
 struct WyrmSkinsPanel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let pictures: [Int: CGImage]
     let selected: Int
     let onPick: (Int) -> Void
@@ -235,7 +332,7 @@ struct WyrmSkinsPanel: View {
     private let columns = [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)]
 
     private func caption(_ text: String) -> some View {
-        Text(text).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).lineSpacing(3)
+        Text(text).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(3)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20).padding(.top, 2).padding(.bottom, 10)
     }

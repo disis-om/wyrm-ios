@@ -301,6 +301,9 @@ struct WyrmTrailCameraPage: View {
 /// On Photo a tap takes a picture and a hold records until let go; on Video a
 /// tap starts and stops.
 private struct WyrmTrailShutter: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var camera: WyrmStudioCamera
     let video: Bool
     let enabled: Bool
@@ -316,7 +319,7 @@ private struct WyrmTrailShutter: View {
             Circle().stroke(Color.white.opacity(camera.recording ? 0.35 : 1), lineWidth: 5)
             if camera.recording {
                 Circle().trim(from: 0, to: progress)
-                    .stroke(ATheme.live, style: StrokeStyle(lineWidth: 5, lineCap: .round))
+                    .stroke(wyrmScopedColours.live, style: StrokeStyle(lineWidth: 5, lineCap: .round))
                     .rotationEffect(.degrees(-90))
             }
             RoundedRectangle(cornerRadius: camera.recording ? 9 : 30, style: .continuous)
@@ -368,6 +371,9 @@ private struct WyrmTrailShutter: View {
 
 /// PHOTO · VIDEO · TEXT · CANVAS under the camera; the chosen one sits in the middle.
 struct WyrmStudioModeCarousel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let modes: [WyrmStudioMode]
     let mode: WyrmStudioMode
     let dark: Bool
@@ -378,7 +384,7 @@ struct WyrmStudioModeCarousel: View {
     var body: some View {
         GeometryReader { proxy in
             let index = CGFloat(modes.firstIndex(of: mode) ?? 0)
-            let ink = dark ? Color.white : ATheme.ink
+            let ink = dark ? Color.white : wyrmScopedColours.ink
             ZStack(alignment: .bottom) {
                 HStack(spacing: 0) {
                     ForEach(modes, id: \.self) { m in

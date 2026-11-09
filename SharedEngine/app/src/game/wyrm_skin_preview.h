@@ -14,4 +14,11 @@ int wyrm_skin_preview_frame(int skin, float w, float h, double now, float red, f
                             float blue, float* out_xy, uint32_t* out_argb, int max_v,
                             uint16_t* out_idx, int max_i, int* out_ni);
 
+/* Stateless caller-owned head-first path, 2..256 finite points. UI thread only.
+   Outputs use the same bounded ARGB triangle ABI as preview_frame. */
+int wyrm_skin_preview_pose(int skin, const float* px, const float* py, int n,
+                           float radius, double now, float red, float green,
+                           float blue, int boosting, float* out_xy, uint32_t* out_argb,
+                           int max_v, uint16_t* out_idx, int max_i, int* out_ni);
+
 #endif

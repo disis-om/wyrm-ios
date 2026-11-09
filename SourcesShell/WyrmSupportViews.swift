@@ -12,6 +12,9 @@ import UIKit
 /// ask, the note optional, what is sent one tap away. Nothing is sent until the
 /// player says so (or has chosen "Always send").
 struct WyrmCrashPrompt: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let record: WyrmCrashRecord
     @ObservedObject private var watch = WyrmCrashWatch.shared
     @ObservedObject private var keyboard = WyrmKeyboardController.shared
@@ -24,7 +27,7 @@ struct WyrmCrashPrompt: View {
 
     var body: some View {
         ZStack(alignment: keyboard.focused ? .top : .bottom) {
-            ATheme.ink.opacity(appeared ? 0.34 : 0)
+            wyrmScopedColours.ink.opacity(appeared ? 0.34 : 0)
                 .ignoresSafeArea()
                 .onTapGesture { UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil) }
             card
@@ -50,8 +53,8 @@ struct WyrmCrashPrompt: View {
         }
         .padding(20)
         .frame(maxWidth: 520)
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(wyrmScopedColours.rule))
         .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: phase)
         .animation(.spring(response: 0.34, dampingFraction: 0.9), value: showDetails)
@@ -60,31 +63,31 @@ struct WyrmCrashPrompt: View {
     @ViewBuilder private var askingView: some View {
         HStack(alignment: .center, spacing: 12) {
             ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(ATheme.badge.opacity(0.12))
-                Image(systemName: "bandage.fill").font(.system(size: 21, weight: .semibold)).foregroundColor(ATheme.badge)
+                RoundedRectangle(cornerRadius: 15, style: .continuous).fill(wyrmScopedColours.badge.opacity(0.12))
+                Image(systemName: "bandage.fill").font(.system(size: 21, weight: .semibold)).foregroundColor(wyrmScopedColours.badge)
             }.frame(width: 50, height: 50)
             VStack(alignment: .leading, spacing: 2) {
-                Text("CRASH DETECTED").font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(ATheme.badge)
-                Text("Wyrm \(record.appVersion) · build \(record.build)").font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet)
+                Text("CRASH DETECTED").font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(wyrmScopedColours.badge)
+                Text("Wyrm \(record.appVersion) · build \(record.build)").font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet)
             }
             Spacer(minLength: 0)
         }
-        Text("Wyrm closed unexpectedly").font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).padding(.top, 16)
+        Text("Wyrm closed unexpectedly").font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).padding(.top, 16)
         Text("Send the crash report to the developer and we'll see exactly what went wrong. You're helping make Wyrm better for every player.")
-            .font(.androidWyrm(13.5)).foregroundColor(ATheme.mute).lineSpacing(3)
+            .font(.androidWyrm(13.5)).foregroundColor(wyrmScopedColours.mute).lineSpacing(3)
             .fixedSize(horizontal: false, vertical: true).padding(.top, 6)
 
-        TextField("What were you doing? (optional)", text: $note)
-            .font(.androidWyrm(14)).foregroundColor(ATheme.ink)
+        TextField("What were you doing? (optional)", text: $note, prompt: wyrmPrompt("What were you doing? (optional)"))
+            .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.ink)
             .padding(.horizontal, 14).frame(height: 46)
-            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ATheme.well))
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(wyrmScopedColours.well))
             .padding(.top, 16)
             .disabled(phase == .sending)
 
         Button { showDetails.toggle() } label: {
             HStack(spacing: 6) {
-                Text("What's included").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.link)
+                Text("What's included").font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.link)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundColor(wyrmScopedColours.link)
                     .rotationEffect(.degrees(showDetails ? 180 : 0))
                 Spacer()
             }.frame(height: 38).contentShape(Rectangle())
@@ -94,7 +97,7 @@ struct WyrmCrashPrompt: View {
                 WyrmIncludedLine(icon: "iphone", text: "Your iPhone model, iOS and Wyrm version")
                 WyrmIncludedLine(icon: "chevron.left.forwardslash.chevron.right", text: "Where in Wyrm's code it stopped")
                 WyrmIncludedLine(icon: "text.alignleft", text: "The last few minutes of Wyrm's own log")
-                WyrmIncludedLine(icon: "lock.fill", text: "Never your password, keys, Team ID or messages", tint: ATheme.live)
+                WyrmIncludedLine(icon: "lock.fill", text: "Never your password, keys, Team ID or messages", tint: wyrmScopedColours.live)
             }
             .padding(.bottom, 8)
             .transition(.opacity.combined(with: .move(edge: .top)))
@@ -108,19 +111,19 @@ struct WyrmCrashPrompt: View {
 
         if phase == .failed {
             Text("Couldn't send it. Try again, or send it later from Settings › Help & feedback.")
-                .font(.androidWyrm(12)).foregroundColor(ATheme.badge)
+                .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
         }
 
         Button(action: send) {
             HStack(spacing: 8) {
-                if phase == .sending { ProgressView().tint(ATheme.onInk) }
+                if phase == .sending { ProgressView().tint(wyrmScopedColours.onInk) }
                 Text(phase == .sending ? "Sending…" : phase == .failed ? "Try again" : "Send report")
                     .font(.androidWyrm(15.5, .bold))
             }
-            .foregroundColor(ATheme.onInk)
+            .foregroundColor(wyrmScopedColours.onInk)
             .frame(maxWidth: .infinity).frame(height: 52)
-            .background(Capsule().fill(ATheme.ink))
+            .background(Capsule().fill(wyrmScopedColours.ink))
         }
         .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, 12)
 
@@ -129,7 +132,7 @@ struct WyrmCrashPrompt: View {
             withAnimation(.easeIn(duration: 0.22)) { appeared = false }
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { watch.dismissPrompt() }
         } label: {
-            Text("Not now").font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.mute)
+            Text("Not now").font(.androidWyrm(15, .semibold)).foregroundColor(wyrmScopedColours.mute)
                 .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
         }
         .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, 2)
@@ -138,13 +141,13 @@ struct WyrmCrashPrompt: View {
     private var sentView: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().fill(ATheme.live.opacity(0.14)).frame(width: 64, height: 64)
-                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(ATheme.live)
+                Circle().fill(wyrmScopedColours.live.opacity(0.14)).frame(width: 64, height: 64)
+                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(wyrmScopedColours.live)
             }
             .transition(.scale.combined(with: .opacity))
-            Text("Thank you").font(.androidWyrm(21, .bold)).foregroundColor(ATheme.ink)
+            Text("Thank you").font(.androidWyrm(21, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text("The report is with the developer. You just made Wyrm a little better.")
-                .font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 18)
@@ -169,6 +172,9 @@ struct WyrmCrashPrompt: View {
 
 /// Holds the prompt on screen through its "Thank you", then lets it go.
 struct WyrmCrashPromptHost: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject private var watch = WyrmCrashWatch.shared
     @State private var shown: WyrmCrashRecord?
 
@@ -181,9 +187,9 @@ struct WyrmCrashPromptHost: View {
             }
             if !watch.toast.isEmpty {
                 Text(watch.toast)
-                    .font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.onInk)
+                    .font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.onInk)
                     .padding(.horizontal, 16).padding(.vertical, 11)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
                     .frame(maxHeight: .infinity, alignment: .top).padding(.top, 58)
                     .transition(.move(edge: .top).combined(with: .opacity))
                     .onAppear {
@@ -215,6 +221,9 @@ struct WyrmCrashPromptHost: View {
 /// 2026-09-29): the crash card's look, with the likeliest cause in plain words.
 /// Over the Ready Room it is drawn in the landscape canvas the player holds.
 struct WyrmDropPrompt: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let record: WyrmDropRecord
     /// The landscape canvas over the Ready Room, or nil in the portrait app.
     let stage: CGSize?
@@ -233,14 +242,9 @@ struct WyrmDropPrompt: View {
 
     private var landscape: Bool { stage != nil }
     private var typing: Bool { keyboard.focused }
-    private var keyboardWidth: CGFloat {
-        let width: CGFloat = stage?.width ?? 0
-        return min(width - safe.leading - safe.trailing - 24, 640 * CGFloat(keyboard.scale))
-    }
-
     var body: some View {
         ZStack(alignment: typing ? .top : (landscape ? .center : .bottom)) {
-            ATheme.ink.opacity(appeared ? 0.34 : 0)
+            wyrmScopedColours.ink.opacity(appeared ? 0.34 : 0)
                 .ignoresSafeArea()
                 .onTapGesture { Self.resign() }
             card
@@ -248,17 +252,7 @@ struct WyrmDropPrompt: View {
                 .padding(.top, typing ? (landscape ? max(8, safe.top) : 12) : 0)
                 .padding(.bottom, landscape ? 0 : 12)
                 .offset(y: appeared ? 0 : 520)
-            // The phone stays portrait, so over the Ready Room the keys are
-            // drawn here, in the canvas, the way the Ready Room draws them.
-            if landscape && typing && keyboard.embedded {
-                WyrmKeyboardView(compact: true)
-                    .frame(width: keyboardWidth)
-                    .shadow(color: ATheme.ink.opacity(0.18), radius: 18, y: 6)
-                    .padding(.bottom, 8)
-                    .frame(maxHeight: .infinity, alignment: .bottom)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .zIndex(2)
-            }
+
         }
         .animation(.spring(response: 0.42, dampingFraction: 0.86), value: keyboard.focused)
         .onAppear {
@@ -279,8 +273,8 @@ struct WyrmDropPrompt: View {
         }
         .padding(landscape ? 18 : 20)
         .frame(maxWidth: landscape ? 720 : 520)
-        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(wyrmScopedColours.rule))
         .shadow(color: Color.black.opacity(0.18), radius: 30, y: 12)
         .animation(.spring(response: 0.38, dampingFraction: 0.86), value: phase)
         .animation(.spring(response: 0.34, dampingFraction: 0.9), value: showDetails)
@@ -334,7 +328,7 @@ struct WyrmDropPrompt: View {
             }.frame(width: 50, height: 50)
             VStack(alignment: .leading, spacing: 2) {
                 Text("ARENA DROP").font(.androidWyrm(10, .bold)).tracking(1.1).foregroundColor(Self.tint)
-                Text(record.subtitle).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(1)
+                Text(record.subtitle).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -342,26 +336,26 @@ struct WyrmDropPrompt: View {
 
     private var headline: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("The arena dropped you").font(.androidWyrm(landscape ? 20 : 22, .bold)).foregroundColor(ATheme.ink)
+            Text("The arena dropped you").font(.androidWyrm(landscape ? 20 : 22, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text(record.hintText)
-                .font(.androidWyrm(13.5)).foregroundColor(ATheme.mute).lineSpacing(3)
+                .font(.androidWyrm(13.5)).foregroundColor(wyrmScopedColours.mute).lineSpacing(3)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var noteField: some View {
-        TextField("What happened? (optional)", text: $note)
-            .font(.androidWyrm(14)).foregroundColor(ATheme.ink)
+        TextField("What happened? (optional)", text: $note, prompt: wyrmPrompt("What happened? (optional)"))
+            .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.ink)
             .padding(.horizontal, 14).frame(height: 46)
-            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(ATheme.well))
+            .background(RoundedRectangle(cornerRadius: 13, style: .continuous).fill(wyrmScopedColours.well))
             .disabled(phase == .sending)
     }
 
     private var detailsToggle: some View {
         Button { showDetails.toggle() } label: {
             HStack(spacing: 6) {
-                Text("What's included").font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.link)
-                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.link)
+                Text("What's included").font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.link)
+                Image(systemName: "chevron.down").font(.system(size: 10, weight: .bold)).foregroundColor(wyrmScopedColours.link)
                     .rotationEffect(.degrees(showDetails ? 180 : 0))
                 Spacer()
             }.frame(height: 38).contentShape(Rectangle())
@@ -373,7 +367,7 @@ struct WyrmDropPrompt: View {
             WyrmIncludedLine(icon: "scope", text: "Arena, ping and how long you were in")
             WyrmIncludedLine(icon: "wifi", text: "Wi-Fi or mobile data, and whether it switched")
             WyrmIncludedLine(icon: "text.alignleft", text: "The last minutes of Wyrm's own log")
-            WyrmIncludedLine(icon: "lock.fill", text: "Never your password, keys, Team ID or messages", tint: ATheme.live)
+            WyrmIncludedLine(icon: "lock.fill", text: "Never your password, keys, Team ID or messages", tint: wyrmScopedColours.live)
         }
         .padding(.bottom, 8)
         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -390,7 +384,7 @@ struct WyrmDropPrompt: View {
     @ViewBuilder private var failure: some View {
         if phase == .failed {
             Text("Couldn't send it. Check your connection and try again.")
-                .font(.androidWyrm(12)).foregroundColor(ATheme.badge)
+                .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge)
                 .fixedSize(horizontal: false, vertical: true).padding(.top, 4)
         }
     }
@@ -399,13 +393,13 @@ struct WyrmDropPrompt: View {
         VStack(spacing: 0) {
             Button(action: send) {
                 HStack(spacing: 8) {
-                    if phase == .sending { ProgressView().tint(ATheme.onInk) }
+                    if phase == .sending { ProgressView().tint(wyrmScopedColours.onInk) }
                     Text(phase == .sending ? "Sending…" : phase == .failed ? "Try again" : "Send report")
                         .font(.androidWyrm(15.5, .bold))
                 }
-                .foregroundColor(ATheme.onInk)
+                .foregroundColor(wyrmScopedColours.onInk)
                 .frame(maxWidth: .infinity).frame(height: 52)
-                .background(Capsule().fill(ATheme.ink))
+                .background(Capsule().fill(wyrmScopedColours.ink))
             }
             .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, landscape ? 8 : 12)
 
@@ -414,7 +408,7 @@ struct WyrmDropPrompt: View {
                 withAnimation(.easeIn(duration: 0.22)) { appeared = false }
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) { watch.dismissPrompt() }
             } label: {
-                Text("Not now").font(.androidWyrm(15, .semibold)).foregroundColor(ATheme.mute)
+                Text("Not now").font(.androidWyrm(15, .semibold)).foregroundColor(wyrmScopedColours.mute)
                     .frame(maxWidth: .infinity).frame(height: 46).contentShape(Rectangle())
             }
             .buttonStyle(WSPressStyle()).disabled(phase == .sending).padding(.top, 2)
@@ -424,13 +418,13 @@ struct WyrmDropPrompt: View {
     private var sentView: some View {
         VStack(spacing: 10) {
             ZStack {
-                Circle().fill(ATheme.live.opacity(0.14)).frame(width: 64, height: 64)
-                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(ATheme.live)
+                Circle().fill(wyrmScopedColours.live.opacity(0.14)).frame(width: 64, height: 64)
+                Image(systemName: "checkmark").font(.system(size: 26, weight: .bold)).foregroundColor(wyrmScopedColours.live)
             }
             .transition(.scale.combined(with: .opacity))
-            Text("Thank you").font(.androidWyrm(21, .bold)).foregroundColor(ATheme.ink)
+            Text("Thank you").font(.androidWyrm(21, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text("The report is with the developer. You just made Wyrm a little better.")
-                .font(.androidWyrm(13)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity).padding(.vertical, 18)
@@ -460,6 +454,9 @@ struct WyrmDropPrompt: View {
 /// Holds the drop card through its "Thank you", like the crash host, and
 /// shows the short toast after a quiet "Always send" report.
 struct WyrmDropPromptHost: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     /// True over the landscape Ready Room.
     let landscape: Bool
     @ObservedObject private var watch = WyrmDropWatch.shared
@@ -497,9 +494,9 @@ struct WyrmDropPromptHost: View {
             }
             if !watch.toast.isEmpty {
                 Text(watch.toast)
-                    .font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.onInk)
+                    .font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.onInk)
                     .padding(.horizontal, 16).padding(.vertical, 11)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
                     .frame(maxHeight: .infinity, alignment: .top)
                     .padding(.top, stage == nil ? 58 : max(12, safe.top))
                     .transition(.move(edge: .top).combined(with: .opacity))
@@ -513,13 +510,16 @@ struct WyrmDropPromptHost: View {
 }
 
 private struct WyrmIncludedLine: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let icon: String
     let text: String
     var tint = ATheme.quiet
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 10) {
             Image(systemName: icon).font(.system(size: 11.5, weight: .semibold)).foregroundColor(tint).frame(width: 18)
-            Text(text).font(.androidWyrm(12.5)).foregroundColor(ATheme.mute).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.mute).fixedSize(horizontal: false, vertical: true)
         }
     }
 }
@@ -554,6 +554,9 @@ private struct WyrmFAQ: Identifiable {
 }
 
 struct WyrmHelpCenterPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
@@ -568,9 +571,9 @@ struct WyrmHelpCenterPage: View {
         WSScaffold(title: "Help & feedback", onBack: close) {
             Group {
             VStack(alignment: .leading, spacing: 5) {
-                Text("How can we help?").font(.androidWyrm(26, .bold)).foregroundColor(ATheme.ink)
+                Text("How can we help?").font(.androidWyrm(26, .bold)).foregroundColor(wyrmScopedColours.ink)
                 Text("Wyrm is made by one person, and every report is read.")
-                    .font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                    .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet)
             }
             .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 14)
 
@@ -614,10 +617,10 @@ struct WyrmHelpCenterPage: View {
                         if !last.sent {
                             Button { sendLast(last) } label: {
                                 Group {
-                                    if sendingLast { ProgressView().tint(ATheme.onInk) } else { Text("Send") }
+                                    if sendingLast { ProgressView().tint(wyrmScopedColours.onInk) } else { Text("Send") }
                                 }
-                                .font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.onInk)
-                                .frame(width: 74, height: 34).background(Capsule().fill(ATheme.ink))
+                                .font(.androidWyrm(13.5, .semibold)).foregroundColor(wyrmScopedColours.onInk)
+                                .frame(width: 74, height: 34).background(Capsule().fill(wyrmScopedColours.ink))
                             }.buttonStyle(WSPressStyle()).disabled(sendingLast)
                         }
                     }
@@ -625,7 +628,7 @@ struct WyrmHelpCenterPage: View {
                 }
             }
             if !lastError.isEmpty {
-                Text(lastError).font(.androidWyrm(12)).foregroundColor(ATheme.badge).padding(.horizontal, 20).padding(.top, 8)
+                Text(lastError).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge).padding(.horizontal, 20).padding(.top, 8)
             }
             WSCaption("Off: Wyrm asks you each time, with Send and Not now. On: the report goes by itself and only a short note shows.")
             WSCaption("A crash report holds your iPhone model, iOS and Wyrm version, where in Wyrm it stopped and the last few minutes of Wyrm's log. Never your password, keys, Team ID or messages.")
@@ -662,17 +665,17 @@ struct WyrmHelpCenterPage: View {
     private func tile(_ kind: WyrmSupportKind) -> some View {
         Button { open(.supportCompose(kind.rawValue)) } label: {
             VStack(alignment: .leading, spacing: 10) {
-                Image(systemName: kind.icon).font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.ink)
+                Image(systemName: kind.icon).font(.system(size: 18, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
                     .frame(width: 38, height: 38)
-                    .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(ATheme.well))
-                Text(kind.pageTitle).font(.androidWyrm(13, .semibold)).foregroundColor(ATheme.ink)
+                    .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(wyrmScopedColours.well))
+                Text(kind.pageTitle).font(.androidWyrm(13, .semibold)).foregroundColor(wyrmScopedColours.ink)
                     .lineLimit(2).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 0)
             }
             .padding(12)
             .frame(maxWidth: .infinity, minHeight: 108, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.card))
-            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule))
+            .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(wyrmScopedColours.card))
+            .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(wyrmScopedColours.rule))
         }
         .buttonStyle(WSPressStyle())
     }
@@ -684,15 +687,15 @@ struct WyrmHelpCenterPage: View {
                 withAnimation(.spring(response: 0.34, dampingFraction: 0.88)) { expanded = expanded == item.id ? nil : item.id }
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 10) {
-                    Text(item.question).font(.androidWyrm(14.5, .semibold)).foregroundColor(ATheme.ink)
+                    Text(item.question).font(.androidWyrm(14.5, .semibold)).foregroundColor(wyrmScopedColours.ink)
                         .frame(maxWidth: .infinity, alignment: .leading).fixedSize(horizontal: false, vertical: true)
-                    Image(systemName: "plus").font(.system(size: 12, weight: .bold)).foregroundColor(ATheme.quiet)
+                    Image(systemName: "plus").font(.system(size: 12, weight: .bold)).foregroundColor(wyrmScopedColours.quiet)
                         .rotationEffect(.degrees(expanded == item.id ? 45 : 0))
                 }
                 .padding(.horizontal, 14).padding(.vertical, 14).contentShape(Rectangle())
             }.buttonStyle(.plain)
             if expanded == item.id {
-                Text(item.answer).font(.androidWyrm(13)).foregroundColor(ATheme.mute).lineSpacing(3)
+                Text(item.answer).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.mute).lineSpacing(3)
                     .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 14).padding(.bottom, 14)
                     .transition(.opacity)
@@ -719,6 +722,9 @@ struct WyrmHelpCenterPage: View {
 // MARK: - Write a report
 
 struct WyrmSupportComposePage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     let initialKind: String
     let close: () -> Void
@@ -766,28 +772,28 @@ struct WyrmSupportComposePage: View {
         }
         .padding(.horizontal, 16).padding(.top, 16)
 
-        Text(kind.question).font(.androidWyrm(20, .bold)).foregroundColor(ATheme.ink)
+        Text(kind.question).font(.androidWyrm(20, .bold)).foregroundColor(wyrmScopedColours.ink)
             .padding(.horizontal, 20).padding(.top, 20).padding(.bottom, 10)
 
         ZStack(alignment: .topLeading) {
             WyrmTextArea(text: $message, limit: 4000, editable: !sending)
                 .frame(minHeight: 180)
             if message.isEmpty {
-                Text(kind.placeholder).font(.androidWyrm(15)).foregroundColor(ATheme.quiet.opacity(0.8))
+                Text(kind.placeholder).font(.androidWyrm(15)).foregroundColor(wyrmScopedColours.quiet)
                     .padding(.horizontal, 5).padding(.top, 8).allowsHitTesting(false)
             }
         }
         .padding(10)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule))
         .padding(.horizontal, 16)
 
         HStack {
             if !error.isEmpty {
-                Text(error).font(.androidWyrm(12)).foregroundColor(ATheme.badge).fixedSize(horizontal: false, vertical: true)
+                Text(error).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
-            Text("\(message.count)/4000").font(.androidWyrm(11)).foregroundColor(message.count > 3800 ? ATheme.badge : ATheme.quiet)
+            Text("\(message.count)/4000").font(.androidWyrm(11)).foregroundColor(message.count > 3800 ? wyrmScopedColours.badge : wyrmScopedColours.quiet)
         }
         .padding(.horizontal, 20).padding(.top, 8)
 
@@ -803,8 +809,8 @@ struct WyrmSupportComposePage: View {
 
         if sending {
             HStack(spacing: 10) {
-                ProgressView().tint(ATheme.quiet)
-                Text("Sending…").font(.androidWyrm(13)).foregroundColor(ATheme.quiet)
+                ProgressView().tint(wyrmScopedColours.quiet)
+                Text("Sending…").font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet)
             }.frame(maxWidth: .infinity).padding(.top, 14)
         }
     }
@@ -812,19 +818,19 @@ struct WyrmSupportComposePage: View {
     private var sentView: some View {
         VStack(spacing: 12) {
             ZStack {
-                Circle().fill(ATheme.live.opacity(0.14)).frame(width: 76, height: 76)
-                Image(systemName: "checkmark").font(.system(size: 30, weight: .bold)).foregroundColor(ATheme.live)
+                Circle().fill(wyrmScopedColours.live.opacity(0.14)).frame(width: 76, height: 76)
+                Image(systemName: "checkmark").font(.system(size: 30, weight: .bold)).foregroundColor(wyrmScopedColours.live)
             }
             .padding(.top, 60)
-            Text("Thank you").font(.androidWyrm(26, .bold)).foregroundColor(ATheme.ink)
+            Text("Thank you").font(.androidWyrm(26, .bold)).foregroundColor(wyrmScopedColours.ink)
             Text(kind == .suggestion
                  ? "Your idea is with the developer. The best ones end up in Wyrm."
                  : "Your report is with the developer. If we reply, it arrives in Alerts and under Your reports.")
-                .font(.androidWyrm(14)).foregroundColor(ATheme.mute).multilineTextAlignment(.center)
+                .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.mute).multilineTextAlignment(.center)
                 .fixedSize(horizontal: false, vertical: true).padding(.horizontal, 36)
             WSPrimaryButton(label: "Done", onClick: close).padding(.horizontal, 36).padding(.top, 18)
             Button("See your reports") { open(.supportReports) }
-                .font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link).padding(.top, 4)
+                .font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.link).padding(.top, 4)
         }
         .frame(maxWidth: .infinity)
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
@@ -895,6 +901,9 @@ struct WyrmTextArea: UIViewRepresentable {
 // MARK: - Your reports
 
 struct WyrmSupportReportsPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var account: WyrmAccountStore
     let close: () -> Void
     let open: (WyrmDesignRoute) -> Void
@@ -909,11 +918,11 @@ struct WyrmSupportReportsPage: View {
                 VStack(spacing: 12) { ForEach(0..<3, id: \.self) { _ in WyrmReportSkeleton() } }.padding(.top, 16)
             } else if store.reports.isEmpty {
                 VStack(spacing: 8) {
-                    Image(systemName: "tray").font(.system(size: 28, weight: .semibold)).foregroundColor(ATheme.quiet)
-                    Text(store.error.isEmpty ? "No reports yet" : store.error).font(.androidWyrm(17, .semibold)).foregroundColor(ATheme.ink)
+                    Image(systemName: "tray").font(.system(size: 28, weight: .semibold)).foregroundColor(wyrmScopedColours.quiet)
+                    Text(store.error.isEmpty ? "No reports yet" : store.error).font(.androidWyrm(17, .semibold)).foregroundColor(wyrmScopedColours.ink)
                         .multilineTextAlignment(.center)
                     Text("Problems, ideas and questions you send appear here, with Wyrm's replies.")
-                        .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center)
+                        .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.center)
                 }
                 .frame(maxWidth: .infinity).padding(.horizontal, 32).padding(.top, 70)
             } else {
@@ -934,39 +943,42 @@ struct WyrmSupportReportsPage: View {
 }
 
 private struct WyrmReportCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let report: WyrmSupportReport
     var fresh = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(report.kindTitle.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(ATheme.ink)
-                    .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(ATheme.well))
-                if fresh { Circle().fill(ATheme.badge).frame(width: 8, height: 8) }
+                Text(report.kindTitle.uppercased()).font(.androidWyrm(9.5, .bold)).tracking(1).foregroundColor(wyrmScopedColours.ink)
+                    .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(wyrmScopedColours.well))
+                if fresh { Circle().fill(wyrmScopedColours.badge).frame(width: 8, height: 8) }
                 Text(fresh ? "New reply from Wyrm" : status).font(.androidWyrm(11, .semibold))
-                    .foregroundColor(fresh ? ATheme.badge : report.reply.isEmpty ? ATheme.quiet : ATheme.live)
+                    .foregroundColor(fresh ? wyrmScopedColours.badge : report.reply.isEmpty ? wyrmScopedColours.quiet : wyrmScopedColours.live)
                 Spacer()
-                Text(WyrmTrailTime.short(report.createdAt)).font(.androidWyrm(11)).foregroundColor(ATheme.quiet)
+                Text(WyrmTrailTime.short(report.createdAt)).font(.androidWyrm(11)).foregroundColor(wyrmScopedColours.quiet)
             }
             Text(report.message.isEmpty ? (report.kind == WyrmSupportKind.drop.rawValue ? "Arena drop report" : "Crash report") : report.message)
-                .font(.androidWyrm(14)).foregroundColor(ATheme.ink).lineLimit(5).lineSpacing(2)
+                .font(.androidWyrm(14)).foregroundColor(wyrmScopedColours.ink).lineLimit(5).lineSpacing(2)
                 .fixedSize(horizontal: false, vertical: true)
             if !report.reply.isEmpty {
                 HStack(alignment: .top, spacing: 10) {
                     WyrmBrandMark(size: 26)
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Wyrm").font(.androidWyrm(12.5, .bold)).foregroundColor(ATheme.ink)
-                        Text(report.reply).font(.androidWyrm(13.5)).foregroundColor(ATheme.ink).lineSpacing(2)
+                        Text("Wyrm").font(.androidWyrm(12.5, .bold)).foregroundColor(wyrmScopedColours.ink)
+                        Text(report.reply).font(.androidWyrm(13.5)).foregroundColor(wyrmScopedColours.ink).lineSpacing(2)
                             .fixedSize(horizontal: false, vertical: true)
                     }
                     Spacer(minLength: 0)
                 }
                 .padding(12)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.live.opacity(0.09)))
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.live.opacity(0.09)))
             }
         }
         .padding(16)
-        .background(RoundedRectangle(cornerRadius: 17, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 17, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
         .padding(.horizontal, 16)
     }
 
@@ -981,17 +993,20 @@ private struct WyrmReportCard: View {
 }
 
 private struct WyrmReportSkeleton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @State private var dim = false
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            RoundedRectangle(cornerRadius: 5).fill(ATheme.well).frame(width: 90, height: 12)
-            RoundedRectangle(cornerRadius: 5).fill(ATheme.well).frame(height: 13)
-            RoundedRectangle(cornerRadius: 5).fill(ATheme.well).frame(width: 190, height: 13)
+            RoundedRectangle(cornerRadius: 5).fill(wyrmScopedColours.well).frame(width: 90, height: 12)
+            RoundedRectangle(cornerRadius: 5).fill(wyrmScopedColours.well).frame(height: 13)
+            RoundedRectangle(cornerRadius: 5).fill(wyrmScopedColours.well).frame(width: 190, height: 13)
         }
         .padding(16)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 17, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 17, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
         .padding(.horizontal, 16)
         .opacity(dim ? 0.55 : 1)
         .onAppear { withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { dim = true } }

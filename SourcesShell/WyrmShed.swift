@@ -177,16 +177,19 @@ private struct ShedScrollHeightPreference: PreferenceKey {
 
 /// Liquid Glass on iOS 26 (Android's tint: Card at 0.55), the themed card before it.
 private struct ShedGlass: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     func body(content: Content) -> some View {
         let shape = RoundedRectangle(cornerRadius: 30, style: .continuous)
 #if compiler(>=6.2)
         if #available(iOS 26.0, *) {
-            content.glassEffect(Glass.regular.tint(ATheme.card.opacity(0.55)), in: shape)
+            content.glassEffect(Glass.regular.tint(wyrmScopedColours.card.opacity(0.55)), in: shape)
         } else {
-            content.background(shape.fill(ATheme.card)).overlay(shape.stroke(ATheme.rule, lineWidth: 1))
+            content.background(shape.fill(wyrmScopedColours.card)).overlay(shape.stroke(wyrmScopedColours.rule, lineWidth: 1))
         }
 #else
-        content.background(shape.fill(ATheme.card)).overlay(shape.stroke(ATheme.rule, lineWidth: 1))
+        content.background(shape.fill(wyrmScopedColours.card)).overlay(shape.stroke(wyrmScopedColours.rule, lineWidth: 1))
 #endif
     }
 }
@@ -194,6 +197,9 @@ private struct ShedGlass: ViewModifier {
 // MARK: - The page
 
 struct WyrmShedPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let close: () -> Void
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
     @ObservedObject private var theme = WyrmThemeStore.shared
@@ -235,7 +241,7 @@ struct WyrmShedPage: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .bottom) {
-                ATheme.paper
+                wyrmScopedColours.paper
                 page
                     .opacity(1 - 0.75 * veil)
                     .scaleEffect(1 - 0.04 * veil)
@@ -290,10 +296,10 @@ struct WyrmShedPage: View {
                     Color.clear.preference(key: ShedFramePreference.self, value: g.frame(in: .named("shedRoot")))
                 })
             Text("What should your Wyrm shed into?")
-                .font(.androidWyrm(19, .heavy)).foregroundColor(ATheme.ink).multilineTextAlignment(.center)
+                .font(.androidWyrm(19, .heavy)).foregroundColor(wyrmScopedColours.ink).multilineTextAlignment(.center)
             Spacer().frame(height: 6)
             Text("Write your recipe below, then shed.")
-                .font(.androidWyrm(13)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center)
+                .font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.center)
         }
         .padding(.bottom, composerH + 24)
         .onPreferenceChange(ShedFramePreference.self) { frame in
@@ -358,7 +364,7 @@ struct WyrmShedPage: View {
                     let step = max(0, shedSteps.lastIndex(where: { t >= $0.0 }) ?? 0)
                     ZStack {
                         Text(shedSteps[step].1)
-                            .font(.androidWyrm(17, .bold)).foregroundColor(ATheme.mute)
+                            .font(.androidWyrm(17, .bold)).foregroundColor(wyrmScopedColours.mute)
                             .multilineTextAlignment(.center)
                             .frame(maxWidth: .infinity)
                             .padding(.horizontal, 24)
@@ -403,23 +409,23 @@ struct WyrmShedPage: View {
                     Spacer().frame(height: 10)
                     HStack(spacing: 0) {
                         Button { openSheet(.tune) } label: {
-                            ShedSlidersIcon().stroke(ATheme.ink, style: StrokeStyle(lineWidth: 2 * 18 / 24, lineCap: .round))
+                            ShedSlidersIcon().stroke(wyrmScopedColours.ink, style: StrokeStyle(lineWidth: 2 * 18 / 24, lineCap: .round))
                                 .frame(width: 18, height: 18)
                                 .frame(width: 44, height: 44)
-                                .background(Circle().fill(ATheme.ink.opacity(0.07)))
+                                .background(Circle().fill(wyrmScopedColours.ink))
                                 .contentShape(Circle())
                         }
                         .buttonStyle(WSPressStyle())
                         Spacer()
                         Button(action: shed) {
                             HStack(spacing: 8) {
-                                Text(sheds > 0 ? "Shed again" : "Shed").font(.androidWyrm(16, .heavy)).foregroundColor(ATheme.onInk)
-                                ShedArrowIcon().stroke(ATheme.onInk, style: StrokeStyle(lineWidth: 2.4 * 18 / 24, lineCap: .round, lineJoin: .round))
+                                Text(sheds > 0 ? "Shed again" : "Shed").font(.androidWyrm(16, .heavy)).foregroundColor(wyrmScopedColours.onInk)
+                                ShedArrowIcon().stroke(wyrmScopedColours.onInk, style: StrokeStyle(lineWidth: 2.4 * 18 / 24, lineCap: .round, lineJoin: .round))
                                     .frame(width: 18, height: 18)
                             }
                             .padding(.leading, 24).padding(.trailing, 20)
                             .frame(height: 48)
-                            .background(Capsule().fill(ATheme.ink))
+                            .background(Capsule().fill(wyrmScopedColours.ink))
                             .contentShape(Capsule())
                         }
                         .buttonStyle(WSPressStyle())
@@ -575,17 +581,20 @@ struct WyrmShedPage: View {
 // MARK: - Header
 
 private struct ShedHeader: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let onBack: () -> Void
     let sub: String?
     var body: some View {
         ZStack {
             HStack {
                 Button(action: onBack) {
-                    ShedChevronIcon().stroke(ATheme.ink, style: StrokeStyle(lineWidth: 2.2 * 20 / 24, lineCap: .round, lineJoin: .round))
+                    ShedChevronIcon().stroke(wyrmScopedColours.ink, style: StrokeStyle(lineWidth: 2.2 * 20 / 24, lineCap: .round, lineJoin: .round))
                         .frame(width: 20, height: 20)
                         .frame(width: 40, height: 40)
-                        .background(Circle().fill(ATheme.card))
-                        .overlay(Circle().strokeBorder(ATheme.rule, lineWidth: 1))
+                        .background(Circle().fill(wyrmScopedColours.card))
+                        .overlay(Circle().strokeBorder(wyrmScopedColours.rule, lineWidth: 1))
                         .contentShape(Circle())
                 }
                 .buttonStyle(WSPressStyle())
@@ -593,14 +602,14 @@ private struct ShedHeader: View {
                 Spacer()
             }
             VStack(spacing: 0) {
-                Text("WYRM").font(.androidWyrm(10, .heavy)).tracking(2.6).foregroundColor(ATheme.quiet)
-                Text("Shed").font(.androidWyrm(24, .heavy)).tracking(-0.6).foregroundColor(ATheme.ink)
+                Text("WYRM").font(.androidWyrm(10, .heavy)).tracking(2.6).foregroundColor(wyrmScopedColours.quiet)
+                Text("Shed").font(.androidWyrm(24, .heavy)).tracking(-0.6).foregroundColor(wyrmScopedColours.ink)
             }
         }
         .frame(maxWidth: .infinity)
         .overlay(alignment: .bottomTrailing) {
             if let sub {
-                Text(sub).font(.androidWyrm(11, .semibold)).foregroundColor(ATheme.quiet)
+                Text(sub).font(.androidWyrm(11, .semibold)).foregroundColor(wyrmScopedColours.quiet)
             }
         }
         .padding(.horizontal, 16).padding(.vertical, 6)
@@ -621,6 +630,9 @@ private enum ShedPiece: Identifiable {
 }
 
 private struct ShedSentence: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let recipe: WyrmShedRecipe
     @ObservedObject var textures: WyrmSkinTextureLibrary
     let width: CGFloat
@@ -662,7 +674,7 @@ private struct ShedSentence: View {
             case .word(let label, let beads, let sheet):
                 ShedWord(label: label, beads: beads, textures: textures) { onOpen(sheet) }
             case .text(let s, _):
-                Text(s).font(.androidWyrm(19, .semibold)).tracking(-0.3).foregroundColor(ATheme.quiet)
+                Text(s).font(.androidWyrm(19, .semibold)).tracking(-0.3).foregroundColor(wyrmScopedColours.quiet)
                     .frame(height: 30)
             }
         }
@@ -759,6 +771,9 @@ private struct ShedFlowLayout: Layout {
 
 /// A tappable word: bold, with a dashed ink underline (and its beads for colours).
 private struct ShedWord: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     let beads: [Character]
     @ObservedObject var textures: WyrmSkinTextureLibrary
@@ -773,12 +788,12 @@ private struct ShedWord: View {
                 }
                 .padding(.trailing, 4)
             }
-            Text(label).font(.androidWyrm(19, .heavy)).tracking(-0.3).foregroundColor(ATheme.ink)
+            Text(label).font(.androidWyrm(19, .heavy)).tracking(-0.3).foregroundColor(wyrmScopedColours.ink)
                 .frame(height: 30)
         }
         .overlay(alignment: .bottom) {
             ShedDash()
-                .stroke(ATheme.ink.opacity(0.35), style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                .stroke(wyrmScopedColours.ink, style: StrokeStyle(lineWidth: 2, dash: [5, 4]))
                 .frame(height: 2)
                 .padding(.bottom, 2)
         }
@@ -816,6 +831,9 @@ private struct ShedBeadDot: View {
 // MARK: - Cards
 
 private struct ShedCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let skin: WyrmShedSkin
     let index: Int
     @ObservedObject var textures: WyrmSkinTextureLibrary
@@ -839,14 +857,14 @@ private struct ShedCard: View {
                 HStack(spacing: 0) {
                     Text(String(format: "%02d", index + 1))
                         .font(.androidWyrm(26, .heavy)).tracking(-1)
-                        .foregroundColor(open ? ATheme.ink : ATheme.quiet)
+                        .foregroundColor(open ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                         .frame(minWidth: 34, alignment: .leading)
                     Spacer().frame(width: 12)
                     VStack(alignment: .leading, spacing: 0) {
                         Text("\(WyrmShedGenerator.moods[skin.mood]?.label ?? "") \((WyrmShedGenerator.styles[skin.style] ?? "").lowercased())")
-                            .font(.androidWyrm(15, .heavy)).foregroundColor(ATheme.ink)
+                            .font(.androidWyrm(15, .heavy)).foregroundColor(wyrmScopedColours.ink)
                         Text("\(skin.colours.count) colours · \(skin.code.count) beads a pattern")
-                            .font(.androidWyrm(12)).foregroundColor(ATheme.quiet)
+                            .font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.quiet)
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     HStack(spacing: 0) {
@@ -858,7 +876,7 @@ private struct ShedCard: View {
                 Spacer().frame(height: 8)
                 snake
                     .frame(width: inner, height: bead * 2.16 + 24 + 6)
-                    .background(ATheme.paper)
+                    .background(wyrmScopedColours.paper)
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
             }
             .padding(.horizontal, 14).padding(.top, 14).padding(.bottom, 10)
@@ -873,9 +891,9 @@ private struct ShedCard: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(ATheme.card)
+        .background(wyrmScopedColours.card)
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(ATheme.ink, lineWidth: open ? 2 : 0))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(wyrmScopedColours.ink, lineWidth: open ? 2 : 0))
         .scaleEffect(0.97 + 0.03 * appear)
         .offset(y: (1 - appear) * 26)
         .opacity(appear)
@@ -900,18 +918,18 @@ private struct ShedCard: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(skin.code)
-                .font(.androidWyrm(12.5)).lineSpacing(19 - 12.5 * 1.2).foregroundColor(ATheme.mute)
+                .font(.androidWyrm(12.5)).lineSpacing(19 - 12.5 * 1.2).foregroundColor(wyrmScopedColours.mute)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 12).padding(.vertical, 10)
-                .background(ATheme.well)
+                .background(wyrmScopedColours.well)
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                 .textSelection(.enabled)
             Spacer().frame(height: 10)
             HStack(spacing: 0) {
                 Text("\(skin.runs) / \(WyrmShedGenerator.maxRuns) runs · fits")
-                    .font(.androidWyrm(12, .bold)).foregroundColor(ATheme.mute)
+                    .font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.mute)
                     .padding(.horizontal, 12).frame(height: 32)
-                    .background(Capsule().fill(ATheme.well))
+                    .background(Capsule().fill(wyrmScopedColours.well))
                 Spacer()
                 Button {
                     UIPasteboard.general.string = skin.code
@@ -922,11 +940,11 @@ private struct ShedCard: View {
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        ShedCopyIcon().stroke(ATheme.onInk, lineWidth: 2 * 15 / 24).frame(width: 15, height: 15)
-                        Text(copied ? "Copied" : "Copy code").font(.androidWyrm(13, .heavy)).foregroundColor(ATheme.onInk)
+                        ShedCopyIcon().stroke(wyrmScopedColours.onInk, lineWidth: 2 * 15 / 24).frame(width: 15, height: 15)
+                        Text(copied ? "Copied" : "Copy code").font(.androidWyrm(13, .heavy)).foregroundColor(wyrmScopedColours.onInk)
                     }
                     .padding(.horizontal, 16).frame(height: 38)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
                     .contentShape(Capsule())
                 }
                 .buttonStyle(WSPressStyle())
@@ -1023,6 +1041,9 @@ private enum ShedSnake {
 // MARK: - Choices inside the composer
 
 private struct ShedComposerChoices: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let sheet: ShedSheet
     let recipe: WyrmShedRecipe
     @ObservedObject var textures: WyrmSkinTextureLibrary
@@ -1050,10 +1071,10 @@ private struct ShedComposerChoices: View {
         let sub = words.1
         let bodyCap = max(60, min(maxBodyHeight, maxHeight - 140))
         VStack(alignment: .leading, spacing: 0) {
-            Text(title).font(.androidWyrm(22, .heavy)).tracking(-0.4).foregroundColor(ATheme.ink)
+            Text(title).font(.androidWyrm(22, .heavy)).tracking(-0.4).foregroundColor(wyrmScopedColours.ink)
                 .shedMorph(parts[0])
             Spacer().frame(height: 4)
-            Text(sub).font(.androidWyrm(13)).foregroundColor(ATheme.quiet).fixedSize(horizontal: false, vertical: true)
+            Text(sub).font(.androidWyrm(13)).foregroundColor(wyrmScopedColours.quiet).fixedSize(horizontal: false, vertical: true)
                 .shedMorph(parts[1])
             Spacer().frame(height: 12)
             ShedSheetScroll(maxHeight: bodyCap) {
@@ -1063,9 +1084,9 @@ private struct ShedComposerChoices: View {
             .shedMorph(parts[2])
             Spacer().frame(height: 12)
             Button(action: onClose) {
-                Text("Done").font(.androidWyrm(16, .heavy)).foregroundColor(ATheme.onInk)
+                Text("Done").font(.androidWyrm(16, .heavy)).foregroundColor(wyrmScopedColours.onInk)
                     .frame(maxWidth: .infinity).frame(height: 52)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
                     .contentShape(Capsule())
             }
             .buttonStyle(WSPressStyle())
@@ -1100,6 +1121,9 @@ private struct ShedOpt: Identifiable {
 }
 
 private struct ShedOptGrid: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let options: [ShedOpt]
     let selected: (String) -> Bool
     var textures: WyrmSkinTextureLibrary? = nil
@@ -1123,9 +1147,9 @@ private struct ShedOptGrid: View {
         let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         return Button { onPick(o.key) } label: {
             VStack(alignment: .leading, spacing: 0) {
-                Text(o.label).font(.androidWyrm(14, .heavy)).foregroundColor(ATheme.ink)
+                Text(o.label).font(.androidWyrm(14, .heavy)).foregroundColor(wyrmScopedColours.ink)
                 if !o.sub.isEmpty {
-                    Text(o.sub).font(.androidWyrm(12)).lineSpacing(16 - 12 * 1.2).foregroundColor(ATheme.quiet)
+                    Text(o.sub).font(.androidWyrm(12)).lineSpacing(16 - 12 * 1.2).foregroundColor(wyrmScopedColours.quiet)
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if themeBeads, let textures, let theme = WyrmShedGenerator.themes[o.key] {
@@ -1139,8 +1163,8 @@ private struct ShedOptGrid: View {
             }
             .padding(12)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-            .background(shape.fill(on ? ATheme.card : ATheme.well))
-            .overlay(shape.strokeBorder(ATheme.ink, lineWidth: on ? 2 : 0))
+            .background(shape.fill(on ? wyrmScopedColours.card : wyrmScopedColours.well))
+            .overlay(shape.strokeBorder(wyrmScopedColours.ink, lineWidth: on ? 2 : 0))
             .contentShape(shape)
         }
         .buttonStyle(WSPressStyle())
@@ -1148,14 +1172,20 @@ private struct ShedOptGrid: View {
 }
 
 private struct ShedGroupTitle: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     var body: some View {
-        Text(text.uppercased()).font(.androidWyrm(11, .heavy)).tracking(1.6).foregroundColor(ATheme.quiet)
+        Text(text.uppercased()).font(.androidWyrm(11, .heavy)).tracking(1.6).foregroundColor(wyrmScopedColours.quiet)
             .padding(.top, 16).padding(.bottom, 8)
     }
 }
 
 private struct ShedSheetBody: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let sheet: ShedSheet
     let recipe: WyrmShedRecipe
     @ObservedObject var textures: WyrmSkinTextureLibrary
@@ -1195,7 +1225,7 @@ private struct ShedSheetBody: View {
     private var count: some View {
         VStack(spacing: 0) {
             Text("\(recipe.count) \(recipe.count == 1 ? "skin" : "skins")")
-                .font(.androidWyrm(40, .heavy)).tracking(-1.5).foregroundColor(ATheme.ink)
+                .font(.androidWyrm(40, .heavy)).tracking(-1.5).foregroundColor(wyrmScopedColours.ink)
                 .frame(maxWidth: .infinity)
             Spacer().frame(height: 14)
             Slider(value: Binding(get: { Double(recipe.count) }, set: { v in
@@ -1203,11 +1233,11 @@ private struct ShedSheetBody: View {
                 r.count = min(max(Int(v.rounded()), shedCountMin), shedCountMax)
                 if r.count != recipe.count { onRecipe(r) }
             }), in: Double(shedCountMin)...Double(shedCountMax), step: 1)
-            .tint(ATheme.ink)
+            .tint(wyrmScopedColours.ink)
             HStack {
-                Text("\(shedCountMin)").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.quiet)
+                Text("\(shedCountMin)").font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.quiet)
                 Spacer()
-                Text("\(shedCountMax)").font(.androidWyrm(12, .bold)).foregroundColor(ATheme.quiet)
+                Text("\(shedCountMax)").font(.androidWyrm(12, .bold)).foregroundColor(wyrmScopedColours.quiet)
             }
             .padding(.top, 4)
         }
@@ -1258,14 +1288,14 @@ private struct ShedSheetBody: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            Text(String(b.ch)).font(.androidWyrm(10, .heavy)).foregroundColor(ATheme.ink)
+            Text(String(b.ch)).font(.androidWyrm(10, .heavy)).foregroundColor(wyrmScopedColours.ink)
                 .padding(.horizontal, 3)
-                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(ATheme.card))
+                .background(RoundedRectangle(cornerRadius: 6, style: .continuous).fill(wyrmScopedColours.card))
         }
         .padding(3)
         .frame(maxWidth: .infinity)
         .aspectRatio(1, contentMode: .fit)
-        .overlay(Circle().strokeBorder(ATheme.ink, lineWidth: on ? 2.5 : 0))
+        .overlay(Circle().strokeBorder(wyrmScopedColours.ink, lineWidth: on ? 2.5 : 0))
         .contentShape(Rectangle())
         .onTapGesture {
             var r = recipe
@@ -1293,9 +1323,9 @@ private struct ShedSheetBody: View {
                         r.wildness = min(max(Double(Int(v.rounded())) / 100, 0), 1)
                         if r.wildness != recipe.wildness { onRecipe(r) }
                     }), in: 0...100)
-                    .tint(ATheme.ink)
+                    .tint(wyrmScopedColours.ink)
                     .frame(width: 140)
-                    Text("\(Int((recipe.wildness * 100).rounded()))").font(.androidWyrm(13, .bold)).foregroundColor(ATheme.quiet)
+                    Text("\(Int((recipe.wildness * 100).rounded()))").font(.androidWyrm(13, .bold)).foregroundColor(wyrmScopedColours.quiet)
                         .frame(width: 34, alignment: .trailing)
                 }
             }
@@ -1307,6 +1337,9 @@ private struct ShedSheetBody: View {
 }
 
 private struct ShedLuckyField: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let recipe: WyrmShedRecipe
     let onRecipe: (WyrmShedRecipe) -> Void
     @State private var text = ""
@@ -1321,18 +1354,18 @@ private struct ShedLuckyField: View {
                 }
             }))
             .keyboardType(.numberPad)
-            .font(.androidWyrm(15, .heavy)).foregroundColor(ATheme.ink)
+            .font(.androidWyrm(15, .heavy)).foregroundColor(wyrmScopedColours.ink)
             .multilineTextAlignment(.center)
             .frame(width: 110, height: 36)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(ATheme.well))
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(wyrmScopedColours.well))
             Button {
                 var r = recipe
                 r.seed = Int32(1 + Int.random(in: 0..<999999))
                 onRecipe(r)
             } label: {
-                ShedDiceIcon(color: ATheme.ink).frame(width: 16, height: 16)
+                ShedDiceIcon(color: wyrmScopedColours.ink).frame(width: 16, height: 16)
                     .frame(width: 36, height: 36)
-                    .background(Circle().fill(ATheme.ink.opacity(0.07)))
+                    .background(Circle().fill(wyrmScopedColours.ink))
                     .contentShape(Circle())
             }
             .buttonStyle(WSPressStyle())
@@ -1343,17 +1376,20 @@ private struct ShedLuckyField: View {
 }
 
 private struct ShedTuneRow<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var last = false
     @ViewBuilder let content: () -> Content
     var body: some View {
         HStack(spacing: 0) {
-            Text(title).font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+            Text(title).font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
             content()
         }
         .frame(minHeight: 56)
-        .overlay(alignment: .bottom) { if !last { Rectangle().fill(ATheme.rule).frame(height: 1) } }
+        .overlay(alignment: .bottom) { if !last { Rectangle().fill(wyrmScopedColours.rule).frame(height: 1) } }
     }
 }
 
@@ -1361,21 +1397,24 @@ private struct ShedTuneRow<Content: View>: View {
 
 /// Home › Shed: a quiet explanation and a small ink capsule, without a W.
 struct WyrmShedHomeCard: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let onOpen: () -> Void
     var body: some View {
         Button(action: onOpen) {
             HStack(spacing: 14) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("Shed").font(.androidWyrm(17, .heavy)).foregroundColor(ATheme.ink)
+                    Text("Shed").font(.androidWyrm(17, .heavy)).foregroundColor(wyrmScopedColours.ink)
                     Text("Pick a mood and shed fresh skins. Every one fits the arena.")
-                        .font(.androidWyrm(13)).lineSpacing(18 - 13 * 1.2).foregroundColor(ATheme.quiet)
+                        .font(.androidWyrm(13)).lineSpacing(18 - 13 * 1.2).foregroundColor(wyrmScopedColours.quiet)
                         .fixedSize(horizontal: false, vertical: true)
                         .multilineTextAlignment(.leading)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                Text("Shed →").font(.androidWyrm(13, .heavy)).foregroundColor(ATheme.onInk)
+                Text("Shed →").font(.androidWyrm(13, .heavy)).foregroundColor(wyrmScopedColours.onInk)
                     .padding(.horizontal, 14).padding(.vertical, 10)
-                    .background(Capsule().fill(ATheme.ink))
+                    .background(Capsule().fill(wyrmScopedColours.ink))
             }
             .padding(.horizontal, 16).padding(.vertical, 14)
             .contentShape(Rectangle())

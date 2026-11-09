@@ -15,6 +15,9 @@ func studioSymbol(_ name: String, _ fallback: String) -> String {
 
 /// An ink capsule (filled) or a paper one (outline) with an optional icon.
 struct StudioCapsule: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let label: String
     var icon: String? = nil
     var filled = true
@@ -22,7 +25,7 @@ struct StudioCapsule: View {
     let action: () -> Void
 
     var body: some View {
-        let fg = filled ? ATheme.onInk : ATheme.ink
+        let fg = filled ? wyrmScopedColours.onInk : wyrmScopedColours.ink
         Button(action: action) {
             HStack(spacing: 6) {
                 if let icon { Image(systemName: icon).font(.system(size: 13, weight: .semibold)) }
@@ -30,8 +33,8 @@ struct StudioCapsule: View {
             }
             .foregroundColor(fg)
             .padding(.horizontal, 14).padding(.vertical, 9)
-            .background(Capsule().fill(filled ? ATheme.ink.opacity(enabled ? 1 : 0.35) : ATheme.card))
-            .overlay(Capsule().stroke(filled ? Color.clear : ATheme.rule, lineWidth: 1))
+            .background(Capsule().fill(filled ? wyrmScopedColours.ink.opacity(enabled ? 1 : 0.35) : wyrmScopedColours.card))
+            .overlay(Capsule().stroke(filled ? Color.clear : wyrmScopedColours.rule, lineWidth: 1))
             .contentShape(Capsule())
         }
         .buttonStyle(WSPressStyle())
@@ -42,6 +45,9 @@ struct StudioCapsule: View {
 
 /// A round icon button; [active] fills it with ink.
 struct StudioRoundButton: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let icon: String
     var active = false
     var enabled = true
@@ -52,10 +58,10 @@ struct StudioRoundButton: View {
         Button(action: action) {
             Image(systemName: icon)
                 .font(.system(size: size * 0.38, weight: .semibold))
-                .foregroundColor((active ? ATheme.onInk : ATheme.ink).opacity(enabled ? 1 : 0.35))
+                .foregroundColor((active ? wyrmScopedColours.onInk : wyrmScopedColours.ink).opacity(enabled ? 1 : 0.35))
                 .frame(width: size, height: size)
-                .background(Circle().fill(active ? ATheme.ink : ATheme.card))
-                .overlay(Circle().stroke(active ? ATheme.ink : ATheme.rule, lineWidth: 1))
+                .background(Circle().fill(active ? wyrmScopedColours.ink : wyrmScopedColours.card))
+                .overlay(Circle().stroke(active ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: 1))
                 .contentShape(Circle())
         }
         .buttonStyle(WSPressStyle())
@@ -65,6 +71,9 @@ struct StudioRoundButton: View {
 
 /// A label, its value, and the slider under them.
 struct StudioValueSlider: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let value: Float
     let range: ClosedRange<Float>
@@ -74,14 +83,14 @@ struct StudioValueSlider: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                Text(title).font(.androidWyrm(12.5, .semibold)).foregroundColor(ATheme.ink)
+                Text(title).font(.androidWyrm(12.5, .semibold)).foregroundColor(wyrmScopedColours.ink)
                 Spacer()
-                Text(shown(value)).font(.androidWyrm(11.5, .bold)).foregroundColor(ATheme.quiet).monospacedDigit()
+                Text(shown(value)).font(.androidWyrm(11.5, .bold)).foregroundColor(wyrmScopedColours.quiet).monospacedDigit()
             }
             Slider(value: Binding(get: { Double(min(max(value, range.lowerBound), range.upperBound)) },
                                   set: { onChange(Float($0)) }),
                    in: Double(range.lowerBound)...Double(range.upperBound))
-                .tint(ATheme.ink)
+                .tint(wyrmScopedColours.ink)
         }
         .padding(.vertical, 4)
     }
@@ -112,6 +121,9 @@ private func hsvColor(_ h: Double, _ s: Double, _ v: Double) -> Color {
 /// Brightness — each a slim pill of its own range under a knob that wears the
 /// colour it gives.
 struct StudioColorPicker: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let color: UInt32
     let onChange: (UInt32) -> Void
 
@@ -123,10 +135,10 @@ struct StudioColorPicker: View {
         }
         return VStack(spacing: 12) {
             HStack(spacing: 12) {
-                Circle().fill(opaque).frame(width: 38, height: 38).overlay(Circle().stroke(ATheme.rule, lineWidth: 2))
+                Circle().fill(opaque).frame(width: 38, height: 38).overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 2))
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("COLOUR").font(.androidWyrm(9.5, .bold)).tracking(1.1).foregroundColor(ATheme.quiet)
-                    Text(String(format: "#%06X", color & 0xFF_FFFF)).font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+                    Text("COLOUR").font(.androidWyrm(9.5, .bold)).tracking(1.1).foregroundColor(wyrmScopedColours.quiet)
+                    Text(String(format: "#%06X", color & 0xFF_FFFF)).font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
                 }
                 Spacer()
             }
@@ -136,7 +148,7 @@ struct StudioColorPicker: View {
                     let selected = (swatch & 0xFF_FFFF) == (color & 0xFF_FFFF)
                     Circle().fill(Color(studio: swatch))
                         .frame(width: 22, height: 22)
-                        .overlay(Circle().stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2.5 : 1))
+                        .overlay(Circle().stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2.5 : 1))
                         .contentShape(Circle())
                         .onTapGesture { onChange(swatch) }
                     if index < studioSwatches.count - 1 { Spacer(minLength: 0) }
@@ -153,13 +165,16 @@ struct StudioColorPicker: View {
                              colors: [.black, hsvColor(hsv.h, hsv.s, 1)], knob: opaque) { emit(v: $0) }
         }
         .padding(14)
-        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
-        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
     }
 }
 
 /// One colour track: its name and value above a slim pill; tap it, or slide sideways.
 struct StudioColorTrack: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let value: String
     let fraction: Double
@@ -170,9 +185,9 @@ struct StudioColorTrack: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack {
-                Text(title).font(.androidWyrm(12, .semibold)).foregroundColor(ATheme.ink)
+                Text(title).font(.androidWyrm(12, .semibold)).foregroundColor(wyrmScopedColours.ink)
                 Spacer()
-                Text(value).font(.androidWyrm(11, .bold)).foregroundColor(ATheme.quiet)
+                Text(value).font(.androidWyrm(11, .bold)).foregroundColor(wyrmScopedColours.quiet)
             }
             GeometryReader { proxy in
                 let knobSize: CGFloat = 26
@@ -180,7 +195,7 @@ struct StudioColorTrack: View {
                 ZStack(alignment: .leading) {
                     Capsule()
                         .fill(LinearGradient(colors: colors, startPoint: .leading, endPoint: .trailing))
-                        .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+                        .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .frame(height: 12)
                         .padding(.horizontal, 9)
                     Circle().fill(Color.white)
@@ -210,10 +225,13 @@ struct StudioColorTrack: View {
 
 /// A small quiet line: what a touch and hold does here.
 struct StudioCaption: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineSpacing(2)
+        Text(text).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineSpacing(2)
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, 20).padding(.vertical, 2)
@@ -233,6 +251,9 @@ struct StudioAction {
 /// a round well (the destructive one in red) — and Cancel apart, as a capsule.
 /// Placed last in a full-size ZStack.
 struct StudioActionSheet: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var subtitle = ""
     let actions: [StudioAction]
@@ -246,24 +267,24 @@ struct StudioActionSheet: View {
                 .onTapGesture { close() }
             VStack(spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Capsule().fill(ATheme.rule).frame(width: 40, height: 5)
+                    Capsule().fill(wyrmScopedColours.rule).frame(width: 40, height: 5)
                         .frame(maxWidth: .infinity).padding(.top, 10)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(title).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                        Text(title).font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                         if !subtitle.isEmpty {
-                            Text(subtitle).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet)
+                            Text(subtitle).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet)
                         }
                     }
                     .padding(.horizontal, 22).padding(.top, 14).padding(.bottom, 10)
                     ForEach(actions.indices, id: \.self) { index in
                         let item = actions[index]
-                        let tint = item.destructive ? ATheme.badge : ATheme.ink
+                        let tint = item.destructive ? wyrmScopedColours.badge : wyrmScopedColours.ink
                         Button { close(then: item.action) } label: {
                             HStack(spacing: 14) {
                                 Image(systemName: item.icon).font(.system(size: 16, weight: .semibold)).foregroundColor(tint)
                                     .frame(width: 40, height: 40)
-                                    .background(Circle().fill(item.destructive ? ATheme.badge.opacity(0.12) : ATheme.card))
-                                    .overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                                    .background(Circle().fill(item.destructive ? wyrmScopedColours.badge.opacity(0.12) : wyrmScopedColours.card))
+                                    .overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 1))
                                 Text(item.title).font(.androidWyrm(15.5, .semibold)).foregroundColor(tint)
                                 Spacer()
                             }
@@ -274,14 +295,14 @@ struct StudioActionSheet: View {
                     }
                 }
                 .padding(.bottom, 8)
-                .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(ATheme.paper))
-                .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 30, style: .continuous).fill(wyrmScopedColours.paper))
+                .overlay(RoundedRectangle(cornerRadius: 30, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .shadow(color: .black.opacity(0.18), radius: 18, y: 6)
                 Button { close() } label: {
-                    Text("Cancel").font(.androidWyrm(16, .bold)).foregroundColor(ATheme.ink)
+                    Text("Cancel").font(.androidWyrm(16, .bold)).foregroundColor(wyrmScopedColours.ink)
                         .frame(maxWidth: .infinity).frame(height: 54)
-                        .background(Capsule().fill(ATheme.paper))
-                        .overlay(Capsule().stroke(ATheme.rule, lineWidth: 1))
+                        .background(Capsule().fill(wyrmScopedColours.paper))
+                        .overlay(Capsule().stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .contentShape(Capsule())
                 }
                 .buttonStyle(WSPressStyle())
@@ -308,6 +329,9 @@ struct StudioActionSheet: View {
 /// A centred dialog over a dimmed page; SwiftUI keeps it above the keyboard.
 /// Placed last in a full-size ZStack.
 struct StudioDialog<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let onDismiss: () -> Void
     @ViewBuilder let content: () -> Content
@@ -319,13 +343,13 @@ struct StudioDialog<Content: View>: View {
                 .ignoresSafeArea()
                 .onTapGesture { onDismiss() }
             VStack(alignment: .leading, spacing: 16) {
-                Text(title).font(.androidWyrm(22, .bold)).foregroundColor(ATheme.ink)
+                Text(title).font(.androidWyrm(22, .bold)).foregroundColor(wyrmScopedColours.ink)
                 content()
             }
             .padding(22)
             .frame(maxWidth: 440)
-            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(ATheme.paper))
-            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .background(RoundedRectangle(cornerRadius: 28, style: .continuous).fill(wyrmScopedColours.paper))
+            .overlay(RoundedRectangle(cornerRadius: 28, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .shadow(color: .black.opacity(0.2), radius: 20, y: 6)
             .scaleEffect(shown ? 1 : 0.92)
             .opacity(shown ? 1 : 0)
@@ -337,6 +361,9 @@ struct StudioDialog<Content: View>: View {
 
 /// "Name this snake": a one-line field with Cancel and Save; the keyboard comes up at once.
 struct StudioRenameDialog: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let start: String
     let onDone: (String?) -> Void
     @State private var text: String
@@ -352,14 +379,14 @@ struct StudioRenameDialog: View {
         StudioDialog(title: "Name this snake", onDismiss: { onDone(nil) }) {
             TextField("", text: $text)
                 .font(.androidWyrm(17, .semibold))
-                .foregroundColor(ATheme.ink)
+                .foregroundColor(wyrmScopedColours.ink)
                 .focused($focused)
                 .submitLabel(.done)
                 .onSubmit { if !blank { onDone(text) } }
                 .onChange(of: text) { value in if value.count > 28 { text = String(value.prefix(28)) } }
                 .padding(14)
-                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.card))
+                .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             HStack(spacing: 10) {
                 Spacer()
                 StudioCapsule(label: "Cancel", filled: false) { onDone(nil) }

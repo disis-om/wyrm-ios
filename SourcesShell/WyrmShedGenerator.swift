@@ -707,6 +707,9 @@ enum WyrmShedGenerator {
         let want = min(max(r.count, 1), 48)
         var pool: [WyrmShedSkin] = []
         var seen = Set<String>()
+        // Already shown on this phone: used only when the recipe has run out of new
+        // ones, so a shed always fills its batch (OM, 2026-10-31).
+        var repeats: [WyrmShedSkin] = []
         var tried = 0
         var n = 0
         let base = UInt32(bitPattern: r.seed)
@@ -714,10 +717,15 @@ enum WyrmShedGenerator {
             tried += 1
             let s = makeSkin(r, mixSeed(base, n))
             n += 1
-            guard let s, !seen.contains(s.key), !history.contains(s.key) else { continue }
+            guard let s, !seen.contains(s.key) else { continue }
             seen.insert(s.key)
+            if history.contains(s.key) {
+                if repeats.count < want { repeats.append(s) }
+                continue
+            }
             pool.append(s)
         }
+        if pool.count < want { pool.append(contentsOf: repeats.prefix(want - pool.count)) }
         let sorted = stableSorted(pool) { a, b in a.score != b.score ? a.score > b.score : a.seed < b.seed }
         var out: [WyrmShedSkin] = []
         for s in sorted {

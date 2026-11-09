@@ -3,9 +3,8 @@ import SwiftUI
 /// Play orientation (OM, 2026-10-01): a match can be played upright. Android
 /// twin: `data/PlayOrientation.kt` + `WyrmOverlay.switchPlayOrientation`.
 ///
-/// Everything stays the same, only turned: the lobby, the match and the layout
-/// editor are portrait when this is on (Main.m keeps the engine surface
-/// unrotated; `WyrmLandscapeStage` stops turning SwiftUI). Each orientation
+/// The lobby, match and layout editor use native portrait when enabled, native
+/// landscape otherwise. UIKit rotates the window; no canvas transform. Each orientation
 /// keeps its own layout (joystick, boost, zoom bar, on-screen buttons, HUD):
 /// the engine holds the one in use, the other waits here, and they swap when
 /// the orientation does. Saved under `wyrm.ios.orientation.*` (synced; the
@@ -27,24 +26,38 @@ final class WyrmPlayOrientation: ObservableObject {
     ]
 
     @Published private(set) var portrait = false
+    @Published private(set) var internalRotation = false
+    private static let internalKey = "wyrm.ios.orientation.internal"
 
-    private init() { portrait = UserDefaults.standard.bool(forKey: Self.portraitKey) }
+    private init() {
+        portrait = UserDefaults.standard.bool(forKey: Self.portraitKey)
+        internalRotation = UserDefaults.standard.bool(forKey: Self.internalKey)
+    }
+    func setInternalRotation(_ value: Bool) {
+        internalRotation = value
+        UserDefaults.standard.set(value, forKey: Self.internalKey)
+        publish()
+    }
 
-    /// The engine surface's turn (Main.m). Main thread.
-    func publish() { WyrmIOSSetPortraitPlay(portrait) }
+    /// Internal rotation is a developer option (OM, 2026-11-01): with Developer
+    /// Mode off the game always turns natively, whatever was chosen.
+    static let developerKey = "wyrm.ios.developer-mode"
+    var internalRotationActive: Bool { internalRotation && UserDefaults.standard.bool(forKey: Self.developerKey) }
+
+    /// Native full-screen game orientation (Main.m); Home remains portrait.
+    func publish() { WyrmIOSSetInternalRotation(internalRotationActive); WyrmIOSSetPortraitPlay(portrait) }
 
     /// After a log in or log out rewrote the defaults (WyrmAccountSync).
     func reloadFromDefaults() {
         portrait = UserDefaults.standard.bool(forKey: Self.portraitKey)
+        internalRotation = UserDefaults.standard.bool(forKey: Self.internalKey)
         publish()
-        WyrmKeyboardController.shared.refreshEmbedded()
     }
 
     private func setPortrait(_ value: Bool) {
         portrait = value
         UserDefaults.standard.set(value, forKey: Self.portraitKey)
         publish()
-        WyrmKeyboardController.shared.refreshEmbedded()
     }
 
     private func savedLayout(portrait upright: Bool) -> [String: Any]? {

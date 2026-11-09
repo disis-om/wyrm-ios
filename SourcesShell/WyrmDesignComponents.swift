@@ -36,6 +36,8 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case notificationSettings
     case privacy
     case themes
+    /// Settings › Language (OM, 2026-10-31).
+    case language
     case backup
     case developer
     case playControls
@@ -52,6 +54,9 @@ enum WyrmDesignRoute: Identifiable, Equatable {
     case help
     case supportCompose(String)
     case supportReports
+    /// Events (OM, 2026-10-30): the list, and one event by its id.
+    case events
+    case event(String)
 
     var id: String {
         switch self {
@@ -79,6 +84,7 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .notificationSettings: return "notification-settings"
         case .privacy: return "privacy"
         case .themes: return "themes"
+        case .language: return "language"
         case .backup: return "backup"
         case .developer: return "developer"
         case .playControls: return "play-controls"
@@ -95,13 +101,18 @@ enum WyrmDesignRoute: Identifiable, Equatable {
         case .help: return "help"
         case .supportCompose(let kind): return "support-compose-\(kind)"
         case .supportReports: return "support-reports"
+        case .events: return "events"
+        case .event(let id): return "event-\(id)"
         }
     }
 }
 
 struct WyrmPaperBackground: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var body: some View {
-        ATheme.paper.ignoresSafeArea()
+        wyrmScopedColours.paper.ignoresSafeArea()
     }
 }
 
@@ -154,6 +165,9 @@ struct WyrmGlassCircleButton: ViewModifier {
 }
 
 struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var prominent = false
     /// nil draws a capsule.
     var radius: CGFloat? = nil
@@ -183,7 +197,7 @@ struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
             }
         }
         if prominent {
-            shaped.buttonStyle(.glassProminent).tint(ATheme.ink)
+            shaped.buttonStyle(.glassProminent).tint(wyrmScopedColours.ink)
         } else {
             shaped.buttonStyle(.glass)
         }
@@ -192,6 +206,9 @@ struct WyrmGlassButtonModifier<Fallback: ButtonStyle>: ViewModifier {
 }
 
 struct WyrmScreenHeader: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let kicker: String
     let title: String
     var trailing: AnyView? = nil
@@ -199,35 +216,41 @@ struct WyrmScreenHeader: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(kicker.uppercased()).font(.androidWyrm(10.5, .bold)).tracking(1.15).foregroundColor(ATheme.quiet)
-                Text(title).font(.androidWyrm(28, .bold)).tracking(-0.55)
+                Text(kicker.uppercased()).font(.androidWyrm(10.5, .bold)).tracking(1.15).foregroundColor(wyrmScopedColours.quiet)
+                Text(wyrm: title).font(.androidWyrm(28, .bold)).tracking(-0.55)
             }
             Spacer(minLength: 8)
             trailing
         }
         .padding(.horizontal, 20).padding(.top, 6).padding(.bottom, 14)
-        .background(ATheme.paper)
+        .background(wyrmScopedColours.paper)
     }
 }
 
 struct WyrmSectionLabel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let text: String
     init(_ text: String) { self.text = text }
     var body: some View {
-        Text(text.uppercased()).font(.androidWyrm(10.5, .semibold)).tracking(0.9).foregroundColor(ATheme.quiet)
+        Text(verbatim: wyrmLocalized(text).uppercased()).font(.androidWyrm(10.5, .semibold)).tracking(0.9).foregroundColor(wyrmScopedColours.quiet)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.top, 22).padding(.bottom, 8)
     }
 }
 
 struct WyrmPaperCard<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let content: Content
     init(@ViewBuilder content: () -> Content) { self.content = content() }
     var body: some View {
         VStack(spacing: 0) { content }
-            .background(ATheme.card.opacity(0.92))
+            .background(wyrmScopedColours.card)
             .clipShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(ATheme.rule))
-            .shadow(color: ATheme.ink.opacity(0.035), radius: 18, y: 8)
+            .overlay(RoundedRectangle(cornerRadius: 17, style: .continuous).stroke(wyrmScopedColours.rule))
+
             .padding(.horizontal, 16)
     }
 }
@@ -235,18 +258,24 @@ struct WyrmPaperCard<Content: View>: View {
 /// The badge trail (OM, 2026-10-01): the same red count on the tab, on the row
 /// that leads to the thing, and on the thing itself, so a player can follow it.
 struct WyrmCountBadge: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let count: Int
     var body: some View {
         if count > 0 {
             Text(count > 99 ? "99+" : "\(count)")
-                .font(.androidWyrm(11.5, .bold)).foregroundColor(.white)
+                .font(.androidWyrm(11.5, .bold)).foregroundColor(wyrmScopedColours.paper)
                 .padding(.horizontal, 6).frame(minWidth: 20, minHeight: 20)
-                .background(Capsule().fill(ATheme.badge))
+                .background(Capsule().fill(wyrmScopedColours.badge))
         }
     }
 }
 
 struct WyrmListRow: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var detail = ""
     var value = ""
@@ -266,23 +295,26 @@ struct WyrmListRow: View {
                         .frame(width: 30, height: 30).background(tint.opacity(0.09)).cornerRadius(8)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.androidWyrm(15.5, .regular)).foregroundColor(destructive ? .red : ATheme.ink)
-                    if !detail.isEmpty { Text(detail).font(.androidWyrm(11.5)).foregroundColor(ATheme.quiet).lineLimit(2) }
+                    Text(wyrm: title).font(.androidWyrm(15.5, .regular)).foregroundColor(destructive ? .red : wyrmScopedColours.ink)
+                    if !detail.isEmpty { Text(wyrm: detail).font(.androidWyrm(11.5)).foregroundColor(wyrmScopedColours.quiet).lineLimit(2) }
                 }
                 Spacer(minLength: 8)
-                if !value.isEmpty { Text(value).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.trailing).lineLimit(2) }
+                if !value.isEmpty { Text(value).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.trailing).lineLimit(2) }
                 WyrmCountBadge(count: badge)
-                if showsChevron && action != nil { Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(ATheme.chevron) }
+                if showsChevron && action != nil { Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundColor(wyrmScopedColours.chevron) }
             }
             .padding(.horizontal, 14).frame(minHeight: detail.isEmpty ? 52 : 58)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain).disabled(action == nil)
-        .overlay(Rectangle().fill(ATheme.rowRule).frame(height: 1).padding(.leading, icon == nil ? 14 : 56), alignment: .bottom)
+        .overlay(Rectangle().fill(wyrmScopedColours.rowRule).frame(height: 1).padding(.leading, icon == nil ? 14 : 56), alignment: .bottom)
     }
 }
 
 struct WyrmAvatar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     /// Wyrm's own avatar addresses (`/v1/players/<id>/avatar?v=…`) get
     /// `size=small` unless [big]; anything else is left as it is. A server
     /// before 2026-10-14 ignores the extra parameter.
@@ -299,10 +331,10 @@ struct WyrmAvatar: View {
         face.overlay(alignment: .bottomTrailing) {
             if online {
                 let dot = min(16, max(9, size * 0.27))
-                Circle().fill(ATheme.live)
+                Circle().fill(wyrmScopedColours.live)
                     .frame(width: dot * 0.68, height: dot * 0.68)
                     .frame(width: dot, height: dot)
-                    .background(Circle().fill(ATheme.card))
+                    .background(Circle().fill(wyrmScopedColours.card))
                     .offset(x: dot * 0.18, y: dot * 0.18)
             }
         }
@@ -310,8 +342,8 @@ struct WyrmAvatar: View {
 
     private var face: some View {
         ZStack {
-            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(ATheme.ink)
-            Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(ATheme.onInk)
+            RoundedRectangle(cornerRadius: size * 0.3, style: .continuous).fill(wyrmScopedColours.ink)
+            Text(initials).font(.androidWyrm(max(10, size * 0.28), .bold)).foregroundColor(wyrmScopedColours.onInk)
             // The profile's big face gets the 256 px copy; every smaller place asks
             // the server for the 128 px one (OM, 2026-10-14, Discord-style).
             if let remote = URL(string: WyrmAvatar.source(url, big: size >= 72)), !url.isEmpty {
@@ -327,6 +359,9 @@ struct WyrmAvatar: View {
 }
 
 struct WyrmPrimaryAction: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var icon: String? = nil
     var disabled = false
@@ -334,40 +369,49 @@ struct WyrmPrimaryAction: View {
     var body: some View {
         Button(action: action) {
             HStack {
-                Text(title).font(.androidWyrm(15, .bold))
+                Text(wyrm: title).font(.androidWyrm(15, .bold))
                 Spacer()
                 if let icon { Image(systemName: icon).font(.system(size: 14, weight: .bold)) }
-            }.padding(.horizontal, 17).frame(height: 52).background(WyrmGlass.native ? Color.clear : (disabled ? ATheme.ink.opacity(0.35) : ATheme.ink)).foregroundColor(ATheme.onInk)
+            }.padding(.horizontal, 17).frame(height: 52).background(WyrmGlass.native ? Color.clear : (disabled ? wyrmScopedColours.ink : wyrmScopedColours.ink)).foregroundColor(wyrmScopedColours.onInk)
                 .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }.modifier(WyrmGlassButtonModifier(prominent: true, radius: 13, fallback: WSPressStyle())).disabled(disabled)
     }
 }
 
 struct WyrmOutlineAction: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var destructive = false
     let action: () -> Void
     var body: some View {
         Button(action: action) {
-            Text(title).font(.androidWyrm(14, .semibold)).foregroundColor(destructive ? .red : ATheme.ink)
+            Text(wyrm: title).font(.androidWyrm(14, .semibold)).foregroundColor(destructive ? .red : wyrmScopedColours.ink)
                 .frame(maxWidth: .infinity).frame(height: 48)
-                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(destructive ? Color.red.opacity(0.3) : ATheme.rule, lineWidth: WyrmGlass.native ? 0 : 1))
+                .overlay(RoundedRectangle(cornerRadius: 13, style: .continuous).stroke(destructive ? Color.red.opacity(0.3) : wyrmScopedColours.rule, lineWidth: WyrmGlass.native ? 0 : 1))
         }.modifier(WyrmGlassButtonModifier(radius: 13, fallback: WSPressStyle()))
     }
 }
 
 struct WyrmEmptyPanel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     let note: String
     var body: some View {
         VStack(spacing: 7) {
-            Text(title).font(.androidWyrm(17, .semibold))
-            Text(note).font(.androidWyrm(12.5)).foregroundColor(ATheme.quiet).multilineTextAlignment(.center)
+            Text(wyrm: title).font(.androidWyrm(17, .semibold))
+            Text(wyrm: note).font(.androidWyrm(12.5)).foregroundColor(wyrmScopedColours.quiet).multilineTextAlignment(.center)
         }.frame(maxWidth: .infinity).padding(.vertical, 28).padding(.horizontal, 24)
     }
 }
 
 struct WyrmDetailChrome<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let title: String
     var actionTitle = ""
     let onBack: () -> Void
@@ -384,16 +428,16 @@ struct WyrmDetailChrome<Content: View>: View {
             VStack(spacing: 0) {
                 ZStack {
                     HStack {
-                        Button(action: onBack) { HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }.font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link) }
+                        Button(action: onBack) { HStack(spacing: 5) { Image(systemName: "chevron.left"); Text("Back") }.font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.link) }
                         Spacer()
-                        if !actionTitle.isEmpty { Button(actionTitle) { action?() }.font(.androidWyrm(14, .semibold)).foregroundColor(ATheme.link) }
+                        if !actionTitle.isEmpty { Button(actionTitle) { action?() }.font(.androidWyrm(14, .semibold)).foregroundColor(wyrmScopedColours.link) }
                     }
-                    Text(title).font(.androidWyrm(16, .semibold))
-                }.padding(.horizontal, 18).frame(height: 52).background(ATheme.paper)
-                Rectangle().fill(ATheme.rule).frame(height: 1)
+                    Text(wyrm: title).font(.androidWyrm(16, .semibold))
+                }.padding(.horizontal, 18).frame(height: 52).background(wyrmScopedColours.paper)
+                Rectangle().fill(wyrmScopedColours.rule).frame(height: 1)
                 content
             }
-        }.foregroundColor(ATheme.ink)
+        }.foregroundColor(wyrmScopedColours.ink)
     }
 }
 
@@ -450,6 +494,9 @@ private struct WyrmTrailsBeads: Shape {
 }
 
 struct WyrmRootTabBar: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Binding var selection: WyrmDesignTab
     /// Unread likes and replies on your trails, on the Trails tab.
     let unread: Int
@@ -486,7 +533,7 @@ struct WyrmRootTabBar: View {
                 WyrmTabGlassSurface().zIndex(0)
                 // At rest: a plain thumb beneath the icons.
                 Capsule(style: .continuous)
-                    .fill(ATheme.ink.opacity(ATheme.dark ? 0.16 : 0.085))
+                    .fill(wyrmScopedColours.ink.opacity(wyrmScopedColours.dark ? 0.16 : 0.085))
                     .modifier(WyrmTabPillMotion(width: pillWidth, origin: pillOrigin, lifted: lifted,
                                                 stretch: stretch, selection: selection, dragLocationX: dragLocationX))
                     .opacity(lifted ? 0 : 1)
@@ -507,7 +554,7 @@ struct WyrmRootTabBar: View {
                 WyrmTabSelectionGlass(lifted: true)
                     .modifier(WyrmTabPillMotion(width: pillWidth, origin: pillOrigin, lifted: lifted,
                                                 stretch: stretch, selection: selection, dragLocationX: dragLocationX))
-                    .shadow(color: ATheme.ink.opacity(lifted ? 0.22 : 0), radius: lifted ? 16 : 0, y: lifted ? 7 : 0)
+
                     .opacity(lifted ? 1 : 0)
                     .allowsHitTesting(false)
                     .zIndex(4)
@@ -537,7 +584,7 @@ struct WyrmRootTabBar: View {
         }
         .frame(height: 56)
         // A soft contact shadow only; a heavy one makes clear glass read as a slab.
-        .shadow(color: ATheme.ink.opacity(0.07), radius: 14, y: 6)
+
         .padding(.horizontal, 18)
     }
 
@@ -550,16 +597,16 @@ struct WyrmRootTabBar: View {
                     Image(systemName: icons[tab] ?? "circle").font(.system(size: tab == .play ? 21 : 18, weight: selection == tab ? .semibold : .medium))
                 }
                 if badgeCount(tab) > 0 {
-                    Text("\(min(badgeCount(tab), 99))").font(.system(size: 8, weight: .bold)).foregroundColor(ATheme.onInk)
-                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(ATheme.badge).clipShape(Capsule()).offset(x: 11, y: -7)
+                    Text("\(min(badgeCount(tab), 99))").font(.system(size: 8, weight: .bold)).foregroundColor(wyrmScopedColours.onInk)
+                        .padding(.horizontal, 4).frame(minWidth: 16, minHeight: 14).background(wyrmScopedColours.badge).clipShape(Capsule()).offset(x: 11, y: -7)
                 }
             }
             Text(tab.rawValue).font(.androidWyrm(8.5, selection == tab ? .bold : .semibold)).lineLimit(1)
         }
         // Clear glass shows whatever scrolls beneath it, so the glyphs carry a
         // paper halo in every theme and idle tabs keep the theme's tab colour.
-        .foregroundColor(selection == tab ? ATheme.ink : ATheme.tabIdle)
-        .shadow(color: ATheme.paper.opacity(0.7), radius: 1.4)
+        .foregroundColor(selection == tab ? wyrmScopedColours.ink : wyrmScopedColours.tabIdle)
+
         .animation(.easeOut(duration: 0.16), value: selection)
     }
 
@@ -645,6 +692,9 @@ private struct WyrmTabPillMotion: ViewModifier {
 }
 
 private struct WyrmTabGlassSurface: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ViewBuilder
     var body: some View {
 #if compiler(>=6.2)
@@ -654,10 +704,10 @@ private struct WyrmTabGlassSurface: View {
                     .contentShape(Capsule())
                     // Clear glass: the page refracts through the bar instead of
                     // being frosted out. A breath of paper keeps edges readable.
-                    .glassEffect(Glass.clear.tint(ATheme.paper.opacity(0.08)).interactive(), in: .capsule)
+                    .glassEffect(Glass.clear.tint(wyrmScopedColours.paper.opacity(0.08)).interactive(), in: .capsule)
                     .overlay(Capsule().stroke(LinearGradient(colors: [Color.white.opacity(0.55), Color.white.opacity(0.12)],
                                                              startPoint: .top, endPoint: .bottom), lineWidth: 0.8))
-                    .overlay(Capsule().stroke(ATheme.ink.opacity(0.06), lineWidth: 0.45))
+                    .overlay(Capsule().stroke(wyrmScopedColours.ink, lineWidth: 0.45))
             }
         } else {
             fallback
@@ -669,20 +719,23 @@ private struct WyrmTabGlassSurface: View {
     private var fallback: some View {
         Capsule(style: .continuous)
             .fill(.ultraThinMaterial)
-            .overlay(Capsule(style: .continuous).fill(ATheme.paper.opacity(0.06)))
+            .overlay(Capsule(style: .continuous).fill(wyrmScopedColours.paper.opacity(0.06)))
             .overlay(Capsule(style: .continuous).stroke(Color.white.opacity(0.4), lineWidth: 0.8))
-            .overlay(Capsule(style: .continuous).stroke(ATheme.ink.opacity(0.08), lineWidth: 0.5))
+            .overlay(Capsule(style: .continuous).stroke(wyrmScopedColours.ink, lineWidth: 0.5))
     }
 }
 
 /// At rest a plain tinted capsule, as the system segmented thumb is; only
 /// while a finger holds, drags or taps it does it become a clear lens.
 private struct WyrmTabSelectionGlass: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     var lifted = false
     var body: some View {
         ZStack {
             Capsule(style: .continuous)
-                .fill(ATheme.ink.opacity(ATheme.dark ? 0.16 : 0.085))
+                .fill(wyrmScopedColours.ink.opacity(wyrmScopedColours.dark ? 0.16 : 0.085))
                 .opacity(lifted ? 0 : 1)
             lens.opacity(lifted ? 1 : 0)
         }

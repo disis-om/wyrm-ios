@@ -41,7 +41,9 @@ checks = {
         and "await services.measurePickerArenas" in design,
     # The directory's first byte only weights the web client's own pick; every
     # listed arena is shown (108 of 144 were hidden, e.g. 4817).
-    "picker shows every directory arena": r"services.arenas.filter(\.active)" not in design and "let live = services.arenas\n" in design,
+    # 2026-11-07: plus the arenas NTL knows that the directory does not.
+    "picker shows every directory arena": r"services.arenas.filter(\.active)" not in design
+        and ("let live = services.arenas\n" in design or "let live = services.arenas + extraArenas\n" in design),
     "picker ranks top ten and can expand": "Array(ranked.prefix(10))" in design and "See all" in design,
     "custom addresses are validated and stored": "static func custom(_ raw: String)" in services and "savedArenaEndpoints = entries.prefix(20)" in design,
     "recent joins are kept separately from saved addresses": "recentArenaEndpoints = recent.prefix(5)" in design,

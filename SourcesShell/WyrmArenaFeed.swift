@@ -79,7 +79,7 @@ final class WyrmArenaFeed {
             let handle = player.username.isEmpty ? player.displayName : "@" + player.username
             let server = player.arena.isEmpty ? "Not in an arena" : WyrmPresence.shared.arenaName(player.arena)
             return Self.oneLine(Self.name(player.ingameName, player.username, player.displayName)) + "\t"
-                + Self.oneLine("\(handle) · \(server)")
+                + Self.oneLine("\(handle) - \(server)")
         }
         lines.joined(separator: "\n").withCString { WyrmIOSSetOnlinePlayers($0) }
     }

@@ -90,10 +90,19 @@ int tentry(int argc, char** argv, size_t usr_size) {
       twindow_poll_input(env.wnd);
     } else {
       twindow_wait_input(env.wnd);
+      if (twindow_closed(env.wnd)) {
+        tinput(&env);
+        break;
+      }
       continue;
     }
 
+    if (twindow_closed(env.wnd)) {
+      tinput(&env);
+      break;
+    }
     tinput(&env);
+    if (!env.config.running) break;
     trender(&env);
 #ifdef WYRM_SDL_JNI
     if (!startup_ready_reported && env.ctx->last_present_succeeded) {

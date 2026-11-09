@@ -7,7 +7,7 @@ import SwiftUI
  * most recently first. Recents stay on this iPhone.
  */
 
-enum WyrmEmoji {
+enum WyrmInternalEmoji {
     static let recentKey = "wyrm.ios.keyboard.recent-emoji"
 
     static let categories: [(name: String, symbol: String, emoji: [String])] = [
@@ -34,19 +34,22 @@ enum WyrmEmoji {
 }
 
 /// The emoji page of Wyrm's keyboard.
-struct WyrmEmojiPanel: View {
-    @ObservedObject var controller: WyrmKeyboardController
+struct WyrmInternalEmojiPanel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
+    @ObservedObject var controller: WyrmInternalKeyboardController
     let keyHeight: CGFloat
     let height: CGFloat
-    @State private var category = WyrmEmoji.recents.isEmpty ? 1 : 0
-    @State private var recents = WyrmEmoji.recents
+    @State private var category = WyrmInternalEmoji.recents.isEmpty ? 1 : 0
+    @State private var recents = WyrmInternalEmoji.recents
 
-    private var list: [String] { category == 0 ? recents : WyrmEmoji.categories[category].emoji }
+    private var list: [String] { category == 0 ? recents : WyrmInternalEmoji.categories[category].emoji }
 
     var body: some View {
         VStack(spacing: 4) {
-            Text(WyrmEmoji.categories[category].name.uppercased())
-                .font(.androidWyrm(10, .bold)).tracking(0.8).foregroundColor(ATheme.quiet)
+            Text(WyrmInternalEmoji.categories[category].name.uppercased())
+                .font(.androidWyrm(10, .bold)).tracking(0.8).foregroundColor(wyrmScopedColours.quiet)
                 .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.top, 6)
             ScrollViewReader { reader in
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -54,7 +57,7 @@ struct WyrmEmojiPanel: View {
                         ForEach(Array(list.enumerated()), id: \.offset) { _, emoji in
                             Button {
                                 controller.insert(emoji)
-                                WyrmEmoji.used(emoji)
+                                WyrmInternalEmoji.used(emoji)
                                 UIDevice.current.playInputClick()
                             } label: {
                                 Text(emoji).font(.system(size: 29)).frame(width: 40, height: 38)
@@ -70,17 +73,17 @@ struct WyrmEmojiPanel: View {
             .frame(maxHeight: .infinity)
             HStack(spacing: 0) {
                 WyrmSpecialKey(text: "ABC", width: 52, height: keyHeight * 0.82) { controller.layout = .letters }
-                ForEach(WyrmEmoji.categories.indices, id: \.self) { index in
+                ForEach(WyrmInternalEmoji.categories.indices, id: \.self) { index in
                     Button {
                         UISelectionFeedbackGenerator().selectionChanged()
-                        if index == 0 { recents = WyrmEmoji.recents }
+                        if index == 0 { recents = WyrmInternalEmoji.recents }
                         category = index
                     } label: {
-                        Image(systemName: WyrmEmoji.categories[index].symbol)
+                        Image(systemName: WyrmInternalEmoji.categories[index].symbol)
                             .font(.system(size: 14, weight: .semibold))
-                            .foregroundColor(category == index ? ATheme.ink : ATheme.quiet)
+                            .foregroundColor(category == index ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                             .frame(maxWidth: .infinity).frame(height: keyHeight * 0.82)
-                            .background(Circle().fill(category == index ? ATheme.well : Color.clear).frame(width: 30, height: 30))
+                            .background(Circle().fill(category == index ? wyrmScopedColours.well : Color.clear).frame(width: 30, height: 30))
                     }
                     .buttonStyle(.plain)
                 }

@@ -230,6 +230,9 @@ final class WyrmLookBox {
 /// picture itself in that look, and four sliders. A video takes the same look.
 /// Android: `LooksPanel` in `ui/TrailStudio.kt`.
 struct WyrmTrailLooksPanel: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @Binding var look: WyrmTrailLook
     @Binding var adjust: WyrmTrailAdjust
     /// A small frame of the picture or the clip, for the swatches.
@@ -261,7 +264,7 @@ struct WyrmTrailLooksPanel: View {
                             } label: {
                                 VStack(spacing: 3) {
                                     ZStack {
-                                        ATheme.well
+                                        wyrmScopedColours.well
                                         if let image = swatches[item.name] {
                                             Image(uiImage: image).resizable().scaledToFill()
                                         }
@@ -269,9 +272,9 @@ struct WyrmTrailLooksPanel: View {
                                     .frame(width: 58, height: 58)
                                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                        .stroke(ATheme.ink, lineWidth: selected ? 2.5 : 0))
+                                        .stroke(wyrmScopedColours.ink, lineWidth: selected ? 2.5 : 0))
                                     Text(item.name).font(.androidWyrm(10.5, selected ? .bold : .medium))
-                                        .foregroundColor(selected ? ATheme.ink : ATheme.mute)
+                                        .foregroundColor(selected ? wyrmScopedColours.ink : wyrmScopedColours.mute)
                                 }
                             }
                             .buttonStyle(.plain)
@@ -294,10 +297,10 @@ struct WyrmTrailLooksPanel: View {
 
     private func row(_ label: String, _ value: Float, _ change: @escaping (Float) -> Void) -> some View {
         HStack(spacing: 6) {
-            Text(label).font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.mute).frame(width: 78, alignment: .leading)
+            Text(label).font(.androidWyrm(11.5, .semibold)).foregroundColor(wyrmScopedColours.mute).frame(width: 78, alignment: .leading)
             Slider(value: Binding(get: { Double(value) }, set: { change(Float(($0 * 20).rounded() / 20)) }), in: -1...1)
-                .tint(ATheme.ink)
-            Text("\(Int((value * 100).rounded()))").font(.androidWyrm(11)).monospacedDigit().foregroundColor(ATheme.quiet)
+                .tint(wyrmScopedColours.ink)
+            Text("\(Int((value * 100).rounded()))").font(.androidWyrm(11)).monospacedDigit().foregroundColor(wyrmScopedColours.quiet)
                 .frame(width: 34, alignment: .trailing)
         }
         .frame(height: 28)

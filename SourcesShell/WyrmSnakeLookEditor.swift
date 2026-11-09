@@ -4,6 +4,9 @@ import SwiftUI
 /// the Modes page is on. Every change is written at once. Cancel puts the old
 /// values back; Done leaves them.
 struct WyrmSnakeLookEditor: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     let close: () -> Void
     @State private var assist: Bool
@@ -60,7 +63,7 @@ struct WyrmSnakeLookEditor: View {
     private var panel: some View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("SNAKE LOOK").font(.androidWyrm(10, .bold)).tracking(1.2).foregroundColor(ATheme.quiet)
+                Text("SNAKE LOOK").font(.androidWyrm(10, .bold)).tracking(1.2).foregroundColor(wyrmScopedColours.quiet)
                 WSSegmented(options: ["Normal", "Assist"], selected: assist ? 1 : 0) { pick in
                     let on = pick == 1
                     assist = on
@@ -87,8 +90,8 @@ struct WyrmSnakeLookEditor: View {
                 engine.write(id: "\(group).snake_shadow", values: [on ? 1 : 0])
             }
             if assist {
-                WSBoolRow(title: "Hide own tag and accessories",
-                          detail: "While assist is on, your tag, accessory and Wyrm look are hidden.",
+                WSBoolRow(title: "Hide all tags and accessories",
+                          detail: "While assist is on, all tags, accessories, hair and Wyrm look decorations are hidden.",
                           on: hideOn) { on in
                     engine.write(id: "assist.hide_cosmetics", values: [on ? 1 : 0])
                 }
@@ -103,15 +106,15 @@ struct WyrmSnakeLookEditor: View {
             }
             .padding(.horizontal, 18).padding(.top, 4).padding(.bottom, 10)
         }
-        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(ATheme.card.opacity(0.96)))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(ATheme.rule))
+        .background(RoundedRectangle(cornerRadius: 24, style: .continuous).fill(wyrmScopedColours.card.opacity(0.96)))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(wyrmScopedColours.rule))
     }
 
     private func action(_ label: String, filled: Bool = false, _ run: @escaping () -> Void) -> some View {
         Button(action: run) {
-            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? ATheme.onInk : ATheme.quiet)
+            Text(label).font(.androidWyrm(9, .bold)).tracking(1).foregroundColor(filled ? wyrmScopedColours.onInk : wyrmScopedColours.quiet)
                 .padding(.horizontal, 10).padding(.vertical, 8)
-                .background(Capsule().fill(filled ? ATheme.ink : Color.clear))
+                .background(Capsule().fill(filled ? wyrmScopedColours.ink : Color.clear))
         }.buttonStyle(.plain)
     }
 

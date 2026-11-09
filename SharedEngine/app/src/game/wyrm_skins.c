@@ -3353,6 +3353,9 @@ void wyrm_skin_draw(int skin, const float* px, const float* py, const uint8_t* v
   g_depth = 0;
   bp();
   t = (float)fmod((double)SDL_GetTicks() / 1000.0, 7200.0);
+#ifdef WYRM_SKIN_PREVIEW_TIME
+  if (WYRM_SKIN_PREVIEW_TIME >= 0) t = (float)fmod(WYRM_SKIN_PREVIEW_TIME, 7200.0);
+#endif
 
   if (skin > WYRM_SKIN_STRIP_BASE) {
     wcol col = {red, green, blue, 1};
@@ -3374,6 +3377,27 @@ void wyrm_skin_draw(int skin, const float* px, const float* py, const uint8_t* v
     g_S[m].y = cy + (py[0] - view_y) * zoom;
     g_S[m].a = 0;
     m++;
+#ifdef WYRM_SKIN_PREVIEW_SAMPLES
+    if (WYRM_SKIN_PREVIEW_SAMPLES > 1) {
+      float cumulative[MAXP], length;
+      cumulative[0] = 0;
+      for (i = 1; i < n; ++i)
+        cumulative[i] = cumulative[i - 1] + hypotf(px[i] - px[i - 1], py[i] - py[i - 1]);
+      length = cumulative[n - 1];
+      m = WYRM_SKIN_PREVIEW_SAMPLES;
+      int edge = 1;
+      for (i = 1; i < m; ++i) {
+        float at = length * i / (m - 1);
+        while (edge < n - 1 && cumulative[edge] < at) ++edge;
+        float run = cumulative[edge] - cumulative[edge - 1];
+        float f = run > 0 ? (at - cumulative[edge - 1]) / run : 0;
+        g_S[i].x = cx + (px[edge - 1] + (px[edge] - px[edge - 1]) * f - view_x) * zoom;
+        g_S[i].y = cy + (py[edge - 1] + (py[edge] - py[edge - 1]) * f - view_y) * zoom;
+        g_S[i].a = 0;
+      }
+    } else
+#endif
+    {
     for (i = 1; i < n && m < 600; ++i) {
       float x0 = px[i - 1], y0 = py[i - 1], x1 = px[i], y1 = py[i];
       float L = sqrtf((x1 - x0) * (x1 - x0) + (y1 - y0) * (y1 - y0));
@@ -3387,6 +3411,7 @@ void wyrm_skin_draw(int skin, const float* px, const float* py, const uint8_t* v
         m++;
       }
       dist += L;
+    }
     }
     for (i = 1; i < m; ++i) g_S[i].a = atan2f(g_S[i - 1].y - g_S[i].y, g_S[i - 1].x - g_S[i].x);
     g_S[0].a = head;

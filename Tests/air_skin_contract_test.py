@@ -29,7 +29,8 @@ checks = {
     "hue channels use Mod.closestMod with AS3 remainder": "static func closestMod" in PICKER and "truncatingRemainder(dividingBy: period)" in PICKER,
     "bezel lightens to 1 and darkens to -0.5": "1.1 * (1 - amount)" in PICKER and "max(-0.5, -amount * 0.5)" in PICKER,
     "bezel shading rounds like Math.round": "(v + 0.5).rounded(.down)" in PICKER,
-    "body tint applies nsk_min2c lift": "if mid + hi < 255" in PICKER and "1 + (255 - (mid + hi)) / 2" in PICKER,
+    # nsk_min2c: 255 for plain and rim, 128 for the drawn styles (OM, 2026-10-26).
+    "body tint applies nsk_min2c lift": "let min2c: Double = (kind(of: rgba) ?? 0) >= 2 ? 128 : 255" in PICKER and "if mid + hi < min2c" in PICKER and "1 + (min2c - (mid + hi)) / 2" in PICKER,
     "AIR texture named in the alpha byte": "0xFE00_0000" in PICKER and "0xFD00_0000" in PICKER,
     "arena gets the nearest non-dead colour group": "static func nearestGroup" in PICKER and "WyrmSkinCatalog.validGroups" in PICKER and "0.30, dg = (c.1 - g) * 0.59, db = (c.2 - b) * 0.11" in PICKER,
     "palette matches engine cg_colors row count": PICKER.count("(0.") + PICKER.count("(0, ") + PICKER.count("(1, 1, 1)") >= 42,
@@ -49,7 +50,8 @@ checks = {
     "pattern toggle swaps the bead grid for the wheel": "WyrmAirWheelToggle(showingWheel: showingWheel, enabled: !WyrmBead.builtBeadsOff)" in STUDIO and "if showingWheel {" in STUDIO and "airWheelPanel" in STUDIO,
     # Wheel and Wyrm beads switched off (OM, 2026-10-04): nothing new is built.
     "wheel and Wyrm beads cannot add beads while off": STUDIO.count("guard !WyrmBead.builtBeadsOff, groups.count < maxBeads") == 2,
-    "exactly AIR's first two beads are offered": "ForEach(0..<2, id: \\.self) { kind in" in PICKER and "beads: textures.airBeads" in STUDIO,
+    # All six AIR styles (OM, 2026-10-26), with AIR's nsk_is_valid_type rule.
+    "only Plain and Rim are offered; all six saved styles still decode": "static let styleCount = 6" in PICKER and "ForEach(0..<1, id: \\.self) { row in" in PICKER and "beads: textures.airBeads" in STUDIO and "allowedStyles: WyrmAirSkin.allowed(customColors).styles" in STUDIO,
     "wheel bead keeps exact RGB and a nearest group": "WyrmAirSkin.nearestGroup(rgb)" in STUDIO and "WyrmAirSkin.marker(kind: kind) | rgb" in STUDIO,
     "wheel state persists": all(k in STUDIO for k in ("air-pointer-x", "air-pointer-y", "air-bezel", "air-rgb")),
     "studio crops the AIR atlas cells": "x: Double(2 + kind) / 7, y: 6.0 / 9" in STUDIO and "width: 102.0 / 64 / 7, height: 102.0 / 64 / 9" in STUDIO,

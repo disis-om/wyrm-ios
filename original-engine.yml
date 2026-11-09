@@ -37,7 +37,9 @@ targets:
           - CIMGUI_NO_EXPORT
           - CGLM_FORCE_DEPTH_ZERO_TO_ONE
           - MG_ENABLE_IPV6=1
-          - APP_VERSION=\"2.3.3\"
+          # Arena text (OM, 2026-11-07): 32-bit ImWchar for names past U+FFFF.
+          - IMGUI_USE_WCHAR32
+          - APP_VERSION=\"2.5.0\"
           - SETTINGS_VERSION=\"2.8\"
         HEADER_SEARCH_PATHS:
           - $(inherited)
@@ -77,6 +79,12 @@ targets:
         buildPhase: resources
       - path: Resources/AirSkin/air_colour_wheel.png
         buildPhase: resources
+      # Wyrm in the player's language (OM, 2026-10-31): <code>.lproj string tables
+      # (Scripts/generate-localizations.py) and the language list.
+      - path: Resources/Localization
+        buildPhase: resources
+      - path: Resources/WyrmLanguages.json
+        buildPhase: resources
     dependencies:
       - target: OriginalEngine
       - framework: Vendor/SDL3.xcframework
@@ -88,6 +96,7 @@ targets:
       - sdk: Metal.framework
       - sdk: MetalKit.framework
       - sdk: QuartzCore.framework
+      - sdk: CoreText.framework
       - sdk: IOSurface.framework
       - sdk: GameController.framework
       - sdk: AVFoundation.framework
@@ -107,8 +116,8 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         INFOPLIST_FILE: SourcesOriginal/Info.plist
         TARGETED_DEVICE_FAMILY: "1"
-        MARKETING_VERSION: "2.3.3"
-        CURRENT_PROJECT_VERSION: "138"
+        MARKETING_VERSION: "2.5.2"
+        CURRENT_PROJECT_VERSION: "159"
         SWIFT_VERSION: "5.0"
         SWIFT_OBJC_BRIDGING_HEADER: SourcesShell/WyrmShell-Bridging-Header.h
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

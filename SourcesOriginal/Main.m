@@ -5,6 +5,7 @@
 #import <Foundation/Foundation.h>
 #import <UIKit/UIKit.h>
 #import <QuartzCore/QuartzCore.h>
+#import <CoreText/CoreText.h>
 #import <dispatch/dispatch.h>
 #include <TargetConditionals.h>
 #include <math.h>
@@ -12,6 +13,16 @@
 #include "user.h"
 #include "network/server.h"
 #include "WyrmOriginalAdapter.h"
+/* The theme's paper (OM, 2026-10-30): the orientation cover and the hosts
+   behind a rotation show it instead of black, so a turn reads as one soft
+   dissolve. SwiftUI sets it (WyrmIOSSetCoverPaper); main thread. */
+static UIColor* wyrm_cover_paper;
+static UIColor* wyrm_paper_colour(void) {
+  return wyrm_cover_paper ?: [UIColor colorWithRed:0.957 green:0.949 blue:0.925 alpha:1];
+}
+static bool internal_rotation;
+#import "WyrmOrientationHost.inc"
+#include "WyrmViewportGeometry.h"
 
 static tenv engine;
 static bool ready;
@@ -21,8 +32,8 @@ static int reported_width;
 static int reported_height;
 static int reported_screen = -1;
 static bool engine_presentation;
-/* Play orientation (OM, 2026-10-01): upright play keeps the engine surface
-   unrotated in the lobby and the match (WyrmIOSSetPortraitPlay). */
+/* Account-linked native game orientation. Both modes use identity-transformed
+   content; the app root always returns to portrait (WyrmIOSSetPortraitPlay). */
 static bool portrait_play;
 static bool leaderboard_proven;
 static bool canvas_proven;
@@ -42,7 +53,11 @@ static NSString* wyrm_engine_log_path;
 static int frame_interval = 1;
 static bool frame_idle;
 static void apply_frame_interval(void);
+static int display_max_fps(void);
 extern bool ui_skin_editor_postcard(void);
+/* game/oef.c (engine_frame_timing_2026_11_07.py): the display period seeds
+   the game's display-locked frame time. */
+extern void wyrm_frame_period_hint_ms(double ms);
 
 static const char* wyrm_log_priority_name(SDL_LogPriority priority) {
   switch (priority) {
@@ -111,11 +126,8 @@ static void wyrm_log_output(void* userdata, int category,
 }
 @end
 
-// UIWindow owns the root controller's geometry and is allowed to lay it out
-// again at any time.  Rotating that managed root view directly was therefore
-// temporary: a later UIKit/Appetize layout restored portrait bounds while the
-// 90-degree transform survived, producing the giant minimap/top-left crop.
-// Keep the SDL controller as a child whose geometry we own instead.
+// One persistent SDL/SwiftUI/Rain content controller. UIKit rotates the real
+// full-screen game host; every child uses its actual untransformed bounds.
 @interface WyrmEngineContainerController : UIViewController
 @property(nonatomic, strong) UIViewController* engineController;
 @property(nonatomic, strong) UIViewController* shellController;
@@ -125,7 +137,9 @@ static void wyrm_log_output(void* userdata, int category,
 @property(nonatomic, assign) BOOL rainExpanded;
 @property(nonatomic, assign) CGPoint rainOrigin;
 @property(nonatomic, assign) CGPoint rainOffset;
-@property(nonatomic, assign) BOOL landscapePresentation;
+@property(nonatomic, assign) CGFloat keyboardBottomInset;
+@property(nonatomic, assign) CGPoint rainOffsetBeforeKeyboard;
+@property(nonatomic, assign) BOOL rainDraggedWithKeyboard;
 - (void)installEngineController:(UIViewController*)controller;
 - (void)installShellControllerIfNeeded;
 - (BOOL)engineGeometryIsStable;
@@ -136,7 +150,7 @@ static void wyrm_log_output(void* userdata, int category,
 
 - (void)loadView {
   self.view = [[UIView alloc] initWithFrame:UIScreen.mainScreen.bounds];
-  self.view.backgroundColor = UIColor.blackColor;
+  self.view.backgroundColor = wyrm_paper_colour(); /* never a black frame on a turn (2026-10-30) */
   self.view.clipsToBounds = YES;
 }
 
@@ -173,11 +187,7 @@ static void wyrm_log_output(void* userdata, int category,
 }
 
 - (UIInterfaceOrientationMask)supportedInterfaceOrientations {
-  return UIInterfaceOrientationMaskPortrait;
-}
-
-- (UIInterfaceOrientation)preferredInterfaceOrientationForPresentation {
-  return UIInterfaceOrientationPortrait;
+  return UIInterfaceOrientationMaskPortrait | UIInterfaceOrientationMaskLandscape;
 }
 
 - (BOOL)prefersStatusBarHidden { return YES; }
@@ -187,17 +197,10 @@ static void wyrm_log_output(void* userdata, int category,
   [super viewDidLayoutSubviews];
   UIView* surface = self.engineController.view;
   if (!surface) return;
-  CGRect portrait = self.view.bounds;
-  CGFloat width = CGRectGetWidth(portrait);
-  CGFloat height = CGRectGetHeight(portrait);
+  CGRect bounds = self.view.bounds;
   surface.transform = CGAffineTransformIdentity;
-  surface.bounds = self.landscapePresentation
-      ? CGRectMake(0, 0, height, width)
-      : CGRectMake(0, 0, width, height);
-  surface.center = CGPointMake(CGRectGetMidX(portrait), CGRectGetMidY(portrait));
-  if (self.landscapePresentation)
-    surface.transform = CGAffineTransformMakeRotation((CGFloat)M_PI_2);
-  self.shellController.view.frame = portrait;
+  surface.frame = bounds;
+  self.shellController.view.frame = bounds;
   [self layoutRainPanel];
 }
 
@@ -205,20 +208,16 @@ static void wyrm_log_output(void* userdata, int category,
   WyrmRainStageView* rain = self.rainStage;
   if (!rain) return;
   CGRect bounds = self.view.bounds;
-  CGFloat stageWidth = self.landscapePresentation ? CGRectGetHeight(bounds):CGRectGetWidth(bounds);
-  CGFloat stageHeight = self.landscapePresentation ? CGRectGetWidth(bounds):CGRectGetHeight(bounds);
-  // The Rain panel (OM, 2026-10-14): opened by the arena's Rain key, centred;
-  // rainOrigin carries its wanted width and height (panel size slider).
-  CGFloat wantedWidth = MAX(self.rainOrigin.x, 1);
-  CGFloat wantedHeight = MAX(self.rainOrigin.y, 1);
-  CGFloat fit = MIN(1, MIN(stageWidth / wantedWidth, stageHeight / wantedHeight));
-  CGFloat width = wantedWidth * fit;
-  CGFloat height = wantedHeight * fit;
+  CGFloat stageWidth = CGRectGetWidth(bounds);
+  CGFloat stageHeight = CGRectGetHeight(bounds);
+  UIEdgeInsets safe = self.view.safeAreaInsets;
+  WyrmPanelGeometry panel = wyrm_panel_geometry(stageWidth, stageHeight,
+      self.rainOrigin.x, self.rainOrigin.y, self.rainOffset.x, self.rainOffset.y,
+      safe.left, safe.top, safe.right, MAX(safe.bottom, self.keyboardBottomInset));
+  CGFloat width = panel.width, height = panel.height;
+  CGFloat left = panel.left, top = panel.top;
   rain.clipsToBounds = NO; rain.layer.masksToBounds = NO;
-  // Dragged by its knob (OM, 2026-10-14): an offset from the centre, kept on screen.
-  CGFloat left = MIN(MAX((stageWidth - width) / 2 + self.rainOffset.x, 0), MAX(stageWidth - width, 0));
-  CGFloat top = MIN(MAX((stageHeight - height) / 2 + self.rainOffset.y, 0), MAX(stageHeight - height, 0));
-  self.rainOffset = CGPointMake(left - (stageWidth - width) / 2, top - (stageHeight - height) / 2);
+  self.rainOffset = CGPointMake(panel.offset_x, panel.offset_y);
   // Never translate/resize the SwiftUI render root to the small panel's box:
   // its cached root clip otherwise remains at the old rectangle while dragging.
   [CATransaction begin];
@@ -227,7 +226,7 @@ static void wyrm_log_output(void* userdata, int category,
   if (!CGSizeEqualToSize(rain.bounds.size, stageSize)) rain.bounds = (CGRect){CGPointZero, stageSize};
   CGPoint centre = CGPointMake(CGRectGetMidX(bounds), CGRectGetMidY(bounds));
   if (!CGPointEqualToPoint(rain.center, centre)) rain.center = centre;
-  CGAffineTransform turn = self.landscapePresentation ? CGAffineTransformMakeRotation((CGFloat)M_PI_2) : CGAffineTransformIdentity;
+  CGAffineTransform turn = CGAffineTransformIdentity;
   if (!CGAffineTransformEqualToTransform(rain.transform, turn)) rain.transform = turn;
   UIView* content = self.rainController.view;
   if (!CGSizeEqualToSize(content.bounds.size, stageSize)) content.bounds = (CGRect){CGPointZero, stageSize};
@@ -239,6 +238,8 @@ static void wyrm_log_output(void* userdata, int category,
   [CATransaction commit];
   rain.hidden = !self.rainVisible || !self.rainExpanded || !engine_presentation || reported_screen != PLAYING;
   [self.view bringSubviewToFront:rain];
+  UIView* cover = [self.view viewWithTag:WYRM_ORIENTATION_COVER_TAG];
+  if (cover.superview == self.view) [self.view bringSubviewToFront:cover];
 }
 
 - (void)pressesBegan:(NSSet<UIPress*>*)presses withEvent:(UIPressesEvent*)event {
@@ -253,33 +254,22 @@ static void wyrm_log_output(void* userdata, int category,
   if (remaining.count) [super pressesBegan:remaining withEvent:event];
 }
 
-- (void)setLandscapePresentation:(BOOL)enabled {
-  _landscapePresentation = enabled;
-  [self.view setNeedsLayout];
-  [self.view layoutIfNeeded];
-}
-
 - (BOOL)engineGeometryIsStable {
   UIView* surface = self.engineController.view;
   if (!surface) return NO;
-  CGRect portrait = self.view.bounds;
-  CGSize expected = self.landscapePresentation
-      ? CGSizeMake(CGRectGetHeight(portrait), CGRectGetWidth(portrait))
-      : portrait.size;
+  CGSize expected = self.view.bounds.size;
   const CGFloat epsilon = 0.5;
   BOOL sizeOK = fabs(CGRectGetWidth(surface.bounds) - expected.width) < epsilon &&
                 fabs(CGRectGetHeight(surface.bounds) - expected.height) < epsilon;
-  BOOL rotationOK = self.landscapePresentation
-      ? fabs(surface.transform.b - 1.0) < 0.01 &&
-        fabs(surface.transform.c + 1.0) < 0.01
-      : CGAffineTransformIsIdentity(surface.transform);
-  return sizeOK && rotationOK;
+  return sizeOK && CGAffineTransformIsIdentity(surface.transform);
+
 }
 
 @end
 
 
 static WyrmEngineContainerController* engine_container;
+static WyrmOrientationCoordinator* orientation_coordinator;
 static bool shell_overlay;
 
 // Separate small hosting view: the rest of the screen still belongs to SDL.
@@ -292,15 +282,33 @@ void WyrmIOSSetRainPanel(bool visible, bool expanded, double x, double y) {
   });
 }
 
+// Native keyboard overlap is transient and never written to account defaults.
+void WyrmIOSSetKeyboardOcclusion(double bottom) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    WyrmEngineContainerController* c = engine_container;
+    if (!c) return;
+    CGFloat next = isfinite(bottom) ? MAX(0, bottom) : 0;
+    if (next > 0 && c.keyboardBottomInset == 0) {
+      c.rainOffsetBeforeKeyboard = c.rainOffset;
+      c.rainDraggedWithKeyboard = NO;
+    } else if (next == 0 && c.keyboardBottomInset > 0 && !c.rainDraggedWithKeyboard) {
+      c.rainOffset = c.rainOffsetBeforeKeyboard;
+    }
+    c.keyboardBottomInset = next;
+    [c layoutRainPanel];
+  });
+}
+
 // The panel's knob moved the finger by (dx, dy) stage points from where it grabbed.
 // Main thread (the gesture's own), so the next touch already sees the new place.
 void WyrmIOSMoveRainPanel(double dx, double dy) {
   void (^move)(void) = ^{
     if (!engine_container || !isfinite(dx) || !isfinite(dy)) return;
+    if (engine_container.keyboardBottomInset > 0) engine_container.rainDraggedWithKeyboard = YES;
     CGPoint o = engine_container.rainOffset;
-    // Pan reports window coordinates; inverse of the hosting view's +90deg turn.
-    CGFloat stageDX = engine_container.landscapePresentation ? dy : dx;
-    CGFloat stageDY = engine_container.landscapePresentation ? -dx : dy;
+    // Native landscape: window, stage and drag deltas share the same axes.
+    CGFloat stageDX = dx;
+    CGFloat stageDY = dy;
     engine_container.rainOffset = CGPointMake(o.x + stageDX, o.y + stageDY);
     [engine_container layoutRainPanel];
   };
@@ -321,18 +329,27 @@ static void smoke_rain_drag(void) {
     CGAffineTransform turn = c.rainStage.transform;
     __block int moves = 0;
     [NSTimer scheduledTimerWithTimeInterval:1.0/60 repeats:YES block:^(NSTimer* timer) {
-      CGFloat freeX = CGRectGetWidth(stage) - c.rainStage.panelRect.size.width;
-      CGFloat freeY = CGRectGetHeight(stage) - c.rainStage.panelRect.size.height;
-      CGFloat x = freeX * (0.05 + 0.9 * (moves + 1) / 100.0);
-      CGFloat y = freeY * (0.1 + 0.8 * (moves + 1) / 100.0);
+      // Test reachable positions. The real layout clamps to the safe area;
+      // a destination inside the landscape notch was never a valid drag.
+      UIEdgeInsets safe = c.view.safeAreaInsets;
+      CGFloat minX = safe.left, minY = safe.top;
+      CGFloat maxX = CGRectGetWidth(stage) - safe.right - c.rainStage.panelRect.size.width;
+      CGFloat maxY = CGRectGetHeight(stage) - MAX(safe.bottom, c.keyboardBottomInset) - c.rainStage.panelRect.size.height;
+      CGFloat x = minX + MAX(0, maxX-minX) * (0.05 + 0.9 * (moves + 1) / 100.0);
+      CGFloat y = minY + MAX(0, maxY-minY) * (0.1 + 0.8 * (moves + 1) / 100.0);
       CGFloat dx = x - c.rainStage.panelRect.origin.x;
       CGFloat dy = y - c.rainStage.panelRect.origin.y;
-      WyrmIOSMoveRainPanel(c.landscapePresentation ? -dy : dx, c.landscapePresentation ? dx : dy);
+      WyrmIOSMoveRainPanel(dx, dy);
       [c layoutRainPanel]; [c layoutRainPanel];
       BOOL ok = CGRectEqualToRect(stage, c.rainStage.bounds) && CGPointEqualToPoint(centre, c.rainStage.center) &&
           CGAffineTransformEqualToTransform(turn, c.rainStage.transform) &&
           fabs(c.rainStage.panelRect.origin.x - x) < 0.01 && fabs(c.rainStage.panelRect.origin.y - y) < 0.01;
-      if (!ok) { NSLog(@"Rain drag geometry FAIL move=%d", moves); [timer invalidate]; return; }
+      if (!ok) {
+        NSLog(@"Rain drag geometry FAIL move=%d target=(%.3f,%.3f) actual=%@ stage=%@ original=%@ safe=%@",
+              moves, x, y, NSStringFromCGRect(c.rainStage.panelRect),
+              NSStringFromCGRect(c.rainStage.bounds), NSStringFromCGRect(stage), NSStringFromUIEdgeInsets(safe));
+        [timer invalidate]; return;
+      }
       if (++moves == 100) {
         NSLog(@"Rain drag geometry passed moves=100 stable_stage=1 position_held=1");
         [timer invalidate];
@@ -341,7 +358,43 @@ static void smoke_rain_drag(void) {
   });
 }
 
-/* The SwiftUI shell stays visible above the rotated engine while it draws the
+/* Future Apple CI runtime probe: use the real lobby/Home mailbox and UIKit
+   scene geometry, not the physical screenshot buffer's orientation metadata. */
+static void smoke_native_orientation_cycle(void) {
+  if (![NSProcessInfo.processInfo.arguments containsObject:@"--smoke-native-orientation-cycle"]) return;
+  __block unsigned ticks = 0;
+  __block BOOL saw_landscape = NO;
+  __block UIViewController* expected_engine = nil;
+  __block UIViewController* expected_shell = nil;
+  SDL_Window* expected_window = engine.wnd->handle;
+  [NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer* timer) {
+    if (++ticks > 160) {
+      SDL_Log("Native orientation cycle FAILED timeout landscape=%d", saw_landscape);
+      [timer invalidate]; return;
+    }
+    if (!orientation_coordinator || orientation_coordinator.transitioning) return;
+    UIWindowScene* scene = orientation_coordinator.window.windowScene;
+    CGSize size = engine_container.view.bounds.size;
+    if (!saw_landscape && orientation_coordinator.current == 2 &&
+        UIInterfaceOrientationIsLandscape(scene.interfaceOrientation) && size.width > size.height &&
+        reported_screen == LOBBY && engine_container.engineGeometryIsStable) {
+      saw_landscape = YES;
+      expected_engine = engine_container.engineController;
+      expected_shell = engine_container.shellController;
+      WyrmIOSLobbyHome();
+    } else if (saw_landscape && orientation_coordinator.current == 0 &&
+               scene.interfaceOrientation == UIInterfaceOrientationPortrait && size.height > size.width &&
+               reported_screen == TITLE_SCREEN && engine_container.engineGeometryIsStable) {
+      BOOL preserved = expected_engine == engine_container.engineController &&
+                       expected_shell == engine_container.shellController && expected_window == engine.wnd->handle;
+      SDL_Log("Native orientation cycle %s preserved_engine_shell_window=%d landscape=1 portrait=1",
+              preserved ? "passed" : "FAILED", preserved);
+      [timer invalidate];
+    }
+  }];
+}
+
+/* The SwiftUI shell stays visible above the native engine while it draws the
    Ready Room (LOBBY) or the layout editor; its hosting view turns clear so the
    engine shows wherever SwiftUI paints nothing. Main thread only. */
 static void apply_shell_visibility(void) {
@@ -355,17 +408,40 @@ static void apply_shell_visibility(void) {
   shell.backgroundColor = overlay ? UIColor.clearColor : original_background;
 }
 
-/* Play orientation (Settings > Controls). Upright, the presented engine keeps
-   the portrait surface; sideways it turns as before. Applies at once if the
-   engine is on screen (the layout editor), else at the next presentation. */
+/* Existing account-linked Play orientation selects native game orientation.
+   Home always stays portrait. Applies to the same persistent content/engine. */
+void WyrmIOSSetCoverPaper(double r, double g, double b) {
+  void (^apply)(void) = ^{ wyrm_cover_paper = [UIColor colorWithRed:r green:g blue:b alpha:1]; };
+  if (NSThread.isMainThread) apply(); else dispatch_async(dispatch_get_main_queue(), apply);
+}
+
+void WyrmIOSHoldOrientationCover(bool engine_visible) {
+  void (^raise)(void) = ^{ [orientation_coordinator raiseCoverExpectingEngine:engine_visible]; };
+  if (NSThread.isMainThread) raise(); else dispatch_async(dispatch_get_main_queue(), raise);
+}
+
+bool WyrmIOSInternalRotationActive(void) {
+  // A system modal above the game owns a genuine portrait keyboard.
+  return internal_rotation && engine_presentation && !portrait_play &&
+      !orientation_coordinator.game.presentedViewController;
+}
+void WyrmIOSSetInternalRotation(bool internal) {
+  dispatch_async(dispatch_get_main_queue(), ^{
+    if (internal_rotation == internal) return;
+    [engine_container.view endEditing:YES];
+    internal_rotation = internal;
+    [orientation_coordinator rearmGeometryObservation];
+    [orientation_coordinator.game.view setNeedsLayout];
+    [orientation_coordinator refreshGeometry];
+  });
+}
+
 void WyrmIOSSetPortraitPlay(bool portrait) {
   dispatch_async(dispatch_get_main_queue(), ^{
     portrait_play = portrait;
     if (!engine_container) return;
-    [UIView performWithoutAnimation:^{
-      engine_container.landscapePresentation = engine_presentation && !portrait_play;
-      apply_shell_visibility();
-    }];
+    [orientation_coordinator setEngineVisible:engine_presentation portrait:portrait_play];
+    apply_shell_visibility();
   });
 }
 
@@ -428,50 +504,44 @@ static const char* screen_name(int screen) {
 }
 
 void WyrmIOSSetEnginePresentation(bool enabled) {
-  if (engine_presentation == enabled && engine_container &&
-      engine_container.shellController) return;
-  engine_presentation = enabled;
+  // Last main-thread intent wins; do not let queued stale Play/Back events
+  // short-circuit one another against a prematurely updated global flag.
   dispatch_async(dispatch_get_main_queue(), ^{
-    UIWindow* window = nil;
-    for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
-      if ([scene isKindOfClass:UIWindowScene.class] &&
-          scene.activationState != UISceneActivationStateUnattached) {
-        for (UIWindow* candidate in ((UIWindowScene*)scene).windows) {
-          if (candidate.rootViewController) {
-            window = candidate;
-            if (candidate.isKeyWindow) break;
-          }
-        }
-        break;
+    UIWindow* window = orientation_coordinator.window;
+    UIWindow* connected_window = nil;
+    if (!window) for (UIScene* scene in UIApplication.sharedApplication.connectedScenes) {
+      if (![scene isKindOfClass:UIWindowScene.class] ||
+          scene.activationState == UISceneActivationStateUnattached) continue;
+      for (UIWindow* candidate in ((UIWindowScene*)scene).windows) {
+        if (!connected_window && candidate.rootViewController && candidate.windowLevel == UIWindowLevelNormal)
+          connected_window = candidate;
+        if (candidate.isKeyWindow) { window = candidate; break; }
       }
+      if (window) break;
     }
-    if (!window) {
-      engine_presentation = !enabled;
-      NSLog(@"Wyrm presentation deferred: no connected window");
-      return;
+    if (!window) window = connected_window;
+    if (!window || !window.rootViewController) {
+      NSLog(@"Wyrm presentation deferred: no connected key window"); return;
     }
-    if (![window.rootViewController isKindOfClass:WyrmEngineContainerController.class]) {
+    if (!orientation_coordinator) {
       UIViewController* sdlController = window.rootViewController;
       engine_container = [[WyrmEngineContainerController alloc] init];
-      [engine_container loadViewIfNeeded];
-      window.rootViewController = engine_container;
+      orientation_coordinator = [[WyrmOrientationCoordinator alloc] initWithWindow:window content:engine_container];
+      orientation_coordinator.coverSettled = ^BOOL(BOOL engineVisible) {
+        if (!engine_container.engineGeometryIsStable) return NO;
+        bool home = reported_screen == TITLE_SCREEN || reported_screen == SKIN_EDITOR;
+        return engineVisible ? (reported_screen >= 0 && !home) : home;
+      };
       [engine_container installEngineController:sdlController];
-    } else {
-      engine_container = (WyrmEngineContainerController*)window.rootViewController;
+      [engine_container installShellControllerIfNeeded];
     }
-    [engine_container installShellControllerIfNeeded];
-    [UIView performWithoutAnimation:^{
-      engine_container.landscapePresentation = enabled && !portrait_play;
-      apply_shell_visibility();
-    }];
-    CGRect portrait = engine_container.view.bounds;
-    CGFloat width = CGRectGetWidth(portrait);
-    CGFloat height = CGRectGetHeight(portrait);
-    SDL_Log("Wyrm iOS presentation=%s os=portrait container=stable-child logical=%.0fx%.0f rotation=%d geometry_ok=%d",
-            enabled ? "rotated-landscape" : "portrait",
-            enabled ? height : width, enabled ? width : height,
-            enabled ? 90 : 0,
-            engine_container.engineGeometryIsStable ? 1 : 0);
+    BOOL changed = engine_presentation != enabled;
+    engine_presentation = enabled;
+    [orientation_coordinator setEngineVisible:enabled portrait:portrait_play];
+    apply_shell_visibility();
+    if (changed) SDL_Log("Wyrm iOS native presentation=%s container=persistent rotation=0 geometry_ok=%d",
+        enabled ? (portrait_play ? "game-portrait" : "game-landscape") : "home-portrait",
+        engine_container.engineGeometryIsStable ? 1 : 0);
   });
 }
 
@@ -538,6 +608,17 @@ static void keep_frames_while_tracking(void) {
   }
   if (![link isKindOfClass:CADisplayLink.class]) return;
   [(CADisplayLink*)link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
+  /* SDL 3.4 sets only the old preferredFramesPerSecond. From iOS 15 Apple's
+     API for ProMotion is preferredFrameRateRange (OM, 2026-11-07, official
+     docs): a fixed range at the rate we draw at, so the system does not
+     vary the rate under a match. The idle 30 Hz pass gets its own range. */
+  if (@available(iOS 15.0, *)) {
+    float fps = (float)display_max_fps() / (float)(frame_interval > 0 ? frame_interval : 1);
+    CAFrameRateRange range = CAFrameRateRangeMake(fps, fps, fps);
+    CADisplayLink* display = (CADisplayLink*)link;
+    if (!CAFrameRateRangeIsEqualToRange(display.preferredFrameRateRange, range))
+      display.preferredFrameRateRange = range;
+  }
   if ((__bridge const void*)link == common_mode_link) return;
   common_mode_link = (__bridge const void*)link;
   SDL_Log("Wyrm frames: display link also runs while UIKit tracks touches");
@@ -711,11 +792,108 @@ static void apply_frame_interval(void) {
     return;
   }
   keep_frames_while_tracking();
+  wyrm_frame_period_hint_ms(1000.0 * (double)interval / (double)max);
   SDL_Log("Wyrm performance: display %d Hz, %s, interval %d = %d FPS", max,
           frame_idle ? "idle under SwiftUI" : "drawing", interval, max / interval);
 }
 
 int WyrmIOSDisplayMaxFPS(void) { return display_max_fps(); }
+
+/*
+ * Arena text fallbacks (OM, 2026-11-07; engine_arena_fonts_2026_11_07.py).
+ * The engine draws its text in Manrope with Liberation Sans behind it; names
+ * and messages in other scripts need the system's own fonts. CoreText names
+ * each one's file; a font CoreText had to substitute (not on this iOS) or a
+ * file the app may not read is left out. For a .ttc the face is found by its
+ * PostScript name. Engine thread (imgui_init), once.
+ */
+static uint32_t wyrm_font_be32(const unsigned char* p) {
+  return (uint32_t)p[0] << 24 | (uint32_t)p[1] << 16 | (uint32_t)p[2] << 8 | p[3];
+}
+
+static bool wyrm_font_face_named(NSData* data, uint32_t face, NSString* want) {
+  const unsigned char* d = data.bytes;
+  NSUInteger size = data.length;
+  if ((NSUInteger)face + 12 > size) return false;
+  unsigned tables = (unsigned)d[face + 4] << 8 | d[face + 5];
+  for (unsigned i = 0; i < tables; ++i) {
+    NSUInteger at = (NSUInteger)face + 12 + 16 * i;
+    if (at + 16 > size) return false;
+    if (memcmp(d + at, "name", 4) != 0) continue;
+    NSUInteger off = wyrm_font_be32(d + at + 8);
+    if (off + 6 > size) return false;
+    unsigned count = (unsigned)d[off + 2] << 8 | d[off + 3];
+    NSUInteger strings = off + ((unsigned)d[off + 4] << 8 | d[off + 5]);
+    for (unsigned r = 0; r < count; ++r) {
+      NSUInteger rec = off + 6 + 12 * r;
+      if (rec + 12 > size) return false;
+      unsigned platform = (unsigned)d[rec] << 8 | d[rec + 1];
+      unsigned name_id = (unsigned)d[rec + 6] << 8 | d[rec + 7];
+      unsigned length = (unsigned)d[rec + 8] << 8 | d[rec + 9];
+      NSUInteger start = strings + ((unsigned)d[rec + 10] << 8 | d[rec + 11]);
+      if (name_id != 6 || start + length > size) continue;
+      NSString* text = nil;
+      if (platform == 3 || platform == 0)
+        text = [[NSString alloc] initWithBytes:d + start length:length
+                                      encoding:NSUTF16BigEndianStringEncoding];
+      else if (platform == 1)
+        text = [[NSString alloc] initWithBytes:d + start length:length
+                                      encoding:NSMacOSRomanStringEncoding];
+      if ([text isEqualToString:want]) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+static int wyrm_font_ttc_index(NSString* path, NSString* postscript) {
+  NSData* data = [NSData dataWithContentsOfFile:path options:NSDataReadingMappedIfSafe error:nil];
+  if (data.length < 16 || memcmp(data.bytes, "ttcf", 4) != 0) return data.length ? 0 : -1;
+  const unsigned char* d = data.bytes;
+  uint32_t faces = wyrm_font_be32(d + 8);
+  if (faces > 64 || 12 + 4 * (NSUInteger)faces > data.length) return -1;
+  for (uint32_t i = 0; i < faces; ++i)
+    if (wyrm_font_face_named(data, wyrm_font_be32(d + 12 + 4 * i), postscript)) return (int)i;
+  return -1;
+}
+
+int wyrm_ios_fallback_fonts(char (*paths)[1024], int* indices, int max) {
+  /* One per script, in the engine's order (Indic, Arabic, Thai, Hebrew,
+     Chinese/Japanese, Korean, symbols, maths letters). */
+  static NSString* const wanted[] = {
+      @"KohinoorDevanagari-Regular", @"KohinoorBangla-Regular",
+      @"GurmukhiMN", @"KohinoorGujarati-Regular", @"TamilSangamMN",
+      @"KohinoorTelugu-Regular", @"KannadaSangamMN", @"MalayalamSangamMN",
+      @"OriyaSangamMN", @"GeezaPro", @"Thonburi", @"ArialHebrew",
+      // PingFang and Apple SD Gothic Neo are tens of MB each: left out
+      // (2026-11-07, the build 155 Simulator failure); Hiragino carries kanji/kana.
+      @"HiraginoSans-W3", @"AppleSymbols", @"STIXTwoMath-Regular"};
+  int found = 0;
+  @autoreleasepool {
+    for (size_t i = 0; i < sizeof(wanted) / sizeof(wanted[0]) && found < max; ++i) {
+      CTFontRef font = CTFontCreateWithName((__bridge CFStringRef)wanted[i], 16.0, NULL);
+      if (!font) continue;
+      NSString* postscript = CFBridgingRelease(CTFontCopyPostScriptName(font));
+      NSURL* url = CFBridgingRelease(CTFontCopyAttribute(font, kCTFontURLAttribute));
+      CFRelease(font);
+      if (![postscript isEqualToString:wanted[i]] || !url.isFileURL) continue;
+      NSString* path = url.path;
+      if (path.length == 0 || path.length >= 1024 ||
+          access(path.fileSystemRepresentation, R_OK) != 0) continue;
+      int index = wyrm_font_ttc_index(path, postscript);
+      if (index < 0) continue;
+      bool seen = false;
+      for (int j = 0; j < found; ++j)
+        if (indices[j] == index && strcmp(paths[j], path.fileSystemRepresentation) == 0) seen = true;
+      if (seen) continue;
+      strlcpy(paths[found], path.fileSystemRepresentation, 1024);
+      indices[found] = index;
+      ++found;
+    }
+  }
+  SDL_Log("Wyrm arena text: %d iOS script fonts", found);
+  return found;
+}
 
 static int engine_main(int argc, char** argv) {
   @autoreleasepool {
@@ -723,6 +901,10 @@ static int engine_main(int argc, char** argv) {
     // SimMetalHost aborts while encoding the original ImGui texture descriptors.
     // Keep Vulkan bindings unchanged; use MoltenVK's direct-resource path here.
     setenv("MVK_CONFIG_USE_METAL_ARGUMENT_BUFFERS", "0", 1);
+    // The Simulator can report zero-sized Metal placement-heap buffer
+    // requirements. Use MoltenVK's ordinary-buffer path on this platform.
+    setenv("MVK_CONFIG_USE_MTLHEAP", "0", 1);
+    SDL_Log("Wyrm Simulator compatibility: Metal placement heaps disabled");
 #endif
     NSFileManager* files = NSFileManager.defaultManager;
     NSURL* base = [files URLsForDirectory:NSApplicationSupportDirectory inDomains:NSUserDomainMask].firstObject;
@@ -766,10 +948,9 @@ static int engine_main(int argc, char** argv) {
       [assetRevision writeToURL:stamp atomically:YES encoding:NSUTF8StringEncoding error:nil];
     }
     if (chdir(working.path.fileSystemRepresentation) != 0) return 1;
-    // UIKit always remains portrait. Lobby/arena rotate only the SDL surface,
-    // so Appetize and a physical iPhone never need to approve an orientation
-    // change while the original engine still receives a landscape drawable.
-    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait");
+    // Permit native UIKit orientation. Portrait root / full-screen game hosts
+    // enforce the current screen policy; SDL gets actual window pixel sizes.
+    SDL_SetHint(SDL_HINT_ORIENTATIONS, "Portrait LandscapeLeft LandscapeRight");
     SDL_SetHint(SDL_HINT_IOS_HIDE_HOME_INDICATOR, "1");
     if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS)) return 1;
     engine.config.argc = argc;
@@ -788,10 +969,11 @@ static int engine_main(int argc, char** argv) {
     engine.ms = tmouse_create(engine.wnd);
     engine.ctx = tcontext_create(engine.wnd, engine.config.vsync, engine.config.fif);
     if (!engine.ctx) { SDL_Log("Wyrm original context failed"); return 1; }
-    bool smoke_ai = false, smoke_lobby = false, smoke_online = false;
+    bool smoke_ai = false, smoke_lobby = false, smoke_online = false, smoke_original_art = false;
     for (int i = 1; i < argc; ++i) {
       if (!strcmp(argv[i], "--smoke-ai")) smoke_ai = true;
-      if (!strcmp(argv[i], "--smoke-lobby")) smoke_lobby = true;
+      if (!strcmp(argv[i], "--smoke-original-art")) smoke_original_art = true;
+      if (!strcmp(argv[i], "--smoke-lobby") || !strcmp(argv[i], "--smoke-native-orientation-cycle")) smoke_lobby = true;
       if (!strcmp(argv[i], "--smoke-online")) smoke_online = true;
     }
     // The physical-device hang report showed UIKit's launch runloop spending
@@ -820,6 +1002,13 @@ static int engine_main(int argc, char** argv) {
                 elapsed * 1000.0);
         dispatch_async(dispatch_get_main_queue(), ^{
           ready = true;
+          if (smoke_original_art) {
+            WyrmIOSSetNearOriginal(true,0);
+            engine.usr->usrs.ext.food_tex[0]=engine.usr->usrs.ext.food_tex[1]=1;
+            engine.usr->usrs.hotkeys[HOTKEY_SHOW_NAMES].active=true;
+            engine.usr->usrs.show_own_name=true;
+            SDL_Log("Wyrm smoke original art enabled baked_glyphs=570 baked_food=11");
+          }
           if (smoke_ai) WyrmIOSRequestPlay("Apple test", "", true);
           if (smoke_lobby) {
             WyrmIOSSetEnginePresentation(true);
@@ -829,6 +1018,7 @@ static int engine_main(int argc, char** argv) {
           }
           if (smoke_online)
             WyrmIOSRequestPlay("Apple test", engine.usr->usrs.ipv4, false);
+          smoke_native_orientation_cycle();
         });
       }
     });
@@ -836,4 +1026,20 @@ static int engine_main(int argc, char** argv) {
   }
 }
 
-int main(int argc, char** argv) { return SDL_RunApp(argc, argv, engine_main, NULL); }
+int main(int argc, char** argv) {
+#if TARGET_OS_SIMULATOR
+  // Test-only, before any Swift store reads defaults; normal runs never write it.
+  BOOL internalSmoke=NO, nativeSmoke=NO;
+  for(int i=1;i<argc;++i) {
+    if(!strcmp(argv[i],"--smoke-internal-rotation")) internalSmoke=YES;
+    if(!strcmp(argv[i],"--smoke-lobby") || !strcmp(argv[i],"--smoke-native-orientation-cycle")) nativeSmoke=YES;
+  }
+  if(internalSmoke || nativeSmoke) {
+    [NSUserDefaults.standardUserDefaults setBool:internalSmoke forKey:@"wyrm.ios.orientation.internal"];
+    /* Internal rotation is a Developer Mode option (2026-11-01): the smoke turns it on with it. */
+    [NSUserDefaults.standardUserDefaults setBool:internalSmoke forKey:@"wyrm.ios.developer-mode"];
+    [NSUserDefaults.standardUserDefaults setBool:NO forKey:@"wyrm.ios.orientation.portrait"];
+  }
+#endif
+  return SDL_RunApp(argc, argv, engine_main, NULL);
+}

@@ -26,7 +26,7 @@ struct WyrmSkinTab: View {
     }
 
     var body: some View {
-        if trial.skin != nil || studio.classicOpen || classicSmoke {
+        if !ProcessInfo.processInfo.arguments.contains("--smoke-skin-studio") || trial.skin != nil || classicSmoke {
             WyrmSkinRoot(engine: engine)
         } else {
             WyrmSkinStudioPage(engine: engine)
@@ -49,6 +49,9 @@ private struct StudioBeadEditing: Identifiable {
 }
 
 struct WyrmSkinStudioPage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var engine: WyrmShellStore
     @ObservedObject private var studio = WyrmStudio.shared
     @StateObject private var textures = WyrmSkinTextureLibrary.acquire()
@@ -87,7 +90,7 @@ struct WyrmSkinStudioPage: View {
                         .padding(.horizontal, 16)
                         Spacer().frame(height: 14)
                         if !notice.isEmpty {
-                            Text(notice).font(.androidWyrm(12)).foregroundColor(ATheme.badge)
+                            Text(notice).font(.androidWyrm(12)).foregroundColor(wyrmScopedColours.badge)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                                 .padding(.horizontal, 20).padding(.vertical, 4)
                         }
@@ -121,7 +124,7 @@ struct WyrmSkinStudioPage: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            .background(ATheme.paper)
+            .background(wyrmScopedColours.paper)
 
             if let id = skinMenu, let item = studio.skin(id) {
                 StudioActionSheet(title: item.name, subtitle: "\(item.pattern.count) beads · \(item.eyes.count) eyes",
@@ -197,8 +200,8 @@ struct WyrmSkinStudioPage: View {
                     tab = .snake
                 }, onHold: {}) {
                     VStack(spacing: 4) {
-                        Image(systemName: "plus").font(.system(size: 19, weight: .semibold)).foregroundColor(ATheme.ink)
-                        Text("New snake").font(.androidWyrm(11, .bold)).foregroundColor(ATheme.ink)
+                        Image(systemName: "plus").font(.system(size: 19, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
+                        Text("New snake").font(.androidWyrm(11, .bold)).foregroundColor(wyrmScopedColours.ink)
                     }
                 }
                 ForEach(studio.skins) { item in
@@ -209,9 +212,9 @@ struct WyrmSkinStudioPage: View {
                                 drawStudioStrip(context, size: size, skin: item, image: image)
                             }
                             HStack(spacing: 4) {
-                                Text(item.name).font(.androidWyrm(11, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                                Text(item.name).font(.androidWyrm(11, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                                 Spacer(minLength: 0)
-                                if studio.worn == item.id { Circle().fill(ATheme.live).frame(width: 7, height: 7) }
+                                if studio.worn == item.id { Circle().fill(wyrmScopedColours.live).frame(width: 7, height: 7) }
                             }
                         }
                         .padding(8)
@@ -239,6 +242,9 @@ func studioPictures(_ ids: [String], white: CGImage?) -> [String: CGImage] {
 }
 
 private struct StudioShelfCard<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let selected: Bool
     let onTap: () -> Void
     let onHold: () -> Void
@@ -247,9 +253,9 @@ private struct StudioShelfCard<Content: View>: View {
     var body: some View {
         content()
             .frame(width: 132, height: 78)
-            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(ATheme.card))
+            .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(wyrmScopedColours.card))
             .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+                .stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
             .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .onTapGesture(perform: onTap)
             .onLongPressGesture(minimumDuration: 0.45) {
@@ -295,6 +301,9 @@ struct StudioWornPreview: View {
 // MARK: - the stage
 
 private struct StudioStage: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let skin: WyrmStudioSkin
     let image: (String) -> CGImage?
     let worn: Bool
@@ -339,8 +348,8 @@ private struct StudioStage: View {
 
             VStack(alignment: .leading, spacing: 1) {
                 Text(worn ? "WORN" : "STUDIO SNAKE").font(.androidWyrm(9.5, .bold)).tracking(1.2)
-                    .foregroundColor(worn ? ATheme.live : ATheme.quiet)
-                Text(skin.name).font(.androidWyrm(26, .bold)).foregroundColor(ATheme.ink).lineLimit(1)
+                    .foregroundColor(worn ? wyrmScopedColours.live : wyrmScopedColours.quiet)
+                Text(skin.name).font(.androidWyrm(26, .bold)).foregroundColor(wyrmScopedColours.ink).lineLimit(1)
                     .onTapGesture(perform: onRename)
             }
             .padding(.leading, 18).padding(.bottom, 14)
@@ -359,9 +368,9 @@ private struct StudioStage: View {
         }
         .frame(height: 250)
         .frame(maxWidth: .infinity)
-        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(ATheme.card))
+        .background(RoundedRectangle(cornerRadius: 26, style: .continuous).fill(wyrmScopedColours.card))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+        .overlay(RoundedRectangle(cornerRadius: 26, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
         .contentShape(Rectangle())
         .onTapGesture { clock.boost = 1 }
         .padding(.horizontal, 16)
@@ -378,6 +387,9 @@ private struct StudioStage: View {
 // MARK: - Snake: the pattern
 
 private struct StudioPatternWorkshop: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let skin: WyrmStudioSkin
     let beads: [WyrmStudioBead]
     let image: (String) -> CGImage?
@@ -393,7 +405,7 @@ private struct StudioPatternWorkshop: View {
         return VStack(spacing: 0) {
             HStack(spacing: 6) {
                 Text("\(pattern.count) / \(WyrmStudio.maxPattern) beads · \(Set(pattern).count) kinds")
-                    .font(.androidWyrm(11.5, .semibold)).foregroundColor(ATheme.quiet)
+                    .font(.androidWyrm(11.5, .semibold)).foregroundColor(wyrmScopedColours.quiet)
                 Spacer()
                 StudioRoundButton(icon: "arrow.uturn.backward", enabled: !history.isEmpty, size: 34) {
                     guard let last = history.popLast() else { return }
@@ -416,10 +428,10 @@ private struct StudioPatternWorkshop: View {
                             VStack(spacing: 0) {
                                 StudioPicture(image: image(id)).frame(width: 38, height: 38)
                                     .frame(width: 44, height: 44)
-                                    .overlay(Circle().stroke(chosen ? ATheme.ink : Color.clear, lineWidth: 2.5))
+                                    .overlay(Circle().stroke(chosen ? wyrmScopedColours.ink : Color.clear, lineWidth: 2.5))
                                     .contentShape(Circle())
                                     .onTapGesture { selected = chosen ? nil : index }
-                                Text("\(index + 1)").font(.androidWyrm(8.5, .bold)).foregroundColor(chosen ? ATheme.ink : ATheme.quiet)
+                                Text("\(index + 1)").font(.androidWyrm(8.5, .bold)).foregroundColor(chosen ? wyrmScopedColours.ink : wyrmScopedColours.quiet)
                             }
                             .id(index)
                         }
@@ -454,9 +466,9 @@ private struct StudioPatternWorkshop: View {
             WyrmSectionLabel("Tap a bead to add it")
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 10) {
                 Button(action: onNewBead) {
-                    Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundColor(ATheme.ink)
+                    Image(systemName: "plus").font(.system(size: 18, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
                         .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                        .background(Circle().fill(ATheme.card)).overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                        .background(Circle().fill(wyrmScopedColours.card)).overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .contentShape(Circle())
                 }.buttonStyle(WSPressStyle())
                 ForEach(beads) { bead in
@@ -497,6 +509,9 @@ private struct StudioPatternWorkshop: View {
 // MARK: - Beads: the library
 
 private struct StudioBeadWorkshop: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let beads: [WyrmStudioBead]
     let image: (String) -> CGImage?
     @ObservedObject var textures: WyrmSkinTextureLibrary
@@ -510,9 +525,9 @@ private struct StudioBeadWorkshop: View {
             StudioCaption("Tap a bead to edit it. Touch and hold a bead to copy or delete it.").padding(.bottom, 8)
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 5), spacing: 10) {
                 Button(action: onNew) {
-                    Image(systemName: "plus").font(.system(size: 20, weight: .semibold)).foregroundColor(ATheme.ink)
+                    Image(systemName: "plus").font(.system(size: 20, weight: .semibold)).foregroundColor(wyrmScopedColours.ink)
                         .frame(maxWidth: .infinity).aspectRatio(1, contentMode: .fit)
-                        .background(Circle().fill(ATheme.card)).overlay(Circle().stroke(ATheme.rule, lineWidth: 1))
+                        .background(Circle().fill(wyrmScopedColours.card)).overlay(Circle().stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .contentShape(Circle())
                 }.buttonStyle(WSPressStyle())
                 ForEach(beads) { bead in
@@ -536,12 +551,12 @@ private struct StudioBeadWorkshop: View {
                         let groups = WyrmSkinCatalog.presets[index]
                         VStack(alignment: .leading, spacing: 6) {
                             WyrmMiniSnake(textures: textures, groups: groups).frame(height: 30)
-                            Text(String(format: "Preset %02d", index + 1)).font(.androidWyrm(10.5, .bold)).foregroundColor(ATheme.quiet)
+                            Text(String(format: "Preset %02d", index + 1)).font(.androidWyrm(10.5, .bold)).foregroundColor(wyrmScopedColours.quiet)
                         }
                         .padding(10)
                         .frame(width: 150)
-                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.card))
-                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(wyrmScopedColours.card))
+                        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                         .contentShape(Rectangle())
                         .onTapGesture { studioFromPreset(index, groups) }
                     }
@@ -570,6 +585,9 @@ private struct StudioBeadWorkshop: View {
 // MARK: - Eyes
 
 private struct StudioEyeWorkshop: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let skin: WyrmStudioSkin
     let image: (String) -> CGImage?
     let onOpenEditor: () -> Void
@@ -612,9 +630,9 @@ private struct StudioEyeWorkshop: View {
             }
             .frame(height: 150)
             .frame(maxWidth: .infinity)
-            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(ATheme.card))
+            .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(wyrmScopedColours.card))
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
-            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+            .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
             .contentShape(Rectangle())
             .onTapGesture(perform: onOpenEditor)
             .padding(.horizontal, 16)
@@ -637,9 +655,9 @@ private struct StudioEyeWorkshop: View {
                             drawStudioEyes(context, eyes: eyes, head: centre, angle: 0, unit: bead / 29, look: CGPoint(x: 1, y: 0))
                         }
                         .frame(width: 76, height: 76)
-                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(ATheme.card))
+                        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(wyrmScopedColours.card))
                         .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(chosen ? ATheme.ink : ATheme.rule, lineWidth: chosen ? 2 : 1))
+                            .stroke(chosen ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: chosen ? 2 : 1))
                         .contentShape(Rectangle())
                         .onTapGesture { WyrmStudio.shared.setEyes(skin.id, eyes) }
                         .accessibilityLabel(name)

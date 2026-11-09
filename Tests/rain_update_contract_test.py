@@ -20,7 +20,9 @@ assert "uint8_t reserved_white_alignment[2];" in header
 assert "bytes_read >= ext_at + white_at + 1" in settings
 assert "memset(ext->key_colour, 0, sizeof(ext->key_colour))" in settings
 assert "x->keys_white_v1 = true;" in settings
-assert "ImU32 primary = color(1.0f, 1.0f, 1.0f, 1.0f);" in keys
+# White keys stay white; only the player's LABEL OPACITY (default 1) fades the label (2026-11-01).
+assert "ImU32 primary = color(1.0f, 1.0f, 1.0f, label_alpha);" in keys
+assert "x->key_label_opacity[i] = 1.0f;" in settings
 assert 'value["colors"] = stored[...last].map' in rain
 assert "colors: c.previewColors, maxBeads: 250" in page
 assert "groups: c.previewGroups, colors: c.previewColors" in page
@@ -35,8 +37,8 @@ assert 'uint8_t reserved_grey_alignment[3];' in header
 assert 'bytes_read >= ext_at + grey_at + 1' in settings
 assert 'ext->key_fill[i] = 9' in settings and 'x->keys_grey_fill_v1 = true' in settings
 assert "UIPanGestureRecognizer" in page and "gesture.location(in: nil)" in page
-assert "landscapePresentation ? dy : dx" in main and "landscapePresentation ? -dx : dy" in main
-assert "wantedWidth * fit" in main and "frame.width / 428" in page
+assert "CGFloat stageDX = dx" in main and "CGFloat stageDY = dy" in main
+assert "wyrm_panel_geometry(stageWidth, stageHeight" in main and "frame.width / 428" in page
 assert 'if (!CGSizeEqualToSize(rain.bounds.size, stageSize))' in main
 assert 'if (!CGAffineTransformEqualToTransform(rain.transform, turn))' in main
 assert 'content.center = CGPointMake(left + stageWidth / 2, top + stageHeight / 2)' in main

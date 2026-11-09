@@ -8,7 +8,14 @@ import SwiftUI
 /// editor's beads wear the same texture, through `bead(_:)`. Android twin: ui/SkinTexture.kt.
 final class WyrmSkinTexture: ObservableObject {
     static let shared = WyrmSkinTexture()
-    static let names = ["Default", "Rounded plain", "Squared plain", "NTL textured", "Striped plain"]
+    static let names = ["Wyrm", "Rounded plain", "Squared plain", "NTL textured", "Striped plain",
+                        "Glossy", "Matte", "Neon", "Pearl", "Metal"]
+    /// What the picker offers (OM, 2026-10-26): eight. 2 and 4 (Squared and Striped plain)
+    /// are retired and draw Wyrm's beads.
+    static let offered = [0, 3, 1, 5, 6, 7, 8, 9]
+    static let drawn: Set<Int> = [1, 3, 5, 6, 7, 8, 9]
+    /// A drawn texture is on: beads are plain, upright, light at the top left.
+    var drawnNow: Bool { Self.drawn.contains(current) }
 
     @Published var current = 0
     @Published var mine = false
@@ -17,7 +24,7 @@ final class WyrmSkinTexture: ObservableObject {
     /// This colour's bead in `texture` (the current one by default); nil for Default.
     func bead(_ rgb: UInt32, texture: Int? = nil) -> CGImage? {
         let kind = texture ?? current
-        guard (1...4).contains(kind) else { return nil }
+        guard Self.drawn.contains(kind) else { return nil }
         let key = (kind << 24) | Int(rgb & 0xFF_FFFF)
         if let made = cache[key] { return made }
         guard let made = Self.render(kind, rgb) else { return nil }
@@ -54,38 +61,93 @@ final class WyrmSkinTexture: ObservableObject {
             }
             ctx.restoreGState()
         default:
-            ctx.setFillColor(red: r, green: g, blue: b, alpha: 1)
-            ctx.fill(box)
+            drawNew(ctx, kind, r, g, b, box, CGFloat(s))
         }
         return ctx.makeImage()
+    }
+
+    /// The five of 2026-10-26, as bp.slang draws them: upright, light at the top left.
+    /// CoreGraphics' y runs up, so "top" is the larger y.
+    private static func drawNew(_ ctx: CGContext, _ kind: Int, _ r: CGFloat, _ g: CGFloat, _ b: CGFloat,
+                                _ box: CGRect, _ s: CGFloat) {
+        let space = CGColorSpaceCreateDeviceRGB()
+        func c(_ f: CGFloat, _ add: CGFloat = 0) -> CGColor {
+            CGColor(red: min(max(r * f + add, 0), 1), green: min(max(g * f + add, 0), 1),
+                    blue: min(max(b * f + add, 0), 1), alpha: 1)
+        }
+        func radial(_ colours: [CGColor], _ at: CGPoint, _ radius: CGFloat, _ stops: [CGFloat]) {
+            guard let gradient = CGGradient(colorsSpace: space, colors: colours as CFArray, locations: stops) else { return }
+            ctx.drawRadialGradient(gradient, startCenter: at, startRadius: 0, endCenter: at, endRadius: radius,
+                                   options: [.drawsAfterEndLocation])
+        }
+        ctx.saveGState()
+        ctx.addEllipse(in: box)
+        ctx.clip()
+        switch kind {
+        case 5: // Glossy
+            radial([c(1.08), c(0.85), c(0.5)], CGPoint(x: s * 0.35, y: s * 0.67), s * 0.62, [0, 0.55, 1])
+            if let spot = CGGradient(colorsSpace: space, colors: [CGColor(gray: 1, alpha: 0.85), CGColor(gray: 1, alpha: 0)] as CFArray,
+                                     locations: [0, 1]) {
+                let at = CGPoint(x: s * 0.32, y: s * 0.72)
+                ctx.drawRadialGradient(spot, startCenter: at, startRadius: 0, endCenter: at, endRadius: s * 0.2, options: [])
+            }
+        case 6: // Matte
+            radial([c(1.0), c(0.98), c(0.72)], CGPoint(x: s / 2, y: s / 2), s / 2, [0, 0.55, 1])
+        case 7: // Neon
+            ctx.setFillColor(c(0.22))
+            ctx.fill(box)
+            ctx.setStrokeColor(c(1.6, 0.12))
+            let radius = (s / 2 - 1) * 0.78
+            ctx.setLineWidth((s / 2 - 1) * 0.36)
+            ctx.strokeEllipse(in: CGRect(x: s / 2 - radius, y: s / 2 - radius, width: radius * 2, height: radius * 2))
+        case 8: // Pearl
+            func pearl(_ f: CGFloat, _ add: CGFloat) -> CGColor {
+                func ch(_ v: CGFloat) -> CGFloat { min(max((v * 0.7 + 0.3) * f + add, 0), 1) }
+                return CGColor(red: ch(r), green: ch(g), blue: ch(b), alpha: 1)
+            }
+            radial([pearl(1.08, 0.1), pearl(0.9, 0.04), pearl(0.78, 0)], CGPoint(x: s * 0.35, y: s * 0.68), s * 0.75, [0, 0.5, 1])
+        default: // Metal
+            if let gradient = CGGradient(colorsSpace: space, colors: [c(0.95), c(1.0, 0.3), c(0.75), c(0.45), c(0.8)] as CFArray,
+                                         locations: [0, 0.3, 0.45, 0.75, 1]) {
+                ctx.drawLinearGradient(gradient, start: CGPoint(x: 0, y: s), end: CGPoint(x: 0, y: 0), options: [])
+            }
+        }
+        ctx.restoreGState()
     }
 }
 
 /// Skin tab › Pattern: "Select texture" and, once open, the five textures with Mine / Everyone.
 struct WyrmSkinTextureSelector: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     @ObservedObject var texture = WyrmSkinTexture.shared
     let onPick: (Int) -> Void
     let onMine: (Bool) -> Void
     @State private var open = false
 
+    init(initiallyOpen: Bool = false, onPick: @escaping (Int) -> Void, onMine: @escaping (Bool) -> Void) {
+        self.onPick = onPick; self.onMine = onMine; _open = State(initialValue: initiallyOpen)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Button { withAnimation(.easeOut(duration: 0.2)) { open.toggle() } } label: {
                 HStack {
-                    Text("Select texture").font(.androidWyrm(15, .bold)).foregroundColor(ATheme.ink)
+                    Text("Select texture").font(.androidWyrm(15, .bold)).foregroundColor(wyrmScopedColours.ink)
                     Spacer()
-                    Text(WyrmSkinTexture.names[min(max(texture.current, 0), 4)])
-                        .font(.androidWyrm(13.5, .semibold)).foregroundColor(ATheme.mute)
+                    Text(WyrmSkinTexture.names[WyrmSkinTexture.offered.contains(texture.current) ? texture.current : 0])
+                        .font(.androidWyrm(13.5, .semibold)).foregroundColor(wyrmScopedColours.mute)
                 }
                 .padding(.horizontal, 14).padding(.vertical, 12)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(ATheme.card))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(ATheme.rule, lineWidth: 1))
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(wyrmScopedColours.card))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).stroke(wyrmScopedColours.rule, lineWidth: 1))
                 .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
             .buttonStyle(.plain)
             if open {
-                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 3), spacing: 10) {
-                    ForEach(WyrmSkinTexture.names.indices, id: \.self) { index in
+                LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
+                    ForEach(WyrmSkinTexture.offered, id: \.self) { index in
                         tile(index)
                     }
                 }
@@ -93,15 +155,15 @@ struct WyrmSkinTextureSelector: View {
                     texture.mine = picked == 0
                     onMine(picked == 0)
                 }
-                Text("Mine puts the texture on your snake only. Everyone draws every snake in it. Far away fewer beads are drawn, so the game stays light.")
-                    .font(.androidWyrm(12.5, .regular)).foregroundColor(ATheme.mute)
+                Text("Mine puts the texture on your snake only. Everyone draws every snake in it. Every texture is light to draw, and far away fewer beads are drawn, so the game stays smooth.")
+                    .font(.androidWyrm(12.5, .regular)).foregroundColor(wyrmScopedColours.mute)
             }
         }
         .padding(.horizontal, 20)
     }
 
     private func tile(_ index: Int) -> some View {
-        let selected = texture.current == index
+        let selected = texture.current == index || (index == 0 && !WyrmSkinTexture.offered.contains(texture.current))
         return Button {
             UISelectionFeedbackGenerator().selectionChanged()
             texture.current = index
@@ -123,12 +185,12 @@ struct WyrmSkinTextureSelector: View {
                 }
                 .frame(height: 34)
                 Text(WyrmSkinTexture.names[index]).font(.androidWyrm(12, selected ? .bold : .semibold))
-                    .foregroundColor(selected ? ATheme.ink : ATheme.mute).lineLimit(1).minimumScaleFactor(0.8)
+                    .foregroundColor(selected ? wyrmScopedColours.ink : wyrmScopedColours.mute).lineLimit(1).minimumScaleFactor(0.8)
             }
             .padding(8)
-            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(ATheme.card))
+            .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(wyrmScopedColours.card))
             .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(selected ? ATheme.ink : ATheme.rule, lineWidth: selected ? 2 : 1))
+                .stroke(selected ? wyrmScopedColours.ink : wyrmScopedColours.rule, lineWidth: selected ? 2 : 1))
         }
         .buttonStyle(.plain)
         .accessibilityLabel("\(WyrmSkinTexture.names[index]) texture")

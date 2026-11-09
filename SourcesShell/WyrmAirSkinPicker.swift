@@ -10,18 +10,38 @@ enum WyrmAirSkin {
     static let plainMarker: UInt32 = 0xFE00_0000   // nsk 0, `kmc_ts[9][0]`
     static let rimMarker: UInt32 = 0xFD00_0000     // nsk 1, `kmc_ts[29][0]`
 
-    static func marker(kind: Int) -> UInt32 { kind == 0 ? plainMarker : rimMarker }
+    /// The client's six bead styles (OM, 2026-10-26; `nsks` 0..5): plain, rim, round
+    /// fluffy, dragon scales, teardrop, egg. The alpha byte names it: 0xFE - style. Only
+    /// this phone draws them; the arena gets the colour. Android twin: AirSkin.kt.
+    static let styleCount = 6
+    static let styleNames = ["Plain", "Rim", "Fluffy", "Scales", "Teardrop", "Egg"]
+    /// `nsk_default_shine_a`: the white shine over a drawn style (2..5).
+    static let shineAlpha: [Double] = [0, 0, 0.8, 0.8, 0.7, 0.55]
+    /// A drawn style's picture is 2.5 beads wide round the bead's centre.
+    static let styleSpan: CGFloat = 2.5
+
+    static func marker(kind: Int) -> UInt32 { UInt32(0xFE - min(max(kind, 0), styleCount - 1)) << 24 }
+
+    /// Which styles may be added to `colors` (AIR `nsk_is_valid_type`): plain and rim go
+    /// with every other bead; a drawn style (2..5) only on its own, one style for the whole
+    /// snake. Per style whether it may be added, and whether the grid's beads may.
+    static func allowed(_ colors: [UInt32]) -> (styles: [Bool], grid: Bool) {
+        let drawn = colors.compactMap { kind(of: $0) }.first { $0 >= 2 }
+        let others = colors.contains { (kind(of: $0) ?? 0) < 2 }
+        let styles = (0..<styleCount).map { style -> Bool in
+            if let drawn { return style == drawn }
+            return style >= 2 ? !others : true
+        }
+        return (styles, drawn == nil)
+    }
 
     /// AIR's `ksmc_t` under each wheel bead. Off, like the engine's
     /// `WYRM_AIR_BEAD_SHADOW`: wheel skins now look like grid skins.
     static let beadShadow = false
 
     static func kind(of rgba: UInt32) -> Int? {
-        switch rgba >> 24 {
-        case 0xFE: return 0
-        case 0xFD: return 1
-        default: return nil
-        }
+        let tag = Int(rgba >> 24)
+        return (0xF9...0xFE).contains(tag) ? 0xFE - tag : nil
     }
 
     static let wheelRadius = 128.0
@@ -100,8 +120,10 @@ enum WyrmAirSkin {
         var c = [Double((rgba >> 16) & 0xff), Double((rgba >> 8) & 0xff), Double(rgba & 0xff)]
         let lo = c.min()!, hi = c.max()!
         let mid = c.reduce(0, +) - lo - hi
-        if mid + hi < 255 {
-            let lift = 1 + (255 - (mid + hi)) / 2
+        // nsk_min2c: 255 for plain and rim, 128 for the drawn styles.
+        let min2c: Double = (kind(of: rgba) ?? 0) >= 2 ? 128 : 255
+        if mid + hi < min2c {
+            let lift = 1 + (min2c - (mid + hi)) / 2
             c = c.map { min(255, $0 + lift) }
         }
         return UInt32(c[0]) << 16 | UInt32(c[1]) << 8 | UInt32(c[2])
@@ -159,6 +181,9 @@ extension Color {
 
 /// Liquid Glass on iOS 26, a material lens before it.
 private struct WyrmAirGlass<S: Shape>: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let shape: S
     var tint: Color?
     var interactive = true
@@ -189,7 +214,7 @@ private struct WyrmAirGlass<S: Shape>: ViewModifier {
             .background(shape.fill(.ultraThinMaterial))
             .background(shape.fill(tint ?? .clear).opacity(0.55))
             .overlay(shape.stroke(Color.white.opacity(0.55), lineWidth: 0.8))
-            .overlay(shape.stroke(ATheme.ink.opacity(0.1), lineWidth: 0.5))
+            .overlay(shape.stroke(wyrmScopedColours.ink, lineWidth: 0.5))
     }
 }
 
@@ -202,6 +227,9 @@ extension View {
 /// The pattern toggle: a colour-wheel glyph while the beads are showing,
 /// the bead grid glyph while the wheel is.
 struct WyrmAirWheelToggle: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let showingWheel: Bool
     var enabled: Bool = true
     let action: () -> Void
@@ -212,7 +240,7 @@ struct WyrmAirWheelToggle: View {
                 if showingWheel {
                     Image(systemName: "circle.grid.3x3.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(ATheme.ink)
+                        .foregroundColor(wyrmScopedColours.ink)
                 } else {
                     Circle()
                         .fill(AngularGradient(gradient: Gradient(colors: [.red, .yellow, .green, .cyan, .blue, .purple, .red]),
@@ -251,6 +279,8 @@ struct WyrmAirWheelPanel: View {
     @Binding var storedAngle: Double
     @Binding var storedRGB: Int
     let onAdd: (_ kind: Int, _ rgb: UInt32) -> Void
+    /// Which of the six styles may be added now (WyrmAirSkin.allowed).
+    let allowedStyles: [Bool]
 
     @State private var pointerX: Double
     @State private var pointerY: Double
@@ -265,7 +295,9 @@ struct WyrmAirWheelPanel: View {
     init(wheel: CGImage?, beads: [Int: CGImage],
          storedX: Binding<Double>, storedY: Binding<Double>,
          storedAngle: Binding<Double>, storedRGB: Binding<Int>,
+         allowedStyles: [Bool] = Array(repeating: true, count: WyrmAirSkin.styleCount),
          onAdd: @escaping (_ kind: Int, _ rgb: UInt32) -> Void) {
+        self.allowedStyles = allowedStyles
         self.wheel = wheel
         self.beads = beads
         _storedX = storedX
@@ -288,11 +320,22 @@ struct WyrmAirWheelPanel: View {
         HStack(alignment: .center, spacing: 16) {
             wheelView
                 .frame(maxWidth: 300)
-            VStack(spacing: 22) {
-                ForEach(0..<2, id: \.self) { kind in
-                    WyrmAirBeadButton(image: beads[kind], rgb: rgb,
-                                      label: kind == 0 ? "Add plain bead" : "Add rim bead") {
-                        onAdd(kind, rgb)
+            // Only Plain and Rim are offered; all six styles still decode saved skins.
+            VStack(spacing: 10) {
+                ForEach(0..<1, id: \.self) { row in
+                    HStack(spacing: 10) {
+                        ForEach(0..<2, id: \.self) { column in
+                            let kind = row * 2 + column
+                            let allowed = allowedStyles.indices.contains(kind) ? allowedStyles[kind] : true
+                            WyrmAirBeadButton(image: beads[kind], shine: beads[10 + kind],
+                                              rgb: WyrmAirSkin.bodyTint(WyrmAirSkin.marker(kind: kind) | rgb),
+                                              shineAlpha: WyrmAirSkin.shineAlpha[kind], drawn: kind >= 2,
+                                              label: "Add \(WyrmAirSkin.styleNames[kind].lowercased()) bead") {
+                                onAdd(kind, rgb)
+                            }
+                            .disabled(!allowed)
+                            .opacity(allowed ? 1 : 0.3)
+                        }
                     }
                 }
             }
@@ -446,6 +489,9 @@ struct WyrmAirWheelPanel: View {
 /// the bezel — a dash every 6°, a longer one every 30° with its hour, 1 to 12.
 /// The numbers keep one size whatever the wheel's size.
 struct WyrmAirWheelGuides: View {
+    @Environment(\.wyrmPaletteOverride) private var wyrmPaletteOverride
+    private var wyrmScopedColours: WyrmThemeColours { WyrmThemeColours(palette: wyrmPaletteOverride ?? WyrmThemeStore.shared.palette) }
+
     let unit: CGFloat
 
     var body: some View {
@@ -476,12 +522,12 @@ struct WyrmAirWheelGuides: View {
                 let to = CGPoint(x: c.x + cos(a) * reach, y: c.y + sin(a) * reach)
                 if long { major.move(to: from); major.addLine(to: to) } else { minor.move(to: from); minor.addLine(to: to) }
             }
-            context.stroke(minor, with: .color(ATheme.quiet.opacity(0.55)), lineWidth: 0.8)
-            context.stroke(major, with: .color(ATheme.mute), lineWidth: 1.3)
+            context.stroke(minor, with: .color(wyrmScopedColours.quiet), lineWidth: 0.8)
+            context.stroke(major, with: .color(wyrmScopedColours.mute), lineWidth: 1.3)
             let labelRadius = inner + 14
             for hour in 1...12 {
                 let a = CGFloat(hour) / 12 * 2 * .pi - .pi / 2
-                let text = Text("\(hour)").font(.androidWyrm(9, .semibold)).foregroundColor(ATheme.mute)
+                let text = Text("\(hour)").font(.androidWyrm(9, .semibold)).foregroundColor(wyrmScopedColours.mute)
                 context.draw(text, at: CGPoint(x: c.x + cos(a) * labelRadius, y: c.y + sin(a) * labelRadius))
             }
         }
@@ -493,23 +539,29 @@ struct WyrmAirWheelGuides: View {
 /// so its Liquid Glass backing does not re-sample every frame.
 struct WyrmAirBeadButton: View {
     let image: CGImage?
+    var shine: CGImage? = nil
     let rgb: UInt32
+    var shineAlpha: Double = 0
+    var drawn = false
     let label: String
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
-            Group {
+            ZStack {
                 if let image {
                     Image(decorative: image, scale: 1).resizable().interpolation(.high)
                         .colorMultiply(Color(airRGB: rgb))
-                        .rotationEffect(.degrees(180))
+                    if let shine, shineAlpha > 0 {
+                        Image(decorative: shine, scale: 1).resizable().interpolation(.high).opacity(shineAlpha)
+                    }
                 } else {
                     Color.clear
                 }
             }
-            .padding(9)
-            .frame(width: 66, height: 66)
+            .rotationEffect(.degrees(180))
+            .padding(drawn ? 2 : 7)
+            .frame(width: 52, height: 52)
             .background(Circle().fill(Color.clear).airGlass(Circle(), interactive: false))
             .contentShape(Circle())
         }

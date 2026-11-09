@@ -53,9 +53,9 @@ enum WyrmNight {
     static var quiet: Color { ATheme.quiet }
     static var well: Color { ATheme.well }
     static var gold: Color {
-        ATheme.dark ? Color(red: 0.89, green: 0.73, blue: 0.42) : Color(red: 0.69, green: 0.48, blue: 0.12)
+        ATheme.link
     }
-    static let onGold = Color(red: 0.11, green: 0.10, blue: 0.086)
+    static var onGold: Color { ATheme.paper }
     static var green: Color { ATheme.live }
     static let discord = Color(red: 0.345, green: 0.396, blue: 0.949)
 }
@@ -124,7 +124,7 @@ struct WyrmAboutPage: View {
                 Image("WyrmMark").resizable().scaledToFill()
                     .frame(width: 96, height: 96)
                     .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
-                    .shadow(color: WyrmNight.gold.opacity(0.35), radius: 24)
+
             }
             .wyrmAboutRise(delay: 0.05)
             Text("THE STORY OF").font(.androidWyrm(11, .bold)).tracking(3).foregroundColor(WyrmNight.gold)
@@ -152,7 +152,7 @@ struct WyrmAboutPage: View {
                 Text(numeral).font(.wyrmDisplay(15)).foregroundColor(WyrmNight.onGold)
                     .frame(width: 34, height: 34)
                     .background(Circle().fill(WyrmNight.gold))
-                    .shadow(color: WyrmNight.gold.opacity(0.5), radius: 10)
+
                 Rectangle()
                     .fill(LinearGradient(colors: [WyrmNight.gold.opacity(0.6), WyrmNight.gold.opacity(last ? 0 : 0.15)],
                                          startPoint: .top, endPoint: .bottom))
@@ -239,7 +239,7 @@ struct WyrmAboutPage: View {
                 .foregroundColor(.white)
                 .padding(.horizontal, 18).frame(height: 56)
                 .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(WyrmNight.discord))
-                .shadow(color: WyrmNight.discord.opacity(0.45), radius: 16, y: 6)
+
             }
             .buttonStyle(WSPressStyle())
             .padding(.top, 6)

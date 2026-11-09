@@ -25,11 +25,16 @@ final class WyrmPlayFeelStore: ObservableObject {
     static let lookAheadKey = "wyrm.ios.play-feel.look-ahead"
     static let zoomSpringKey = "wyrm.ios.play-feel.zoom-spring"
     static let knobCentreKey = "wyrm.ios.play-feel.knob-centre"
+    /// Settings › Display › Auto zoom (OM, 2026-11-09): on (the default) the
+    /// view zooms out as the snake grows; off keeps the player's own zoom.
+    /// Shared document key `autoZoom`; engine `WyrmIOSSetAutoZoom`.
+    static let autoZoomKey = "wyrm.ios.play-feel.auto-zoom"
 
     @Published private(set) var customArrow = true
     @Published private(set) var lookAhead = false
     @Published private(set) var zoomSpring = false
     @Published private(set) var knobCentre = false
+    @Published private(set) var autoZoom = true
 
     private init() { read() }
 
@@ -37,6 +42,7 @@ final class WyrmPlayFeelStore: ObservableObject {
     func publish() {
         WyrmIOSSetPlayFeel(!customArrow, lookAhead, zoomSpring ? 1 : 0)
         WyrmIOSSetJoystickKnob(knobCentre)
+        WyrmIOSSetAutoZoom(autoZoom)
     }
 
     /// After a log in or log out rewrote the defaults (WyrmAccountSync).
@@ -69,11 +75,18 @@ final class WyrmPlayFeelStore: ObservableObject {
         publish()
     }
 
+    func setAutoZoom(_ value: Bool) {
+        autoZoom = value
+        UserDefaults.standard.set(value, forKey: Self.autoZoomKey)
+        publish()
+    }
+
     private func read() {
         let d = UserDefaults.standard
         customArrow = d.object(forKey: Self.customArrowKey) as? Bool ?? true
         lookAhead = d.object(forKey: Self.lookAheadKey) as? Bool ?? false
         zoomSpring = d.object(forKey: Self.zoomSpringKey) as? Bool ?? false
         knobCentre = d.object(forKey: Self.knobCentreKey) as? Bool ?? false
+        autoZoom = d.object(forKey: Self.autoZoomKey) as? Bool ?? true
     }
 }

@@ -10,15 +10,19 @@ struct WyrmPalette: Equatable {
     var live: WyrmRGBA, link: WyrmRGBA, tabIdle: WyrmRGBA, tabBar: WyrmRGBA
     var chevron: WyrmRGBA, badge: WyrmRGBA, well: WyrmRGBA, track: WyrmRGBA
     var hover: WyrmRGBA
+    var hero: WyrmHero
+    var hero2: WyrmHero
     var dark: Bool
 
-    init(_ c: [UInt32], dark: Bool) {
+    init(_ c: [UInt32], hero heroC: [UInt32], hero2 hero2C: [UInt32], dark: Bool) {
         let v = c.map(WyrmRGBA.init(argb:))
         paper = v[0]; card = v[1]; ink = v[2]; onInk = v[3]
         quiet = v[4]; mute = v[5]; rule = v[6]; rowRule = v[7]
         live = v[8]; link = v[9]; tabIdle = v[10]; tabBar = v[11]
         chevron = v[12]; badge = v[13]; well = v[14]; track = v[15]
         hover = v[16]
+        hero = WyrmHero(heroC)
+        hero2 = WyrmHero(hero2C)
         self.dark = dark
     }
 }
@@ -52,6 +56,13 @@ struct WyrmRGBA: Equatable {
                         b: b + (target.b - b) * t, a: a + (target.a - a) * t)
     }
 
+    /// Android `mixKeepAlpha`: RGB moves, this colour's alpha stays.
+    func mixKeepAlpha(towards target: WyrmRGBA, _ amount: Double) -> WyrmRGBA {
+        let t = min(1, max(0, amount))
+        return WyrmRGBA(r: r + (target.r - r) * t, g: g + (target.g - g) * t,
+                        b: b + (target.b - b) * t, a: a)
+    }
+
     func withIntensity(_ intensity: Double) -> WyrmRGBA {
         let safe = min(1, max(0, intensity))
         if abs(safe - 0.5) < 0.0001 { return self }
@@ -72,131 +83,143 @@ private func contrastRatio(_ background: WyrmRGBA, _ foreground: WyrmRGBA) -> Do
 }
 
 private extension WyrmRGBA {
-    func readable(against foreground: WyrmRGBA, minimum: Double = 4.5) -> WyrmRGBA {
-        if contrastRatio(self, foreground) >= minimum { return self }
-        let target: WyrmRGBA = foreground.luminance < 0.5 ? .white : .nearBlack
-        var low = 0.0, high = 1.0
-        for _ in 0..<12 {
-            let middle = (low + high) / 2
-            if contrastRatio(mix(towards: target, middle), foreground) >= minimum { high = middle } else { low = middle }
+    func ensureAgainst(_ backgrounds: [WyrmRGBA], _ minimum: Double) -> WyrmRGBA {
+        func worst(_ c: WyrmRGBA) -> Double { backgrounds.map { contrastRatio($0, c) }.min() ?? 0 }
+        if worst(self) >= minimum { return self }
+        let black = WyrmRGBA(argb: 0xFF000000)
+        let target = worst(black) >= worst(.white) ? black : WyrmRGBA.white
+        var best = self
+        var bestW = worst(self)
+        var t = 0.04
+        while t <= 1.001 {
+            let mixed = mixKeepAlpha(towards: target, t)
+            let w = worst(mixed)
+            if w >= minimum { return mixed }
+            if w > bestW { best = mixed; bestW = w }
+            t += 0.04
         }
-        return mix(towards: target, high)
+        return best
+    }
+
+    func separateToward(paper: WyrmRGBA, ink: WyrmRGBA) -> WyrmRGBA {
+        if contrastRatio(self, ink) >= 4.5 { return self }
+        var best = self
+        var bestR = contrastRatio(self, ink)
+        var t = 0.04
+        while t <= 1.001 {
+            let mixed = mixKeepAlpha(towards: paper, t)
+            let r = contrastRatio(mixed, ink)
+            if r >= 4.5 { return mixed }
+            if r > bestR { best = mixed; bestR = r }
+            t += 0.04
+        }
+        return best
     }
 }
 
-enum WyrmThemeID: String, CaseIterable, Identifiable {
-    case paper, graphite, blush, sun, slate, lilac, forest, midnight
-    var id: String { rawValue }
-
-    var displayName: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
-
-    var description: String {
-        switch self {
-        case .paper: return "The original warm Wyrm canvas"
-        case .graphite: return "Charcoal paper, warm readable type"
-        case .blush: return "Soft rose paper with berry ink"
-        case .sun: return "Cream and ochre without harsh glare"
-        case .slate: return "Cool grey field with crisp graphite"
-        case .lilac: return "Pale violet paper with aubergine ink"
-        case .forest: return "Muted sage with deep evergreen ink"
-        case .midnight: return "Blue-black paper with cool moonlit type"
-        }
-    }
-
-    /// Byte-for-byte the Android `WyrmThemeId` table.
-    var palette: WyrmPalette {
-        switch self {
-        case .paper: return WyrmPalette([
-            0xFFF7F6F3, 0xFFFFFFFF, 0xFF37352F, 0xFFFFFFFF, 0xFF787774, 0xFF6B6660, 0x1437352F, 0x1237352F,
-            0xFF448361, 0xFF2F6FDE, 0xFF7C776F, 0xF0FCFBFA, 0xFFC6C1B8, 0xFFC4554D, 0xFFF0EEE9, 0xFFEFEDE8,
-            0xFFFAF9F7], dark: false)
-        case .graphite: return WyrmPalette([
-            0xFF171816, 0xFF222321, 0xFFF2EFE8, 0xFF171816, 0xFFB9B5AD, 0xFFD1CDC4, 0x24F2EFE8, 0x1CF2EFE8,
-            0xFF72B68F, 0xFF8CB4FF, 0xFFA7A39B, 0xF01D1E1C, 0xFF77746E, 0xFFE17B72, 0xFF2B2C29, 0xFF30312E,
-            0xFF282926], dark: true)
-        case .blush: return WyrmPalette([
-            0xFFFFF4F5, 0xFFFFFBFB, 0xFF4C3036, 0xFFFFFBFB, 0xFF88676D, 0xFF73555B, 0x184C3036, 0x124C3036,
-            0xFF3F8062, 0xFF9D4561, 0xFF8A7074, 0xF0FFF9FA, 0xFFCDB7BA, 0xFFC44F5F, 0xFFF7E7E9, 0xFFF3E1E4,
-            0xFFFFF8F8], dark: false)
-        case .sun: return WyrmPalette([
-            0xFFFFF8DE, 0xFFFFFCF0, 0xFF463B22, 0xFFFFFCF0, 0xFF7D6F51, 0xFF695C40, 0x18463B22, 0x12463B22,
-            0xFF487A59, 0xFF9A681D, 0xFF82765E, 0xF0FFFAE9, 0xFFC9BB96, 0xFFB94F47, 0xFFF4EAC8, 0xFFF1E5BD,
-            0xFFFFFBEA], dark: false)
-        case .slate: return WyrmPalette([
-            0xFFF0F2F3, 0xFFF9FAFA, 0xFF30383C, 0xFFF9FAFA, 0xFF646E74, 0xFF566168, 0x1830383C, 0x1230383C,
-            0xFF3F7D61, 0xFF356C8E, 0xFF727C81, 0xF0F5F7F7, 0xFFB8C0C3, 0xFFB65252, 0xFFE5E9EA, 0xFFE2E7E8,
-            0xFFF5F7F7], dark: false)
-        case .lilac: return WyrmPalette([
-            0xFFF7F2FC, 0xFFFCFAFF, 0xFF403348, 0xFFFCFAFF, 0xFF796B81, 0xFF65566E, 0x18403348, 0x12403348,
-            0xFF487D61, 0xFF7655A3, 0xFF7C7182, 0xF0FAF7FD, 0xFFC3B7CA, 0xFFC15362, 0xFFEDE4F2, 0xFFE9E0EF,
-            0xFFFAF7FD], dark: false)
-        case .forest: return WyrmPalette([
-            0xFFF1F5ED, 0xFFFAFCF8, 0xFF2F3F34, 0xFFFAFCF8, 0xFF647168, 0xFF536158, 0x182F3F34, 0x122F3F34,
-            0xFF3D7B56, 0xFF356F5C, 0xFF707C73, 0xF0F7FAF5, 0xFFB6C2B7, 0xFFB95450, 0xFFE4EBDD, 0xFFE1E9DA,
-            0xFFF7FAF5], dark: false)
-        case .midnight: return WyrmPalette([
-            0xFF101820, 0xFF19242D, 0xFFEAF1F4, 0xFF101820, 0xFFAAB8C0, 0xFFC5D0D5, 0x24EAF1F4, 0x1CEAF1F4,
-            0xFF6DB68F, 0xFF83B8E8, 0xFF9DABB3, 0xF0141E27, 0xFF6B7B85, 0xFFE07972, 0xFF22303A, 0xFF283741,
-            0xFF1E2A34], dark: true)
-        }
+extension WyrmHero {
+    /// Keep the prototype's 6.5 floor when attainable; otherwise use the best ink.
+    func retinted(bg: WyrmRGBA, hi: WyrmRGBA, lo: WyrmRGBA, seedOn: WyrmRGBA) -> WyrmHero {
+        let on = seedOn.ensureAgainst([bg], 6.5)
+        var out = self
+        out.bg = bg
+        out.on = on
+        let well = bg.mixKeepAlpha(towards: on, 0.14).separateToward(paper: bg, ink: on)
+        out.quiet = on.mixKeepAlpha(towards: bg, 0.28).ensureAgainst([bg,well], 4.5)
+        out.mute = on.mixKeepAlpha(towards: bg, 0.14).ensureAgainst([bg,well], 4.5)
+        out.rule = WyrmRGBA(r: on.r, g: on.g, b: on.b, a: 0.22)
+        out.well = well
+        out.well.a = 1
+        out.hi = hi
+        out.lo = lo
+        return out
     }
 }
 
 extension WyrmPalette {
-    /// Android `WyrmPalette.withIntensity`: 50% is the palette as designed,
-    /// the lower half walks towards Paper without losing text contrast and the
-    /// upper half only adds chroma.
+    /// Android `withIntensity`. 50% returns this palette. Below 50% washes
+    /// surfaces toward this theme's own paper. Above raises chroma. Text is
+    /// re-ensured. The deleted Paper theme is not a target.
     func withIntensity(_ intensity: Double) -> WyrmPalette {
         let safe = min(1, max(0, intensity))
-        if abs(safe - 0.5) < 0.0001 { return self }
+        // Secure reading roles at the neutral intensity too. Raw table
+        // colours still match the prototype, including decorative seeds.
+        let shifted: WyrmPalette
         if safe < 0.5 {
-            let base = WyrmThemeID.paper.palette
-            if safe < 0.0001 { return base }
-            let amount = safe * 2
-            let rawPaper = base.paper.mix(towards: paper, amount)
-            let rawCard = base.card.mix(towards: card, amount)
-            let rawWell = base.well.mix(towards: well, amount)
-            let surfaces = [rawPaper, rawCard, rawWell]
-            let baseScore = surfaces.map { contrastRatio($0, base.ink) }.min() ?? 0
-            let themeScore = surfaces.map { contrastRatio($0, ink) }.min() ?? 0
-            let fallbackInk = [WyrmRGBA.nearBlack, .white].max { a, b in
-                (surfaces.map { contrastRatio($0, a) }.min() ?? 0) < (surfaces.map { contrastRatio($0, b) }.min() ?? 0)
-            } ?? .nearBlack
-            let mixedInk: WyrmRGBA
-            if baseScore >= 4.5 && baseScore >= themeScore { mixedInk = base.ink }
-            else if themeScore >= 4.5 { mixedInk = ink }
-            else { mixedInk = fallbackInk }
-            let useThemeText = mixedInk == ink || mixedInk.luminance > 0.5
-            let mixedOnInk: WyrmRGBA
-            if mixedInk == base.ink { mixedOnInk = base.onInk }
-            else if mixedInk == ink { mixedOnInk = onInk }
-            else { mixedOnInk = mixedInk.luminance > 0.5 ? .nearBlack : .white }
+            let t = 1 - safe * 2
             var out = self
-            out.paper = rawPaper.readable(against: mixedInk)
-            out.card = rawCard.readable(against: mixedInk)
-            out.ink = mixedInk
-            out.onInk = mixedOnInk
-            out.quiet = useThemeText ? quiet : base.quiet
-            out.mute = useThemeText ? mute : base.mute
-            out.rule = base.rule.mix(towards: rule, amount)
-            out.rowRule = base.rowRule.mix(towards: rowRule, amount)
-            out.live = base.live.mix(towards: live, amount)
-            out.link = base.link.mix(towards: link, amount)
-            out.tabIdle = useThemeText ? tabIdle : base.tabIdle
-            out.tabBar = base.tabBar.mix(towards: tabBar, amount)
-            out.chevron = useThemeText ? chevron : base.chevron
-            out.badge = base.badge.mix(towards: badge, amount)
-            out.well = rawWell.readable(against: mixedInk)
-            out.track = base.track.mix(towards: track, amount)
-            out.hover = base.hover.mix(towards: hover, amount)
-            out.dark = out.paper.luminance < 0.45
-            return out
+            out.card = card.mixKeepAlpha(towards: paper, t)
+            out.well = well.mixKeepAlpha(towards: paper, t)
+            out.track = track.mixKeepAlpha(towards: paper, t)
+            out.hover = hover.mixKeepAlpha(towards: paper, t)
+            out.live = live.mixKeepAlpha(towards: paper, t)
+            out.badge = badge.mixKeepAlpha(towards: paper, t)
+            out.tabBar = tabBar.mixKeepAlpha(towards: paper, t)
+            out.rule.a = rule.a * (1 - t)
+            out.rowRule.a = rowRule.a * (1 - t)
+            out.hero = hero.retinted(bg: hero.bg.mixKeepAlpha(towards: paper, t),
+                                     hi: hero.hi.mixKeepAlpha(towards: paper, t),
+                                     lo: hero.lo.mixKeepAlpha(towards: paper, t),
+                                     seedOn: hero.on)
+            out.hero2 = hero2.retinted(bg: hero2.bg.mixKeepAlpha(towards: paper, t),
+                                       hi: hero2.hi.mixKeepAlpha(towards: paper, t),
+                                       lo: hero2.lo.mixKeepAlpha(towards: paper, t),
+                                       seedOn: hero2.on)
+            shifted = out
+        } else {
+            var out = self
+            for path in [\WyrmPalette.paper, \.card, \.ink, \.onInk, \.quiet, \.mute, \.rule, \.rowRule,
+                         \.live, \.link, \.tabIdle, \.tabBar, \.chevron, \.badge, \.well, \.track, \.hover] {
+                out[keyPath: path] = self[keyPath: path].withIntensity(safe)
+            }
+            out.hero = hero.retinted(bg: hero.bg.withIntensity(safe), hi: hero.hi.withIntensity(safe),
+                                     lo: hero.lo.withIntensity(safe), seedOn: hero.on.withIntensity(safe))
+            out.hero2 = hero2.retinted(bg: hero2.bg.withIntensity(safe), hi: hero2.hi.withIntensity(safe),
+                                       lo: hero2.lo.withIntensity(safe), seedOn: hero2.on.withIntensity(safe))
+            shifted = out
         }
+        return shifted.resecured()
+    }
+
+    /// Card-local palette. Slot 2 is hero2. Tab roles stay.
+    func heroView(slot: Int) -> WyrmPalette {
+        let h = slot == 2 ? hero2 : hero
         var out = self
-        for path in [\WyrmPalette.paper, \.card, \.ink, \.onInk, \.quiet, \.mute, \.rule, \.rowRule,
-                     \.live, \.link, \.tabIdle, \.tabBar, \.chevron, \.badge, \.well, \.track, \.hover] {
-            out[keyPath: path] = self[keyPath: path].withIntensity(safe)
-        }
+        out.paper = h.bg
+        out.card = h.bg
+        out.ink = h.on
+        out.onInk = h.bg
+        out.quiet = h.quiet
+        out.mute = h.mute
+        out.rule = h.rule
+        out.rowRule = h.rule
+        out.live = h.on
+        out.link = h.on
+        out.chevron = h.quiet
+        out.well = h.well
+        out.track = h.rule
+        out.dark = h.bg.luminance < 0.45
+        return out
+    }
+
+    private func resecured() -> WyrmPalette {
+        let ink2 = ink.ensureAgainst([paper], 7.5)
+        let card2 = card.separateToward(paper: paper, ink: ink2)
+        let well2 = well.separateToward(paper: paper, ink: ink2)
+        let body = [paper, card2]
+        var out = self
+        out.ink = ink2
+        out.card = card2
+        out.well = well2
+        out.onInk = onInk.ensureAgainst([ink2], 4.5)
+        out.quiet = quiet.ensureAgainst(body + [well2], 4.5)
+        out.mute = mute.ensureAgainst(body + [well2], 4.5)
+        out.live = live.ensureAgainst(body + [well2], 4.5)
+        out.badge = badge.ensureAgainst(body + [well2], 4.5)
+        out.link = link.ensureAgainst(body + [well2], 4.5)
+        out.tabIdle = tabIdle.ensureAgainst([tabBar, paper], 4.5)
+        out.chevron = chevron.ensureAgainst(body + [well2], 4.5)
+        out.dark = paper.luminance < 0.45
         return out
     }
 }
@@ -208,10 +231,14 @@ final class WyrmThemeStore: ObservableObject {
     static let shared = WyrmThemeStore()
     private static let themeKey = "wyrm.ios.theme"
     private static let intensityKey = "wyrm.ios.theme-intensity"
+    private static let modeKey = "wyrm.ios.theme-mode"
 
     @Published private(set) var theme: WyrmThemeID
+    @Published private(set) var mode: WyrmThemeMode
+    /// Phone light/dark. Read only while [mode] is auto.
+    @Published private(set) var systemDark = false
     @Published private(set) var intensity: Double
-    @Published private(set) var palette: WyrmPalette
+    @Published private(set) var palette: WyrmPalette { didSet { pushCoverPaper() } }
     /// The intensity the rest of the shell has been rebuilt with. It trails the
     /// slider by a moment so dragging never tears down the slider under the finger.
     @Published private(set) var committedIntensity: Double
@@ -219,37 +246,86 @@ final class WyrmThemeStore: ObservableObject {
 
     private init() {
         let defaults = UserDefaults.standard
-        // Earlier builds stored the display name ("Paper"); both spellings resolve.
-        let stored = defaults.string(forKey: Self.themeKey)?.lowercased() ?? "paper"
-        let theme = WyrmThemeID(rawValue: stored) ?? .paper
+        // Missing local appearance is Paper; a saved account choice always wins.
+        defaults.set(true, forKey: "wyrm.ios.theme-refresh-v1")
+        let arguments = ProcessInfo.processInfo.arguments
+        if let index = arguments.firstIndex(of: "--smoke-theme"), arguments.indices.contains(index+1),
+           let selected = WyrmThemeID(rawValue: arguments[index+1]) {
+            defaults.set(selected.rawValue, forKey: Self.themeKey)
+            if let i = arguments.firstIndex(of: "--smoke-theme-mode"), arguments.indices.contains(i+1),
+               let mode = WyrmThemeMode(rawValue: arguments[i+1]) { defaults.set(mode.rawValue, forKey: Self.modeKey) }
+            if let i = arguments.firstIndex(of: "--smoke-theme-intensity"), arguments.indices.contains(i+1),
+               let value = Double(arguments[i+1]), value.isFinite { defaults.set(min(1,max(0,value)), forKey: Self.intensityKey) }
+        }
+        let choice = WyrmThemeID.resolve(name: defaults.string(forKey: Self.themeKey),
+                                         modeRaw: defaults.string(forKey: Self.modeKey))
         let intensity = defaults.object(forKey: Self.intensityKey) as? Double ?? 0.5
-        self.theme = theme
+        theme = choice.0
+        mode = choice.1
         self.intensity = intensity
         committedIntensity = intensity
-        palette = theme.palette.withIntensity(intensity)
+        palette = choice.0.side(mode: choice.1, systemDark: false).withIntensity(intensity)
+        defaults.set(choice.0.rawValue, forKey: Self.themeKey)
+        defaults.set(choice.1.rawValue, forKey: Self.modeKey)
+        pushCoverPaper()
+    }
+
+    /// Nil while Auto, so the phone's own light/dark can show. About still forces dark.
+    var preferredScheme: ColorScheme? {
+        switch mode {
+        case .light: return .light
+        case .dark: return .dark
+        case .auto: return nil
+        }
+    }
+
+    /// The rotation cover shows this paper, never black (OM, 2026-10-30).
+    private func pushCoverPaper() {
+        WyrmIOSSetCoverPaper(palette.paper.r, palette.paper.g, palette.paper.b)
     }
 
     /// After a log in or log out rewrote the defaults (WyrmAccountSync).
     func reloadFromDefaults() {
+        commitWork?.cancel()
+        commitWork = nil
         let defaults = UserDefaults.standard
-        let stored = defaults.string(forKey: Self.themeKey)?.lowercased() ?? "paper"
-        let next = WyrmThemeID(rawValue: stored) ?? .paper
+        let choice = WyrmThemeID.resolve(name: defaults.string(forKey: Self.themeKey),
+                                         modeRaw: defaults.string(forKey: Self.modeKey))
         let level = defaults.object(forKey: Self.intensityKey) as? Double ?? 0.5
-        theme = next
+        theme = choice.0
+        mode = choice.1
         intensity = level
         committedIntensity = level
-        palette = next.palette.withIntensity(level)
+        palette = choice.0.side(mode: choice.1, systemDark: systemDark).withIntensity(level)
+        defaults.set(choice.0.rawValue, forKey: Self.themeKey)
+        defaults.set(choice.1.rawValue, forKey: Self.modeKey)
     }
 
     /// Changing appearance rebuilds the whole shell (see `WyrmDesignMain`),
     /// so the key doubles as the identity that forces that rebuild.
-    var identity: String { "\(theme.rawValue)-\(Int((committedIntensity * 1000).rounded()))" }
+    var identity: String { "\(theme.rawValue)-\(mode.rawValue)-\(systemDark)-\(Int((committedIntensity * 1000).rounded()))" }
 
     func select(_ next: WyrmThemeID) {
         guard next != theme else { return }
         theme = next
-        UserDefaults.standard.set(next.rawValue, forKey: Self.themeKey)
+        let defaults = UserDefaults.standard
+        defaults.set(next.rawValue, forKey: Self.themeKey)
+        defaults.set(mode.rawValue, forKey: Self.modeKey)
         recompute()
+    }
+
+    func setMode(_ next: WyrmThemeMode) {
+        guard next != mode else { return }
+        mode = next
+        UserDefaults.standard.set(next.rawValue, forKey: Self.modeKey)
+        recompute()
+    }
+
+    /// Republishes only while the saved mode is Auto. Ignore this while About forces a dark scheme.
+    func noteSystemDark(_ dark: Bool) {
+        guard systemDark != dark else { return }
+        systemDark = dark
+        if mode == .auto { recompute() }
     }
 
     func setIntensity(_ value: Double) {
@@ -265,7 +341,7 @@ final class WyrmThemeStore: ObservableObject {
     }
 
     private func recompute() {
-        palette = theme.palette.withIntensity(intensity)
+        palette = theme.side(mode: mode, systemDark: systemDark).withIntensity(intensity)
         publishArenaTheme()
         applyControlAppearance()
     }
@@ -297,7 +373,8 @@ final class WyrmThemeStore: ObservableObject {
     func publishArenaTheme() {
         let p = palette
         let roles: [UInt32] = [p.paper, p.card, p.ink, p.onInk, p.quiet, p.mute, p.rule,
-                               p.live, p.link, p.well, p.track, p.badge].map(\.argb)
+                               p.live, p.link, p.well, p.track, p.badge,
+                               p.hero.bg, p.hero.on, p.hero2.bg, p.hero2.on].map(\.argb)
         roles.withUnsafeBufferPointer { WyrmIOSSetArenaTheme($0.baseAddress, Int32($0.count), p.dark) }
     }
 }
@@ -324,4 +401,73 @@ enum ATheme {
     static var track: Color { p.track.color }
     static var hover: Color { p.hover.color }
     static var dark: Bool { p.dark }
+}
+
+private struct WyrmPaletteOverrideKey: EnvironmentKey {
+    static let defaultValue: WyrmPalette? = nil
+}
+extension EnvironmentValues {
+    var wyrmPaletteOverride: WyrmPalette? {
+        get { self[WyrmPaletteOverrideKey.self] }
+        set { self[WyrmPaletteOverrideKey.self] = newValue }
+    }
+}
+
+/// Semantic roles inherited by children of a hero card.
+struct WyrmThemeColours {
+    let palette: WyrmPalette
+    var paper: Color { palette.paper.color }
+    var card: Color { palette.card.color }
+    var ink: Color { palette.ink.color }
+    var onInk: Color { palette.onInk.color }
+    var quiet: Color { palette.quiet.color }
+    var mute: Color { palette.mute.color }
+    var rule: Color { palette.rule.color }
+    var rowRule: Color { palette.rowRule.color }
+    var live: Color { palette.live.color }
+    var link: Color { palette.link.color }
+    var tabIdle: Color { palette.tabIdle.color }
+    var tabBar: Color { palette.tabBar.color }
+    var chevron: Color { palette.chevron.color }
+    var badge: Color { palette.badge.color }
+    var well: Color { palette.well.color }
+    var track: Color { palette.track.color }
+    var hover: Color { palette.hover.color }
+    var dark: Bool { palette.dark }
+}
+
+/// Media and player-selected swatches may use any colour. Use the highest
+/// contrast monochrome ink, instead of assuming white is always readable.
+func wyrmReadableInk(on background: Color) -> Color {
+    let ui = UIColor(background).resolvedColor(with: UITraitCollection(userInterfaceStyle: WyrmThemeStore.shared.palette.dark ? .dark : .light))
+    var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 1
+    guard ui.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { return ATheme.ink }
+    let colour = WyrmRGBA(r: Double(red), g: Double(green), b: Double(blue), a: 1)
+    return contrastRatio(colour, .white) >= contrastRatio(colour, WyrmRGBA(argb: 0xFF000000)) ? .white : .black
+}
+private struct WyrmHeroScope: ViewModifier {
+    @Environment(\.wyrmPaletteOverride) private var inherited
+    @ObservedObject private var theme = WyrmThemeStore.shared
+    let slot: Int
+    func body(content: Content) -> some View {
+        content.environment(\.wyrmPaletteOverride, (inherited ?? theme.palette).heroView(slot: slot))
+    }
+}
+extension View {
+    func wyrmHero(_ slot: Int = 1) -> some View { modifier(WyrmHeroScope(slot: slot)) }
+}
+
+struct WyrmHeroCard<Content: View>: View {
+    @Environment(\.wyrmPaletteOverride) private var inherited
+    @ObservedObject private var theme = WyrmThemeStore.shared
+    var slot: Int = 1
+    var enabled = true
+    @ViewBuilder let content: (WyrmThemeColours) -> Content
+    var body: some View {
+        let base = inherited ?? theme.palette
+        let palette = enabled ? base.heroView(slot: slot) : base
+        content(WyrmThemeColours(palette: palette))
+            .foregroundColor(palette.ink.color)
+            .environment(\.wyrmPaletteOverride, palette)
+    }
 }
