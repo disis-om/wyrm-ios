@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "2.5.2",
-  "build": 159,
+  "version": "2.5.3",
+  "build": 160,
   "channel": "latest",
-  "mandatory": true,
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.5.2-build-159/Wyrm-2.5.2-build-159.ipa",
-  "ipaSize": 88708404,
-  "sha256": "ceab05f4ed35a6b7f5658f5e79aa2b945a14fa29029a414302bc8aefcb2806eb",
-  "publishedAt": "2026-11-08T20:26:28Z",
-  "notes": "Minor bug fix."
+  "mandatory": false,
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.5.3-build-160/Wyrm-2.5.3-build-160.ipa",
+  "ipaSize": 61294513,
+  "sha256": "a5bc7bf6fa3aa2c0d452dc57e08d2a0fc78ab0b729da35a01b4164fa256c3f17",
+  "publishedAt": "2026-11-10T02:13:16Z",
+  "notes": "Performance fixes and fixed known bugs"
 }
