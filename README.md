@@ -1,152 +1,100 @@
 <p align="center">
-  <img src="Resources/Assets.xcassets/AppIcon.appiconset/WyrmIcon-1024.png" width="128" height="128" alt="Wyrm app icon">
+  <img src="images/icon.png" width="128" alt="Wyrm icon">
 </p>
 
-<h1 align="center">Wyrm for iOS</h1>
+<h1 align="center">Wyrm for iPhone</h1>
 
 <p align="center">
-  The native iPhone client in the Wyrm ecosystem.<br>
-  SwiftUI product surfaces over the original C game engine.
+  The slither game app I've been building, on your iPhone.<br>
+  Needs iOS 15 or newer.
 </p>
 
-## Status
+<p align="center">
+  <a href="https://github.com/disis-om/wyrm-ios/releases/latest"><b>⬇&nbsp; Download the latest version</b></a>
+</p>
 
-- Current release: **2.1.0 (build 130)**, stable (2026-10-14). iOS **15 or newer**, iPhone
-  first.
-- Every build is compiled and smoke-tested by the Apple CI workflow. Chosen
-  builds are published as releases of this repository. Betas are titled
-  "beta" and announced only through `update/beta.json`; stable builds use
-  `update/latest.json`.
-- The IPA is unsigned. Players sign and install it themselves with AltStore,
-  SideStore, KSign or ESign. TestFlight and App Store distribution are not set
-  up.
+<p align="center">
+  <img src="images/play.png" width="270" alt="Play page">&nbsp;
+  <img src="images/welcome.png" width="270" alt="Welcome screen">
+</p>
 
-## Features
+---
 
-- Arena chat with TEAM, GLOBAL and ONLINE tabs: global chat inside the match,
-  players seen on Wyrm lately with their in-game name, username and arena
-  (sharing off = left out), and an unread count per tab.
-- Native Snakey Rain controller in Loadout: public or personal login, character
-  and compatible skin/tag/accessory editors, 14 modes, live settings, and an
-  arena panel dragged by its bottom handle and fitted to the screen. Character
-  patterns keep palette, colour-wheel and Wyrm bead colours in every preview.
-  Panel text/border and fill colours are adjustable. Settings are shared with Android;
-  credentials and private bot tag codes remain in this phone's Keychain.
-  Device bot spawn and full browser-extension parity remain unverified.
-- Username/password sign-up and login with live username availability.
-  Every setting lives in the account, one copy per platform plus a shared copy
-  (skin, look, background, name and play options follow you between iPhone
-  and Android). Settings are saved on log out and restored during the log-in
-  animation; logging out clears the phone.
-- Touch and hold your own Global or direct message to delete it for both sides.
-  Trail deletion removes posts and unreferenced media from active server storage.
-- Skin Studio with painted beads/eyes, classic Saved skins, assisted play,
-  joystick knob modes, larger on-screen keys and tags that fly away on death.
-  Background play runs the game without GPU frames while a silent audio session
-  attempts to keep the match awake; system interruptions may still suspend it.
-- Play, Trails, Social, Skin and Settings tabs. Alerts opens from the bell on
-  Play. On iOS 26 the tab bar, switches, sliders, segmented controls and
-  buttons are the system's own Liquid Glass; earlier iOS versions get a
-  draggable glass-style tab bar.
-- The original Wyrm C gameplay and network engine, not a Swift rewrite. The
-  lobby and arena run in landscape (or upright, if chosen) inside a portrait
-  app.
-- One arena connection per Play. A refused or failed entry returns to the
-  lobby with no automatic retry or server switch. Play can never stay stuck
-  on "Entering".
-- Arena picker with the live directory, a lowest-ping pick, four-digit arena
-  codes, recent and saved custom IPv4 arenas. Latency probes run only while the
-  picker is open, and each arena is dialled at most once a minute.
-- Skin Studio: 66 presets, the atlas beads and Wyrm's own beads, the
-  slither.io colour wheel, accessories, Wyrm looks (hair, ears, glasses), 241
-  tags and 30 arena floors. Tags show to everyone in the arena: only the tag's
-  number travels in the skin block, and each player draws the chain, swing and
-  size with their own settings.
-- Modes: Wyrm, assist and Near Original (slither's own HUD and controls);
-  Texture, Solid, Flat and Skinless snake rendering, and Spine.
-- NTL 9.68-compatible Team mode: presence, an in-arena roster and team chat
-  window. Several teams can be saved; only the selected one runs. Team
-  credentials stay in the iOS Keychain.
-- Settings rebuilt from the Android app: display, controls, on-screen buttons
-  (including Auto restart and Eyes back), arena UI, modes, bot, food,
-  performance, notifications, privacy, themes and updates. Changes go straight
-  into the engine. Settings search included.
-- Layout editor over a bot-driven practice arena, eight themes, drawn and
-  image arrows.
-- Trails: photo, text and canvas posts with a story-style editor, looks,
-  stickers and replies.
-- Wyrm's own keyboard (sideways too), global chat and direct messages.
-- Leaderboards with search, profiles, avatars, follows, notifications and
-  voice-room control through the Wyrm backend.
-- Help & feedback: crash and arena-drop reports (sent only with your consent),
-  reports to Wyrm with replies, a FAQ and an app tour.
-- Stable and beta update channels. Settings › Updates shows an "Update now"
-  card when a newer build is out and hands the IPA to AltStore, SideStore,
-  KSign or ESign. Beta builds are offered only with "Beta updates" on.
-- Opt-in Developer Mode with bounded local diagnostics and share-sheet export.
+Hey! This is the iPhone version of Wyrm. Same account, same skins, same
+friends as on Android, Windows and Mac. Log in and your settings follow you.
 
-## Architecture
+It plays on the real slither.io servers with a fast engine, so it stays smooth
+even when the arena gets crowded. On top of that you get skins you build bead
+by bead, team play, global chat, a live leaderboard, Trails, assist mode and a
+lot of controls to make it feel the way you like.
 
-```text
-SwiftUI product shell
-        │
-bounded Swift/C bridge (mailboxes and snapshots)
-        │
-original Wyrm C engine
-        │
-SDL3 · Vulkan · MoltenVK · Metal
-```
+<p align="center">
+  <img src="images/modes.png" width="270" alt="Modes page">&nbsp;
+  <img src="images/controls.png" width="270" alt="Controls page">
+</p>
 
-UIKit owns the app container. Product screens are portrait. During the lobby
-and the match only the engine surface is rotated, so the original landscape
-renderer runs unchanged while iOS stays portrait.
+## Installing
 
-## Building
+Wyrm isn't on the App Store, so you install the IPA yourself with a signing
+app. Any of these work:
 
-Apple compilation runs on macOS in the `Compile original Android engine for
-Apple` workflow:
+- **AltStore** or **SideStore** (free, with your Apple ID)
+- **KSign** or **ESign** (if you already use one)
 
-1. Fetch SDL3 3.4.16 and MoltenVK 1.4.2 (SHA-256 pinned).
-2. Verify and prepare the engine snapshot (`Scripts/prepare-original-engine.py`).
-3. Run the source contract tests in `Tests/`.
+Steps:
+
+1. Download `Wyrm-<version>-build-<n>.ipa` from the
+   [latest release](https://github.com/disis-om/wyrm-ios/releases/latest).
+2. Open it with your signing app and install it.
+3. Open Wyrm, create an account or log in, and play.
+
+There's also a step by step guide with pictures on
+[wyrm.web.app](https://wyrm.web.app/download/iphone).
+
+## Updates
+
+Wyrm checks for new versions by itself. When there's one, you'll see a card in
+the app, tap **Update now** and it hands the new IPA to your signing app.
+
+You can also check yourself in **Settings › Updates**. Turn on
+**Beta updates** there if you want new stuff a bit earlier than everyone else.
+
+## Something not working?
+
+Send me a message in Wyrm (Settings › Help & feedback) or on Discord and tell
+me your iPhone model and iOS version. Crash reports are only sent if you say
+yes.
+
+<details>
+<summary>For developers: how it's built</summary>
+
+<br>
+
+The app is a SwiftUI shell over the same C game engine as Android, drawn with
+Vulkan on MoltenVK. Every build is compiled and tested on macOS by the GitHub
+Actions workflow in `.github/workflows/`:
+
+1. Fetch SDL3 and MoltenVK (SHA-256 pinned).
+2. Prepare the engine snapshot (`Scripts/prepare-original-engine.py`).
+3. Run the contract tests in `Tests/`.
 4. Generate the Xcode project from `original-engine.yml`.
-5. Build for iPhone and Simulator with code signing off.
-6. Run Simulator smoke tests (UI, settings, skin, team, AI and online arena).
+5. Build for iPhone and Simulator with code signing off, then run Simulator smoke tests.
 
-Artifacts: `Wyrm-<version>-build-<n>-unsigned.ipa`, the Simulator `.app.zip`,
-SHA-256 checksums, screenshots and logs.
+| Path | What's in it |
+| --- | --- |
+| `SourcesShell/` | SwiftUI interface, account and service clients |
+| `SourcesOriginal/` | UIKit container and the Swift/C bridge |
+| `SharedEngine/` | Hash-checked snapshot of the Wyrm C engine |
+| `Resources/` | App icon, fonts, art, privacy policy |
+| `Scripts/`, `Tests/` | Engine preparation and checks |
+| `update/` | The update manifests the app reads |
 
-## Repository layout
+No signing certificates, keys, tokens or player data are stored here. Account
+and team logins stay in the iOS Keychain.
 
-| Path | Contents |
-|---|---|
-| `SourcesShell/` | SwiftUI interface, account and service clients, diagnostics |
-| `SourcesOriginal/` | UIKit container and the Swift/C boundary |
-| `SharedEngine/` | Hash-verified snapshot of the Wyrm C engine |
-| `Resources/` | App icon, fonts, arrow skins, privacy policy text |
-| `Scripts/` | Dependency fetch, engine preparation, reference checks |
-| `Tests/` | Source contract tests run before compilation |
-| `original-engine.yml` | XcodeGen spec, bundle ID, version and build number |
-| `.github/workflows/` | Build, package and Simulator test pipeline |
+</details>
 
-## Not done yet
+---
 
-- Realtime voice audio, push notifications (APNs), voice-room creation and
-  moderation.
-- TestFlight and App Store distribution.
-- CI proves compilation and Simulator behaviour only, not physical-device
-  behaviour.
-
-## Security and privacy
-
-- No signing certificates, provisioning profiles, keys, tokens or player data
-  are stored in this repository.
-- Account and Team credentials live in the iOS Keychain.
-- Diagnostics are local, size-bounded, expire after seven days, and never
-  contain tokens, passwords or private message text.
-
-## License
-
-The engine snapshot is GPL-3.0; see `SharedEngine/LICENSE` and
-`SharedEngine/NOTICE`. Slither.io names, artwork and trademarks belong to
-their owners. Wyrm is independent and not affiliated with the game's developer.
+<p align="center">The engine is GPL-3.0, see <code>SharedEngine/LICENSE</code>. © 2026 OM Rajput<br>
+Slither.io names and artwork belong to their owners. Wyrm is independent and not affiliated with the game's developer.</p>
