@@ -1,12 +1,12 @@
 {
   "schemaVersion": 1,
-  "version": "2.5.3",
-  "build": 160,
+  "version": "3.0.0",
+  "build": 166,
   "channel": "latest",
   "mandatory": false,
-  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v2.5.3-build-160/Wyrm-2.5.3-build-160.ipa",
-  "ipaSize": 61294513,
-  "sha256": "a5bc7bf6fa3aa2c0d452dc57e08d2a0fc78ab0b729da35a01b4164fa256c3f17",
-  "publishedAt": "2026-11-10T02:13:16Z",
-  "notes": "Performance fixes and fixed known bugs"
+  "ipaUrl": "https://github.com/disis-om/wyrm-ios/releases/download/v3.0.0-build-166/Wyrm-3.0.0-build-166.ipa",
+  "ipaSize": 61677767,
+  "sha256": "9c01c330f285215606a3a608c9844eff54ac7d60c804697b8da9ab32d6d49259",
+  "publishedAt": "2026-11-16T19:48:04Z",
+  "notes": "The spine now runs from the head to the tip of the tail.\nPerformance fixes and fixed known bugs."
 }
