@@ -14,8 +14,9 @@
 </p>
 
 <p align="center">
-  <img src="images/play.png" width="270" alt="Play page">&nbsp;
-  <img src="images/welcome.png" width="270" alt="Welcome screen">
+  <img src="images/play.png" width="260" alt="Play page">&nbsp;
+  <img src="images/skin.png" width="260" alt="Skin page">&nbsp;
+  <img src="images/settings.png" width="260" alt="Settings page">
 </p>
 
 ---
@@ -29,8 +30,7 @@ by bead, team play, global chat, a live leaderboard, Trails, assist mode and a
 lot of controls to make it feel the way you like.
 
 <p align="center">
-  <img src="images/modes.png" width="270" alt="Modes page">&nbsp;
-  <img src="images/controls.png" width="270" alt="Controls page">
+  <img src="images/ready.png" width="720" alt="Ready room">
 </p>
 
 ## Installing
